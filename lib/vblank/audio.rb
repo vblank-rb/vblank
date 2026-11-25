@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE SOUND AND MUSIC MODEL BEHIND THE VERBS: what a beep or a note IS, what a tune is made of,
+# The sound and music model behind the verbs: what a beep or a note is, what a tune is made of,
 # how a note starts and ends, and how a recording is read. Every backend reads this, which is
 # what keeps the console and the headless interpreter agreeing about what a game sounds like.
 

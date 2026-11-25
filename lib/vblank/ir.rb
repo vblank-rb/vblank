@@ -26,6 +26,7 @@ require_relative "ir/tile_map"              # How big a grid a background scroll
 require_relative "ir/build"
 require_relative "ir/picked_tile"           # A tile picked as the program runs, as the tests it stands for
 require_relative "ir/save_list_moves"       # A whole list moved to or from save memory, as the loops it stands for
+require_relative "ir/list_packing"          # A list's items written into a list of bytes, as the loops it stands for
 require_relative "ir/place_drawing"        # How a place made of flat faces is drawn, as statements every target runs
 require_relative "ir/viewer_motion"         # How the viewer moves and turns
 require_relative "ir/reciprocals"           # How far a point on a face is, for a picture in perspective
@@ -35,6 +36,7 @@ require_relative "ir/background_reading"    # Where a background's state is kept
 require_relative "ir/reading_by_name"       # A running game's state asked by its names, on every reader
 require_relative "ir/unchanging"            # Which values change nothing by being worked out
 require_relative "ir/reach"                 # What a run can reach: its routines and variables
+require_relative "ir/unneeded_copies"       # A kept copy whose number cannot change before its reads
 require_relative "ir/parity"
 require_relative "ir/affine"
 require_relative "ir/modes"
@@ -52,6 +54,7 @@ require_relative "ir/light_scenes"          # Which scenes a light is off in, to
 require_relative "ir/tunes"                 # Which tunes a program plays, and the mixer voices they keep
 require_relative "ir/mixing"                # How recordings are added together into one stream
 require_relative "ir/rules_only"            # A program with nothing to see or hear, for a bot to play fast
+require_relative "ir/loop_jumps"            # Which loop a `break` or `next` belongs to
 require_relative "ir/verifier"
 require_relative "ir/portability"
 require_relative "ir/backends"

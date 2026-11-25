@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/sheet").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sheet").to_s)
 
 # examples/sheet.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, while a hero whose walk cycle was cut from a sprite sheet is walked right, down, left

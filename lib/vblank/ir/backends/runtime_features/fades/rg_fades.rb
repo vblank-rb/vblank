@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# FADES AND TINTS (Reference#exec_fade, #exec_tint and Framebuffer#faded): the display's own fade toward
+# Fades and tints (Reference#exec_fade, #exec_tint and Framebuffer#faded): the display's own fade toward
 # black or white, held to a rectangle or placed in the stack, a fade that walks the colours, and a tint
 # toward a colour. Joined into the runtime's class after rg_screen.rb for a game that fades or tints.
 # rg_fades.c says how, rule for rule; this is that file written again, method for method.
@@ -9,7 +9,7 @@
 # picture is read through (rg_fades_fade_filter), and once a thing painted for the table that thing is
 # painted through (rg_fades_paint_fade_for); the screen's loops then read the tables.
 #
-# A TABLE here is a Hash that works a colour's answer out the first time it is asked and keeps it
+# A table here is a Hash that works a colour's answer out the first time it is asked and keeps it
 # (Hash.new with a block), so a lookup in the screen's loop is a plain table[color]. A fade that
 # animates changes every frame, and working out all 65536 colours a frame would cost more than the
 # reading it saves. So a fade, tint or screen that changes a setting the colours are worked out
@@ -24,7 +24,7 @@ RG_FADE_OUTSIDE = 2
 RG_WALK_STEPS = 256
 RG_WALK_PER_DISPLAY = 16
 
-# A FADE PLACED IN THE STACK (Reference @fade_placed): whether one is in force, how far forward the
+# A fade placed in the stack (Reference @fade_placed): whether one is in force, how far forward the
 # layer it sits under is among the layers the game declared, which way it fades, and how far.
 RgPlacedFade = Struct.new(:in_force, :layer_place, :toward_white, :steps)
 

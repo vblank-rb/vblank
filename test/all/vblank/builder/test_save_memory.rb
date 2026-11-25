@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW MUCH SAVE MEMORY A CARTRIDGE HAS, which the build picks from the records it keeps.
+# How much save memory a cartridge has, which the build picks from the records it keeps.
 #
 # The console's cartridges came with 32K of battery-backed memory, or with 64K or 128K of
 # flash. A game says nothing: the build lays its save_data records out and takes the smallest

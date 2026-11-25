@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT THE MUSIC PLAYER COSTS THE ROUTINE THE SCREEN'S INTERRUPT RUNS. That routine is weighed
+# What the music player costs the routine the screen's interrupt runs. That routine is weighed
 # for the console's quick memory against everything else a frame runs, so its size is a fact a
 # game near the line feels: grown past what is left, it runs from the cartridge, and a pass that
 # fitted its frame no longer does.
@@ -62,7 +62,7 @@ class TestMusicPlayerSize < Minitest::Test
     end
   end
 
-  # A SONG THAT ENDS adds a few instructions a lane to the player — what silences it once it
+  # A song that ends adds a few instructions a lane to the player — what silences it once it
   # has — so asking for one `this_frame: true` must not write those a second time either.
   def test_a_song_that_ends_asked_for_this_frame_adds_no_second_silencing
     plain = interrupt_routine_bytes(program(this_frame: false, once: true)) - interrupt_routine_bytes(program(this_frame: false))

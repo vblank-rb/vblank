@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # WHETHER TWO SPRITES' DRAWN PIXELS TOUCH (Reference#pixels_overlap?): only the rectangle where
+          # Whether two sprites' drawn pixels touch (Reference#pixels_overlap?): only the rectangle where
           # the two pictures overlap is walked, a row at a time, stopping at the first pixel both draw.
           # Each picture is a mask made while the program is built (Lowering::Collision): its width and its
           # height, a word each, then a byte a pixel, row by row, 1 where it draws.

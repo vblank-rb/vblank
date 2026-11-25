@@ -6,8 +6,8 @@ require "json"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# A CELL WRITTEN FROM A NUMBER WORKED OUT AS THE GAME PLAYS COSTS WHAT A CELL WRITTEN FROM A NUMBER
-# IN THE PROGRAM DOES. A Super Nintendo game writes its map's words straight into its copy of the
+# A cell written from a number worked out as the game plays costs what a cell written from a number
+# in the program does. A Super Nintendo game writes its map's words straight into its copy of the
 # map: a blast spreading over an arena is a dozen words a frame, each read from a table of the
 # game's. Here the game's arena is a background from the data pack of 16x16 cells, told 80 cells
 # set_cell may write, and every pass writes a dozen of them, the word worked out from the pass.
@@ -18,6 +18,11 @@ class TestSNESSetCellCost < Minitest::Test
   DOWN = 14
   TOLD = 80
   WRITES = 12
+  # The column each round writes, along the top row. Out of order, so the rounds differ in more than
+  # numbers stepping evenly and the build writes every round out in both games
+  # (DSL::PlainRuby::Counts::KnownRounds), as a game writing a dozen cells in a burst does: the two
+  # games then differ in how the cell is written and nothing else.
+  COLUMNS = [3, 0, 7, 1, 10, 4, 11, 2, 8, 5, 9, 6].freeze
   # The told cells are at tiles 0, 2, 4 ... of video memory: a cell at tile t is t, t + 1, t + 16
   # and t + 17. Tile 17 takes turns in the games that say so: the bottom right quarter of cell 0
   # and the top right of cell 8, which the map shows and the game writes.
@@ -118,9 +123,9 @@ class TestSNESSetCellCost < Minitest::Test
           # Both games work the word out, so the two differ only in how the cell is written.
           word = told.first + (((pass + (at * 7)) % TOLD) * 2)
           if worked_out
-            arena.set_cell at % ACROSS, at / ACROSS, word
+            arena.set_cell COLUMNS[at], 0, word
           else
-            arena.set_cell at % ACROSS, at / ACROSS, told[(at * 7) % TOLD]
+            arena.set_cell COLUMNS[at], 0, told[(at * 7) % TOLD]
           end
         end
       end

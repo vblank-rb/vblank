@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE SOUND EFFECTS OF A GAME WITH MANY OF THEM, played by one set of routines from tables.
+          # The sound effects of a game with many of them, played by one set of routines from tables.
           #
           # Runtime::Effects writes each effect's routines out for it, which is quick to play and
           # takes the better part of a kilobyte of the part of the cartridge always in view for
@@ -23,7 +23,7 @@ module VBlank
           # What each effect keeps while it plays is Effects' STATE_BYTES and two for each part, in
           # STATE_STRIDE bytes of STATES, so where is a shift of its number.
           #
-          # WHAT IS AWAKE. A frame has only so many cycles and most effects are quiet on most of
+          # What is awake. A frame has only so many cycles and most effects are quiet on most of
           # them, so a frame does not look at every effect to find that out. AWAKE lists the effects
           # asked for or sounding, highest rank first: how many, then for each its rank and its
           # number. An effect joins as it is asked for (rt_sfx_wake) and leaves when it has nothing

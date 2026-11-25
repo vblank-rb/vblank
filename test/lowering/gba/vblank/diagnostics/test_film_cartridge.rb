@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# ONE SIDE OF A FILM, OPENED: a cartridge brought to the moment before the film's first frame,
+# One side of a film, opened: a cartridge brought to the moment before the film's first frame,
 # from power-on, after a tape, or from a saved state, in a save folder of its own. Each start is
 # checked by the picture it leads to: the same picture as playing there from power-on.
 class TestFilmCartridge < Minitest::Test
@@ -15,6 +15,8 @@ class TestFilmCartridge < Minitest::Test
 
   FilmCartridge = VBlank::Diagnostics::FilmCartridge
   RIGHT = VBlank::IR::Buttons.mask(:right)
+  # The lowerings a side is shown on beside its cartridge.
+  LOWERINGS = %w[interpreter ruby].freeze
 
   def setup
     require_emulator!
@@ -72,6 +74,62 @@ class TestFilmCartridge < Minitest::Test
     assert_match(/one of them only/, error.message)
   end
 
+  # A film file's `start_from` takes the frame of the tape to start after, and the folder its
+  # snapshots are kept in, for every cartridge side it opens.
+  def test_a_film_file_starts_its_sides_after_a_frame_of_the_tape_from_a_snapshot
+    tape = File.join(scratch, "walk.tape")
+    File.write(tape, "vblank tape 1\nrecorded on: FILMED 0x00000000\nstarts from: power-on\n\n5 right\nmoment walked\n5 -\n")
+    snapshots = File.join(scratch, "snapshots")
+    film = File.join(scratch, "walk.rb")
+    File.write(film, "parts 1..2\nstart_from tape: #{tape.inspect}, starting_after: :walked, snapshots: #{snapshots.inspect}\n")
+    plan = VBlank::Diagnostics::FilmScript.read(film, sides: { "ours" => game })
+
+    shown = picture_after(plan.side_openers.fetch("ours").call, 1, "filmed")
+    expected = picture_after(VBlank::Diagnostics::Verifier.new(game, frames: 0).step(5, keys: RIGHT), 1, "expected")
+
+    assert_equal File.binread(expected), File.binread(shown)
+    assert_equal 1, Dir.glob(File.join(snapshots, "*.state")).size
+  end
+
+  # A snapshot is the emulator's, so a film file's start from one reaches a side shown as a lowering
+  # as a start played to: the film opens, and the lowering side shows what the cartridge side does.
+  def test_a_lowering_side_plays_to_a_start_the_cartridge_side_takes_from_a_snapshot
+    film = start_film("starting_after: :walked, snapshots: #{File.join(scratch, 'snapshots').inspect}")
+    cartridge = VBlank::Diagnostics::FilmScript.read(film, sides: { "ours" => game }).side_openers.fetch("ours").call
+    lowered = VBlank::Diagnostics::FilmScript.read(film, sides: { "ours" => game }, lowering: "ruby")
+                                             .side_openers.fetch("ours").call
+    3.times do |frame|
+      shown = [cartridge, lowered].map { |side| File.binread(side.step(1).screenshot(File.join(scratch, "side.png"))) }
+      assert_equal shown.first, shown.last, "frame #{frame + 1} after the start"
+    end
+  ensure
+    cartridge&.close
+    lowered&.close
+  end
+
+  # What cannot start is refused as the film file is read, before any side opens.
+  def test_a_start_a_film_file_cannot_use_is_refused_as_it_is_read
+    {
+      "starting_after: :nowhere" => /nowhere/,
+      "starting_after: 99" => /99/,
+      "starting_after: -1" => /whole number 1 or more/,
+    }.each do |start, says|
+      error = assert_raises(ArgumentError) { VBlank::Diagnostics::FilmScript.read(start_film(start), sides: { "ours" => game }) }
+      assert_match(says, error.message)
+    end
+    no_tape = File.join(scratch, "no_tape.rb")
+    File.write(no_tape, "parts 1..2\nstart_from starting_after: 3\n")
+    assert_raises(ArgumentError) { VBlank::Diagnostics::FilmScript.read(no_tape, sides: { "ours" => game }) }
+    assert_match(/tape:/, assert_raises(ArgumentError) { FilmCartridge.open(game, starting_after: 3) }.message)
+  end
+
+  # A film file showing two frames after the walk tape's +start+ (the words after `tape:`).
+  private def start_film(start)
+    tape = File.join(scratch, "walk.tape")
+    File.write(tape, "vblank tape 1\nrecorded on: FILMED 0x00000000\nstarts from: power-on\n\n5 right\nmoment walked\n5 -\n")
+    File.join(scratch, "start.rb").tap { |film| File.write(film, "parts 1..2\nstart_from tape: #{tape.inspect}, #{start}\n") }
+  end
+
   def test_a_tape_recorded_from_a_save_is_refused
     tape = File.join(scratch, "saved.tape")
     File.write(tape, "vblank tape 1\nrecorded on: FILMED 0x00000000\nstarts from: a save 0x12345678\n\n5 right\n")
@@ -93,7 +151,7 @@ class TestFilmCartridge < Minitest::Test
   # the game paints itself, with right held on some frames.
   def test_the_cartridge_and_a_lowering_show_the_same_frame
     [game, painted_game].each do |built|
-      %w[interpreter ruby].each do |lowering|
+      LOWERINGS.each do |lowering|
         cartridge = FilmCartridge.open(built)
         lowered = FilmCartridge.open(built, lowering: lowering)
         (1..12).each do |frame|

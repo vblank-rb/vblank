@@ -1,5 +1,5 @@
 /*
- * SCENERY DRAWN FROM TILES (Reference @bg_shown and the rest): backgrounds and status bars, the
+ * Scenery drawn from tiles (Reference @bg_shown and the rest): backgrounds and status bars, the
  * maps they show and the cells the game changes, their scroll, turn, bends and boxes, the order a
  * stack of layers puts them in, and a scene's scenery coming down. A runtime feature
  * (backends/runtime_features.rb): this file is included at the end of rg_screen.c, for a game
@@ -38,7 +38,7 @@ static int32_t shown_count, shown_room;
  * written at the entry that keeps it for the name (keeper_of, RG_BG_KEPT_BY), and the slots of
  * the other entries are never used.
  *
- * WHAT A BACKGROUND'S CELLS HOLD NOW (Reference @bg_maps): which map, of which entry's maps, and
+ * What a background's cells hold now (Reference @bg_maps): which map, of which entry's maps, and
  * the run's own copy of that map's cells, made the first time one of them is changed or another
  * map is handed over. The entry is the declaration that was up then (declaration_up), since two
  * scenes' declarations of one name can each have maps of their own. Until then each background
@@ -146,7 +146,7 @@ static int32_t in_map(int32_t background, int64_t row, int64_t col) {
 /* Where a cell of the map is among its cells, which are kept row after row. */
 static int64_t cell_place(int32_t background, int64_t row, int64_t col) { return row * map_cols(background) + col; }
 
-/* Reference#map_of: what a cell holds NOW, in the run's own copy where there is one. Below nought
+/* Reference#map_of: what a cell holds now, in the run's own copy where there is one. Below nought
  * where it holds no tile. */
 static int32_t map_cell(int32_t background, int64_t row, int64_t col) {
   if (!in_map(background, row, col)) return RG_CELL_EMPTY;
@@ -179,20 +179,55 @@ static void forget_own_cells(int32_t background) {
  * background is drawn with now (Reference#tile_colors): its tiles as drawn with each step come
  * one whole set after another. A tile the game paints is read from what it last copied in, and
  * shown in its run's colors as the background is drawn with them now. */
-static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t ty) {
-  int32_t painted = background_field(background, RG_BG_PAINTED);
-  if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED) {
-    int32_t run = rg_game_painted_tiles[painted + 2 * cell], which = rg_game_painted_tiles[painted + 2 * cell + 1];
-    /* A big tile is kept as four squares, left to right and then down. */
-    if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
-      which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
-      tx %= RUN_TILE_SIDE;
-      ty %= RUN_TILE_SIDE;
-    }
-    int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
-    int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
-    return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];
+/* One pixel of tile +which+ of the run +run+ the game paints, in its run's colors as the background
+ * is drawn with them now. */
+static uint16_t run_pixel(int32_t background, int32_t run, int32_t which, int64_t tx, int64_t ty) {
+  /* A big tile is kept as four squares, left to right and then down. */
+  if (background_field(background, RG_BG_TILE_W) == 2 * RUN_TILE_SIDE) {
+    which = which * 4 + (int32_t)(ty / RUN_TILE_SIDE) * 2 + (int32_t)(tx / RUN_TILE_SIDE);
+    tx %= RUN_TILE_SIDE;
+    ty %= RUN_TILE_SIDE;
   }
+  int32_t place = places_of(run)[which * RUN_TILE_PIXELS + ty * RUN_TILE_SIDE + tx];
+  int64_t set = (int64_t)tile_set_now(background) * rg_game_picture_sizes[RG_SIZE_RUNS] + run;
+  return rg_game_run_colors[background_field(background, RG_BG_RUN_COLORS) + set * PLACES_IN_RUN_COLORS + place];
+}
+
+/* The tile as drawn a cell numbered +cell+ names, a cell of a background read from the start file
+ * numbered past its tiles (rg_drawn_tiles). Such a cell is only ever written by
+ * rg_start_file_fill_background, which keeps its record first, and rg_background_set_tile writes no
+ * tile past RG_BG_TILES, so the records are there whenever such a cell is. */
+static uint32_t drawn_tile(int32_t background, int32_t cell) {
+  return rg_drawn_tiles(background)[cell - background_field(background, RG_BG_TILES)];
+}
+
+/* Where the tables of colours of a background read from the start file start in the tile pixels,
+ * in the set of colors it is drawn with now. */
+static int64_t tables_now(int32_t background) {
+  int32_t tiles = background_field(background, RG_BG_TILES);
+  return background_field(background, RG_BG_TILES_START) +
+         ((int64_t)tile_set_now(background) * tiles + background_field(background, RG_BG_TABLES)) * RUN_TILE_PIXELS;
+}
+
+/* One pixel of the tile as drawn +drawn+: its place, turned as it says, looked up in its table, as
+ * a console draws a cell from its tile, its palette and its turn; or a pixel of the run it shows. */
+static uint16_t drawn_pixel(int32_t background, uint32_t drawn, int64_t tx, int64_t ty) {
+  if (drawn & RG_DRAWN_RUN)
+    return run_pixel(background, (int32_t)(drawn & RG_DRAWN_PLACES_MASK), (int32_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK),
+                     tx, ty);
+  int64_t x = (drawn & RG_DRAWN_MIRRORED) ? RUN_TILE_SIDE - 1 - tx : tx;
+  int64_t y = (drawn & RG_DRAWN_UPSIDE_DOWN) ? RUN_TILE_SIDE - 1 - ty : ty;
+  int64_t places = background_field(background, RG_BG_PLACES) + (int64_t)(drawn & RG_DRAWN_PLACES_MASK) * RUN_TILE_PIXELS;
+  uint16_t place = tile_pixels_drawn[places + y * RUN_TILE_SIDE + x];
+  return tile_pixels_drawn[tables_now(background) + (int64_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK) * RUN_TILE_PIXELS +
+                           place];
+}
+
+static uint16_t tile_pixel(int32_t background, int32_t cell, int64_t tx, int64_t ty) {
+  if (cell >= background_field(background, RG_BG_TILES)) return drawn_pixel(background, drawn_tile(background, cell), tx, ty);
+  int32_t painted = background_field(background, RG_BG_PAINTED);
+  if (painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED)
+    return run_pixel(background, rg_game_painted_tiles[painted + 2 * cell], rg_game_painted_tiles[painted + 2 * cell + 1], tx, ty);
   int32_t tile_w = background_field(background, RG_BG_TILE_W), tile_h = background_field(background, RG_BG_TILE_H);
   int64_t tile = (int64_t)tile_set_now(background) * background_field(background, RG_BG_TILES) + cell;
   int64_t at = background_field(background, RG_BG_TILES_START) + tile * tile_w * tile_h + ty * tile_w + tx;
@@ -268,7 +303,7 @@ static void remember_put_up(int32_t background) {
  * background) only the ones a named layer puts in front of it. */
 static int32_t in_order_asked(int32_t entry, int32_t over) { return over < 0 || behind(over, entry); }
 
-/* Where the LAST entry for +background+ lands once the entries asked for are put in the order the
+/* Where the last entry for +background+ lands once the entries asked for are put in the order the
  * stack asks for (IR::Stacking.order_by_stack), counting from 0 among them, or -1 when it has no
  * entry. An entry that named no layer stays where it is. The ones that did are sorted by how far
  * forward their layers are — two in one layer keeping the order they came in — and handed, in that
@@ -344,7 +379,7 @@ static void forget_held_tiles(int32_t background) {
 }
 
 /* Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
- * named layer puts BEHIND one already up would land in front of it; the ones it belongs behind
+ * named layer puts behind one already up would land in front of it; the ones it belongs behind
  * are stamped again over it. A turned background is painted through its turn at the next rebuild,
  * and a status bar from its own top,
  * rather than stamped as drawn. So is anything put up while a placed fade is in the picture, which
@@ -565,7 +600,7 @@ static void lay_scenery(int64_t px, int64_t py, uint16_t color) {
   if (sprites_seen_through()) picture_without_sprites[py * RG_SCREEN_WIDTH + px] = *into;
 }
 
-/* ONE ROW OF THE SCREEN FROM ONE ROW OF A BACKGROUND'S MAP: the screen's pixel px shows map column
+/* One row of the screen from one row of a background's map: the screen's pixel px shows map column
  * off_x + px, taken round at +wrap_w+ where the map wraps, or not at all (0) where it does not.
  * +my+ is not below nought. Where the map has no cell or no tile, or the tile is see-through,
  * what is behind stays.
@@ -599,6 +634,10 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
                       ty * tile_w;
   int32_t plain = !paint_fade && !mixing;
   int32_t keeps_picture_without_sprites = sprites_seen_through();
+  /* A background read from the start file: its cells numbered past its tiles are tiles as drawn. */
+  int32_t tiles = background_field(background, RG_BG_TILES);
+  const uint32_t *drawn_tiles = background_field(background, RG_BG_PLACES) == RG_NOT_READ_AT_START ? NULL : rg_drawn_tiles(background);
+  int64_t places = background_field(background, RG_BG_PLACES), tables = drawn_tiles ? tables_now(background) : 0;
   for (int64_t px = 0; px < RG_SCREEN_WIDTH;) {
     int64_t mx = off_x + px;
     if (wrap_w) mx %= wrap_w;
@@ -609,11 +648,24 @@ static void paint_map_row(int32_t background, int64_t my, int64_t off_x, int64_t
     int64_t col = mx / tile_w, tx = mx - col * tile_w, run = tile_w - tx;
     if (run > RG_SCREEN_WIDTH - px) run = RG_SCREEN_WIDTH - px;
     int32_t cell = col < cols ? row_cells[col] : RG_CELL_EMPTY;
-    if (cell >= 0 && (!tiles_painted_only || tiles_painted_only[cell])) {
-      int32_t slow = painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
+    /* A tile as drawn reads its place from its tile of places, turned, and its colour from its table. */
+    uint32_t drawn = cell >= tiles && drawn_tiles ? drawn_tiles[cell - tiles] : 0;
+    int32_t in_front = cell >= tiles ? (drawn & RG_DRAWN_IN_FRONT) != 0 : cell >= 0 && tiles_painted_only && tiles_painted_only[cell];
+    if (cell >= 0 && (!tiles_painted_only || in_front)) {
+      int32_t slow = cell >= tiles ? (drawn & RG_DRAWN_RUN) != 0
+                                   : painted != RG_NOT_PAINTED && rg_game_painted_tiles[painted + 2 * cell] != RG_NOT_PAINTED;
+      int32_t by_place = cell >= tiles && !slow;
+      if (by_place) drawn_tiles_set_up++;
       int64_t from = set_start + (int64_t)cell * tile_w * tile_h + tx;
+      int64_t mirrored = (drawn & RG_DRAWN_MIRRORED) != 0;
+      int64_t places_row = places + (int64_t)(drawn & RG_DRAWN_PLACES_MASK) * RUN_TILE_PIXELS +
+                           ((drawn & RG_DRAWN_UPSIDE_DOWN) ? RUN_TILE_SIDE - 1 - ty : ty) * RUN_TILE_SIDE;
+      int64_t table = tables + (int64_t)((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK) * RUN_TILE_PIXELS;
       for (int64_t i = 0; i < run; i++) {
-        uint16_t color = slow ? tile_pixel(background, cell, tx + i, ty) : tile_pixels_drawn[from + i];
+        uint16_t color =
+            slow       ? tile_pixel(background, cell, tx + i, ty)
+            : by_place ? tile_pixels_drawn[table + tile_pixels_drawn[places_row + (mirrored ? RUN_TILE_SIDE - 1 - (tx + i) : tx + i)]]
+                       : tile_pixels_drawn[from + i];
         if (color == RG_SEE_THROUGH) continue;
         int64_t at = py * RG_SCREEN_WIDTH + px + i;
         if (onto_sheet) {
@@ -792,7 +844,7 @@ static void paint_status_bar(int32_t bar) {
     }
 }
 
-/* Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
+/* Reference#paint_scenery_in_blocks: one background in blocks of +block+ pixels each way, by the
  * display's own rule, while the picture is shown in them (rg_hook_block_size).
  *
  * The blocks are fixed to the screen, and each shows the color the background has at the block's
@@ -800,7 +852,7 @@ static void paint_status_bar(int32_t bar) {
  * corner that is see-through leaves the whole block see-through.
  *
  * Down and across are done apart, because a display draws a row at a time. Down: every row of a
- * block is drawn from the map row its top row shows, and still placed by its OWN bend, so a
+ * block is drawn from the map row its top row shows, and still placed by its own bend, so a
  * background bent row by row keeps each row's bend and a block of it is a sheared one. Across:
  * each pixel of a row then takes the one at the start of its block in that same row. So the
  * background goes onto the sheet rows first, and is laid on the picture through the blocks, with

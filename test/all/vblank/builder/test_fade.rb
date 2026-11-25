@@ -20,7 +20,7 @@ module FadeGames
 
   # A channel at full strength on its way to black, one entry per sixteenth.
   #
-  # WRITTEN OUT RATHER THAN WORKED OUT, on purpose: a formula here would be the same
+  # Written out rather than worked out, on purpose: a formula here would be the same
   # formula the code uses, so it would agree with a wrong one. This is the display's own
   # rule, which takes a share AWAY — 31 less a ninth of itself is 31 less 17, which is
   # 14 — and not the rule that keeps a share, which would say 13. Every entry is even
@@ -32,7 +32,7 @@ module FadeGames
   EVERY_FINE_LEVEL = (0..32).map { |step| step * 100.0 / 32 }.freeze
 
   # Written out, for the reason RED_FADED_TO_BLACK is, and by the same rule: a share is taken
-  # AWAY. A thirty-second of 31 is less than one, so the first step takes nothing; after that
+  # away. A thirty-second of 31 is less than one, so the first step takes nothing; after that
   # it drops one a step and reaches nought only on the last. That is the display's own rounding
   # and not a mix's, which would keep a share and reach nought a step early — and on a dark
   # picture show flat black for a frame longer at the end of a fade in.
@@ -120,7 +120,7 @@ end
 
 # Fading the whole screen toward black or white.
 #
-# Like the camera, this changes what the display SHOWS and not what was drawn — the
+# Like the camera, this changes what the display shows and not what was drawn — the
 # picture is all still there under a fade — so the thing to assert is that colors
 # come back exactly when the fade lifts, and that both backends blend by the same
 # amounts. A fade that agreed only roughly between backends would make every

@@ -2,7 +2,7 @@
 
 module VBlank
   module Messages
-    # THE FIRST LINE OF A BUILD THAT STOPPED. A build that stops prints why, and the why is often a
+    # The first line of a build that stopped. A build that stops prints why, and the why is often a
     # long paragraph about one line of the game. Read on its own, straight after the phases of the
     # build, it does not say whether the build went on: a warning reads the same way. So whatever
     # prints a stopped build's reason (the build itself, for the guardrails' findings it prints; the

@@ -35,7 +35,7 @@ module VBlank
       #   fix      — an optional Fix the pass may apply; nil if there's no safe one
       Finding = Data.define(:check, :severity, :message, :node, :fix) do
         def initialize(check:, severity:, message:, node:, fix: nil)
-          # `equal?`, not `==`: a Value answers `==` with a COMPARISON to be branched on
+          # `equal?`, not `==`: a Value answers `==` with a comparison to be branched on
           # later, which is truthy, so asking it that question both gets the wrong answer
           # and leaves a stray comparison behind for another guardrail to trip over.
           unless node.equal?(:program) || node.respond_to?(:source)
@@ -74,6 +74,14 @@ module VBlank
       #   message — what we changed and why, for the person to read
       #   apply   — a callable taking the program and returning the fixed program
       Fix = Data.define(:message, :apply)
+
+      # What the build learned while it ran that the tree does not hold, handed to a check that
+      # answers `told_of` for one that knows it:
+      #   variables_with_no_var_line — variables normal Ruby made, from no line of the author's
+      #   hidden_variable_notes      — the hidden variables, each with the line that made it
+      #   collections_from_arrays    — each list or pool a plain Ruby Array made, by name, with
+      #                                the local the game wrote, so a message names the Array
+      BuildFacts = Data.define(:variables_with_no_var_line, :hidden_variable_notes, :collections_from_arrays)
 
       # The result of a validation pass: the program (possibly auto-fixed) plus
       # every finding, so a caller can print warnings, raise on errors, or lower
@@ -202,11 +210,11 @@ module VBlank
 
         # The checks that cannot run until the program has been lowered, built with the
         # cost model that knows how the build turned out.
-        # WHAT NEEDS THE BUILD, rather than just the program. This one reads a decision the
+        # What needs the build, rather than just the program. This one reads a decision the
         # build made after the other guardrails ran — whether the game loop's body got the
         # console's quick memory, where code runs about two and a third times faster.
         #
-        # THREE OTHERS USED TO RUN HERE and are gone: how many scanlines a frame draws, how
+        # Three others used to run here and are gone: how many scanlines a frame draws, how
         # many items a list can hold before the frame stops fitting, and whether a timer's
         # rate really fits its handler. Each put an invented number in front of an author.
         # They were the last readers of a weight table that had to be kept in step with the
@@ -277,35 +285,22 @@ module VBlank
 
         private
 
-        # WHAT THE PROGRESS LINE CALLS A CHECK — and the only place a check's name is ever read
+        # What the progress line calls a check — and the only place a check's name is ever read
         # by a person. A finding says what went wrong in a sentence of its own and never names
         # the check that found it, so this line is the whole of a check's public identity.
         #
-        # Which is why it is a name the check DECLARES rather than its identifier tidied up.
+        # Which is why it is a name the check declares rather than its identifier tidied up.
         # `NAME` is a symbol for the framework's own use, and turning `fade_never_lifted` into
         # "fade never lifted" only spells the identifier out — worse, it hands a learner
         # whatever hardware word happened to be in it ("vblank sync", "iwram budget"). The
-        # declared name says what the check is LOOKING FOR, which is the thing worth reading
+        # declared name says what the check is looking for, which is the thing worth reading
         # while a build works: "a fade never lifted", "a game loop that never waits for the
         # screen".
         #
         # A check from a pack or a game that declares none is named by its class, so every
         # check in the list still has something to show.
-        #
-        # THE CHECK'S CLASS IS FOUND THROUGH Kernel#class BOUND TO IT (bind_call), NOT BY
-        # `check.class`, because the plain call crashes Ruby (4.0.9, and 4.1 as it stands, on
-        # Apple's arm64) when several Ractors build at once. This one line sees some sixty classes
-        # in turn, in the same order in every Ractor. Ruby keeps what it found for the last class
-        # at the call site itself, in memory every Ractor shares, and for Kernel#class (one of
-        # Ruby's own methods written in Ruby around a call into C, a "leaf builtin") that call
-        # races between Ractors: about one build run in fifty jumped to address zero. The crash
-        # report then loops for ever printing the C backtrace, so the run hung rather than
-        # stopped. Ruby alone shows it, with no VBlank: Ractors each asking `.class` of objects
-        # of two thousand classes crash most runs, while the same through bind_call, or with
-        # #hash (a plain C method), or with one or two classes, never did. bind_call keeps
-        # nothing at the call site, and reaching around the plain call is the point here.
         def plain_name(check)
-          klass = Kernel.instance_method(:class).bind_call(check)
+          klass = check.class
           return klass::PLAIN_NAME if klass.const_defined?(:PLAIN_NAME, false)
 
           klass.name.to_s.split("::").last
@@ -326,7 +321,6 @@ require_relative "guardrails/painted_picture_with_other_poses"
 require_relative "guardrails/fade_never_lifted"
 require_relative "guardrails/tint_never_lifted"
 require_relative "guardrails/dropped_frame_sync"
-require_relative "guardrails/estimate_does_nothing"
 require_relative "guardrails/handed_name_written"
 require_relative "guardrails/press_kept_from_setting_up"
 require_relative "guardrails/vblank_sync"
@@ -339,6 +333,8 @@ require_relative "guardrails/song_words" # shared by the music checks below
 require_relative "guardrails/channel_conflict"
 require_relative "guardrails/song_needs_frames"
 require_relative "guardrails/song_instrument_unknown"
+require_relative "guardrails/effect_timer_too_fast"
+require_relative "guardrails/effect_on_timer_this_frame"
 require_relative "guardrails/song_too_many_parts"
 require_relative "guardrails/square_note_too_low"
 require_relative "guardrails/slide_off_first_square"
@@ -377,6 +373,7 @@ require_relative "guardrails/console_answers"
 require_relative "guardrails/clock_never_asked"
 require_relative "guardrails/border_not_made_yet"
 require_relative "guardrails/bigger_pixels_not_made_yet"
+require_relative "guardrails/black_shows_backdrop"
 require_relative "guardrails/web_portability" # not always on: the web build runs it, and a game may register it
 
 module VBlank
@@ -400,6 +397,8 @@ module VBlank
         Checks::ChannelConflict.new,
         Checks::SongNeedsFrames.new,
         Checks::SongInstrumentUnknown.new,
+        Checks::EffectTimerTooFast.new,
+        Checks::EffectOnTimerThisFrame.new,
         Checks::SongTooManyParts.new,
         Checks::SquareNoteTooLow.new,
         Checks::SlideOffFirstSquare.new,
@@ -433,6 +432,7 @@ module VBlank
         Checks::ClockNeverAsked.new,
         Checks::BorderNotMadeYet.new,
         Checks::BiggerPixelsNotMadeYet.new,
+        Checks::BlackShowsBackdrop.new,
       ])
     end
   end

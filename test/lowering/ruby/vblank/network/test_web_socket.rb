@@ -5,7 +5,7 @@ require "socket"
 require "openssl"
 require "timeout"
 
-# THE WEBSOCKET CLIENT IN PURE RUBY: the frames as bytes (with the examples the standard itself gives), the
+# The WebSocket client in pure Ruby: the frames as bytes (with the examples the standard itself gives), the
 # opening handshake, ping, close, and a message that arrives in pieces. The connection is a UNIXSocket pair in
 # these, with the other end played by WebSocket::ServerPeer in a thread, so no port and no clock is used. The
 # one test that uses TLS makes a certificate for itself and trusts only that.

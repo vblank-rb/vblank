@@ -2,10 +2,15 @@
 
 require "test_helper"
 require "stringio"
+require "power_on_profile_tests"
 
 # A Genesis cartridge measured as it runs (Diagnostics::GenesisProfiler): how many frames each pass
 # took, and which code took them.
 class TestGenesisProfile < Minitest::Test
+  include PowerOnProfileTests
+
+  private def power_on_console = :genesis
+
   # A routine of the game's that does most of the work there is.
   BUSY = VBlank.game("BUSY", consoles: %i[genesis]) do
     total = 0

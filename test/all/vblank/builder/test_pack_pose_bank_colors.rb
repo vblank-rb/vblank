@@ -5,7 +5,7 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A POSE THAT TAKES ITS COLOURS FROM ITS FRAME (Builder::PackPoses): each piece of a frame names a
+# A pose that takes its colours from its frame (Builder::PackPoses): each piece of a frame names a
 # bank of the original's colours in its tile word, and the pose is drawn from that bank's list,
 # `:<slot>_<bank>`. The made-up original keeps a frame as a Genesis game does (a word that counts
 # the pieces, then eight bytes a piece), and its tile word holds the bank in bits 13 and 14, the
@@ -26,9 +26,9 @@ module PackPoseBankColorGames
     (0...64).map { |at| 1 + (((at % 8) + (2 * (at / 8))) % 3) },
     (0...64).map { |at| (at / 8).even? ? 1 + ((at % 8) / 3) : 3 }
   ])
-  # Four banks of sixteen colours, each place a colour of its own in each bank, every one a colour
-  # the Genesis shows exactly.
-  TURNS = [0, 7, 3, 5].freeze
+  # Five banks of sixteen colours, each place a colour of its own in each bank, every one a colour
+  # the Genesis shows exactly. The slot :palette reads the first four, :five_banks all of them.
+  TURNS = [0, 7, 3, 5, 9].freeze
   BANKS = Ractor.make_shareable(TURNS.map { |turn| MadeUpOriginalLayouts::PALETTE.rotate(turn) })
   OTHER = Ractor.make_shareable(MadeUpOriginalLayouts::PALETTE.rotate(11))
 
@@ -41,35 +41,69 @@ module PackPoseBankColorGames
 
   # A frame of two pieces of one tile each, side by side about the object's place: tile 0 left of
   # it and tile 1 right, each in the bank given. The word's top bit, the priority, is set too.
-  def self.frame_of(left_bank, right_bank)
-    pieces = [[-8, 0, left_bank], [0, 1, right_bank]].map do |x, tile, bank|
+  # +right_x+ is where the right piece starts: -4 puts it half over the left one, behind it.
+  def self.frame_of(left_bank, right_bank, right_x: 0)
+    pieces = [[-8, 0, left_bank], [right_x, 1, right_bank]].map do |x, tile, bank|
       [-8, 0, 0x5A, tile | (bank << 13) | 0x8000, x].pack("s>CCns>")
     end
     [pieces.length].pack("n") + pieces.join
   end
   FRAME_BYTES = 2 + (2 * 8)
-  # The frames, one after another: all of bank 1, all of bank 2, and one of banks 1 and 3.
+  # The frames, one after another: all of bank 1, all of bank 2, one of banks 1 and 3, and one of
+  # banks 1 and 3 whose piece of bank 3 sits half behind the piece of bank 1.
   IN_BANK_1 = 0
   IN_BANK_2 = FRAME_BYTES
   IN_TWO_BANKS = FRAME_BYTES * 2
-  FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3)).freeze
+  OVERLAPPING = FRAME_BYTES * 3
+  FRAMES = (frame_of(1, 1) + frame_of(2, 2) + frame_of(1, 3) + frame_of(1, 3, right_x: -4)).freeze
+
+  # A piece whose bank is counted from the thing's. Some originals keep a piece's bank as a number
+  # added to the bank of the object the frame belongs to, wrapping at the console's sixteen banks
+  # (GBATEK, "LCD OBJ - OAM Attributes": attribute 2, bits 12-15), unless a bit of the piece says it
+  # keeps the bank it names. That rule is the original's own, so the port writes it as a reader, and
+  # the pose gives the object's bank by name (`with: { thing_bank: 4 }`). A reader is arithmetic
+  # (Original::FrameReader), so "0 where the bit is set" is a product: the bank times the bit's
+  # opposite. This made-up original keeps a piece in five bytes: x and y signed, a flags byte whose
+  # bit 0 says the piece keeps its own bank, and a word low byte first whose low ten bits are the
+  # tile and whose top four bits are the bank, added to the thing's.
+  RELATIVE_BANK_PIECE = Ractor.make_shareable(lambda do |bytes, pose|
+    keeps_own = bytes[2] & 1
+    VBlank::Original::FrameLayout::Piece.new(
+      x: bytes.signed(0), y: bytes.signed(1), tile: bytes[3] | ((bytes[4] & 3) << 8),
+      bank: ((pose[:thing_bank] * (keeps_own ^ 1)) + (bytes[4] >> 4)) & 15
+    )
+  end)
+  RELATIVE_BANK_FRAME = Ractor.make_shareable(
+    VBlank::Original::FrameLayout.new(piece_bytes: 5, counted: true, piece: RELATIVE_BANK_PIECE)
+  )
+  # Three pieces in a row, from 8 pixels left of and above the object's place, given the thing's
+  # bank 4: tile 0 adding 0 (bank
+  # 4), tile 1 adding 14 (4 + 14 wraps to bank 2), and tile 0 keeping its own bank, 2.
+  RELATIVE_BANK_PIECES = [[-8, 0, 0, 0], [0, 1, 0, 14], [8, 0, 1, 2]].freeze
+  RELATIVE_BANK_FRAME_BYTES = ([RELATIVE_BANK_PIECES.length] + RELATIVE_BANK_PIECES.flat_map do |x, tile, keeps_own, bank|
+    [x & 0xFF, -8 & 0xFF, keeps_own, tile, bank << 4]
+  end).pack("C*").freeze
+  THING_BANK = 4
 
   COLORS_AT = 0x40
   FRAMES_AT = 0x100
+  RELATIVE_BANK_FRAME_AT = 0x180
   TILES_AT = 0x200
   ORIGIN = [8, 8].freeze
 
-  private def original(folder)
-    tiles = TILES.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
+  # The made-up copy, its two tiles +tiles+ (64 places each).
+  private def original(folder, tiles: TILES, platform: :genesis)
+    tiles = tiles.map(&MadeUpOriginalLayouts::HIGH_HALF_FIRST).join
     levels = TURNS.flat_map { |turn| MadeUpOriginalLayouts::LEVELS.rotate(turn) }
     colors = levels.map { |red, green, blue| (red << 1) | (green << 5) | (blue << 9) }.pack("n*")
     copy = "\0".b * (TILES_AT + tiles.bytesize)
     copy[COLORS_AT, colors.bytesize] = colors
     copy[FRAMES_AT, FRAMES.bytesize] = FRAMES
+    copy[RELATIVE_BANK_FRAME_AT, RELATIVE_BANK_FRAME_BYTES.bytesize] = RELATIVE_BANK_FRAME_BYTES
     copy[TILES_AT, tiles.bytesize] = tiles
     path = File.join(folder, "made_up.bin")
     File.binwrite(path, copy)
-    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :genesis,
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: platform,
                                settings_file: File.join(folder, "made_up.yml"),
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
@@ -84,17 +118,24 @@ module PackPoseBankColorGames
     [b.program, b.made_data_pack_file]
   end
 
-  # The same game's builder, its program made, for a test of its pack's unpacking.
-  private def game_builder_of(folder, options: VBlank::Cartridge::Options.new, &declares)
-    from = original(folder)
+  # The same game's builder, its program made, for a test of its pack's unpacking. +tiles+ are the
+  # copy's two tiles, +tile_colors+ how many colours the slot of tiles reads each as, and +platform+
+  # the console whose layout the copy keeps them in.
+  private def game_builder_of(folder, options: VBlank::Cartridge::Options.new, tiles: TILES, tile_colors: 16, platform: :genesis, &declares)
+    from = original(folder, tiles: tiles, platform: platform)
     b = Builder.new(options: options)
     b.instance_eval do
       screen :tiled
       pack = data_pack from: from, version: "1" do |slots|
-        slots.tiles :video, at: TILES_AT, count: TILES.length, colors: 16
+        slots.tiles :video, at: TILES_AT, count: TILES.length, colors: tile_colors
         slots.numbers :frames, at: FRAMES_AT, count: FRAMES.bytesize, width: :byte, signed: false
         slots.colors :palette, at: COLORS_AT, count: 64
+        slots.colors :five_banks, at: COLORS_AT, count: 80
+        slots.numbers :relative_bank_frames, at: RELATIVE_BANK_FRAME_AT, count: RELATIVE_BANK_FRAME_BYTES.bytesize, width: :byte,
+                                             signed: false
         slots.colors :two_banks, at: COLORS_AT, count: 32
+        # Two colours on, so banks of four colours are not the same colours every other bank.
+        slots.colors :shifted, at: COLORS_AT + 4, count: 60
       end
       instance_exec(pack, &declares)
       game_loop { wait_vblank }
@@ -110,10 +151,28 @@ module PackPoseBankColorGames
     game.image :second, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN, colors: colors, **told
   end
 
+  # The pose :sword, the frame of RELATIVE_BANK_PIECES given the thing's bank, in banks 2 and 4 of
+  # the slot of five banks, declared in +game+. Public, since a game's block calls back through it.
+  def declare_relative_bank_pose_for(game, pack, **told)
+    frame = pack[:relative_bank_frames].frame(0, layout: RELATIVE_BANK_FRAME, with: { thing_bank: THING_BANK })
+    game.image :sword, tiles: pack[:video], frame: frame, origin: ORIGIN, colors: pack[:five_banks], **{ banks: [4, 2] }.merge(told)
+  end
+
+  # The banks RELATIVE_BANK_PIECES come out in, given the thing's bank 4, as [tile, left, bank], a
+  # sprite of the pose at (40, 40): the picture's top left, where the first piece is.
+  RELATIVE_BANK_PIECES_DRAWN = [[0, 40, 4], [1, 48, 2], [0, 56, 2]].freeze
+
+  # Each piece of :sword, its sprite at (40, 40), drawn in the colours of the bank it comes out in.
+  private def assert_relative_bank_pieces_drawn(screen)
+    RELATIVE_BANK_PIECES_DRAWN.each do |tile, left, bank|
+      assert_tile_drawn_in(BANKS[bank], screen, tile, left, 40, "the piece at x #{left}, in bank #{bank}")
+    end
+  end
+
   # The pose each actor of #recolored_actors_builder faces: two share :first.
   ACTOR_POSES = %i[first second first].freeze
 
-  # ACTORS SHARING POSES OF THE ORIGINAL'S FRAMES, as a title's actors are: a sprite for each of
+  # Actors sharing poses of the original's frames, as a title's actors are: a sprite for each of
   # ACTOR_POSES, each following the list its pose's frame picks, while the lists of banks 1 and 2
   # are recoloured through two sets of their own as the game plays. +size+ is every pose's size, so
   # a test can make the poses bigger and see what that costs a build. Gives back the builder, its
@@ -222,7 +281,7 @@ class TestPackPoseBankColors < Minitest::Test
     end
   end
 
-  # ONE SPRITE IS DRAWN FROM ONE LIST where the console's build keeps one for a whole sprite
+  # One sprite is drawn from one list where the console's build keeps one for a whole sprite
   # (Guardrails::Checks::PosesWithDifferentColors), as the Advance's does. So a sprite whose poses
   # are frames of different banks is refused there, naming each pose's list, which the game did not
   # write down, and the way round it: a sprite for each list. No run's player plays a refused game,
@@ -299,7 +358,212 @@ class TestPackPoseBankColors < Minitest::Test
 
       assert_includes error.message, "image :mixed"
       assert_includes error.message, "banks 1 and 3"
+      assert_includes error.message, "banks: [1, 3]"
+    end
+  end
+
+  # A pose told the banks its frame uses (`banks:`) keeps each piece in its own bank's colours, as a
+  # console's sprite entry names its piece's bank, and one sprite shows and moves the whole frame.
+  def test_a_pose_told_its_banks_draws_each_piece_in_its_own_banks_colors
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [3, 1]
+        sprite :mixed, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[1], screen, 0, 40, 40, "the piece of bank 1")
+      assert_tile_drawn_in(BANKS[3], screen, 1, 48, 40, "the piece of bank 3")
+    end
+  end
+
+  # A piece's bank counted from the thing's (RELATIVE_BANK_PIECE): the original's rule is the port's
+  # reader, the thing's bank comes in by `with:`, and `banks:` draws each piece in the bank that
+  # comes out: 4 + 0, 4 + 14 wrapped to 2, and a piece that keeps its own bank 2.
+  def test_a_pose_whose_pieces_add_their_bank_to_the_things_draws_each_in_the_bank_that_comes_out
+    test = self
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        test.declare_relative_bank_pose_for(self, pack)
+        sprite :sword, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_relative_bank_pieces_drawn(screen)
+    end
+  end
+
+  # The pose's banks: must hold every bank its pieces come out in, here bank 2 left out.
+  def test_a_pose_missing_a_bank_its_pieces_come_out_in_is_refused
+    test = self
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          test.declare_relative_bank_pose_for(self, pack, banks: [4])
+        end
+      end
+
+      assert_includes error.message, "image :sword"
+      assert_includes error.message, "bank 2"
+    end
+  end
+
+  def test_one_sprite_moves_a_pose_of_two_banks_whole
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+        mixed = sprite :mixed, at: [40, 40]
+        mixed.move_to(96, 64)
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[1], screen, 0, 96, 64, "the piece of bank 1, moved")
+      assert_tile_drawn_in(BANKS[3], screen, 1, 104, 64, "the piece of bank 3, moved")
+    end
+  end
+
+  # The banks of a frame of one bank: the pose is drawn in that bank's colours.
+  def test_a_pose_told_banks_whose_frame_uses_one_of_them_is_drawn_in_that_bank
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 2]
+        sprite :plain, at: [40, 40]
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_tile_drawn_in(BANKS[2], screen, 0, 40, 40, "the left piece of bank 2")
+      assert_tile_drawn_in(BANKS[2], screen, 1, 48, 40, "the right piece of bank 2")
+    end
+  end
+
+  def test_a_frame_with_a_piece_of_a_bank_not_in_banks_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 2]
+        end
+      end
+
+      assert_includes error.message, "image :mixed"
+      assert_includes error.message, "bank 3"
+    end
+  end
+
+  def test_banks_given_with_bank_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 3], bank: 1
+        end
+      end
+
+      assert_includes error.message, "banks:"
       assert_includes error.message, "bank:"
+    end
+  end
+
+  # One bank named is a pose of that bank's list, as `bank:` makes one, so every console draws it as
+  # any pose of one list, and `colors_name_of` names the list.
+  def test_a_pose_told_one_bank_is_drawn_in_that_banks_list_on_every_console
+    Dir.mktmpdir do |folder|
+      list = nil
+      program = game_of(folder) do |pack|
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [2]
+        sprite :plain, at: [40, 40]
+        list = colors_name_of(:plain)
+      end
+      screen = game_player.run(program, frames: 4).screen
+
+      assert_equal :palette_2, list
+      assert_tile_drawn_in(BANKS[2], screen, 0, 40, 40, "the left piece of bank 2")
+      assert_tile_drawn_in(BANKS[2], screen, 1, 48, 40, "the right piece of bank 2")
+    end
+  end
+
+  def test_a_pose_told_one_bank_of_a_frame_of_two_is_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1]
+        end
+      end
+
+      assert_includes error.message, "bank 3"
+    end
+  end
+
+  # A pose keeps a byte for each pixel's place, so its banks' colours are 256 at most: sixteen banks
+  # of sixteen-colour tiles.
+  def test_more_banks_than_a_pose_can_hold_are_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: (0..16).to_a
+        end
+      end
+
+      assert_includes error.message, "17 banks"
+      assert_includes error.message, "16 banks at most"
+    end
+  end
+
+  def test_draw_with_on_a_sprite_of_a_pose_of_several_banks_is_refused
+    other = see_through_first(OTHER)
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          colors :other, other
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 3]
+          sprite(:mixed, at: [40, 40]).draw_with :other
+        end
+      end
+
+      assert_includes error.message, "several banks"
+      assert_includes error.message, "bank:"
+      refute_includes error.message, "colors or more"
+    end
+  end
+
+  # One sprite draws all its poses from one list on the Advance, so a pose of banks 1 and 3 beside a
+  # pose of bank 1 alone is refused there, naming the banks as what differs, not the `colors:` slot
+  # both share. No run's player plays a refused game, so it is the interpreter by name.
+  def test_a_sprite_of_poses_naming_different_banks_is_refused_naming_banks
+    Dir.mktmpdir do |folder|
+      program = game_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+        image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1]
+        sprite :both, at: [40, 40], frames: %i[mixed plain], rate: 8
+      end
+      program = program.copy.tap { |copy| copy.console = :gba }
+      error = assert_raises(Reference::ProgramError) { Reference.new.run(program, frames: 2) }
+
+      assert_includes error.message, "different banks"
+      assert_includes error.message, "the same banks:"
+    end
+  end
+
+  def test_banks_past_the_slot_of_colors_are_refused
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        game_of(folder) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:two_banks], banks: [1, 3]
+        end
+      end
+
+      assert_includes error.message, "banks:"
+      assert_includes error.message, "0 to 1"
     end
   end
 
@@ -401,7 +665,7 @@ class TestPackPoseBankColors < Minitest::Test
     assert_includes error.message, "bank_bit:"
   end
 
-  # THE BANK IS IN THE PLAYER'S COPY, which a build that reads its pack as the game starts does not
+  # The bank is in the player's copy, which a build that reads its pack as the game starts does not
   # hold. Such a build draws the pose in that bank's colours all the same, and a sprite told to draw
   # with its list follows the list the file picks: PackGames::PosesInBankColors (test/pack_games.rb)
   # holds those games to this build, and PackPoseBankColorsAtStartTests

@@ -3,7 +3,7 @@
 require "test_helper"
 require "native_comparison"
 require "sound_comparison"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # examples/pacman.rb built for the desktop sounds like the cartridge: the waka as Pac eats the
 # pellet above him and the low buzz as the ghost catches him, both beeps on the second square

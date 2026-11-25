@@ -69,7 +69,7 @@ class TestSoundEffectsOnTheAdvanceCartridge < Minitest::Test
     assert_equal [[:"sfx.0", 0]], console_voices(recorded_effect_asked_for_once, frames: 8).map(&:owner)
   end
 
-  # WHO GIVES WAY ON A FULL MIXER, on both backends: an effect over the song, a song over an
+  # Who gives way on a full mixer, on both backends: an effect over the song, a song over an
   # effect, and the game's own sound going first.
   def test_the_console_gives_a_voice_to_the_higher_rank_the_way_the_interpreter_does
     over = game([recorded_hit(68)], tune: chord(16)) { |sfx, pass| sfx.play 0 if pass == 10 }

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # A TILED SCREEN, as a Genesis keeps one: two planes of tiles that scroll, and sprites over
+          # A tiled screen, as a Genesis keeps one: two planes of tiles that scroll, and sprites over
           # them. Everything is in video RAM, which only the video chip's two ports reach, so the game
           # works on its own notes of what it wants (where each plane is scrolled to, which map each
           # shows, which cells changed, which sprites are placed) and the blank after each pass writes
@@ -20,19 +20,19 @@ module VBlank
           #   $C000        plane A's map, which draws over plane B's, and $E000 plane B's: 8K each,
           #                which holds the biggest map there is, 64 cells across and 64 down
           #
-          # A MAP IS A GRID OF CELLS, a word each: the tile's number in the low eleven bits and its
+          # A map is a grid of cells, a word each: the tile's number in the low eleven bits and its
           # palette in the two bits at 13. A plane is 32 or 64 cells across and down (the game's
           # backgrounds all have one size), and coming off one edge it comes round to the other, which is
           # what the interpreter's backgrounds do.
           #
-          # THE SPRITE TABLE is a list the chip walks from row 0, each row naming the next by its
+          # The sprite table is a list the chip walks from row 0, each row naming the next by its
           # link, and it draws a row in front of the rows after it. A game places its sprites back to
           # front, so they are noted in that order and written to the table the other way round, the
           # last placed first, each linked to the one after, the last to nothing. A row draws a piece
           # of one to four tiles across and one to four down, from tiles that follow one another in
           # video memory down each column in turn; its size is in the byte above its link.
           #
-          # A SCROLL REGISTER MOVES THE PLANE, not the view over it: a plane scrolled right by 5 shows
+          # A scroll register moves the plane, not the view over it: a plane scrolled right by 5 shows
           # what was 5 pixels to the left. A game's view at x is the plane scrolled by -x. Vertically
           # it is the other way: the plane scrolled up by y shows what was y below.
           module Tiles
@@ -45,8 +45,11 @@ module VBlank
             MOST_SPRITES = Console::GENESIS.sprites
             # The cells the queue holds, each noted as the first word of the command that points the
             # chip at it (#cell_command), which has its plane in it, and its tile. A message box of
-            # 30 by 8 cells opening in one pass fits, and the blank writes that many with time to
-            # spare. A pass that changes more writes the queue early (#emit_queue_written_early).
+            # 30 by 8 cells opening in one pass fits. The blank writes the cells after its copies (the
+            # colours, the poses, the sprite table, and in a game that bends a background row by row the
+            # line table, an eighth of what the chip copies in a blank), so how much of the blank is left
+            # for them depends on what else changed that pass, and a full queue beside full pose rooms
+            # can run past it. A pass that changes more writes the queue early (#emit_queue_written_early).
             MOST_CELLS = 256
             CELL_BYTES = 4
             # A sprite piece's note, which is its row of the sprite table: how far down it is as the chip
@@ -58,6 +61,14 @@ module VBlank
             DRAWN_BYTES = 8
 
             SCROLL = "rt scroll" # Each plane's left, then its top, a word each: plane A's, plane B's
+
+            # In a game that bends a background row by row (Lowering::Bends): the sideways scroll of every
+            # line, plane A's word then plane B's, as the chip's table holds it with a line each; and the
+            # bend table each plane shows, a long each, nought for none.
+            SCROLL_LINES = "rt scroll lines"
+            BENDS_SHOWN = "rt bends shown"
+            LINES = Console::GENESIS.screen_height
+            LINE_BYTES = 4
             PENDING = "rt pending maps" # Each plane's grid still to be copied, a long each, or nought
             CELL_COUNT = "rt cell count"
             CELLS = "rt cells"
@@ -84,8 +95,14 @@ module VBlank
             module_function
 
             # +scene_tiles+ for a game whose scenes each bring their own tiles in as they take over.
-            def reserve(memory, scene_tiles: false)
+            # +bends+ for one that bends a background row by row.
+            def reserve(memory, scene_tiles: false, bends: false)
               memory.reserve(SCROLL, 8)
+              if bends
+                memory.reserve(SCROLL_LINES, LINES * LINE_BYTES)
+                memory.reserve(BENDS_SHOWN, 8)
+                memory.reserve(SCROLL_LINES_KEPT, 16)
+              end
               memory.reserve(PENDING, 8)
               memory.reserve(CELL_COUNT, 2)
               memory.reserve(CELLS, MOST_CELLS * CELL_BYTES)
@@ -104,17 +121,21 @@ module VBlank
             # +samples+ for a game that plays recordings (Picture#emit_dma_started).
             # +poses+ for a game with a sprite kept to one pose in video memory (Lowering::PoseRooms).
             # +blocks+ for a game that changes a block of cells in one step (#emit_block_noted).
-            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false, blocks: false)
+            # +bends+ for a game that bends a background row by row, whose scroll goes a line at a time
+            # (#emit_scroll_lines_worked_out).
+            def emit(asm, memory, columns:, colors: false, scene_tiles: false, samples: false, runs: false, poses: false, blocks: false,
+                     bends: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_start(asm, colors: colors)
+              emit_start(asm, colors: colors, bends: bends)
+              emit_scroll_lines_worked_out(asm, memory, at) if bends
               emit_maps(asm, memory, at, columns, blocks: blocks)
               emit_sprites(asm, memory, at)
               emit_scene_tiles(asm, at) if scene_tiles
               emit_upload(asm, memory, at, columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
-                                                    poses: poses, blocks: blocks)
+                                                    poses: poses, blocks: blocks, bends: bends)
             end
 
-            # A SCENE'S OWN TILES, brought in as it takes over. rt_scene_tiles(table) notes the table of
+            # A scene's own tiles, brought in as it takes over. rt_scene_tiles(table) notes the table of
             # the arriving scene's tiles (D0), and the blank at the end of the pass copies them
             # (rt_scene_tiles_copied) over the last scene's, into the room past the tiles every screen shows.
             #
@@ -163,7 +184,7 @@ module VBlank
 
             # rt_picture_start: the colours into the colour memory and the tiles into video RAM, with the
             # screen still off. The tiles are the long words of "art tiles", counted in "art tile bytes".
-            def emit_start(asm, colors: false)
+            def emit_start(asm, colors: false, bends: false)
               h = Console::GenesisHardware
               asm.label("rt_picture_start")
               asm.move(:l, asm.imm(h.command(h::WRITE_CRAM, 0)), asm.abs_l(h::VDP_CONTROL))
@@ -186,8 +207,10 @@ module VBlank
               asm.label("rt_picture_start_done")
               asm.rts
 
-              asm.label("rt_picture_prepare")
-              asm.rts
+              unless bends # its own then (#emit_scroll_lines_worked_out)
+                asm.label("rt_picture_prepare")
+                asm.rts
+              end
               asm.label("rt_tint_prepare")
               asm.jmp(asm.abs_l("rt_colors_prepared")) if colors
               asm.rts unless colors
@@ -205,7 +228,7 @@ module VBlank
               asm.rts
             end
 
-            # THE MAPS. rt_background_put_up(plane, grid, reset): the grid (a place in "art grids":
+            # The maps. rt_background_put_up(plane, grid, reset): the grid (a place in "art grids":
             # where its cells are, how many across and how many down) is noted to be copied onto the plane
             # in the blank, and every cell the game changed on that plane before is let go, since the
             # map covers it; with +reset+ not nought the view goes back to the corner. rt_background_scroll
@@ -255,7 +278,7 @@ module VBlank
               emit_block_noted(asm, at, columns) if blocks
             end
 
-            # A BLOCK OF CELLS IS THREE NOTES OF THE QUEUE (Nodes::SetTileBlock), written in the blank as
+            # A block of cells is three notes of the queue (Nodes::SetTileBlock), written in the blank as
             # a console's own game writes a box: the chip pointed at the start of each row once, then
             # each cell of the row one word after another, the chip moving on by itself. The notes are:
             #
@@ -346,7 +369,7 @@ module VBlank
               asm.rts
             end
 
-            # A FULL QUEUE IS WRITTEN EARLY, and the cell that found it full is noted after, in a queue
+            # A full queue is written early, and the cell that found it full is noted after, in a queue
             # empty again. Everything noted before it reaches video memory before it does, so the
             # order the game changed its cells in holds: the maps waiting to go up first, as the blank
             # puts them (a cell changed after a put-up lands on the new map), then the cells.
@@ -362,7 +385,7 @@ module VBlank
               asm.moveq(0, asm.d(4))
             end
 
-            # THE COMMAND THAT POINTS THE CHIP AT A CELL is two words: the first holds the low fourteen
+            # The command that points the chip at a cell is two words: the first holds the low fourteen
             # bits of the cell's address in video memory, and the second its top two, which are the same
             # for every cell of both maps. So a cell is noted with its first word worked out
             # (Lowering::Picture#emit_cell_command_word), and the blank writes that word, then this
@@ -413,7 +436,7 @@ module VBlank
               asm.label("rt_cells_let_go_done")
             end
 
-            # SPRITES, PLACED IN ONE WALK. A pass places its sprites one after another, back to front,
+            # Sprites, placed in one walk. A pass places its sprites one after another, back to front,
             # with nothing else between them, so where the walk has got to stays in registers from
             # rt_sprites_begin to rt_sprites_end, as a console's own games keep it while they walk
             # their objects:
@@ -439,7 +462,7 @@ module VBlank
             # names now. Every piece is then drawn from that palette, and a D5 the table has no list for
             # draws it from the palette its own picture names.
             #
-            # A READER'S ROW is four words: whose, which picture, where. A game has a row of it for
+            # A reader's row is four words: whose, which picture, where. A game has a row of it for
             # every sprite that can be up together, which the build holds to the table's 80
             # (Console::Description#sprite_places, Checks::TooManySprites): only a sprite that shows is
             # placed, and two scenes never up together count apart. So the walk never counts them.
@@ -470,7 +493,7 @@ module VBlank
             # A piece's word with the two bits that name its palette cleared, for a sprite drawn in a list.
             PALETTE_CLEARED = 0x9FFF
 
-            # A PICTURE'S PIECES, as rt_sprite_place reads them: the picture's number for a reader, how
+            # A picture's pieces, as rt_sprite_place reads them: the picture's number for a reader, how
             # many pieces less one, the box they all lie in, then each piece as the row of the sprite
             # table it becomes, last long word first.
             #
@@ -516,7 +539,7 @@ module VBlank
             # A sprite any part of whose box is off the screen, or whose pieces the table has not rows
             # enough for, goes on to the loop that tests each piece (#emit_pieces_tested).
             #
-            # THE NOTES ARE THE TABLE'S OWN ROWS, kept from the end of their room backwards: the piece
+            # The notes are the table's own rows, kept from the end of their room backwards: the piece
             # noted first, which is drawn behind the rest, is the table's last row, and each row links to
             # the row after it, the one noted before. So a row's link is known as it is noted, 80 less
             # how many are noted already, and the blank copies the rows as they stand
@@ -611,7 +634,7 @@ module VBlank
               asm.move(:w, asm.d(0), asm.d(7))
             end
 
-            # rt_sprite_place_tested: THE PIECES OF A SPRITE THAT IS NOT WHOLLY ON THE SCREEN, each
+            # rt_sprite_place_tested: the pieces of a sprite that is not wholly on the screen, each
             # tested by itself and noted if any of it shows and the table has a row for it. A0 is at
             # the first of them (#picture_words), D5 is how many less one, D2 and D3 the sprite's place,
             # and A4 its palette (#emit_palette_chosen).
@@ -687,9 +710,9 @@ module VBlank
             # A sprite kept to one pose in video memory has the pose it changed to copied in before the
             # sprite table that shows it (Lowering::PoseRooms#pose_rooms_section), so the frame that first
             # shows the pose draws it from its own tiles. The copy is the video chip's, from the cartridge,
-            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms::MOST_TILES).
+            # and the rooms together are held to what it moves in the blank (Lowering::PoseRooms#most_room_tiles).
             def emit_upload(asm, memory, at, columns, colors: false, scene_tiles: false, samples: false, runs: false, poses: false,
-                            blocks: false)
+                            blocks: false, bends: false)
               asm.label("rt_upload")
               asm.label("rt_upload_whole")
               asm.jsr(asm.abs_l("rt_scene_tiles_copied")) if scene_tiles
@@ -697,7 +720,7 @@ module VBlank
               asm.jsr(asm.abs_l("rt_colors_written")) if colors
               asm.jsr(asm.abs_l("art poses sent")) if poses
               emit_sprite_table_written(asm, memory, at)
-              emit_scroll_written(asm, memory)
+              emit_scroll_written(asm, memory, bends: bends)
               asm.jsr(asm.abs_l("rt_maps_and_cells_written"))
               emit_screen_back_on(asm, at) if scene_tiles
               asm.rts
@@ -725,7 +748,7 @@ module VBlank
               asm.label("rt_upload_screen_was_on")
             end
 
-            # THE GRID NOTED FOR PLANE +plane+, if any, COPIED ONTO IT BY THE VIDEO CHIP (DMA), straight
+            # The grid noted for plane +plane+, if any, copied onto it by the video chip (DMA), straight
             # from the cartridge. A map of 64 by 64 cells is 8K, and the processor handing the chip a
             # word at a time (two instructions a cell, a move and a loop) takes a whole frame over it,
             # most of it while the screen is drawn, so the scene it brings arrives a frame late and the
@@ -733,7 +756,7 @@ module VBlank
             # how the console's own games send a screen's map; that is nearly all of an 8K map in the
             # blank, and what is left goes in at the top of the next frame, the processor stopped meanwhile.
             #
-            # SO THE ROWS THE VIEW SHOWS GO FIRST. The copy starts at the row of the plane at the top of
+            # So the rows the view shows go first. The copy starts at the row of the plane at the top of
             # the view (where the pass left its scroll), runs to the grid's last row and comes round to
             # its first: the rows still going in as the frame starts are the ones just above the view,
             # which it does not show.
@@ -979,7 +1002,7 @@ module VBlank
               asm.label("rt_upload_sprites_done")
             end
 
-            # THE REST OF THE ROWS, COPIED BY THE VIDEO CHIP ITSELF (DMA), as a console's own games send
+            # The rest of the rows, copied by the video chip itself (DMA), as a console's own games send
             # their sprite table: the chip is told how many words, where they are in work RAM and where
             # they go, and reads them itself with the processor stopped, several times as fast as the
             # processor hands them over a long word at a time. The rows are in the notes in the order
@@ -1004,14 +1027,25 @@ module VBlank
             # Where each plane's view is, into the horizontal scroll table (a plane moved right by the
             # distance the view moves left) and the vertical scroll memory (a plane moved up by the
             # distance the view moves down).
-            def emit_scroll_written(asm, memory)
+            #
+            # In a game that bends (+bends+), the chip reads a line of the table for every line of the screen,
+            # and the lines worked out as the pass ended (#emit_scroll_lines_worked_out) go in by the chip's
+            # own copy, as the console's own games send theirs.
+            def emit_scroll_written(asm, memory, bends: false)
               h = Console::GenesisHardware
-              asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
-              [0, 4].each do |plane|
-                asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
-                asm.neg(:w, asm.d(0))
-                asm.and(:w, asm.imm(0x3FF), asm.d(0))
-                asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+              if bends
+                asm.lea(asm.abs_l(memory[SCROLL_LINES]), asm.a(0))
+                asm.move(:l, asm.imm(HSCROLL_AT), asm.d(0))
+                asm.move(:l, asm.imm(LINES * LINE_BYTES / 2), asm.d(1))
+                asm.jsr(asm.abs_l("rt_vram_copy"))
+              else
+                asm.move(:l, asm.imm(h.command(h::WRITE_VRAM, HSCROLL_AT)), asm.abs_l(h::VDP_CONTROL))
+                [0, 4].each do |plane|
+                  asm.move(:w, asm.abs_l(memory[SCROLL], plane), asm.d(0))
+                  asm.neg(:w, asm.d(0))
+                  asm.and(:w, asm.imm(0x3FF), asm.d(0))
+                  asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
+                end
               end
               asm.move(:l, asm.imm(h.command(h::WRITE_VSRAM, 0)), asm.abs_l(h::VDP_CONTROL))
               [2, 6].each do |plane|
@@ -1019,6 +1053,71 @@ module VBlank
                 asm.and(:w, asm.imm(0x3FF), asm.d(0))
                 asm.move(:w, asm.d(0), asm.abs_l(h::VDP_DATA))
               end
+            end
+
+            # The lines a turn of the line table's loops works out: eight, a distance from A1 each, so a
+            # turn's count and its step on are shared by eight lines. The screen's lines are a whole
+            # number of turns.
+            LINES_A_TURN = 8
+
+            # rt_picture_prepare, in a game that bends a background row by row: every line of each plane's
+            # sideways scroll into the line table the blank sends (#emit_scroll_written). A line is the
+            # plane's own scroll and the offset its bend gave the row (Lowering::Bends), moved right by the
+            # distance the view moves left; a plane showing no bend has its scroll on every line. It runs
+            # as the wait ends the pass, after the timers, so the scroll is the one the blank would send.
+            #
+            # A plane showing no bend is written again only when its scroll or its bend changed since it
+            # was last written (SCROLL_LINES_KEPT): a still plane beside a bent one costs a comparison.
+            #
+            # The chip takes a line's low ten bits and leaves the rest (plutiedev, "Scrolling"), so the
+            # sum goes in as it is. A bent line is four instructions and a straight one one. D0, D1, D7,
+            # A0 and A1 are used.
+            def emit_scroll_lines_worked_out(asm, memory, at)
+              raise ArgumentError, "the screen's lines are a whole number of the loops' turns" unless (LINES % LINES_A_TURN).zero?
+
+              asm.label("rt_picture_prepare")
+              [0, 1].each { |plane| emit_plane_lines_worked_out(asm, at, plane) }
+              asm.rts
+            end
+
+            # Each plane's bend and scroll as its lines were last written, a long and a word, eight bytes a plane.
+            SCROLL_LINES_KEPT = "rt scroll lines kept"
+
+            def emit_plane_lines_worked_out(asm, at, plane)
+              bent = "rt_scroll_lines_bent_#{plane}"
+              straight = "rt_scroll_lines_straight_#{plane}"
+              done = "rt_scroll_lines_done_#{plane}"
+              asm.move(:w, at.call(SCROLL, plane * 4), asm.d(1))
+              asm.lea(at.call(SCROLL_LINES, plane * 2), asm.a(1))
+              asm.move(:w, asm.imm((LINES / LINES_A_TURN) - 1), asm.d(7))
+              asm.move(:l, at.call(BENDS_SHOWN, plane * 4), asm.d(0))
+              asm.branch(:ne, bent)
+              asm.tst(:l, at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.branch(:ne, straight) # bent until now
+              asm.cmp(:w, at.call(SCROLL_LINES_KEPT, (plane * 8) + 4), asm.d(1))
+              asm.branch(:eq, done)
+              asm.label(straight)
+              asm.clr(:l, at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.move(:w, asm.d(1), at.call(SCROLL_LINES_KEPT, (plane * 8) + 4))
+              asm.neg(:w, asm.d(1))
+              asm.label("#{straight}_turn")
+              LINES_A_TURN.times { |line| asm.move(:w, asm.d(1), asm.disp(1, line * LINE_BYTES)) }
+              asm.lea(asm.disp(1, LINES_A_TURN * LINE_BYTES), asm.a(1))
+              asm.dbra(asm.d(7), "#{straight}_turn")
+              asm.bra(done)
+              asm.label(bent)
+              asm.move(:l, asm.d(0), at.call(SCROLL_LINES_KEPT, plane * 8))
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.label("#{bent}_turn")
+              LINES_A_TURN.times do |line|
+                asm.move(:w, asm.post(0), asm.d(0))
+                asm.add(:w, asm.d(1), asm.d(0))
+                asm.neg(:w, asm.d(0))
+                asm.move(:w, asm.d(0), asm.disp(1, line * LINE_BYTES))
+              end
+              asm.lea(asm.disp(1, LINES_A_TURN * LINE_BYTES), asm.a(1))
+              asm.dbra(asm.d(7), "#{bent}_turn")
+              asm.label(done)
             end
           end
         end

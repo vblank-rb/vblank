@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE GAME'S RECORDINGS, as a Color plays them: a bit a sample, eight to a byte.
+        # The game's recordings, as a Color plays them: a bit a sample, eight to a byte.
         #
         # A Color has no hardware that plays recorded sound, and a processor too slow to add one up
         # as the Advance's mixer does. What it has is the wave voice, whose loudness can be set at
@@ -17,18 +17,18 @@ module VBlank
         # the Color's plain speed, with every interrupt held off and the game stopped until the clip
         # ends: near three times as many bits a second as this, which plays with the game running.
         #
-        # THE BITS ARE THE INTERPRETER'S OWN READING. The interpreter's mix reads a recording at
+        # The bits are the interpreter's own reading. The interpreter's mix reads a recording at
         # the console's sample clock (Console::SampleClock, 133 samples a frame on a Color), a
         # step of the recording at a time, which rolls the rate it was recorded at against the
         # clock's (IR::Mixing.step). The clip is made by taking that same walk through it here,
         # one sample of the clip for each sample the interpreter mixes, so the clip lasts the
         # frames the interpreter's voice does and comes out at the pitch it was recorded at.
         #
-        # A RECORDING PLAYED AT ANOTHER NOTE (`pitch:`) is read faster or slower by the interpreter, so
+        # A recording played at another note (`pitch:`) is read faster or slower by the interpreter, so
         # it is a clip of its own here, taken by the same walk at that note's step: a clip for each
         # recording and note the game plays.
         #
-        # A RECORDING THAT LOOPS goes back to where it holds from (`holds_from`, or its start) at its
+        # A recording that loops goes back to where it holds from (`holds_from`, or its start) at its
         # end, and the interpreter logs it each time round (Reference::Mixer#mix_voice). The timer
         # goes back to the byte of the clip the interpreter's walk is at there. Which frame it goes
         # round on is worked out apart from the sound, a frame at a time, by the same sum the
@@ -51,7 +51,7 @@ module VBlank
           ENTRY_BYTES = 9
           LOOPING_ENTRY_BYTES = 9 + 4 + (3 * 5)
 
-          # A LAP'S THREE NUMBERS, each five bytes, low byte first, in 65536ths of a sample of the
+          # A lap's three numbers, each five bytes, low byte first, in 65536ths of a sample of the
           # recording, as the interpreter's walk counts where it is (Sound::STEP_SHIFT): how far it
           # is from the end, less one, as it starts; how far it goes in a frame; and how far it goes
           # back at the end. The first falls below nought as the walk reaches the end.
@@ -149,13 +149,13 @@ module VBlank
             [table.section, *clips]
           end
 
-          # THE CLIP WHOSE BITS THE CARTRIDGE KEEPS FOR +clip+: the first with the same bits, held from
+          # The clip whose bits the cartridge keeps for +clip+: the first with the same bits, held from
           # the same byte. A clip's entry in the table carries the rest (which recording it is to the
           # game, its frames and its laps), so recordings declared under several names with the same
           # samples, played at the same rate and note, read one section.
           def clip_kept_as(clip) = @clips.find { |other| other.bytes == clip.bytes && other.hold_byte == clip.hold_byte }
 
-          # HOW NEAR THE MIDDLE A SAMPLE IS STILL. A bit is all or nothing, so a sample's sign alone
+          # How near the middle a sample is still. A bit is all or nothing, so a sample's sign alone
           # turns the quiet between a recording's words — a little noise either side of nought — into
           # bits as loud as the words. A sample this near the middle plays as the one before it did,
           # so the voice holds still there and is quiet: a sixteenth of the way to either end.

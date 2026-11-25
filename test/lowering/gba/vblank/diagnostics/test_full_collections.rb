@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME THAT KEEPS UP UNTIL ITS COLLECTIONS FILL, said at build time from a measurement.
+# A game that keeps up until its collections fill, said at build time from a measurement.
 #
 # A list or a pool is sized for the worst moment of a game and walked item by item every frame,
 # so it keeps up through development and falls behind in the one session that fills it. The
@@ -144,10 +144,7 @@ class TestFullCollections < Minitest::Test
       scene(:title) { total += 1 }
       scene(:playing) { walk.call }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
 

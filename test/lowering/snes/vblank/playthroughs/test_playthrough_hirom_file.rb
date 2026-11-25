@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/cartridge/test_snes_rom"
 
-# A SUPER NINTENDO CARTRIDGE FILE LAID OUT THE HIROM WAY plays from a script, as a LoROM one
+# A Super Nintendo cartridge file laid out the HIROM way plays from a script, as a LoROM one
 # does. A game rebuilding a retail cartridge plays the file it was given beside itself, and about
 # half the console's library is HiROM.
 #

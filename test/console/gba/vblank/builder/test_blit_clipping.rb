@@ -109,7 +109,7 @@ end
 # The reference interpreter is the oracle: it already clips per pixel (set_pixel
 # drops off-screen writes). Every case here is played on the run's own player, and the
 # same cases on the Advance's cartridge in
-# test/lowering/gba/vblank/builder/test_blit_clipping_cartridge.rb, asserting the SAME
+# test/lowering/gba/vblank/builder/test_blit_clipping_cartridge.rb, asserting the same
 # visible pixels, so the console's clipped output has to match the oracle exactly. The
 # programs are built straight from IR::Build (no DSL sugar) so the clip math is what's
 # under test, not the surface. The cases themselves are in BlitClippingCases, above.

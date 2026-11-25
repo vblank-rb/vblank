@@ -179,7 +179,7 @@ class TestList < Minitest::Test
 
   # --- capacity ---
 
-  # A LIST HOLDS WHAT IT WAS ASKED FOR, exactly. It used to hold the next power of two up,
+  # A list holds what it was asked for, exactly. It used to hold the next power of two up,
   # because its storage was a ring whose index was wrapped with a mask — so `capacity: 3` quietly
   # held four, and the slots nobody planned for came out of the console's 32K. How the storage is
   # arranged is the backend's business; how full the list gets is the author's number.
@@ -202,6 +202,48 @@ class TestList < Minitest::Test
         halt
       end
     end
+  end
+
+  # Two scenes can each declare a list of one name, with capacities of their own. The list holds
+  # what the declaration that made it last says, so the second scene's list is four items long and
+  # takes no more, read back and pushed alike.
+  def test_a_list_declared_again_holds_the_capacity_of_the_last_declaration
+    builder = Builder.new
+    builder.instance_eval do
+      n = var :n, 0
+      kept = var :kept, 0
+      far = var :far, 0
+      at = var :at, 6
+      scene(:big) do
+        list :marks, capacity: 8, full_of: 0
+        rows = list :rows, capacity: 8, full_of: 0
+        rows[at] = 7
+        far = rows[at]
+        n = 1
+      end
+      scene(:small) do
+        marks = list :marks, capacity: 4, full_of: 0
+        list :rows, capacity: 4, full_of: 0
+        marks[1] = -5
+        kept = marks.length
+        n = 2
+      end
+      scene(:emptied) do
+        marks = list :marks, capacity: 4
+        3.times { |item| marks.push item }
+        kept = marks.length
+        n = 3
+      end
+      game_loop { call({ 0 => :big, 1 => :small, 2 => :emptied, 3 => :big }, number: :n) }
+    end
+    builder.finalize_program
+    player = game_player
+    seen = []
+    player.each_vblank { seen << [player[:kept], player.list(:marks), player[:far], player.list(:rows).length] }
+    player.run(builder.program, frames: 5)
+
+    assert_equal [[0, [0] * 8, 7, 8], [4, [0, -5, 0, 0], 7, 4], [3, [0, 1, 2], 7, 4], [3, [0] * 8, 7, 8]], seen.drop(1),
+                 "each pass's length and items, as the scenes big, small, emptied and big again left them"
   end
 
   def test_pushing_past_capacity_raises_a_friendly_error
@@ -390,7 +432,7 @@ class TestList < Minitest::Test
     end
 
     # The rounding is still here, and is still the rule every backend shares — but what it
-    # decides now is how much ROOM a backend sets aside for a list it wraps an index into,
+    # decides now is how much room a backend sets aside for a list it wraps an index into,
     # not how many items the list holds.
     def test_round_up_capacity_covers_the_boundaries
       {
@@ -418,7 +460,7 @@ class TestList < Minitest::Test
   #
   # A list slot is a whole 32-bit number unless it is told otherwise, and almost nothing a
   # game keeps in one needs that much: a direction, a state number, a countdown, a flag. The
-  # point of asking for less is the MEMORY, so what these check is that a narrow slot holds
+  # point of asking for less is the memory, so what these check is that a narrow slot holds
   # what it says it holds and hands the same number back that the console would.
 
   def test_a_byte_slot_holds_a_number_that_fits_it
@@ -439,7 +481,7 @@ class TestList < Minitest::Test
     assert_equal [0, 100, 127], [result[:a], result[:b], result[:c]]
   end
 
-  # A NARROW SLOT GOES BELOW NOTHING WITHOUT BEING ASKED, and this is the case it exists for:
+  # A narrow slot goes below nothing without being asked, and this is the case it exists for:
   # a countdown is taken down first and tested second, so it really does hold a negative
   # number while the test runs. A slot that could not hold one would read -4 back as 252 and
   # the test would never fire — which is a game that silently stops working, not an error.
@@ -460,7 +502,7 @@ class TestList < Minitest::Test
   end
 
   # A number too big for its slot keeps the low bits, which is what the console's byte store
-  # does. Silently, because there is nothing else a store CAN do — what stops it being a trap
+  # does. Silently, because there is nothing else a store can do — what stops it being a trap
   # is that both backends drop exactly the same bits.
   def test_a_number_too_big_for_a_byte_slot_keeps_the_low_bits
     result = interpret do
@@ -478,7 +520,7 @@ class TestList < Minitest::Test
     assert_equal 44, result[:b], "300 is 256 and 44, and the 256 does not fit"
   end
 
-  # THERE IS NO WAY TO ASK FOR A SLOT THAT CANNOT GO BELOW NOTHING, on purpose. A `table` can
+  # There is no way to ask for a slot that cannot go below nothing, on purpose. A `table` can
   # be asked, because every value in one is known while the cartridge is built; a list's are
   # written while the game runs, so nothing could check the answer was right — and the wrong
   # answer breaks countdowns silently.
@@ -505,7 +547,7 @@ class TestList < Minitest::Test
     assert_equal(-32_768, result[:b])
   end
 
-  # THE WHOLE POINT, ASSERTED: a narrow list really is smaller in the console's memory. Read
+  # The whole point, asserted: a narrow list really is smaller in the console's memory. Read
   # off the backend's own allocator rather than inferred, so nothing can claim the saving
   # without making it.
   def test_a_narrow_list_takes_less_of_the_consoles_memory
@@ -569,6 +611,6 @@ class TestList < Minitest::Test
     error = assert_raises(ArgumentError) do
       Builder.new.instance_eval { list :body, capacity: 8, width: :nibble }
     end
-    assert_match(/:byte, :half or :word/, error.message)
+    assert_match(/:byte, :half, :unsigned_half or :word/, error.message)
   end
 end

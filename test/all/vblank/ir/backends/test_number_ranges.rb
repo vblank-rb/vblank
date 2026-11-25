@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT RANGE A NUMBER STAYS IN (Backends::NumberRanges), held to what the game does: a game whose
+# What range a number stays in (Backends::NumberRanges), held to what the game does: a game whose
 # variables the proof says stay in a byte or two is played on every run, and each of those
 # variables is read after every pass and must be inside what was proven. A proof that claims too
 # much fails here on the interpreter itself, before any console narrows a number on its word.
@@ -59,7 +59,7 @@ class TestNumberRanges < Minitest::Test
     assert_equal(0..9, ranges.range_of_value(build.var_ref(:climbing)) { |name| (0..9 if name == :climbing) })
   end
 
-  # THE EDGES OF 16 BITS: variables proven to stay in two bytes, which a console may keep in two,
+  # The edges of 16 BITS: variables proven to stay in two bytes, which a console may keep in two,
   # driven to 32767 and -32768 and read on every pass, and whole numbers one past each made of them.
   # Every run plays it, each console's build checked against the interpreter after every pass.
   def test_numbers_at_the_edges_of_16_bits_keep_the_interpreters_answers
@@ -97,7 +97,7 @@ class TestNumberRanges < Minitest::Test
     assert NumberRanges.inside?(range, -2048..2047), "#{range} is no wider than the next bit takes it"
   end
 
-  # A POOL'S FIELDS AT THE EDGES OF 16 BITS: fields a console may keep in two bytes, spawned from a
+  # A pool's fields at the edges of 16 BITS: fields a console may keep in two bytes, spawned from a
   # variable, driven to 32767 and -32768, written by one thing to another in a walk, and freed and
   # spawned again; and whole numbers one past each made of them. Every run plays it.
   def test_pool_fields_at_the_edges_of_16_bits_keep_the_interpreters_answers
@@ -192,6 +192,44 @@ class TestNumberRanges < Minitest::Test
     player.run(program, frames: 2)
 
     assert_equal [1, 100_000], %i[low high].map { |name| player[name] }
+  end
+
+  # A place in 256THS OF A PIXEL, kept with `& 0xFFFF`: a list holding 0..65535, which two bytes
+  # hold with no sign though no signed slot does. Every run plays it across 32767, 32768 and 65535,
+  # read back as the interpreter reads it.
+  def test_a_list_kept_in_0_to_65535_reads_back_unsigned
+    program = unsigned_places_game.program(console: VBlank::Testing.console)
+    ranges = NumberRanges.new(program)
+    place = VBlank::DSL::Pool.field_list(:walker, :place)
+
+    assert_includes ranges.unsigned_half_lists, place
+    refute_includes ranges.list_widths.keys, place
+    player = game_player
+    seen = []
+    player.each_vblank { seen << player.pool(:walker, :place).compact }
+    player.run(program, frames: 40)
+
+    all = seen.flatten
+    assert_includes all, 32_768
+    assert_includes all, 65_535
+    assert all.all? { |number| number.between?(0, 65_535) }, "every place reads back from 0 to 65535"
+    assert_equal 65_536, player[:past]
+  end
+
+  private def unsigned_places_game
+    VBlank.game("UNSIGNED PLACES", consoles: %i[gba gbc snes genesis ps1 dos]) do
+      screen :bitmap
+      walkers = pool :walker, place: 0, capacity: 4
+      walkers.spawn(place: 32_765)
+      walkers.spawn(place: 65_530)
+      past = 0
+      game_loop do
+        walkers.each do |w|
+          w.place = (w.place + 1) & 0xFFFF
+          past = w.place + 1 if w.place == 65_535
+        end
+      end
+    end
   end
 
   private def built = counting_game.program(console: VBlank::Testing.console)

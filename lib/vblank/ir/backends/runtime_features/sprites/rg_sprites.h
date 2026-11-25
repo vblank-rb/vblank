@@ -23,9 +23,10 @@
 void rg_objects_begin(void);
 void rg_object_take_off(int32_t sprite, int32_t width, int32_t height);
 void rg_object_take_off_turned(int32_t sprite, int32_t image, int32_t resizes);
-void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level);
-void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t angle,
-                           int32_t size, int32_t resizes);
+void rg_objects_add(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                    int32_t fade_place);
+void rg_objects_add_turned(int32_t sprite, int32_t image, int32_t x, int32_t y, int32_t level, int32_t see_through,
+                           int32_t fade_place, int32_t angle, int32_t size, int32_t resizes);
 void rg_objects_end(void);
 
 /* Which sprite of a run the game puts in order is drawn next: the one the number +said+ names of
@@ -39,7 +40,7 @@ int32_t rg_place_in_ordered_run(int32_t said, int32_t count);
  * names none is a fault. */
 int32_t rg_pose_image(const int32_t *poses, int32_t count, int32_t pose);
 
-/* Do two sprites' DRAWN pixels touch — one that is not see-through in each, on the same spot? */
+/* Do two sprites' drawn pixels touch — one that is not see-through in each, on the same spot? */
 int32_t rg_pixels_overlap(int32_t a_image, int32_t a_x, int32_t a_y, int32_t b_image, int32_t b_x, int32_t b_y);
 
 #endif

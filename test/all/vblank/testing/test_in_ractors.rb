@@ -39,7 +39,7 @@ class TestInRactors < Minitest::Test
     refute Ractor.shareable?(holder::READ)
   end
 
-  # A FIXTURE STRING WRITTEN TO A FILE IS LEFT AS IT WAS. Ruby writes a frozen String of a few
+  # A fixture string written to a file is left as it was. Ruby writes a frozen String of a few
   # hundred bytes by moving its bytes to a hidden String and pointing the fixture at that one
   # (InRactors.shareable says why that loses a fixture's bytes in Ractors). The write must find the
   # fixture already safe to read from, so its record shows no such move.
@@ -64,6 +64,23 @@ class TestInRactors < Minitest::Test
 
     refute moved_to_hidden_string?(fixtures::COPY), "the write moved the fixture's bytes"
     assert Ractor.shareable?(fixtures::SIZES)
+  end
+
+  # A constant this suite's files declare outside a test class, in a module of fixtures several
+  # files share say, is frozen as it is declared too: test_helper asks for every file under test/.
+  def test_a_constant_a_test_file_declares_in_a_module_is_frozen_as_declared
+    fixtures = Module.new
+    fixtures.const_set(:ITEMS, { byte: [1, 200] })
+
+    assert Ractor.shareable?(fixtures::ITEMS)
+  end
+
+  # A file elsewhere, the library's or a gem's, keeps its constants as it wrote them.
+  def test_a_constant_declared_outside_the_folder_is_left_alone
+    holder = Module.new
+    holder.module_eval("ITEMS = [+'red']", "/elsewhere/fixtures.rb", 1)
+
+    refute Ractor.shareable?(holder::ITEMS)
   end
 
   # A String INSIDE a fixture (an Array, a Hash, a Data) is safe to write too: six Ractors writing
@@ -97,7 +114,7 @@ class TestInRactors < Minitest::Test
   # Whether +string+'s bytes are another String's now, as ObjectSpace's record of it says.
   private def moved_to_hidden_string?(string) = JSON.parse(ObjectSpace.dump(string)).fetch("shared", false)
 
-  # A FAILING COMPARISON OF TWO LONG BINARY STRINGS IN A RACTOR SHOWS ITS DIFF. Minitest looks for
+  # A failing comparison of two long binary strings in a Ractor shows its diff. Minitest looks for
   # a diff program the first time one is needed, reading RbConfig::CONFIG, which a Ractor may not
   # read: the failure became a Ractor::IsolationError that hid what differed.
   def test_a_failing_binary_comparison_in_a_ractor_shows_its_diff
@@ -115,6 +132,66 @@ class TestInRactors < Minitest::Test
 
     assert_match(/^Minitest::Assertion: --- expected\n\+\+\+ actual\n/, message)
     refute_match(/IsolationError/, message)
+  end
+
+  # A test written in a loop is a method made from a block. On a run in Ractors it is made from a
+  # shareable copy, which a worker can call; on any other run it is the block as written.
+  def test_a_method_a_test_class_makes_from_a_block_is_shareable_on_a_run_in_ractors_alone
+    tests = Class.new(Minitest::Test)
+    { small: 4, large: 9 }.each { |size, most| tests.define_method(:"bound_#{size}") { most } }
+    in_a_worker = Ractor.new(tests) do |made|
+      made.new("bound_large").bound_large
+    rescue RuntimeError
+      :refused
+    end.value
+
+    assert_equal 9, tests.new("bound_large").bound_large
+    assert_equal VBlank::Testing::InRactors::RACTOR_RUN ? 9 : :refused, in_a_worker
+  end
+
+  # The copy is the block with what it reads from around it fixed; one that reads a value that can
+  # change cannot be copied and stays as it was, for the Ractor run to name.
+  def test_a_block_reading_a_value_that_can_change_is_left_as_it_was
+    seen = [+"red"]
+    block = -> { seen }
+
+    assert_same block, VBlank::Testing::InRactors.shareable_block(block)
+    assert Ractor.shareable?(VBlank::Testing::InRactors.shareable_block(-> { 9 }))
+  end
+
+  # define_method stays public, as Module's own is.
+  def test_define_method_stays_public_on_a_test_class
+    assert_includes Class.new(Minitest::Test).public_methods, :define_method
+  end
+
+  # A module of tests a test file declares makes its loop-made tests as a test class does.
+  def test_a_module_of_tests_declared_here_makes_its_methods_as_a_test_class_does
+    self.class.const_set(:SharedLoopTests, Module.new)
+
+    assert_kind_of VBlank::Testing::InRactors::ShareableMethods, self.class::SharedLoopTests
+  ensure
+    self.class.module_exec { remove_const(:SharedLoopTests) if const_defined?(:SharedLoopTests, false) }
+  end
+
+  # A value that cannot be shared, one holding a Mutex, is left as it was and the file goes on
+  # loading: a test that reads it in a Ractor is refused, naming it.
+  def test_a_constant_holding_a_mutex_is_left_unfrozen
+    holder = Module.new
+    holder.const_set(:LOCK, [Mutex.new])
+
+    refute Ractor.shareable?(holder::LOCK)
+  end
+
+  # A constant is frozen in place where it can be, and set again at its own line where its Strings
+  # are interned, so Ruby still says the file and line that declared it.
+  def test_a_shared_constant_keeps_the_place_that_declared_it
+    holder = Module.new
+    line = __LINE__ + 1
+    holder.module_eval("NUMBERS = [1, 2]\nWORDS = [+'red']", __FILE__, line)
+
+    assert_equal [__FILE__, line], holder.const_source_location(:NUMBERS)
+    assert_equal [__FILE__, line + 1], holder.const_source_location(:WORDS)
+    assert Ractor.shareable?(holder::WORDS)
   end
 
   def test_a_fixture_read_once_is_made_once_in_a_ractor

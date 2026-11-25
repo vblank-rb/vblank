@@ -1,5 +1,5 @@
 /*
- * THE PLAYER'S GAME BOY ADVANCE BIOS, for the console's own start-up picture and sound before a game
+ * The player's Game Boy Advance BIOS, for the console's own start-up picture and sound before a game
  * on the desktop. The BIOS is the small program built into every console, and the start-up (the logo
  * and its chime) is something it draws and plays. It is Nintendo's work, so VBlank never carries it:
  * a game reads it from the player's own computer each time it starts, and a player without one gets

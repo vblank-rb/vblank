@@ -120,6 +120,11 @@ module VBlank
           # standing still is not rebuilt every frame.
           attr_reader :repaints_painted
 
+          # How many times the run set up a tile as drawn of a background read from the start file
+          # for drawing (a tile's row in C, a tile in JavaScript): what a test reads to see that such
+          # a tile is not worked out again for every pixel. Nil for a runtime that does not count it.
+          attr_reader :drawn_tiles_set_up
+
           # The picture the run ended on as the window shows it (a Framed): for a game shown in a
           # border, the whole screen with the border round the game's. The interpreter has no
           # window, and plays the game's screen alone.
@@ -131,7 +136,7 @@ module VBlank
           # The interpreter's options, so a test makes either the same way. +save+ is the save
           # memory the game starts with (an IR::SaveImage), a new cartridge's unless one is
           # handed over. What a run leaves in its save memory is put back into it, so handing
-          # the SAME one to two runs is the console turned off and on again, as it is for the
+          # the same one to two runs is the console turned off and on again, as it is for the
           # interpreter.
           def initialize(save: SaveImage.new)
             unless save.is_a?(SaveImage)
@@ -159,9 +164,10 @@ module VBlank
           include Reference::ReadingBack
 
           # Buttons held down for the whole run, replacing any held before. An input script
-          # (#input_each_frame) decides instead when there is one. Gives back self.
-          def hold(*buttons)
-            @held = buttons
+          # (#input_each_frame) decides instead when there is one. A part pull is a keyword
+          # (`hold(l2: 40)`, Reference#hold). Gives back self.
+          def hold(*buttons, **pulls)
+            @held = pulls.empty? ? buttons : [*buttons, pulls]
             self
           end
 
@@ -316,7 +322,7 @@ module VBlank
           attr_reader :read_program
           private :read_program
 
-          # WHAT THE MIXER MADE AND IS PLAYING, as the interpreter answers it — at the end of the
+          # What the mixer made and is playing, as the interpreter answers it — at the end of the
           # run, or at the frame boundary a watching block or an input script asks at. Every
           # frame's slice of sound, oldest first; the recordings sounding, a voice each, in the
           # order of the voices; the most that sounded at once; how many plays were dropped; the
@@ -405,6 +411,11 @@ module VBlank
           # the interpreter only (Playthroughs::Tape).
           def play_as_match(**) = refuse_unanswered!(:play_as_match)
 
+          # To add a seed to the game's random numbers once it has set itself up
+          # (Reference#mix_seed_after_setup). The game as C is handed one (Native::HeadlessRun); the
+          # other windowless programs are not yet.
+          def mix_seed_after_setup(_seed) = refuse_unanswered!(:mix_seed_after_setup)
+
           # Which compiler the program's own language turns its code into machine code with, as the
           # program reports itself before its first frame: :yjit or :none from the Ruby lowering's, and
           # nil from a program that does not report one (C needs none, and node's is always on).
@@ -443,7 +454,8 @@ module VBlank
                 @sound_read = 0
                 @pass_buttons = IR::Buttons::PassButtons.new
                 play_frames(exe, frames, [*frame_options(pictures.path), *sound_options(dir), *save_options(dir),
-                                          *held_options, *clock_options, *start_file_options(dir), *state_options(dir)])
+                                          *held_options, *clock_options, *start_file_options(dir), *state_options(dir),
+                                          *seed_options])
               end
               @state = read_state_written(dir) if @state_after
               read_sound(File.join(dir, "sound")) if @records_sound && !@sounds_as_played
@@ -456,6 +468,10 @@ module VBlank
 
           # What the program is told about what it prints each frame.
           def frame_options(picture_path) = ["--picture-out", picture_path]
+
+          # The seed the program adds to the game's random numbers: none, unless a build that takes one
+          # was handed one.
+          def seed_options = []
 
           def save_file(dir) = File.join(dir, "save")
           def state_file(dir) = File.join(dir, "state")
@@ -549,11 +565,14 @@ module VBlank
           end
 
           # The whole screen in the program's file now, after the two pictures #picture_now reads,
-          # for a game shown in a border; the picture as shown for any other.
+          # for a game shown in a border or given a screen of its own (whose scene may show a smaller
+          # one in the middle); the picture as shown for any other.
           def framed_now
-            return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height) unless @console.bordered?
+            unless @console.bordered? || @console.screen_of_its_own
+              return Framed.new(pixels: @screen.shown, width: @screen.width, height: @screen.height)
+            end
 
-            width, height = @console.whole_screen_size
+            width, height = @console.framed_screen_size
             each = width * height
             pixels = @pictures.pread(each * 2, @console.screen_width * @console.screen_height * 4).to_s.unpack("v*")
             unless pixels.length == each
@@ -638,6 +657,8 @@ module VBlank
             @framed = framed_now
             @buffered = rows.include?("pages 2")
             @repaints_painted = Integer(rows.find { |row| row.start_with?("repaints ") }.split(" ").last)
+            set_up = rows.find { |row| row.start_with?("drawn-tiles-set-up ") }
+            @drawn_tiles_set_up = set_up && Integer(set_up.split(" ").last)
             @moments << Moment.new(frame: :end, variables: @vars, picture: self.class.picture_check(@screen.shown),
                                    sounds: @audio_played.size, sprites: @sprites, collections: game_state.except(:vars),
                                    sounding: active_samples, motor: motor_on?)

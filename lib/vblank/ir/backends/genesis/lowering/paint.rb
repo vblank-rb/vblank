@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # A PAINTED SCREEN, lowered for a Genesis: each drawing statement a call into Runtime::Paint,
+          # A painted screen, lowered for a Genesis: each drawing statement a call into Runtime::Paint,
           # and what it paints — its colours, its pictures, its text — made into Genesis::PaintedArt
           # while the program is built. Mixed into Lowering.
           #
@@ -15,7 +15,7 @@ module VBlank
           # colour picked as the game runs is one of two.
           module Paint
             STATEMENT_KINDS = %i[
-              clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              clear_screen fill_rect draw_rect_at pixel inside blit blit_pose draw_text
               draw_digit save_region restore_region camera
             ].freeze
 
@@ -23,7 +23,6 @@ module VBlank
               case node.kind
               when :clear_screen then emit_clear_screen(node)
               when :fill_rect then emit_fill_rect(node)
-              when :dma_fill_rect then emit_fill_rect(node)
               when :draw_rect_at then emit_fill_rect(node)
               when :pixel then emit_pixel(node)
               when :inside then emit_inside(node)
@@ -128,7 +127,7 @@ module VBlank
               runtime_call("rt_paint_clear", [Build.int(place_of_color(node.color))])
             end
 
-            # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
+            # Reference#exec_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
               runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| value_node(edge) },
                                              Build.int(place_of_color(node.color))])

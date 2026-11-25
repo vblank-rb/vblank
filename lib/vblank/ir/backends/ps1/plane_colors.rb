@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE COLOUR TABLE A BACKGROUND IS DRAWN THROUGH. A plane is kept in video RAM as places in a colour
+        # The colour table a background is drawn through. A plane is kept in video RAM as places in a colour
         # table, 4 or 8 bits a texel, not as colours (Runtime::Tiles): the chip reads a quarter or half the
         # memory drawing it, and a colour the game changes is one entry of the table written again, not every
         # pixel of the plane drawn again.

@@ -3,14 +3,14 @@
 require "test_helper"
 require "console/gba/vblank/ir/backends/reference/test_mixer_on_the_advance"
 
-# THE MIXER ON THE ADVANCE'S CARTRIDGE: the voices its own table holds, and the mix read straight
+# The mixer on the Advance's cartridge: the voices its own table holds, and the mix read straight
 # out of its buffers in the emulator. The mixer as every run plays it is in
 # test/all/vblank/ir/backends/reference/test_mixer.rb, and as every run of an Advance game plays
 # it in test/console/gba/vblank/ir/backends/reference/test_mixer_on_the_advance.rb.
 class TestMixerCartridge < Minitest::Test
   include MixerGames
 
-  # TWO MORE DIFFERENT SOUNDS THAN THE MIXER HAS VOICES (MixerGames::SOUNDS), asked of the
+  # Two more different sounds than the mixer has voices (MixerGames::SOUNDS), asked of the
   # cartridge by name: its own voice table says what the lowering really did.
   def test_both_backends_keep_the_same_sounds_when_the_mixer_is_full
     kept = SOUNDS.first(VBlank::Audio::Sound::MIXER_VOICES)
@@ -38,7 +38,7 @@ class TestMixerCartridge < Minitest::Test
   # --- hardware: the console really sums the voices ---
   #
   # Two constant-valued samples play at once; the mixer adds them into its output buffer,
-  # which we read straight off the console. Every byte should be the SUM (not the last voice
+  # which we read straight off the console. Every byte should be the sum (not the last voice
   # to play, which would prove nothing was mixed).
   def test_two_voices_are_summed_on_the_console
     quiet, loud = 20, 30
@@ -106,7 +106,7 @@ class TestMixerCartridge < Minitest::Test
     assert mixed.all?(-128), "-200 should saturate to -128, but the buffer held #{mixed.inspect}"
   end
 
-  # THE CLAMP IS ON THE FINISHED SUM, not on each voice as it is added, so a loud voice and a
+  # The clamp is on the finished sum, not on each voice as it is added, so a loud voice and a
   # loud voice of the other sign cancel whatever order they arrive in: 100 + 100 - 100 is 100.
   # Clamped as each voice went in, the first two would pin at 127 and the third take it to 27.
   def test_the_mix_clamps_the_sum_not_each_voice

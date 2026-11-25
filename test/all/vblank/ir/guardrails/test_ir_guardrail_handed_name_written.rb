@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A NAME HANDED A GAME VARIABLE AND THEN WRITTEN IN GAME CODE. A name holds a value, as in Ruby, so
+# A name handed a game variable and then written in game code. A name holds a value, as in Ruby, so
 # the write moves the name and the variable stays as it was. That is what the language says, and
 # almost never what a line like `flag = 0` in a game meant, and the game builds and plays wrong
 # with nothing said. So the build says.

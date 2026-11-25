@@ -5,9 +5,9 @@ require "tempfile"
 
 module VBlank
   module Diagnostics
-    # THE SOUND A RUNNING CARTRIDGE MADE, a frame at a time, for as long as it has run.
+    # The sound a running cartridge made, a frame at a time, for as long as it has run.
     #
-    # WHY IT IS NOT SIMPLY A STRING. The console makes tens of thousands of samples a second
+    # Why it is not simply a string. The console makes tens of thousands of samples a second
     # on each of two channels, so the sound of a run is megabytes a minute. A test that plays
     # a few seconds never notices. A playthrough of several minutes, or two of them side by
     # side in a comparison, would hold hundreds of megabytes of sound that for the most part
@@ -18,12 +18,12 @@ module VBlank
     # nothing. What is read back is the file and then the memory, so a reader gets the whole
     # run whichever of the two a frame is in.
     #
-    # HOW MUCH THAT HOLDS. No more than +frames_in_memory+ frames once `keep` has returned,
+    # How much that holds. No more than +frames_in_memory+ frames once `keep` has returned,
     # and for a moment as many again as it was just handed. What stays in memory for a frame
     # in the file is its length, one number, and a second once somebody has asked how loud
     # the run was (see #energy_by_frame).
     #
-    # A RUN NO LONGER THAN THAT WRITES NO FILE. Making one is not worth it for a run that fits,
+    # A run no longer than that writes no file. Making one is not worth it for a run that fits,
     # and nearly every run does.
     #
     # The file is a Tempfile, so it goes when this object is collected and, failing that, when
@@ -69,10 +69,10 @@ module VBlank
         each_frame_from(0, &)
       end
 
-      # HOW LOUD EACH FRAME WAS, oldest first: a frame's samples added up with their signs
+      # How loud each frame was, oldest first: a frame's samples added up with their signs
       # dropped, so 0 is a frame of silence.
       #
-      # WORKED OUT ONCE FOR EACH FRAME, AND KEPT. The only sound gone through on an asking is
+      # Worked out once for each frame, and kept. The only sound gone through on an asking is
       # the frames played since the last one, so a test that asks after every frame of a long
       # run reads one frame's sound each time and never the recording from its start.
       #
@@ -86,12 +86,40 @@ module VBlank
         @energies.dup
       end
 
-      # THE LOUDEST SAMPLE OF EACH FRAME, oldest first (FrameSound#loudest: the furthest a sample is
+      # The loudest sample of each frame, oldest first (FrameSound#loudest: the furthest a sample is
       # from nought on either speaker). Worked out once for each frame and kept, as #energy_by_frame
       # is, and what is handed back is the caller's own list.
       def loudest_by_frame
         each_frame_from(@loudest.size) { |frame| @loudest << FrameSound.loudest_of(frame.unpack("s<*")) }
         @loudest.dup
+      end
+
+      # The same on one speaker, +speaker+ :left or :right: the furthest that speaker's samples are
+      # from nought each frame, so a sound on the wrong speaker shows.
+      def loudest_on_speaker_by_frame(speaker)
+        kept = (@loudest_on_speaker ||= { left: [], right: [] }).fetch(speaker)
+        first = speaker == :left ? 0 : 1
+        each_frame_from(kept.size) do |frame|
+          kept << frame.unpack("s<*").each_slice(2).map { |pair| pair[first].to_i.abs }.max.to_i
+        end
+        kept.dup
+      end
+
+      # The pitch each frame is heard at, in hertz, oldest first (FramePitch), or nil for a frame with
+      # none: one at or under +heard_above+ (its loudest sample), a noise, or two notes at once. The
+      # two speakers are heard as one. Each frame's pitch is its own: the frame before is only room
+      # to look back into for a note under about 120 Hz, whose two waves do not fit in half a frame
+      # (FramePitch). +rate+ is the samples a second on each speaker. Worked out each time it is
+      # asked, on the heard frames alone: it is for one voice heard alone, which only a comparison of
+      # pitch plays.
+      def pitch_by_frame(rate:, heard_above:)
+        before = []
+        each_frame.map do |frame|
+          samples = frame.unpack("s<*")
+          heard = FrameSound.loudest_of(samples) > heard_above
+          mixed = samples.each_slice(2).map { |left, right| (left + (right || left)) / 2.0 }
+          (FramePitch.hertz_of(mixed, rate: rate, before: before) if heard).tap { before = mixed }
+        end
       end
 
       # The sound of the whole run as one String of samples, which for a long run is all of

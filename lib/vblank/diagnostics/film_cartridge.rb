@@ -5,17 +5,19 @@ require "tmpdir"
 
 module VBlank
   module Diagnostics
-    # ONE SIDE OF A FILM, OPENED: a game running, brought to the moment before the film's first frame,
+    # One side of a film, opened: a game running, brought to the moment before the film's first frame,
     # with a save folder of its own. What Film asks of a side, it answers (`step`, `screenshot`,
     # `close`).
     #
     #   FilmCartridge.open("builds/old.gba")                      # from power-on
     #   FilmCartridge.open(rom, tape: "launch.tape")              # after a tape's presses
+    #   FilmCartridge.open(rom, tape: "launch.tape", starting_after: :door, snapshots: SNAPSHOTS)
+    #                                                             # after a moment, from a kept snapshot
     #   FilmCartridge.open("retail.gbc", state: "at_door.ss1")    # from a state an emulator saved
     #   FilmCartridge.open(GAME, console: :ps1)                   # a game built for the PlayStation
     #   FilmCartridge.open(GAME, lowering: "ruby")                # the game built as Ruby
     #
-    # THE GAME is a path to a cartridge file (one this framework built, or one it did not), a built
+    # The game is a path to a cartridge file (one this framework built, or one it did not), a built
     # cartridge, or a game to build (what `VBlank.game` hands back). A game to build is built once and
     # not measured; a side that wants the measured cartridge builds it itself (`-> { GAME.build_rom }`).
     #
@@ -31,53 +33,92 @@ module VBlank
     # only in the emulator. They play the game the cartridge holds — `built_for_computer?` answers
     # false, as it does in the cartridge — so the two sides of one game show one game.
     #
-    # WHERE IT STARTS. From power-on, the film's frame 1 is the first frame the console plays. After
-    # a tape, it is the frame after the tape's last; from a saved state, the frame after the state
-    # was saved. Either way the parts of a film count from that moment. A saved state is the
-    # emulator's own, so only a cartridge in the emulator starts from one.
+    # Where it starts. From power-on, the film's frame 1 is the first frame the console plays. After
+    # a tape, it is the frame after the tape's last, or after the frame `starting_after:` names; from
+    # a saved state, the frame after the state was saved. Either way the parts of a film count from
+    # that moment. A saved state and a kept snapshot (`snapshots:`) are the emulator's own, so only a
+    # cartridge in the emulator starts from one.
     #
-    # A SAVE FOLDER OF ITS OWN. The emulator keeps a cartridge's save memory in a file named for the
+    # A save folder of its own. The emulator keeps a cartridge's save memory in a file named for the
     # cartridge. Two runs sharing a folder would find each other's saves, and a retail cartridge's
     # save next to it would change the game the film shows. So every cartridge opened here gets an
     # empty folder, and closing it takes the folder away.
     class FilmCartridge
-      # HOW LONG A CARTRIDGE TAKES TO SHOW ITS FIRST PASS, in frames, by console and by the screen the
-      # game starts on. A cartridge powers on, sets up and only then reaches the game loop, and a
-      # console that copies a pass's picture to the screen in the blank after it (the Color, the Super
-      # Nintendo) shows a pass a frame later still; a lowering starts at the game's first statement and
-      # shows its first pass on its first frame. So a lowering's side is held back this many frames, and
-      # the two sides of one game show the same pass on the same frame of the film.
+      # How long the game's cartridge takes to show its first pass, found for each game as its lowering
+      # side opens. A cartridge powers on, sets up (copying the game's tiles and maps first, so a bigger
+      # game takes longer) and only then reaches the game loop, and a console that copies a pass's
+      # picture to the screen in the blank after it (the Color, the Super Nintendo) shows a pass a frame
+      # later still. A lowering starts at the game's first statement and shows its first pass on its
+      # first frame. So a lowering's side is held back the frames the cartridge plays before it shows
+      # the picture of its first pass, and the two sides show the same pass on the same frame.
       #
-      # Measured, not derived: an animated game filmed both ways, and the frame of the lowering each
-      # frame of the cartridge matched. test_film_cartridge.rb (the Advance) and test_ps1_film.rb pin
-      # their numbers. Testing::Pictures keeps the same kind of table for the checked runs, counted
-      # from another moment, so its numbers are not these.
-      CARTRIDGE_START_FRAMES = Ractor.make_shareable({ gba: { bitmap: 1, tiled: 1, rotozoom: 1 },
-                                                       gbc: { bitmap: 9, tiled: 6 }, snes: { bitmap: 8, tiled: 6 },
-                                                       ps1: { bitmap: 1 } })
-
-      # A console and screen nobody has measured (the Genesis's: its cartridge shows a sprite a pass after
-      # the interpreter does, so no number of frames held back lines the two up while a sprite moves).
-      UNMEASURED_START_FRAMES = 1
+      # Lined up by the pictures, not by a count of frames per console: the game's cartridge is played in
+      # the emulator beside the interpreter, and the frames held back are the first offset at which the
+      # cartridge's pictures are the interpreter's, from the interpreter's first, for PICTURES_MATCHED
+      # pictures that are not all one picture (so a still start cannot match early). A game whose first
+      # STILL_PICTURES_SEARCHED pictures are all one is lined up on the first of them: before anything
+      # moves, any offset looks the same. One whose cartridge never shows the interpreter's pictures in
+      # LONGEST_START_FRAMES (a Genesis cartridge shows a sprite a pass after the interpreter does) is
+      # lined up on the first frame its cartridge shows the interpreter's first picture, else not held
+      # back at all.
+      PICTURES_MATCHED = 4
+      STILL_PICTURES_SEARCHED = 60
+      LONGEST_START_FRAMES = 600
 
       # The folder this cartridge's save memory is kept in while it runs.
       attr_reader :save_dir
 
-      def self.open(game, tape: nil, state: nil, console: nil, lowering: nil)
-        new(game, tape: tape, state: state, console: console, lowering: lowering)
+      # +sound:+ true keeps the sound a lowering makes, a frame at a time, for a film that hears this side
+      # (#last_frame_samples). The emulator keeps a cartridge's sound whatever it is told.
+      #
+      # +starting_after+ (with +tape:+) is a frame of the tape, by its number or the name of one of its
+      # moments, that the side starts after in place of the tape's last. +snapshots+ (a
+      # Playthroughs::SnapshotCache, with +tape:+) puts the cartridge on that frame from a snapshot of
+      # its console, made the first time and loaded every time after, so a film of a moment deep in a
+      # tape costs the frames it shows; without, the tape is played there from power-on. A snapshot is
+      # the emulator's own, so a side shown as a lowering plays the tape to the start whatever
+      # +snapshots+ is, and one film can give both kinds of side the same start.
+      def self.open(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false, starting_after: nil,
+                    snapshots: nil)
+        new(game, tape: tape, state: state, console: console, lowering: lowering, sound: sound,
+                  starting_after: starting_after, snapshots: snapshots)
       end
 
-      def initialize(game, tape: nil, state: nil, console: nil, lowering: nil)
+      # A start part way through a tape, or from a snapshot of it, needs the tape. A FilmScript asks
+      # this as it reads a film file, before any side opens. +tape+ is a Tape or a path, nil for none.
+      def self.refuse_start_without_tape!(tape, starting_after, snapshots)
+        Playthroughs::SnapshotCache.refuse_not_cache!(snapshots)
+        Playthroughs::Tape.refuse_unusable_start!(starting_after)
+        return if tape || (starting_after.nil? && snapshots.nil?)
+
+        raise ArgumentError, "A side of a film was given `#{starting_after.nil? ? 'snapshots' : 'starting_after'}:` and no " \
+                             "`tape:`. The presses up to the start come from a tape. Give `tape:` the tape, or remove it."
+      end
+
+      def initialize(game, tape: nil, state: nil, console: nil, lowering: nil, sound: false, starting_after: nil,
+                     snapshots: nil)
         refuse_tape_and_state!(tape, state)
+        FilmCartridge.refuse_start_without_tape!(tape, starting_after, snapshots)
         console = Console.named(console) if console
         way = Playthroughs::CommandLine.shown_way_named(lowering)
         refuse_state_on_lowering!(lowering) if state && way
+        snapshots = nil if way
+        tape = tape_from(tape)
+        start = tape && tape.start_frame(starting_after || tape.frames)
         @save_dir = Dir.mktmpdir("film-save")
         @frames_held_back = 0
         @blank = false
-        @reader = way ? open_lowering(program_from(game, console), way) : open_cartridge(game, console)
+        @silent_step = false
+        @lowered_without_sound = way && !sound
+        @reader = if way
+                    open_lowering(cartridge_with_program(game, console), way, sound)
+                  elsif snapshots
+                    open_cartridge_after(game, console, Playthroughs::SnapshotCache.presses_up_to(tape, start), snapshots)
+                  else
+                    open_cartridge(game, console)
+                  end
         @reader.load_state(state) if state
-        play_tape(Playthroughs::Tape.read(tape.to_s)) if tape
+        play_tape(tape, start) if tape && !snapshots
       rescue StandardError
         close
         raise
@@ -91,7 +132,30 @@ module VBlank
         @frames_held_back -= waiting
         @reader.step(count - waiting, keys: keys) if count > waiting
         @blank = false if count > waiting
+        @silent_step = count <= waiting
         self
+      end
+
+      # The samples of the frames just played, left and right by turns (Verifier#last_frame_samples,
+      # Playthroughs::LoweredGame#last_frame_samples): none while a lowering is held back, when no game
+      # is running yet.
+      def last_frame_samples
+        if @lowered_without_sound
+          raise ArgumentError, "This side shows the game as a lowering and keeps no sound, so a film cannot hear it. " \
+                               "To fix this, open it with `sound: true`: `FilmCartridge.open(game, lowering:, sound: true)`."
+        end
+
+        @silent_step ? [] : @reader.last_frame_samples
+      end
+
+      # The picture as a film asks for it, with no file: as #screenshot's.
+      def screen_picture
+        return @reader.screen_picture unless @blank
+
+        width = @reader.screen_width
+        height = @reader.screen_height
+        Film::Picture.new(pixels: Array.new(width * height, IR::Backends::Reference::Framebuffer::HELD_OFF), width: width,
+                          height: height)
       end
 
       def screenshot(path)
@@ -113,40 +177,87 @@ module VBlank
 
       private
 
-      # The game played as a lowering, held back to start where the cartridge does (CARTRIDGE_START_FRAMES).
-      def open_lowering(program, way)
-        @frames_held_back = cartridge_start_frames(program)
+      # The game +cartridge+ holds, played as a lowering, held back to start where the cartridge does
+      # (#cartridge_start_frames), handing over its sound a frame at a time where +sound+ asks.
+      def open_lowering(cartridge, way, sound)
+        program = cartridge.source_program
+        @frames_held_back = cartridge_start_frames(cartridge, program)
         @blank = true
-        Playthroughs::LoweredGame.new(program, way)
+        lowered = Playthroughs::LoweredGame.new(program, way, speaker: sound)
+        refuse_silent_lowering!(lowered, way) if sound
+        lowered
       end
 
-      # The frames +program+'s cartridge plays before the frame that shows its first pass, by its
-      # console and the screen it starts on.
-      def cartridge_start_frames(program)
-        screen = program.walk.find { |node| node.kind == :screen }&.mode || :bitmap
-        CARTRIDGE_START_FRAMES.dig(program.described_console.name, screen) || UNMEASURED_START_FRAMES
+      # The interpreter keeps a log of what the game asked of the sound chip, and makes no samples.
+      def refuse_silent_lowering!(lowered, way)
+        return if lowered.sound_rate
+
+        lowered.close
+        raise ArgumentError, "A film cannot hear a game shown as #{way}: it makes no sound samples. To fix this, " \
+                             "show the side as ruby, js or native, or in the emulator, or do not hear this side."
+      end
+
+      # The frames +cartridge+ plays before the frame that shows the picture of its first pass: where its
+      # pictures in the emulator line up with +program+'s on the interpreter (PICTURES_MATCHED and the
+      # rest say how). The emulator plays in a save folder of its own, taken away after.
+      def cartridge_start_frames(cartridge, program)
+        expected = interpreter_pictures(program)
+        Dir.mktmpdir("film-start") do |folder|
+          reader = Verifier.new(cartridge, frames: 0, save_dir: folder)
+          recent = []
+          first_alike = nil
+          LONGEST_START_FRAMES.times do |played|
+            recent = (recent << reader.step(1, keys: 0).frame_gba).last(expected.size)
+            first_alike ||= played if recent.last == expected.first
+            return played + 1 - expected.size if recent == expected
+          end
+          first_alike || 0
+        ensure
+          reader&.close
+        end
+      end
+
+      # The interpreter's first pictures of +program+: PICTURES_MATCHED, or more until one differs from the
+      # rest, up to STILL_PICTURES_SEARCHED; the first alone when they never differ.
+      def interpreter_pictures(program)
+        interpreter = Playthroughs::LoweredGame.new(program, "interpreter")
+        pictures = []
+        until pictures.size >= PICTURES_MATCHED && pictures.uniq.size > 1
+          return pictures.first(1) if pictures.size >= STILL_PICTURES_SEARCHED
+
+          pictures << interpreter.step(1, keys: 0).frame_gba.dup
+        end
+        pictures
+      ensure
+        interpreter&.close
+      end
+
+      # A cartridge of +game+ that also holds the program it was built from, which a lowering plays:
+      # the game built for +console+, or a cartridge built here. A cartridge file holds none.
+      def cartridge_with_program(game, console)
+        cartridge = cartridge_for(game, console)
+        cartridge.source_program or
+          raise ArgumentError, "A cartridge file can be shown only in the emulator, and this side gives a lowering. " \
+                               "To show the game another way, give the game or a cartridge built here. To show the " \
+                               "file, leave out `lowering:`."
+        cartridge
       end
 
       # The cartridge in the emulator its console's kit names (Console::Kit#open_probe), through the
       # one reader.
-      def open_cartridge(game, console)
-        cartridge = if game_to_build?(game)
-                      game.build_rom(out: nil, profile: false, **{ console: console }.compact)
-                    else
-                      finished_cartridge(game, console)
-                    end
-        Verifier.new(cartridge, frames: 0, save_dir: @save_dir)
+      def open_cartridge(game, console) = Verifier.new(cartridge_for(game, console), frames: 0, save_dir: @save_dir)
+
+      # The cartridge put on the frame after +presses+ (SnapshotCache::Presses) from a snapshot in
+      # +snapshots+, made by playing them the first time.
+      def open_cartridge_after(game, console, presses, snapshots)
+        cartridge = cartridge_for(game, console)
+        Playthroughs::Playthrough.refuse_snapshot_without_save_memory!(cartridge)
+        snapshots.console_after(presses, cartridge) { Verifier.new(cartridge, frames: 0, save_dir: @save_dir) }
       end
 
-      # The checked program a lowering plays, as the cartridge holds it: the game's, for the console
-      # given, or the one a built cartridge was made from. A cartridge file holds none.
-      def program_from(game, console)
-        return game.checked_program(for_computer: false, **{ console: console }.compact) if game_to_build?(game)
-
-        finished_cartridge(game, console).source_program or
-          raise ArgumentError, "A cartridge file can be shown only in the emulator, and this side gives a lowering. " \
-                               "To show the game another way, give the game or a cartridge built here. To show the " \
-                               "file, leave out `lowering:`."
+      # +game+ built for +console+, or the finished cartridge it is.
+      def cartridge_for(game, console)
+        game_to_build?(game) ? game.build_rom(out: nil, profile: false, **{ console: console }.compact) : finished_cartridge(game, console)
       end
 
       def game_to_build?(game) = game.respond_to?(:build_rom) && game.respond_to?(:checked_program)
@@ -169,12 +280,18 @@ module VBlank
                              "`console: :#{cartridge.console}`, or leave out `console:`."
       end
 
-      # Every press on the tape, a stretch of frames with the same buttons down at a time.
-      def play_tape(tape)
-        refuse_unplayable_tape!(tape)
-        tape.presses_within(1..tape.frames).each do |stretch|
+      # Every press on the tape up to frame +last+, a stretch of frames with the same buttons down at a time.
+      def play_tape(tape, last)
+        tape.presses_within(1..last).each do |stretch|
           step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons))
         end
+      end
+
+      # +tape+ as a Playthroughs::Tape, read where it is a path, and refused where a film cannot play it.
+      def tape_from(tape)
+        return nil if tape.nil?
+
+        (tape.is_a?(Playthroughs::Tape) ? tape : Playthroughs::Tape.read(tape.to_s)).tap { |read| refuse_unplayable_tape!(read) }
       end
 
       def refuse_tape_and_state!(tape, state)
@@ -184,6 +301,7 @@ module VBlank
                              "from one of them only. Give `tape:` or `state:`."
       end
 
+      # A start part way through a tape, or from a snapshot of it, needs the tape.
       def refuse_state_on_lowering!(lowering)
         raise ArgumentError, "A saved state is the emulator's own, and this side shows the game on #{lowering}. Only " \
                              "the cartridge in the emulator can start from a saved state. To fix this, leave out " \
@@ -193,6 +311,7 @@ module VBlank
       # A tape of passes holds no frame count, and one recorded from a save or after a lead-in
       # plays a different game from power-on.
       def refuse_unplayable_tape!(tape)
+        tape.refuse_seed_frame_by_frame!("a film")
         if tape.in_passes
           raise ArgumentError, "The tape counts passes of the game loop, and a film counts frames. Record the tape in " \
                                "frames, or write it out with `tape.in_frames_on(cartridge)`."

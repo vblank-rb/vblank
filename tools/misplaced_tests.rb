@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# TESTS KEPT OUT OF test/all/ THAT WOULD PLAY THERE.
+# Tests kept out of test/all/ that would play there.
 #
 #   ruby tools/misplaced_tests.rb                    every folder, on every run that does not load it
 #   rake test:misplaced ONLY=test/console/gba RUNS=gbc,snes,genesis

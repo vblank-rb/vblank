@@ -4,11 +4,11 @@ require "test_helper"
 require "tmpdir"
 require "vblank/testing/watched_run"
 
-# A RUN THAT CAN NO LONGER FINISH ENDS ANYWAY. Ruby crashing in a Ractor can stop every other
+# A run that can no longer finish ends anyway. Ruby crashing in a Ractor can stop every other
 # Ractor and never exit, which leaves a whole run holding the machine's lock with nothing moving.
 class TestWatchedRun < Minitest::Test
-  # Each case starts a program of its own, which hangs inside a Ractor.
-  runs_on_the_main_ractor!
+  # The Ruby each test starts, read once here: only the main Ractor may read RbConfig.
+  RUBY = RbConfig.ruby.freeze
 
   WatchedRun = VBlank::Testing::WatchedRun
 
@@ -17,7 +17,7 @@ class TestWatchedRun < Minitest::Test
       script = File.join(dir, "child.rb")
       File.write(script, text)
       out = StringIO.new
-      result = WatchedRun.new({}, "#{RbConfig.ruby} #{script}", out: out, keep_in: dir, sample_seconds: 0, **limits).call
+      result = WatchedRun.new({}, "#{RUBY} #{script}", out: out, keep_in: dir, sample_seconds: 0, **limits).call
       kept = result.report_path && File.read(result.report_path)
       yield result, out.string, kept
     end

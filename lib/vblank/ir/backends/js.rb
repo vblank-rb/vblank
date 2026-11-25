@@ -19,7 +19,7 @@ module VBlank
       # The game as JavaScript: a page that plays it in a browser, drawing to a <canvas>, and the
       # same program with no page at all, which node plays for the tests.
       #
-      # PUTTING A GAME ON THE WEB. `vblank build game.rb --format=web` writes it in one of three
+      # Putting a game on the web. `vblank build game.rb --format=web` writes it in one of three
       # forms, and each is described where it is written:
       #
       #   --js=page     (the default) one HTML file, game.html, that plays the game when opened;
@@ -49,22 +49,22 @@ module VBlank
       # JavaScript too (`rake test:lowering:js` plays only that), checked against the interpreter
       # on every frame, so a feature is not done until it works here as well.
       #
-      # HOW IT IS MADE. Computer::Lowering already writes a program as a tree of statements and
+      # How it is made. Computer::Lowering already writes a program as a tree of statements and
       # calls into a runtime, with no operator anywhere on a game's number (see the comment atop
       # Native); JS::Lowering prints that same tree as JavaScript, and the runtime is
       # runtime/*.js, the native runtime's C written again in JavaScript, function for function,
       # since the C is itself a port of the interpreter's picture, sound and save memory. Two
       # things are JavaScript's own:
       #
-      # - A NUMBER. JavaScript keeps every number as a 64-bit float, so a game's arithmetic is
+      # - A number. JavaScript keeps every number as a 64-bit float, so a game's arithmetic is
       #   runtime/rg_int32.js, which brings each answer back to a signed 32-bit whole number
       #   (`| 0`, Math.imul, a test for each case IR::Int32 spells out) — the same discipline
       #   rg_int32.h keeps in C, for the opposite reason.
-      # - A FRAME. A browser cannot stop a script part way through a routine to wait for the
+      # - A frame. A browser cannot stop a script part way through a routine to wait for the
       #   screen, so a routine that can wait is a generator, and a driver plays the game a frame
       #   at a time by asking it for the next one (see Printer).
       #
-      # A DRIVER is what the game runs on: runtime/rg_headless.js, which node runs with no window
+      # A driver is what the game runs on: runtime/rg_headless.js, which node runs with no window
       # and which prints what the native headless program prints, so a test drives either the
       # same way (HeadlessRun); or runtime/rg_page.js, which draws to a canvas, reads the keyboard
       # and plays the sound through Web Audio.
@@ -102,6 +102,17 @@ module VBlank
           program
         end
 
+        # The screen's size and every button's keys for +game+ as the page would write them
+        # (Page::Controls, which answers #to_json), without building a page: what a site needs to
+        # show the controls and size the frame. +console+ is the one the game is built as, the first
+        # it names when left out.
+        def controls(game, console: nil, settings: {})
+          program = checked_program(game, console: console, settings: settings, err: nil)
+          described = program.described_console
+          Page.controls(screen: described.framed_screen_size, pixel_size: described.pixel_size, buttons: described.buttons,
+                        players: program.max_players || 1)
+        end
+
         # The web build's own check, on a program however it was made: every console-only step,
         # said in plain words, in a Guardrails::ValidationError when the game can reach one and to
         # +err+ when it cannot. One in a routine nothing calls is a warning, since the lowering leaves it out
@@ -121,7 +132,7 @@ module VBlank
           Lowering.new(program, title: title).source
         end
 
-        # THE GAME AS createGame(host): a function that makes the game afresh each time it is
+        # The game as createGame(host): a function that makes the game afresh each time it is
         # called — the runtime, the game and the browser's driver (runtime/rg_page.js, which says
         # what +host+ may hold and what comes back) all inside it, so every game made has its own
         # state and two never meet. It is the one thing every web output wraps: the page calls it
@@ -140,7 +151,8 @@ module VBlank
           lowering = Lowering.new(program, title: title)
           text, data_file = lowering.text_and_data_file(data: data)
           [["function #{name}(host) {\n", console_text(program.described_console), Computer::StateFile.js_text(program),
-            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n", MenuData.source(menu: menu, states: states, buttons: program.described_console.buttons),
+            fingerprint_text(program), "const RG_GAME_CODE = #{JSON.generate((code || Cartridge::GameCode.for(title)).to_s)};\n",
+            MenuData.source(program, menu: menu, states: states),
             *runtime_text(runtime_for(program) + ["rg_page_menu.js", "rg_page.js"]), RuntimeFeatures.js_text(lowering.runtime_features),
             text, "return page_create(host || {});\n}\n"].join, data_file]
         end
@@ -158,7 +170,7 @@ module VBlank
                                                      "rg_driver_start();\n"))
         end
 
-        # WHERE A GAME'S BIG TABLES GO, for each output below: +data+ :inline (the default) keeps
+        # Where a game's big tables go, for each output below: +data+ :inline (the default) keeps
         # them in the script as base64, so the output is the one file and a page opens from a disk;
         # :separate writes them to a data file beside it (game.data, named for the output), which
         # the game fetches before its first frame — so a hosted game's code is small and its data
@@ -168,7 +180,7 @@ module VBlank
         #
         # Each takes +console+, the one the game is built as (#checked_program).
 
-        # +game+ as ONE web page, written to +path+: the game checked as a cartridge build checks it,
+        # +game+ as one web page, written to +path+: the game checked as a cartridge build checks it,
         # written as JavaScript, and put in a page which plays it in a canvas when opened. +scale+ is
         # how many times the console's picture is enlarged, and +template+ the one the page is
         # written from (see Page for what one is handed).
@@ -183,11 +195,12 @@ module VBlank
             script = WRITTEN_BY + in_own_function(data_beside_declaration(data_file, JSON.generate(data_file_name(path))),
                                                   text, *runtime_text(["rg_mount.js"]), "rg_mount_page(createGame);\n")
             Page.html(title: game.title, script: script, scale: scale, template: template, screen: described.framed_screen_size,
-                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.most_players || 1)
+                      pixel_size: described.pixel_size, buttons: described.buttons, players: program.max_players || 1,
+                      saves: Computer::Saving.named_by?(program))
           end
         end
 
-        # +game+ built as a SHELL (Original::Shell), as ONE web page written to +path+: the page holds none
+        # +game+ built as a SHELL (Original::Shell), as one web page written to +path+: the page holds none
         # of the original's data. It plays the game's pack kept in the browser (IndexedDB), or else the
         # menu, a file picker and the release's unpacking, and keeps the pack it makes (runtime/rg_shell.js).
         # Each program is a createGame of its own, with a runtime of its own, so none shares state.
@@ -239,7 +252,7 @@ module VBlank
           end
         end
 
-        # +game+ as a CLASSIC SCRIPT, written to +path+ (game.js), for a page that loads it with a
+        # +game+ as a classic script, written to +path+ (game.js), for a page that loads it with a
         # plain <script src>: it puts createGame and the game's title on window.VBlank under
         # +name+ — the file's own name unless told — beside any other game's, and leaves nothing
         # else in the page's global scope. The page then calls VBlank.<name>.createGame. A data
@@ -286,7 +299,7 @@ module VBlank
         # The runtime files of +names+, their text in that order.
         def runtime_text(names) = names.map { |name| File.read(File.join(RUNTIME_DIR, name), encoding: Encoding::UTF_8) }
 
-        # THE CONSOLE THE GAME IS BUILT AS, ahead of the runtime, which reads it: how big its screen
+        # The console the game is built as, ahead of the runtime, which reads it: how big its screen
         # is, and how its clock counts a frame, from +console+ (a Console::Description). As the
         # native runtime has them (Computer::ConsoleNumbers).
         def console_text(console)
@@ -298,7 +311,7 @@ module VBlank
         # The runtime +program+ carries: the match's too when it is for several players.
         def runtime_for(program) = program.several_players? ? RUNTIME + MATCH_RUNTIME : RUNTIME
 
-        # WHICH GAME THIS IS, as a match tells it from another (Network::Fingerprint): the console it is built for
+        # Which game this is, as a match tells it from another (Network::Fingerprint): the console it is built for
         # and the digest of its program, worked out here from the program as the build made it so that a copy
         # built as Ruby, as C or as JavaScript of one game carries one number. The runtime takes its
         # constant (RG_FINGERPRINT) to a match (rg_lockstep.js).

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOR CARTRIDGE THAT RUMBLES (`rumble`, Runtime::Rumble): it says in its header that it carries
+# A color cartridge that rumbles (`rumble`, Runtime::Rumble): it says in its header that it carries
 # a motor, and the game runs the motor a frame at a time by the pattern it said, as Pokémon
 # Pinball shakes the player's hands when the ball hits a bumper. The emulator reports the motor as
 # the cartridge sets it.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MAIN VOLUME (`enable_sound main_volume:`) AS THE PLAYSTATION PROGRAM WRITES IT: the sound chip's
+# The main volume (`enable_sound main_volume:`) as the PlayStation program writes it: the sound chip's
 # main volume, left and right, read from its registers in Beetle PSX. Its loudest is 3FFFh, which is
 # 127 times 129, so a number of 127ths is that many 129ths of it, exactly. The checked run holds the
 # registers to the interpreter's log on every pass (SPUWrites.after).

@@ -6,7 +6,7 @@ require "tmpdir"
 
 # `rom.profile` — where a game's frames actually went, measured by running it.
 #
-# These assert what the report SAYS about a program whose shape is known, not the numbers,
+# These assert what the report says about a program whose shape is known, not the numbers,
 # which move whenever the lowering does. The fixture is built so one routine must dominate and
 # another must never run at all, because those are the two answers a profile has to get right:
 # it has to point at the work, and it must not invent any.
@@ -44,7 +44,7 @@ class TestProfiler < Minitest::Test
                     "a routine doing nearly all the work reads as nearly all the work"
   end
 
-  # THE HALF THAT MATTERS AS MUCH. A profile that names something the game never ran is worse
+  # The half that matters as much. A profile that names something the game never ran is worse
   # than one that misses something, because it sends somebody to the wrong file.
   def test_a_routine_nothing_calls_does_not_appear
     result = lopsided_game.profile(out: StringIO.new, frames: 10)
@@ -118,7 +118,7 @@ class TestProfiler < Minitest::Test
     assert_equal [:left], walking.keys
   end
 
-  # A COPY RUNS NO INSTRUCTIONS. The console's copy engine stops the processor until it is done,
+  # A copy runs no instructions. The console's copy engine stops the processor until it is done,
   # so a routine that starts a whole-screen clear runs a dozen instructions and takes most of a
   # frame. Counted by instructions the sums win; counted by time the clear has to.
   def test_the_time_a_copy_takes_is_charged_to_the_routine_that_starts_it
@@ -162,7 +162,7 @@ class TestProfiler < Minitest::Test
     end
   end
 
-  # A PASS THAT ENDS A LINE LATE LOSES A WHOLE PICTURE. The wait at the end of a pass waits for the
+  # A pass that ends a line late loses a whole picture. The wait at the end of a pass waits for the
   # NEXT break between pictures, so a pass that ends just after one began sleeps until the one
   # after. Measured by rate alone that is a game running at half speed with nothing to say why.
   def test_a_pass_that_ends_just_after_the_break_began_is_reported_with_how_late_it_was
@@ -188,7 +188,7 @@ class TestProfiler < Minitest::Test
     refute_empty JSON.parse(out.string)["late_passes"]
   end
 
-  # THE RATE IS PICTURES MADE, one a pass of the game loop, not frames the console slept in. A
+  # The rate is pictures made, one a pass of the game loop, not frames the console slept in. A
   # pass that ends just after a break sleeps until the break after, and where the measured frames
   # do not start at a break that sleep falls in two of them. Read off a real game held in a scene:
   # 157 passes in 240 frames, with a sleep in 223 of them, which read 55.8.
@@ -236,7 +236,7 @@ class TestProfiler < Minitest::Test
     assemble_rom(program, name: "PGAP")
   end
 
-  # THE GAP AFTER A PASS CAN LOSE A PICTURE THE PASS DOES NOT. What the framework places after the
+  # The gap after a pass can lose a picture the pass does not. What the framework places after the
   # wait is still in the frame the wait began, so a gap that runs past the next break loses that
   # picture, while the pass after it ends in time. Answered by the emulator's count of breaks begun.
   def test_a_gap_that_ran_past_the_next_break_is_named_with_how_many_lines
@@ -269,6 +269,140 @@ class TestProfiler < Minitest::Test
     refute_match(/updates after the wait/, late.string)
   end
 
+  # Additions in each scene's own routine: enough that the two routines do not fit the quick
+  # memory together, so each is kept in a set of its own that comes in with its scene.
+  SET_ADDS = 1200
+
+  # A title, then a play scene whose routine runs a game loop of its own for good, the routine kept
+  # in the play scene's set. That loop's gap after the wait is the one above's, spinning to line
+  # +gap_until+ on the routine's eighth pass before it places the frame's sprites. The scenes are
+  # built in the DSL, for their sets, and the spin is put in by hand, as above.
+  private def game_whose_set_kept_gap_runs_to(gap_until)
+    adds = SET_ADDS
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      title = 0
+      t = 0
+      where = 0
+      passes = var :passes, 0
+      var :spin, 0
+      func(:title_work) { adds.times { |n| title += 1 + (n.even? ? 5 : -5) } }
+      func(:play_work) do
+        adds.times { |n| title += 1 + (n.even? ? 5 : -5) }
+        game_loop { passes += 1 }
+      end
+      scene(:title) { call :title_work }
+      scene(:play) { call :play_work }
+      game_loop do
+        t += 1
+        where = 1 if t == 3
+        call({ 0 => :title, 1 => :play }, number: :where)
+      end
+    end
+    b.finalize_program
+    program = b.program
+    insert_gap_spin(program.walk.to_a.reverse.find { |node| node.kind == :loop }, gap_until)
+    assemble_rom(program, name: "PGSET")
+  end
+
+  # The loop +inner+ made to spin after its wait to line +gap_until+ on its eighth pass, then place
+  # the frame's sprites, as #game_whose_gap_runs_to does.
+  private def insert_gap_spin(inner, gap_until)
+    build = VBlank::IR::Build
+    spin_until = lambda do |index, test|
+      build.repeat(build.int(100_000), index, build.add(:spin, build.int(1)), stop_when: test)
+    end
+    gap = build.if_(build.binop(:==, build.var_ref(:passes), build.int(8)),
+                    spin_until.call(:__repeat_1, build.binop(:<, build.read_scanline, build.int(160))),
+                    spin_until.call(:__repeat_2, build.binop(:>=, build.read_scanline, build.int(gap_until))),
+                    build.present_objects([]))
+    gap.parent = inner
+    inner.children.insert(inner.children.index { |node| node.kind == :wait_vblank } + 1, gap)
+  end
+
+  # A game loop in a routine kept in a swapped set ends its gap at the set's place in the quick
+  # memory, which is that routine's only while its set is in. The profile watches it there, and
+  # names the gap that ran past the next break as it does for a game loop outside a set.
+  def test_a_gap_in_a_routine_kept_in_a_set_that_ran_past_the_next_break_is_named
+    rom = game_whose_set_kept_gap_runs_to(165)
+    in_time = game_whose_set_kept_gap_runs_to(150)
+
+    assert(rom.built.gap_ends.any? { |site| site[:set] }, "the routine's gap ends in its set")
+    overruns = rom.profile(out: StringIO.new, frames: 20, settle: 0).gap_overruns
+    assert_equal 1, overruns.size, overruns.inspect
+    assert_includes 5..9, overruns.first.lines
+    assert_empty in_time.profile(out: StringIO.new, frames: 20, settle: 0).gap_overruns
+  end
+
+  # A game with one sprite moving a pixel a pass, whose gap after the wait spins to line +gap_until+
+  # before it writes the sprite's row: a line of the picture after the screen has left the break, so
+  # the sprite table changes on that row; a line of the break straight away. Hand-built for the reason
+  # game_whose_gap_runs_to gives.
+  private def game_writing_its_sprite_on_line(gap_until)
+    b = VBlank::IR::Build
+    spin_until = ->(index, test) { b.repeat(b.int(100_000), index, b.add(:spin, b.int(1)), stop_when: test) }
+    spins = []
+    spins << spin_until.call(:__repeat_1, b.binop(:<, b.read_scanline, b.int(160))) if gap_until < 160
+    spins << spin_until.call(:__repeat_2, b.binop(:>=, b.read_scanline, b.int(gap_until)))
+    program = b.program(
+      b.screen(:tiled),
+      b.bitmap(:dot, width: 8, height: 8, pixels: ([0x7FFF] * 64).pack("v*"), transparent: 0),
+      b.object(:ship, poses: %i[dot], pose: b.int(0), x: b.var_ref(:x), y: b.int(20), active: b.int(1)),
+      b.set(:x, b.int(0)), b.set(:spin, b.int(0)),
+      b.loop_(b.wait_vblank,
+              b.if_(b.binop(:>=, b.var_ref(:x), b.int(0)), *spins, b.present_objects([:ship])),
+              b.add(:x, b.int(1))),
+      console: :gba
+    )
+    assemble_rom(program, name: "PTEAR")
+  end
+
+  # A gap that runs from the break on into the picture tears it, though the pass ends in good time and
+  # the gap long before the next break. The report names the pass and what changed late, with the row.
+  def test_a_gap_that_runs_into_the_picture_names_the_pass_and_the_rows_its_changes_landed_on
+    out = StringIO.new
+    result = game_writing_its_sprite_on_line(20).profile(out: out, frames: 6)
+
+    refute_empty result.gaps_into_picture
+    assert_empty result.late_passes
+    assert_empty result.gap_overruns
+    sprites = result.gaps_into_picture.first.writes.find { |write| write.part == :sprites }
+    refute_nil sprites, result.gaps_into_picture.inspect
+    assert_includes 20..23, sprites.rows.first
+    assert_match(/passes? \d+.*updates after the wait went on into the picture/, out.string)
+    assert_match(/the sprites: rows? 2\d/, out.string)
+  end
+
+  def test_a_gap_that_runs_into_the_picture_comes_back_as_data_too
+    out = StringIO.new
+    game_writing_its_sprite_on_line(20).profile(format: :json, out: out, frames: 6)
+    gap = JSON.parse(out.string)["gaps_into_picture"].first
+
+    assert_operator gap["pass"], :>=, 1
+    assert_includes gap["writes"].map { |write| write["part"] }, "sprites"
+  end
+
+  # The emulator keeps a fixed number of runs of these changes; a list it cut short says so.
+  def test_a_list_of_late_changes_cut_short_says_so
+    result = game_writing_its_sprite_on_line(20).profile(out: StringIO.new, frames: 6)
+    whole = StringIO.new
+    VBlank::Diagnostics::Profiler.render(result, out: whole)
+    cut = StringIO.new
+    VBlank::Diagnostics::Profiler.render(result.with(gap_writes_missed: 3), out: cut)
+
+    refute_match(/not complete/, whole.string)
+    assert_match(/This list is not complete: there was no room for 3 more runs of changes/, cut.string)
+  end
+
+  def test_a_gap_that_keeps_to_the_break_reports_nothing_new
+    out = StringIO.new
+    result = game_writing_its_sprite_on_line(200).profile(out: out, frames: 6)
+
+    assert_empty result.gaps_into_picture
+    refute_match(/into the picture/, out.string)
+  end
+
   # A game whose setting up waits for the screen to reach each line of +lines+ in turn, so the pass
   # from power-on ends on the last of them whatever the lowering emits. A line in the picture after
   # one in the break is waited for from below it, so the setting up runs on into the next picture.
@@ -291,7 +425,7 @@ class TestProfiler < Minitest::Test
     [pass.missed, pass.ended_before]
   end
 
-  # HOW CLOSE THE FIRST PASS CAME. A game that sets up a little more each time it grows is on time
+  # How close the first pass came. A game that sets up a little more each time it grows is on time
   # until one day it is not, and a whole picture later when it is; the lines it ended before the
   # break say how near that day is.
   def test_from_power_on_it_says_how_many_lines_before_the_break_the_first_pass_ended
@@ -366,7 +500,7 @@ class TestProfiler < Minitest::Test
     refute_match(/power-on/, out.string)
   end
 
-  # WHAT THE SETTING UP SPENT ITS TIME ON, by name. A loop in setup that fills a list a push at a
+  # What the setting up spent its time on, by name. A loop in setup that fills a list a push at a
   # time is named after the list, and the rest of the setting up has a name of its own, so neither
   # reads as code nothing knows about.
   def test_from_power_on_the_setting_up_and_its_fill_loops_are_named
@@ -455,10 +589,7 @@ class TestProfiler < Minitest::Test
       func(:the_work) { repeat(2000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -474,7 +605,7 @@ class TestProfiler < Minitest::Test
                  "named, it is held in the playing scene and that is what gets measured"
   end
 
-  # WRITING THE SCENE ONCE IS NOT ENOUGH — a game left alone leaves the scene almost at once
+  # Writing the scene once is not enough — a game left alone leaves the scene almost at once
   # (a snake with nobody steering dies in a few frames), and then the measuring is of the
   # screen it fell into, under the name of the one that was asked for. So it is held there.
   def test_a_scene_is_held_rather_than_merely_entered
@@ -489,10 +620,7 @@ class TestProfiler < Minitest::Test
       func(:the_work) { repeat(2000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 1, :busy
-          when_val 2, :idle
-        end
+        call({ 1 => :busy, 2 => :idle }, number: :state)
       end
     end
 
@@ -512,16 +640,20 @@ class TestProfiler < Minitest::Test
 
   # --- did the picture tear ---
 
-  # The build says a game CAN tear, which is a fact about the screen it chose. Whether one
-  # that can DOES is a race between the display's row and the game's, and only running it
+  # The build says a game can tear, which is a fact about the screen it chose. Whether one
+  # that can does is a race between the display's row and the game's, and only running it
   # settles that — so it is measured here rather than priced.
+  #
+  # The game paints the screen a column at a time, each too narrow for a row to be filled at
+  # once, so it is slow by construction, and every row the display shows while it paints has a
+  # seam in it. Rows filled whole stay ahead of the display down the screen and need not tear.
   def test_a_game_that_draws_more_than_fits_is_seen_to_tear
     heavy = VBlank.build("PTER", console: :gba, code: "PTER", maker: "01", out: nil, err: nil) do
       screen :bitmap
       x = 0
       game_loop do
         clear_screen :black
-        6.times { |i| fill_rect 0, i * 24, 240, 24, :red }
+        80.times { |i| fill_rect i * 3, 0, 3, 160, :red }
         x += 1
       end
     end
@@ -560,7 +692,7 @@ class TestProfiler < Minitest::Test
   # --- a moment somebody played to ---
 
   # The work runs only once a variable is set, and nothing sets it. No held button reaches
-  # this and no scene contains it — it is STATE, which is what a saved moment carries and a
+  # this and no scene contains it — it is state, which is what a saved moment carries and a
   # booted scene does not.
   private def armed_game(bump = 1)
     VBlank.build("PSAV", console: :gba, code: "PSAV", maker: "01", out: nil, err: nil) do
@@ -604,7 +736,7 @@ class TestProfiler < Minitest::Test
     end
   end
 
-  # THE ONE THAT MATTERS MOST. A state holds addresses, and a rebuild moves all of them. Read
+  # The one that matters most. A state holds addresses, and a rebuild moves all of them. Read
   # one anyway and it still produces numbers — about whatever code moved into those addresses.
   # Measuring the wrong thing quietly is worse than refusing to measure.
   def test_a_moment_saved_from_another_build_is_refused
@@ -687,7 +819,7 @@ class TestProfiler < Minitest::Test
     end
   end
 
-  # WHERE AN ADDRESS GOES WHEN ROUTINES NEST. The setting up before the game loop holds the loops
+  # Where an address goes when routines nest. The setting up before the game loop holds the loops
   # that fill a list, so one span can sit inside another and the narrowest that covers an address
   # takes it. A span leaves out its end; what no span covers is the console's own code below the
   # cartridge's memory and "somewhere else" above it; and the tally lists routines in the order

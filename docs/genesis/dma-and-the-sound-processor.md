@@ -152,12 +152,11 @@ it, and nothing read says what it guards against, so it is left until a source d
 
 ## The pad read
 
-Changed on 2026-11-14.
-
-**The controller is read with the Z80 stopped** (S3), in a game that plays recordings: the blank's
-interrupt asks for the bus, waits for it, reads the pad (`rt_pad_read`) and lets go
-(`Recordings#emit_bus_for_pad`). The version register, also at `$A100xx`, is read only with the
-Z80 stopped too (`rt_recordings_send`).
+**The controllers are read with the Z80 kept off the cartridge** (S3), in a game that plays
+recordings, and the Z80 is not stopped for it (`Recordings#emit_z80_kept_off_for_pad`). Until
+2026-11-22 the blank's interrupt held the bus for the whole read, which was a few instructions for
+one pad but several lines of the screen for a Team Player; see "Four players" below. The version
+register, also at `$A100xx`, is still read with the Z80 stopped (`rt_recordings_send`).
 
 **Every stop the main program makes holds interrupts off** from the request until it lets go
 (`Recordings#emit_bus_taken`, `#emit_bus_given_back`), which is S4's "interrupts go off before the
@@ -169,8 +168,8 @@ Z80's queue and mailbox, and the version register's read.
 taken.** The blank's interrupt asked for the bus and left it held through the copies, the buttons
 and the music, until the end of the pass's wait. The blank's work here is mostly the 68000 writing
 the picture's maps and tiles and playing the music, not copies, so the Z80 stood still for some
-sixty samples a frame: a recording playing alone, with nothing else going on, crossed its middle at
-422.0 Hz for 433.3, with gaps of two waves; with eighty sprites, 401.0; painted, 384.9. Sonic 3 &
+sixty samples a frame and a recording played audibly flat, with gaps of whole waves, even with
+nothing else going on. Sonic 3 &
 Knuckles makes its blank's work almost all copies. Here each copy and each write into the Z80's
 memory is a stop of its own, a few instructions long.
 
@@ -178,14 +177,7 @@ memory is a stop of its own, a few instructions long.
 instructions more at each stop of the main program (the status register kept, interrupts held off,
 and the status register put back). A game with no recordings builds the same cartridge, byte for
 byte: every example built for the Genesis, a game of sprites, a painted one, and one with a song,
-a wave and a beep, each compared with the commit before.
-
-| | before | after |
-|---|---|---|
-| alone | 433.49 Hz | 433.49 Hz |
-| a wave part, a note every two frames | 433.68 Hz | 433.68 Hz |
-| 80 sprites | 433.46 Hz | 433.55 Hz |
-| painted, sixteen tiles a pass | 434.05 Hz | 434.14 Hz |
+a wave and a beep. A recording's pitch does not move measurably.
 
 `test_genesis_dma_guard.rb` holds the code: the pad read between the request and the release, and
 every copy's request with interrupts held off.
@@ -285,14 +277,13 @@ a stop, as it does in the console's own games, and the recording is back where t
 256 samples (19 ms). A shortfall over 127 is not believed, so a stop of more than about 9 ms in one
 round is not made up.
 
-**The guard is unchanged**: a bus request round every copy, as S1 says. The program still reads each
-sample from the cartridge as it sounds it, so when it reads has not changed and nothing about S1
-has. A read-ahead that kept off the bus during a copy would still be bound by S1, which makes no
-exception for a Z80 that promises not to look.
+**The guard is unchanged**: a bus request round every copy, as S1 says. The program has read ahead
+since 2026-11-22 ("Four players" below), but a read-ahead that kept off the bus during a copy would
+still be bound by S1, which makes no exception for a Z80 that promises not to look, so copies keep
+their stop.
 
-**The Z80 now writes two FM registers** (the DAC's and `$27`). It was first made to note the one it
-was on for the 68000 to name again after its own writes; since the next change the 68000 writes no
-FM register at all in a game that plays recordings, and that went.
+**The Z80 writes two FM registers** (the DAC's and `$27`) every sample. In a game that plays
+recordings the 68000 writes no FM register at all ("A song's notes" below).
 
 **The chip's busy time.** Genesis Plus GX holds the chip busy for 32 of its cycles after each value
 written (`core/sound/sound.c`, `YM2612_Write`), a third of a sample. The program's two values a
@@ -320,17 +311,8 @@ lines of the blank with a recording playing and 13 without.
 
 A game with no recordings and no painted screen builds the same cartridge as before.
 
-### The pitch, before and after
-
-| | before | after |
-|---|---|---|
-| 1 sprite, recording | 425.681 Hz | 433.484 Hz |
-| 24 sprites, recording | 424.012 Hz | 433.500 Hz |
-| 80 sprites, recording | 420.461 Hz | 433.529 Hz |
-| painted, sixteen tiles a pass, recording | 384.262 Hz | 433.119 Hz |
-
-The recording is 433.333 Hz. `test_genesis_sound.rb` holds the first, third and fourth to within
-2 Hz.
+**The pitch.** A recording now plays at its own pitch with one sprite, eighty sprites and a painted
+screen alike; `test_genesis_sound.rb` holds each of those to within 2 Hz of the 433.333 Hz recorded.
 
 ## A song's notes
 
@@ -389,22 +371,87 @@ chip. That is what VBlank does now.
 
 A game with no recordings builds the same cartridge as before.
 
-### The pitch, before and after
-
-| | before | after |
-|---|---|---|
-| a wave part, a note every two frames | 379.3 Hz, a gap of 2.5 waves | 433.7 Hz, no gap past 1.14 waves |
-| a recording across two banks, going round, over 2.8 s | 433.50 Hz | 433.49 Hz |
-| PAL | 429.5 Hz | 433.0 Hz |
-
-The recording is 433.333 Hz. `test_genesis_sound.rb` holds each to within 2 Hz, and the first two
-to no gap of a quarter more than a wave.
+**The pitch.** A recording keeps its pitch under a song playing a note every two frames, across two
+banks going round, and on a PAL console; `test_genesis_sound.rb` holds each to within 2 Hz of the
+433.333 Hz recorded, and the first two to no gap of a quarter more than a wave.
 
 ### Not done
 
 - **Nothing ran on hardware.** The Z80 writes three values in a sample that has an entry (the DAC's,
   `$27`, the entry's) and tests the busy bit before the entry's only. Whether a real chip takes the
   DAC's and `$27` every time, spaced by instruction count, is not known from anything read.
+
+## Four players
+
+Measured on 2026-11-22 in Genesis Plus GX: a recording of a square wave (15 samples up, 15 down, at
+13000 a second) looping for 240 frames, the gaps between its upward crossings over the last three
+seconds, in the emulator's samples (one wave is 101.8).
+
+### Where the time went
+
+Reading a Team Player takes several lines of the screen (`Frame#emit_team_player_read`), and the
+interrupt held the Z80 stopped for all of it. The DAC stood still through the read, and the samples
+it covered were passed over at the second timer's round: waves from 68.7 to 124.2 with the tap,
+against 90.2 to 111.0 with two pads. Releasing the bus between nibbles did not help: the Z80 must run
+most of the time to catch each tick, and a gap of a few instructions gives it nothing.
+
+### What the console's own games do
+
+No disassembly of a retail game's Team Player read was found. Sega's GEMS sound driver, which
+commercial games shipped with, keeps samples playing while the 68000 needs the Z80 off the bus
+(GEMS.A `_gemsdmastart` and `_gemsdmaend`; Z80.ASM `XFER68K`, `FILLDACFIFO`, `DACME`): the Z80 keeps a
+FIFO of 256 sample bytes in its own memory, copies into it from the cartridge in bursts of a few
+bytes, and before each burst sets an "unsafe" flag and then looks at the 68000's "block" flag. The
+68000 takes the bus only long enough to set "block" and read "unsafe", lets go, and if "unsafe" was
+set waits a little longer than a burst and asks again. The X-Band modem's GameLib reads a Team Player
+inside the same pair of calls (`controls.c`, `_ControllerVBL`).
+
+### What VBlank does now
+
+- **The Z80 plays from what it has read ahead.** `Recordings#driver` copies the recording as it is
+  into 256 bytes of its own memory (`Recordings::FIFO`), eight bytes at a time, while fewer than 128
+  wait to be sounded, and each tick sounds the byte the reader is on and moves the reader on by the
+  play's step. The step, the loop point, the end, glides and the passing over of missed samples are
+  all the reader's now; a new play starts the copy again.
+- **The 68000 reads the ports with the Z80 kept off the cartridge**, in GEMS's order: `BLOCK` set and
+  `UNSAFE` read with the bus held for a moment, the bus let go, and asked again after a wait while
+  `UNSAFE` was set; then the read, then `BLOCK` cleared. The Z80 sets `UNSAFE` before it looks at
+  `BLOCK`, and clears it after each chunk.
+- **A copy by the video chip still stops the Z80** (S1, unchanged), and so does each write into its
+  queue.
+- **The Z80 looks for its tick inside each chunk**, and clears the tick's flag before it sounds the
+  sample, as GEMS's `DACME` does, so a tick that came during a chunk is never so late that the next
+  is lost with it. Samples a stop covered are owed and paid one at a time on ticks with time to spare,
+  not passed over in one long loop.
+- **The 68000 tells the Z80 of a queue entry** by writing a one-byte call (`RST 8`) over a `NOP` in
+  its sample loop, rather than the Z80 reading the queue's count on every tick.
+
+### What it costs
+
+| | before | after |
+|---|---|---|
+| waves, two pads | 90.2 to 111.0 | 91.9 to 107.7 |
+| waves, a Team Player of three | 68.7 to 124.2 | 91.9 to 107.7 |
+| the Z80's program | 490 bytes | 1047 bytes, of 8192 |
+| the Z80's memory besides | | 256 bytes read ahead, 18 bytes of its own copy of the play |
+| the Z80 stopped for the controllers, a frame | the whole read | two moments of a few instructions |
+| a tick, seen and sounded with the read-ahead full | 204 cycles of 269 | 192 |
+
+Counted by hand from the instructions' cycles. A chunk of eight bytes is 334 cycles, and Genesis Plus
+GX adds three to each read of the cartridge.
+
+### Not done
+
+- **A recording read at two or more of its samples a sample** (about an octave above the rate it was
+  recorded at, or more) would be read faster than the Z80 can copy it ahead. Such a play is read
+  straight from the cartridge on every tick, as before, at any step up to the highest a play can
+  have (`Recordings.z80_step`, under 256 samples); its `UNSAFE` is `UNSAFE_STOPPED`, and the 68000
+  stops the Z80 for the controllers' read, as before. So a Team Player read still holds such a play
+  still. A play glided up past it goes on read straight from where its reader is. Such a play's tick
+  is 21 cycles to see and at most 235 more of 269, counted by hand; a change of bank in one costs a
+  tick, passed over at the second timer's round.
+- **Nothing ran on hardware**, as above. The DAC's value is written a few instructions after the
+  timers' register, as GEMS writes it; whether a real chip takes both every time is not known.
 
 ## How to see it
 

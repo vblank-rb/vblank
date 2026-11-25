@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/fonts").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/fonts").to_s)
 
 # The fonts example: the same number drawn in :default and :tiny. Asserts both
 # render, and that the tiny one is genuinely smaller (fewer pixels, shorter box).

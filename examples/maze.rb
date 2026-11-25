@@ -27,7 +27,7 @@ module Maze
 
   # A 30x20-tile room (240x160, the whole screen): a wall border with a grid of thick
   # pillars, leaving wide corridors between them. "#" is a wall, "." is floor.
-  ROOM = Ractor.make_shareable([
+  ROOM = [
     "##############################",
     "#............................#",
     "#...####....####....####.....#",
@@ -48,9 +48,9 @@ module Maze
     "#............................#",
     "#............................#",
     "##############################",
-  ])
+  ]
 
-  GAME = VBlank.game("MAZE", consoles: %i[gba snes genesis]) do
+  GAME = VBlank.game("MAZE", consoles: %i[gba snes genesis gbc]) do
     screen :tiled # tile mode: a background room + a hardware sprite over it
 
     # Two 8x8 tiles: a brick wall and a dark floor. A little texture in each so a run

@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SEGA GENESIS CARTRIDGE, answering what the one reader (Verifier) asks of a running
+    # A running Sega Genesis cartridge, answering what the one reader (Verifier) asks of a running
     # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
     # reader was written over; this plays in Genesis Plus GX (ruby-genesis-emulator) and takes the same
     # calls, as SNESProbe does for bsnes.
@@ -29,19 +29,72 @@ module VBlank
       WIDE_SCREEN_SPRITE_ENTRIES = 80
       NARROW_SCREEN_SPRITE_ENTRIES = 64
 
-      def initialize(path, save_dir: nil)
-        @core = Emulator.open_genesis(path, save_dir: save_dir)
+      # +multitap+ plugs Sega's Team Player into the second port before the first frame
+      # (RubyGenesisEmulator::Core#plug_in_team_player), its plugs filled with three-button pads.
+      def initialize(path, save_dir: nil, multitap: false)
+        @path = path
+        @save_dir = save_dir
+        @multitap = multitap
+        @core = open_core
         @last_audio = []
+        @state_loaded = false
+      end
+
+      # The core on the cartridge, with the core settings +settings+, and the Team Player plugged in
+      # if one was asked for.
+      private def open_core(settings: {})
+        core = Emulator.open_genesis(@path, save_dir: @save_dir, settings: settings)
+        @multitap ? core.plug_in_team_player : core
+      end
+
+      # The voices #hearing can name: the FM chip's six and the square chip's three and its noise.
+      # Genesis Plus GX sets each one's loudness from a setting of its own, read as it loads the
+      # cartridge, so a voice is left out by opening the core again with that voice's loudness at 0.
+      VOICE_SETTINGS = Ractor.make_shareable({
+        fm1: "genesis_plus_gx_md_channel_0_volume", fm2: "genesis_plus_gx_md_channel_1_volume",
+        fm3: "genesis_plus_gx_md_channel_2_volume", fm4: "genesis_plus_gx_md_channel_3_volume",
+        fm5: "genesis_plus_gx_md_channel_4_volume", fm6: "genesis_plus_gx_md_channel_5_volume",
+        square1: "genesis_plus_gx_psg_channel_0_volume", square2: "genesis_plus_gx_psg_channel_1_volume",
+        square3: "genesis_plus_gx_psg_channel_2_volume", noise: "genesis_plus_gx_psg_channel_3_volume"
+      })
+
+      def channels = VOICE_SETTINGS.keys
+
+      # Hear only the voices +only+ names, or every voice but those +without+ names, from the first
+      # frame: the core is opened again with the others silent, so it must be asked before any frame
+      # is played and before a state is put back (#load_state), which opening again would throw
+      # away. The voices are the core's settings and not part of its state, so chosen first they
+      # are kept as a state loads.
+      def hearing(only: nil, without: nil)
+        if only.nil? == without.nil?
+          raise ArgumentError, "hearing must say only: or without:. only: keeps the voices you name and leaves out the " \
+                               "rest. without: leaves out the ones you name."
+        end
+        named = Array(only || without)
+        unknown = named - channels
+        raise ArgumentError, "A Genesis has no voice #{unknown.join(', ')}. Its voices are #{channels.join(', ')}." unless unknown.empty?
+        if @core.frames.positive? || @state_loaded
+          raise ArgumentError, "This reader can choose the voices it hears on a Genesis cartridge only before the first " \
+                               "frame and before a state is loaded. To fix this, ask for the voices before the cartridge " \
+                               "plays or the state is loaded."
+        end
+
+        silent = only ? channels - named : named
+        @core.destroy
+        @core = open_core(settings: silent.to_h { |voice| [VOICE_SETTINGS.fetch(voice), "0"] })
+        self
       end
 
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask). A Genesis has one controller here, and the
-      # reader refuses a second player's buttons before they reach this.
+      # +keys+ is a button mask (IR::Buttons.mask), the second player's on the second pad. The third
+      # and fourth players' go to the next plugs of a Team Player there. Without one (+multitap+),
+      # the second port has a plain pad, and the third and fourth players' buttons reach nothing.
       def step(frames, keys: 0)
         held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
-        @core.set_buttons(IR::Buttons.by_controller(held).first & PAD_BUTTONS)
+        IR::Buttons.by_controller(held, controllers: Console::GENESIS.controllers)
+                   .each_with_index { |buttons, port| @core.set_buttons(buttons & PAD_BUTTONS, port: port) }
         @last_audio = Array.new(frames) do
           @core.run_frame
           @core.take_audio.pack("s<*")
@@ -74,6 +127,15 @@ module VBlank
       def read8(address) = @core.wram_read8(work_ram_offset(address))
       def read16(address) = @core.wram_read16(work_ram_offset(address))
       def read32(address) = @core.wram_read32(work_ram_offset(address))
+      def write32(address, value) = @core.wram_write32(work_ram_offset(address), value)
+
+      # The console's whole state, written to the file +path+ in Genesis Plus GX's own format, and put
+      # back from one (Verifier#save_state, #load_state).
+      def save_state(path) = File.binwrite(path, @core.serialize)
+      def load_state(path)
+        @core.unserialize(File.binread(path))
+        @state_loaded = true
+      end
 
       # The 64 colours as 15-bit colours, each channel's three bits widened to five.
       def palette = @core.color_ram.map { |color| COLORS.fetch(color) }
@@ -101,12 +163,7 @@ module VBlank
       def scroll_ram = @core.vsram.unpack("v*").pack("n*")
       def video_registers = @core.vdp_registers.pack("C*")
 
-      # Genesis Plus GX here mixes every voice together and draws every layer together.
-      def hearing(**)
-        raise ArgumentError, "This reader cannot play one voice alone on a Genesis cartridge. It records every " \
-                             "voice together. To fix this, remove `only:` and `without:`."
-      end
-
+      # Genesis Plus GX here draws every layer together.
       def showing(**)
         raise ArgumentError, "This reader cannot draw the picture without a layer on a Genesis cartridge. " \
                              "Genesis Plus GX here draws every layer together. To fix this, remove `only:` and " \

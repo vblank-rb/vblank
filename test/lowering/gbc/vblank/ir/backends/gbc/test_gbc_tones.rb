@@ -4,7 +4,7 @@ require "test_helper"
 require "sound_comparison"
 require "speakers"
 
-# THE COLOR CARTRIDGE'S SOUND, for a wobble its music player moves a frame at a time: the run's log
+# The color cartridge's sound, for a wobble its music player moves a frame at a time: the run's log
 # says the player made each move, but not that the voice was told. Read off the cartridge's own
 # sound, a voice holds its note's pitch, then the pitch above and the pitch below by turns. The
 # voice is tuned by the same pitch number as the Advance's, so the pitches are the ones the Advance
@@ -94,7 +94,7 @@ class TestGBCTones < Minitest::Test
     part.count { |sample| sample >= middle }.fdiv(part.length)
   end
 
-  # SHAPES OF THEIR OWN: the melody's second note thin where its part is hollow, and the harmony
+  # Shapes of their own: the melody's second note thin where its part is hollow, and the harmony
   # taking turns at thin and thick a frame each, the Color's own register told every frame.
   def test_notes_play_in_shapes_of_their_own
     program = color_program do
@@ -117,7 +117,7 @@ class TestGBCTones < Minitest::Test
     assert(thick.each_cons(2).all? { |one, other| one != other }, "thin and thick by turns: #{shares}")
   end
 
-  # PARTS ON ONE SPEAKER EACH, the drums on both — and the game's own beep, hit and tone, which take
+  # Parts on one speaker each, the drums on both — and the game's own beep, hit and tone, which take
   # the voices of parts on one speaker, play from both again.
   def test_each_part_plays_from_its_own_speaker
     program = color_program do

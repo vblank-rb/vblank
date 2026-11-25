@@ -6,7 +6,7 @@ require "stringio"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A TITLE AS A GENESIS GAME KEEPS ONE: two dozen sprites drawn from an original's frames, each
+# A title as a Genesis game keeps one: two dozen sprites drawn from an original's frames, each
 # frame three pieces of different sizes, most of them off the grid of 8 the origin sets, in two
 # orders the game works out; and a background that every eighth pass has a line of twenty letters
 # written into it a cell at a time, each letter read from a table and written by one routine as
@@ -212,7 +212,7 @@ module PiecePaceGames
   end
 end
 
-# WHAT THAT TITLE COSTS THE GENESIS, measured in the emulator, and that it shows what the
+# What that title costs the Genesis, measured in the emulator, and that it shows what the
 # interpreter shows. Every pass must fit a frame, the pass that writes the line too; and pieces
 # must cost about what the same pictures cost flat, since a piece is a row of the sprite table
 # either way.

@@ -3,14 +3,14 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND IS HANDED A WHOLE DIFFERENT MAP, while the game runs.
+# A background is handed a whole different map, while the game runs.
 #
 # `set_tile` gave a background one cell changing at a time — a door, a pot, a bombable wall —
 # and deliberately left the bulk case out, because the two are not the same problem. A cell is
 # one half-word and can go in wherever the game is; a whole room is thousands of them, and put
 # in the same way the screen would show half of the old room and half of the new.
 #
-# So a room is a MAP, and walking into one is naming it. `background :rooms, map: { hall: ...,
+# So a room is a map, and walking into one is naming it. `background :rooms, map: { hall: ...,
 # cave: ... }` declares them and `rooms.show_map :cave` says which is showing; the copy happens
 # in the gap between frames, and only on the frame the answer changed.
 class TestShowMap < Minitest::Test
@@ -56,7 +56,7 @@ class TestShowMap < Minitest::Test
     assert_equal Color.resolve(:red), cell_of(program, frames: 4), "the hall, which was declared first"
   end
 
-  # A BACKGROUND WHOSE LINE RUNS EVERY PASS keeps the map the game handed it: put up again, it shows
+  # A background whose line runs every pass keeps the map the game handed it: put up again, it shows
   # as it now is (Reference#put_up_background), as a room stays when the routine that draws the
   # screen runs each frame.
   def test_a_background_put_up_again_keeps_the_map_it_was_handed
@@ -136,10 +136,7 @@ class TestShowMap < Minitest::Test
         rooms.show_map :cave if frames == 1
         state = 1 if frames == 3
         state = 0 if frames == 6
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :pause
-        end
+        call({ 0 => :play, 1 => :pause }, number: :state)
         frames += 1
       end
     end
@@ -184,7 +181,7 @@ class TestShowMap < Minitest::Test
     assert_equal Color.resolve(:red), cell_of(program, frames: 8), "and the hall again on the way back"
   end
 
-  # SAYING THE MAP THAT IS ALREADY SHOWING COSTS NOTHING, which is what lets `show_map` be
+  # Saying the map that is already showing costs nothing, which is what lets `show_map` be
   # written every frame — from a scene, from a branch — rather than only on the frame a door
   # is opened. Nothing observable changes either way; what this pins is that saying it over
   # and over draws the same picture as saying it once.
@@ -243,8 +240,8 @@ class TestShowMap < Minitest::Test
     assert_equal Color.resolve(:blue), pixel_at(1, 1, screen)
   end
 
-  # HOWEVER MANY PLACES A GAME SAYS WHICH MAP IS SHOWING, THE COPY HAPPENS ONCE, AND IT
-  # HAPPENS IN THE GAP BETWEEN FRAMES. That is the whole of the acceptance: a copy where
+  # However many places a game says which map is showing, the copy happens once, and it
+  # happens in the gap between frames. That is the whole of the acceptance: a copy where
   # `show_map` was called would land while the display was reading, and the screen would
   # show half of the old room and half of the new. There is nothing to read off a picture
   # afterwards — a torn frame is one frame, and the oracle has no display racing it — so
@@ -361,7 +358,7 @@ class TestShowMap < Minitest::Test
     assert_backends_agree(wide_rooms_program, frames: 6)
   end
 
-  # A GAME WITH A LOT OF ROOMS IS THE POINT OF THIS, so the far end of a long set is worth
+  # A game with a lot of rooms is the point of this, so the far end of a long set is worth
   # its own test: the map is found by counting strides from the first, and a stride that was
   # a little wrong would still land inside the blob and draw a plausible neighbouring room.
   # The last of thirty-two is where that shows.

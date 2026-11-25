@@ -57,7 +57,7 @@ class TestLayerTransparencyCartridge < Minitest::Test
   # variable starts at — boot writes that rather than waiting to be told. A game whose fog
   # starts clear must not flash solid on the way in.
   #
-  # The first frame SHOWN, which is not a fixed number: the picture is held off, white, until
+  # The first frame shown, which is not a fixed number: the picture is held off, white, until
   # the game's first frame is set up, and how long setting up takes is the game's own affair.
   def test_the_first_frame_shows_the_amount_the_game_starts_at
     rom = assemble_rom(clearing_program, name: "FOGBOO")

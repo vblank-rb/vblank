@@ -47,7 +47,7 @@ module ScreenFadeGames
     end
   end
 
-  # AN EFFECT SET BEFORE THE GAME LOOP IS IN FORCE ON THE FIRST FRAME SHOWN. A game that opens
+  # An effect set before the game loop is in force on the first frame shown. A game that opens
   # on a flash and lets it fall away must never show the picture without it first. The flash is
   # carried by a routine that runs between frames, so the screen stays switched off until that
   # routine has run once; a screen switched on as soon as the build set it up showed one frame of
@@ -135,7 +135,7 @@ class TestScreenFade < Minitest::Test
   end
 
   # `frames:` is how long the ramp takes, so asking for twice as long has to take about
-  # twice as many frames. Asserted as a RELATIONSHIP rather than an exact count: a fixture
+  # twice as many frames. Asserted as a relationship rather than an exact count: a fixture
   # that pinned "arrives on frame 9" would break on any change to where the effect runs in
   # a frame without anything being wrong.
   def test_a_longer_fade_takes_proportionally_longer
@@ -156,7 +156,7 @@ class TestScreenFade < Minitest::Test
 
   # --- the flash ---
 
-  # The frame a flash exists for is its FIRST one. An effect that spent that frame part of
+  # The frame a flash exists for is its first one. An effect that spent that frame part of
   # the way to full would read as a soft glow rather than a hit, so the level is applied
   # before it is moved and this is what says so.
   def test_a_flash_is_at_full_on_the_frame_it_is_seen_first
@@ -277,7 +277,7 @@ class TestScreenFade < Minitest::Test
 
   # --- a colour other than black or white ---
   #
-  # Black and white are a BRIGHTNESS change, which is what `fade` is. Red is not — mixing
+  # Black and white are a brightness change, which is what `fade` is. Red is not — mixing
   # a colour in is a different piece of the display, and that is `tint`. Both take the
   # same amount and leave the picture untouched underneath, so the ramp above them is one
   # ramp; only the verb the branch reaches for changes.

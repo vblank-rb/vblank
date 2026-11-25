@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PAINTED SCREEN IN MANY COLOURS. The Advance keeps a colour for every pixel, so a game paints
+# A painted screen in many colours. The Advance keeps a colour for every pixel, so a game paints
 # in as many as it likes. A Game Boy Color keeps every 8×8 square of its screen in one of eight
 # lists of four colours, so a painted screen there can show many colours as long as no square
 # needs more than four. These games paint in more than four, a few to a square, and every lowering
@@ -42,10 +42,7 @@ class TestPaintedSquares < Minitest::Test
       end
       game_loop do
         state = 1 if pressed(:a)
-        case_var :state do
-          when_val 0, :warm
-          when_val 1, :cool
-        end
+        call({ 0 => :warm, 1 => :cool }, number: :state)
       end
     end
     b.finalize_program
@@ -81,10 +78,7 @@ class TestPaintedSquares < Minitest::Test
       end
       game_loop do
         state = 1 if pressed(:a)
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
     b.finalize_program
@@ -107,17 +101,18 @@ class TestPaintedSquares < Minitest::Test
     b.instance_eval do
       screen :bitmap
       inner = var :inner, 0
+      var :state, 0
       scene :inner do
         clear_screen :black
         pixel 15, 23, :green
         %i[green blue cyan].each_with_index { |color, i| fill_rect 40 + (i * 2), 0, 2, 8, color }
       end
       scene :outer do
-        case_var(:inner) { when_val 0, :inner }
+        call({ 0 => :inner }, number: :inner)
         fill_rect 8, 16, 2, 8, :red
         fill_rect 10, 16, 2, 8, :orange
       end
-      game_loop { case_var(:state) { when_val 0, :outer } }
+      game_loop { call({ 0 => :outer }, number: :state) }
       inner = 0
     end
     b.finalize_program

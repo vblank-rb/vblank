@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EVERY EXAMPLE BUILDS AND PLAYS, on every run, as the console that run plays games as, for each
+# Every example builds and plays, on every run, as the console that run plays games as, for each
 # game that names that console. A few frames only: the question is whether it still goes at all,
 # and each example's own test says whether it plays right. It reads every example in, so it
 # stays on the main Ractor.

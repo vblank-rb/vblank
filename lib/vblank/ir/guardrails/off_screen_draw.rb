@@ -4,6 +4,22 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a drawing that lands wholly off the screen, so nothing of it shows:
+        #
+        # > <What> at (<x>, <y>), sized <width>x<height>, is fully off the <screen width>x<screen
+        # > height> screen, so nothing shows. The screen runs from (0, 0) at the top-left to
+        # > (<right>, <bottom>) at the bottom-right.
+        #
+        # What it names is "A pixel", "A filled rectangle", "A rectangle", "A digit", "The text"
+        # and the text, or "The image" and the image's name. The drawing does no harm, but it is
+        # never seen, and a missing picture with no error is hard to find.
+        #
+        # A drawing that is only partly off the screen is cut at the edge and is not warned about.
+        # Only a drawing at a written-out position is checked: one at a position the game works
+        # out is cut at the edge as the game runs. To fix this, give a position on the screen. A
+        # swapped x and y is a common cause.
+        #
+        #--
         # A draw whose whole footprint lands off the 240x160 screen paints nothing
         # — the "why is my sprite missing / why is the screen blank" mystery, with
         # no crash to point at it. The framework already clips draws to the screen
@@ -17,6 +33,7 @@ module VBlank
         # Only draws whose position and size are known as the program is built are
         # checkable. One placed at a variable position is decided at run time (and
         # clipped safely then), so it's left alone here.
+        #++
         class OffScreenDraw
           NAME = :off_screen_draw
           PLAIN_NAME = "drawing off the screen"
@@ -52,7 +69,7 @@ module VBlank
             case node.kind
             when :pixel
               with_constant_position(node) { |x, y| [x, y, 1, 1] }
-            when :fill_rect, :dma_fill_rect, :draw_rect_at
+            when :fill_rect, :draw_rect_at
               rect_bounds(node)
             when :draw_text
               with_constant_position(node) { |x, y| font = node.fonts.get(node.font); [x, y, font.text_width(node.text), font.height] }
@@ -115,7 +132,7 @@ module VBlank
           def describe(node)
             case node.kind
             when :pixel then "A pixel"
-            when :fill_rect, :dma_fill_rect then "A filled rectangle"
+            when :fill_rect then "A filled rectangle"
             when :draw_rect_at then "A rectangle"
             when :draw_text then "The text #{node.text.inspect}"
             when :draw_digit then "A digit"

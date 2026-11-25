@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/clock").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/clock").to_s)
 
 # The clock example (examples/clock.rb): the time and the date in big letters, read from the
 # clock the cartridge carries. The test starts the clock at a moment of its own, the way it

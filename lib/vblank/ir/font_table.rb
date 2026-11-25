@@ -2,21 +2,21 @@
 
 module VBlank
   module IR
-    # WHICH FONT A NAME MEANS TO ONE PROGRAM.
+    # Which font a name means to one program.
     #
     # A game can draw with two kinds of font: the ones the framework ships, which are
     # everybody's and live in {Graphics::Fonts}, and the ones it declared for itself with
     # `font :heavy do ... end`, which are part of the game and ride in its tree as `font`
     # nodes — the same way a declared picture does.
     #
-    # Everything that has to turn a font NAME into a font goes through here: the builder
+    # Everything that has to turn a font name into a font goes through here: the builder
     # while the program is being written, the off-screen guardrail, the glyph count, the
     # headless interpreter and the two places the GBA backend paints text. So the rule about
     # which one wins is written down once, and a font declared by one game can never be
     # drawn by the next — which is what happened while a declared font went into a table the
     # whole process shared.
     #
-    # ASK FOR IT ONCE PER PROGRAM, not once per glyph. Finding the fonts means walking the
+    # Ask for it once per program, not once per glyph. Finding the fonts means walking the
     # tree, so a caller that paints thousands of characters gets the table at the top and
     # keeps it. That is the same bargain the palette pass makes for pictures.
     class FontTable

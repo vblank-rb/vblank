@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT A CARTRIDGE BUILD WORKS OUT FROM ITS PROGRAM ALONE, ONCE, FOR EVERY TRY. A console whose
+      # What a cartridge build works out from its program alone, once, for every try. A console whose
       # cartridge is seen a bank at a time builds a game by trying: a try lowers the whole game, and
       # stops at the first thing that does not fit (too many tiles, too many lists of colours, a part
       # of the cartridge too full), which decides what the next try changes. A big game takes several.

@@ -3,7 +3,7 @@
 require "test_helper"
 require "first_pass_presses"
 
-# A NEW GAME: `part :play` says that what the game declares from that line on is its play, and
+# A new game: `part :play` says that what the game declares from that line on is its play, and
 # `start_over :play` puts all of it back as it was declared, on the pass the new game starts.
 # What the game keeps between games stays as it is: a high score kept with save_var, the
 # random numbers, and whatever was declared outside the part.
@@ -15,7 +15,7 @@ require "first_pass_presses"
 module PartGames
   include FirstPassPresses
 
-  # A SMALL GAME THAT ENDS AND STARTS AGAIN. A plays: the score, the lives, a speed with a
+  # A small game that ends and starts again. A plays: the score, the lives, a speed with a
   # fraction, the state, a list, a list that starts full and a pool all change, and a number
   # is rolled. B is game over: the best score is kept, and a new game starts. The best score is
   # declared above the part, and the part ends at `part :between_games`, so what is declared

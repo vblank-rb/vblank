@@ -4,26 +4,26 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # A SMALLER SCREEN SHOWN IN THE MIDDLE OF THE ADVANCE'S, WITH A BORDER ROUND IT: a game laid out
+        # A smaller screen shown in the middle of the Advance's, with a border round it: a game laid out
         # for the Game Boy Color's 160×144, built for the Advance (Console::AdvanceKit::COLOR_SCREEN).
         #
         # The game itself is lowered exactly as any other; what changes is where its picture lands on
         # the screen, and what fills the rest. Three of the console's own parts do it, and no drawing
         # verb learns anything:
         #
-        # - THE PICTURE MOVES BY ITS SCROLL. A background shows its map from the place its scroll
+        # - The picture moves by its scroll. A background shows its map from the place its scroll
         #   registers name, so a background scrolled 40 pixels further left and 8 further up shows
         #   the game's top-left corner at (40, 8) on the screen. Every write of a scroll takes the
         #   corner off (#emit_corner_off_scroll). A painted screen is the console's third
         #   background, drawn through the same turning-and-resizing numbers a turning background has,
         #   whose "reference point" sets which pixel of the picture is drawn at the screen's corner:
         #   pointed at (-40, -8) the picture lands at (40, 8) too (#emit_painted_screen_corner).
-        # - THE SPRITES MOVE AS THEY ARE COPIED. A sprite's place is written into a copy of the
+        # - The sprites move as they are copied. A sprite's place is written into a copy of the
         #   console's sprite table (SpriteDrawing::HeldTable), never into the console's own, and that
         #   copy is put into the console's table once a frame, between frames, adding the corner to
         #   each place as it goes. So a sprite stands where the game put it, inside the game's screen,
         #   whatever wrote its place.
-        # - THE BORDER IS SPRITES IN FRONT OF EVERYTHING. The first rows of the console's table
+        # - The border is sprites in front of everything. The first rows of the console's table
         #   (BORDER_ROWS of them, Console::AdvanceKit::BORDER_SPRITES) hold sprites that cover the
         #   border exactly and nothing else, written whenever the table is cleared and never touched
         #   again. A sprite nearer the top of the table is drawn in front of one further down, and
@@ -35,9 +35,16 @@ module VBlank
         #   (refused at ScreenLayout#refuse_sprite_colors_over_border!).
         #
         # A whole-screen fade or tint would darken the border too, since the console blends every
-        # layer it is told to across the whole screen. So the display's first window is the game's
+        # layer it is told to across the whole screen. So the display's second window is the game's
         # screen: inside it every layer shows and the blend applies, and outside it only the sprites
         # (which there are the border's) show, and nothing is blended (#emit_window).
+        #
+        # A status bar is the display's first window, a rectangle inside the game's screen from the
+        # bar's top down (#emit_bar_registers). Where two windows overlap, the display takes the
+        # first one's layers (GBATEK, "LCD I/O Window Feature": window 0 has the highest priority),
+        # so inside the bar it draws the bar's layer and the sprites, and in the rest of the game's
+        # screen every layer but the bar's. That is the second window, not the first, for the game's
+        # screen for that reason: the first would hide the bar's.
         #
         # What the game sees is a 160×144 screen. `screen_width` and `screen_height` give that size, the
         # interpreter plays the game on one, and every frame of the cartridge's middle is that
@@ -81,7 +88,6 @@ module VBlank
             new(program, console, emitter: emitter, primitives: primitives, uploads: uploads)
           end
 
-          include EmitterCalls
 
           def initialize(program, console, emitter:, primitives:, uploads:)
             @emitter = emitter
@@ -142,55 +148,105 @@ module VBlank
 
           # The scroll in ACC, made the register's: the corner taken off.
           def emit_corner_off_scroll(way)
-            emit(ASM.sub_imm(ACC, ACC, corner(way)))
+            @emitter.emit(ASM.sub_imm(ACC, ACC, corner(way)))
           end
 
           # ...and a painted screen's reference point in ACC, which counts in 256ths of a pixel.
           def emit_corner_off_reference(way)
-            emit(ASM.sub_imm(ACC, ACC, corner(way) * FIXED_ONE))
+            @emitter.emit(ASM.sub_imm(ACC, ACC, corner(way) * FIXED_ONE))
           end
 
-          # MOVE A SPRITE'S ROW BY THE CORNER, as it is copied into the console's table: the first half
+          # Move a sprite's row by the corner, as it is copied into the console's table: the first half
           # of the row in ACC holds its row on the screen in its low eight bits, the second its column
           # in its low nine. Each is a count the table wraps round, so the corner is added to that
           # count alone and the bits above it, which set how the sprite is drawn, are kept. +scratch+
           # is a register free to use.
           def emit_row_moved_by_corner(scratch)
-            emit(ASM.add_imm(scratch, ACC, @top))
-            emit(ASM.and_imm(scratch, scratch, 0xFF))
-            emit(ASM.bic_imm(ACC, ACC, 0xFF))
-            emit(ASM.orr_reg(ACC, ACC, scratch))
+            @emitter.emit(ASM.add_imm(scratch, ACC, @top))
+            @emitter.emit(ASM.and_imm(scratch, scratch, 0xFF))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0xFF))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, scratch))
           end
 
           def emit_column_moved_by_corner(scratch)
-            emit(ASM.lsl_imm(scratch, ACC, 23))
-            emit(ASM.add_imm(scratch, scratch, @left << 23))
-            emit(ASM.lsr_imm(scratch, scratch, 23))
-            emit(ASM.bic_imm(ACC, ACC, 0xFF))
-            emit(ASM.bic_imm(ACC, ACC, 0x100))
-            emit(ASM.orr_reg(ACC, ACC, scratch))
+            @emitter.emit(ASM.lsl_imm(scratch, ACC, 23))
+            @emitter.emit(ASM.add_imm(scratch, scratch, @left << 23))
+            @emitter.emit(ASM.lsr_imm(scratch, scratch, 23))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0xFF))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, 0x100))
+            @emitter.emit(ASM.orr_reg(ACC, ACC, scratch))
           end
 
           def corner(way) = way == :x ? @left : @top
 
+          # The game's screen's height in rows, where a status bar's top is kept.
+          def game_screen_height = @inner[1]
+
+          # A status bar's place, in a border (BackgroundDrawing#emit_bar_registers is the whole
+          # screen's): its map's top-left corner drawn at the bar's top row of the game's screen, and
+          # the first window from there to the foot of the game's screen, the bar's layer and the
+          # sprites inside it. +top+ is a row written in the program, or nil for the row in ACC, already
+          # kept to the game's screen. +layer+ is the bar's background layer, +x_scroll+ and
+          # +y_scroll+ its scroll registers, and +scratch+ a register free to use.
+          def emit_bar_registers(layer, top:, x_scroll:, y_scroll:, scratch:)
+            bottom = @top + @inner[1]
+            if top
+              top = top.clamp(0, @inner[1])
+              @emitter.write_reg16(y_scroll, scroll_value(-top, :y))
+              @emitter.write_reg16(REG_WIN0V, ((top + @top) << 8) | bottom)
+            else
+              @emitter.emit(ASM.rsb_imm(scratch, ACC, 0)) # the map's top row is drawn at the bar's top row
+              @emitter.emit(ASM.sub_imm(scratch, scratch, @top)) # ...which is the corner's rows further down
+              @emitter.emit_number(TMP, y_scroll)
+              @emitter.emit(ASM.store_halfword(scratch, TMP))
+              @emitter.emit(ASM.add_imm(ACC, ACC, @top))
+              @emitter.emit(ASM.lsl_imm(ACC, ACC, 8))
+              @emitter.emit(ASM.orr_imm(ACC, ACC, bottom))
+              @primitives.store_halfword_acc(REG_WIN0V)
+            end
+            @emitter.write_reg16(x_scroll, scroll_value(0, :x))
+            @emitter.write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
+            @emitter.write_reg16(REG_WININ, bar_window_layers(layer, WIN_OBJ) | (game_window_layers(layer) << WIN1_SHIFT))
+          end
+
+          # A bar that covers sprites, in a border: ACC holds the sprites' switch for the bar's window,
+          # WIN_OBJ or nought, and the game's screen's window is written beside it unchanged.
+          def emit_bar_covers(layer)
+            @emitter.emit(ASM.orr_imm(ACC, ACC, bar_window_layers(layer, 0)))
+            @emitter.emit(ASM.orr_imm(ACC, ACC, game_window_layers(layer) << WIN1_SHIFT))
+            @primitives.store_halfword_acc(REG_WININ)
+          end
+
+          # Every layer and the blend in the game's screen again, for a screen with no status bar.
+          def emit_game_window_without_bar = @emitter.write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
+
           private
 
-          # Inside the window: every layer, and the blend. Outside: the sprites alone, unblended.
+          # Inside the game's screen's window: every layer, and the blend. Outside every window: the
+          # sprites alone, unblended.
           def emit_window
-            write_reg16(REG_WIN0H, (@left << 8) | (@left + @inner[0]))
-            write_reg16(REG_WIN0V, (@top << 8) | (@top + @inner[1]))
-            write_reg16(REG_WININ, WIN_ALL_LAYERS | WIN_EFFECT)
-            write_reg16(REG_WINOUT, WIN_OBJ)
+            @emitter.write_reg16(REG_WIN1H, (@left << 8) | (@left + @inner[0]))
+            @emitter.write_reg16(REG_WIN1V, (@top << 8) | (@top + @inner[1]))
+            @emitter.write_reg16(REG_WININ, game_window_layers(nil) << WIN1_SHIFT)
+            @emitter.write_reg16(REG_WINOUT, WIN_OBJ)
           end
+
+          # The layers the bar's window shows: its own, the sprites where +sprites+ is WIN_OBJ, and the
+          # blend.
+          def bar_window_layers(layer, sprites) = (1 << layer) | sprites | WIN_EFFECT
+
+          # The layers the game's screen's window shows: every one but the bar's +layer+ (none for
+          # nil), and the blend.
+          def game_window_layers(layer) = (WIN_ALL_LAYERS & ~(layer ? 1 << layer : 0)) | WIN_EFFECT
 
           # The painted screen upright and at its own size, with the picture's corner at the game's.
           def emit_painted_screen_corner
-            write_reg16(REG_BG2PA, FIXED_ONE)
-            write_reg16(REG_BG2PB, 0)
-            write_reg16(REG_BG2PC, 0)
-            write_reg16(REG_BG2PD, FIXED_ONE)
-            store_word_immediate(-@left * FIXED_ONE, REG_BG2X)
-            store_word_immediate(-@top * FIXED_ONE, REG_BG2Y)
+            @emitter.write_reg16(REG_BG2PA, FIXED_ONE)
+            @emitter.write_reg16(REG_BG2PB, 0)
+            @emitter.write_reg16(REG_BG2PC, 0)
+            @emitter.write_reg16(REG_BG2PD, FIXED_ONE)
+            @primitives.store_word_immediate(-@left * FIXED_ONE, REG_BG2X)
+            @primitives.store_word_immediate(-@top * FIXED_ONE, REG_BG2Y)
           end
 
           def tiles_for_pieces = @pieces.sum(&:tiles)

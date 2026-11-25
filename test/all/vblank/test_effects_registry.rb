@@ -2,6 +2,7 @@
 
 require "test_helper"
 
+require "ractor_workers"
 require "stringio"
 
 # The effect registry: how a verb gets into the DSL from outside the framework.
@@ -15,6 +16,7 @@ class TestEffectsRegistry < Minitest::Test
   # Registers into the library itself, which changes the whole process — so on the
   # main Ractor, not in the pool. See test_helper.
   runs_on_the_main_ractor!
+  include RactorWorkers
 
   Effects = VBlank::Effects
   Guardrails = VBlank::IR::Guardrails
@@ -203,6 +205,41 @@ class TestEffectsRegistry < Minitest::Test
     assert_equal BLUE, i.screen.pixel(120, 100)
   end
 
+  # A game registers its verbs once, as it loads, and its tests may build it in another Ractor.
+  # Ruby lets a method made from a plain block be called only on the Ractor that made it, so a
+  # verb that keeps nothing of its own is made from a shareable copy of its block.
+  def test_an_inline_verb_registered_here_builds_in_another_ractor
+    Effects.register(:paint_stripe) { |color| fill_rect 0, 40, 240, 10, color }
+
+    painted = without_the_experimental_warning do
+      value_raising_its_cause(Ractor.new do
+        builder = VBlank::Builder.new
+        builder.instance_eval do
+          screen :bitmap
+          paint_stripe :red
+          halt
+        end
+        builder.finalize_program
+        VBlank::IR::Backends::Reference.new.run(builder.program).screen.pixel(120, 45)
+      end)
+    end
+
+    assert_equal RED, painted
+  end
+
+  # A block that keeps a value of its own still makes a verb, for the Ractor that registered it.
+  def test_an_inline_verb_that_keeps_a_value_still_runs_here
+    rows = [40, 41]
+    Effects.register(:paint_rows) { |color| rows.each { |row| fill_rect 0, row, 240, 1, color } }
+    i = game_player.run(program do
+      screen :bitmap
+      paint_rows :red
+      halt
+    end)
+
+    assert_equal RED, i.screen.pixel(120, 41)
+  end
+
   def test_an_inline_verb_needs_a_block
     err = assert_raises(ArgumentError) { Effects.register(:no_body) }
     assert_match(/block/, err.message)
@@ -341,10 +378,7 @@ class TestEffectsRegistry < Minitest::Test
 
       game_loop do
         frame += 1
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
         halt if frame >= 4
       end
     end)

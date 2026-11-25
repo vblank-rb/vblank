@@ -5,7 +5,7 @@ require "stringio"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# A SCENE WHOSE BACKGROUND COMES FROM THE DATA PACK ARRIVES AS FAST AS THE SAME PICTURE DRAWN BY HAND.
+# A scene whose background comes from the data pack arrives as fast as the same picture drawn by hand.
 # A Super Nintendo original's screen is a map of 32 by 32 cells of 16x16, and the console's own game
 # shows it as a layer of 16x16 tiles: a map of 2 KB, sent in the blank as the scene comes in. Built
 # as 8x8 tiles the same screen is a map of 64 by 64, four times the bytes, and sending it holds the
@@ -143,10 +143,7 @@ class TestSNESPackSceneArrival < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == CHANGE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

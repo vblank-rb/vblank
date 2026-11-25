@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_background_tests"
 
-# A BACKGROUND DRAWN FROM THE ORIGINAL'S OWN TILES, MAP AND COLOURS (Builder::PackBackgrounds), read
+# A background drawn from the original's own tiles, map and colours (Builder::PackBackgrounds), read
 # from a made-up original in the layout of the console it is for (PackBackgroundGames). The answer
 # key is the made-up data itself: each cell of the map names a tile, a bank of colours and a turn,
 # and the screen must show that tile's places in that bank's colours, turned that way.
@@ -87,7 +87,7 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # A MAP OF CELLS OF VBLANK'S OWN (Original::MapCell), which a port's unpacking writes from its
+  # A map of cells of VBLANK's own (Original::MapCell), which a port's unpacking writes from its
   # original's maps: here a Color original's two maps, a tile number and an attribute byte a cell.
   # The screen is the one the decoded cells written in the game show, tile, video bank, colour
   # bank and both turns included.
@@ -113,7 +113,7 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # A SCREEN IN SEVEN BANKS OF COLOURS whose tiles each draw only some of their bank's places, as a
+  # A screen in seven banks of colours whose tiles each draw only some of their bank's places, as a
   # Color game's title is (SEVEN_BANKS_SCREEN). It shows the decoded cells, and the Color holds it
   # in its eight lists of colours as the original does: a list for each bank, whichever of the
   # bank's places a tile draws. The decoded cells written in the game are played by the interpreter
@@ -270,7 +270,7 @@ class TestPackBackgrounds < Minitest::Test
   # +colors+ as a `colors` list, its first place see-through.
   private def see_through_first(colors) = colors.each_with_index.map { |color, at| at.zero? ? :transparent : color }
 
-  # WHICH BANKS A MAP DRAWS FROM IS IN THE PLAYER'S COPY, so a game names every bank its screen
+  # Which banks a map draws from is in the player's copy, so a game names every bank its screen
   # fades, as the original walks every bank of the console's colours, and the banks this map
   # does not use change nothing.
   def test_a_bank_the_map_does_not_use_is_stepped_with_the_ones_it_does
@@ -331,7 +331,7 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # A SCREEN THAT FADES EVERY BANK AT ONCE: a map with cells in two banks, both told `recolor`, each
+  # A screen that fades every bank at once: a map with cells in two banks, both told `recolor`, each
   # on a pass of its own. The background follows both, a cell showing what its own bank holds.
   def test_a_background_follows_two_banks_the_game_recolors
     Dir.mktmpdir do |folder|
@@ -414,7 +414,7 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  # A BUILD THAT READS ITS PACK AS THE GAME STARTS knows a bank's name and none of its colours.
+  # A build that reads its pack as the game starts knows a bank's name and none of its colours.
   # What it shows, a bank walked, recoloured or drawn in among it, is PackBackgroundAtStartTests's,
   # on the runs that are handed a file. These are what it refuses as the game is built.
   private def left_out_refusal(folder, &uses_bank)
@@ -463,15 +463,17 @@ class TestPackBackgrounds < Minitest::Test
     end
   end
 
-  def test_a_map_of_more_cells_than_a_build_reading_its_pack_keeps_is_refused
+  # A build reading its pack as the game starts holds the slot's tiles once and numbers only the
+  # different tiles as drawn its map names, so a map of more cells than a cell's tile can number
+  # builds: its size alone is no limit. What such a build refuses is told in
+  # TestPackBackgroundAreas, and a map naming too many different tiles stops the game as it starts.
+  def test_a_map_of_more_cells_than_a_tile_number_builds_reading_its_pack
     Dir.mktmpdir do |folder|
       words = [ADVANCE_CELL.(1)] * (256 * 129)
       options = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
-      error = assert_raises(ArgumentError) do
-        pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 256, cell: 8, options: options)
-      end
+      program = pack_game(original(folder, :gba, PLACES.map(&LOW_HALF_FIRST).join, words), 4, words, across: 256, cell: 8, options: options)
 
-      assert_includes error.message, "cells"
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
     end
   end
 

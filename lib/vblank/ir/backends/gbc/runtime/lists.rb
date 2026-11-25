@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A GAME'S LISTS, as the interpreter means them (Reference::ListValue): a ring
+          # A game's lists, as the interpreter means them (Reference::ListValue): a ring
           # of slots, the oldest item at +front+, so taking from the front moves where the front is
           # rather than every item. A slot is the width the game declared — a byte, a half or a whole
           # word — which matters on a machine with 8K of memory: a number too big for its slot keeps
@@ -36,15 +36,16 @@ module VBlank
 
             module_function
 
-            # +byte_fills+ means the game fills a list of bytes (Lowering#fills_byte_lists?),
+            # +fills+ means the game fills a list through rt_list_fill (Lowering#fills_lists?),
             # +queues+ that it pushes bytes or takes from a front (Lowering#keeps_queues?), and
             # +half_queues+ that it pushes onto a list of halves or takes from one's front
             # (Lowering#keeps_half_queues?).
-            def emit(asm, memory, byte_fills: false, queues: false, half_queues: false, save_moves: false)
+            def emit(asm, memory, fills: false, queues: false, half_queues: false, save_moves: false, packs: false)
               q = Quick.for(memory)
               emit_helpers(asm, memory, q)
-              emit_routines(asm, memory, q, byte_fills)
+              emit_routines(asm, memory, q, fills)
               emit_save_moves(asm, memory, q) if save_moves
+              emit_list_pack(asm, memory, q) if packs
               widths = NARROW_WIDTHS.keys.select { |width| width == 1 ? queues : half_queues }
               emit_queue_routines(asm, memory, q, widths) if widths.any?
               emit_shift(asm, memory) if queues
@@ -264,7 +265,7 @@ module VBlank
               asm.call("rt_take_args")
             end
 
-            def emit_routines(asm, memory, q, byte_fills)
+            def emit_routines(asm, memory, q, fills)
               # rt_list_empty(list)
               asm.label("rt_list_empty")
               emit_args_read(asm, 1)
@@ -391,11 +392,11 @@ module VBlank
               asm.load(:a, Frame::LIST_EMPTY)
               asm.jump("rt_list_fault")
 
-              emit_fill(asm, memory, q, byte_fills)
+              emit_fill(asm, memory, q) if fills
               emit_copy(asm, memory, q)
             end
 
-            # A QUEUE OF BYTES is the commonest list on a machine this small, and the routines above
+            # A queue of bytes is the commonest list on a machine this small, and the routines above
             # are slow for it: each copies its numbers off the stack and the list's whole header into
             # quick memory, then writes the header back. These three work on the header where it is,
             # with the list's place in HL and the value in registers already, about a quarter of the
@@ -405,12 +406,12 @@ module VBlank
             # of range puts its numbers where the routines above take them and goes there, so the
             # game stops in the same words with the same numbers.
             #
-            # A QUEUE OF HALVES — two-byte numbers, a sprite's place or a tile's number — is pushed
+            # A queue of halves — two-byte numbers, a sprite's place or a tile's number — is pushed
             # and read the same way, the slot found as for a byte and then doubled, since each is two
             # bytes along. Taking from the front never looks at a slot, so rt_list_shift serves both.
             #
             # +widths+ are the slot widths the game keeps queues of, [1], [2] or [1, 2]. A game with
-            # queues of both has ONE push and ONE item routine, answering to both names, which read
+            # queues of both has one push and one item routine, answering to both names, which read
             # the width from the list's header: the two copies were nearly the same instructions, and
             # this code sits in the part of the cartridge that is always in view, where every byte is
             # taken from what the game's own tables and songs can have. A game with one width keeps
@@ -663,7 +664,7 @@ module VBlank
 
             # rt_list_fill(list, from, count, value): every slot from +from+ for +count+ holds the
             # value. Nothing for a count of nought or less; the first and the last index checked.
-            def emit_fill(asm, memory, q, byte_fills)
+            def emit_fill(asm, memory, q)
               asm.label("rt_list_fill")
               emit_args_read(asm, 4)
               count = arg(memory, 2, 4)
@@ -698,7 +699,7 @@ module VBlank
               asm.load(:a, from & 0xFF)
               asm.call("rt_list_index")
               asm.pop(:de) # the first slot
-              emit_byte_fill(asm, memory, q, count) if byte_fills
+              emit_run_fill(asm, memory, q, count)
               asm.load_high(:a, count)
               asm.load(:c, :a)
               asm.load_high(:a, count + 1)
@@ -727,24 +728,38 @@ module VBlank
               asm.ret
             end
 
-            # A LIST OF BYTES IS FILLED IN ONE WALK, from the first slot's address. The Color has no
-            # copying engine for work memory, so this is the quickest there is: a store and a count
-            # for each byte, where the walk below works out an address and writes a number of four
-            # bytes for each slot. A game declares its lists before its first frame, and this is
-            # what keeps them from making it late. The run cannot come round past the capacity: a
-            # list declared full starts at its first slot, and a list the game shifts is refused
-            # `fill` (Builder#refuse_filled_shifted_lists!).
-            def emit_byte_fill(asm, memory, q, count)
+            # A list is filled in one walk, from the first slot's address, each slot given the
+            # value's low bytes, as many as the slot keeps, lowest first (as rt_list_write keeps
+            # them). The Color has no copying engine for work memory, so this is the quickest there
+            # is: a store a byte and a count a slot, where the walk below works out an address and
+            # writes a number of four bytes for each slot. A game declares its lists before its
+            # first frame, and every game with a save record declares its table of places full, so
+            # this is what keeps them from making it late. The run cannot come round past the
+            # capacity: a list declared full starts at its first slot, and a list the game shifts
+            # is refused `fill` (Builder#refuse_filled_shifted_lists!).
+            def emit_run_fill(asm, memory, q, count)
+              value = arg(memory, 3, 4)
               asm.load_high(:a, q.width)
               asm.cp_a(1)
+              asm.jump_relative(:z, "rt_list_fill_run")
+              asm.cp_a(2)
+              asm.jump_relative(:z, "rt_list_fill_run")
+              asm.cp_a(4)
               asm.jump_relative(:nz, "rt_list_fill_wider")
+              asm.label("rt_list_fill_run")
               asm.call("rt_list_slot_address")
               asm.load_high(:a, count)
               asm.load(:c, :a)
               asm.load_high(:a, count + 1)
               asm.load(:b, :a)
-              asm.load_high(:a, arg(memory, 3, 4))
+              asm.load_high(:a, value)
               asm.load(:e, :a)
+              asm.load_high(:a, value + 1)
+              asm.load(:d, :a)
+              asm.load_high(:a, q.width)
+              asm.cp_a(2)
+              asm.jump_relative(:z, "rt_list_fill_halves")
+              asm.jump_relative(:nc, "rt_list_fill_words")
               asm.label("rt_list_fill_bytes")
               asm.load(:a, :e)
               asm.load([:hli], :a)
@@ -752,6 +767,30 @@ module VBlank
               asm.load(:a, :b)
               asm.or_a(:c)
               asm.jump_relative(:nz, "rt_list_fill_bytes")
+              asm.ret
+              asm.label("rt_list_fill_halves")
+              asm.load(:a, :e)
+              asm.load([:hli], :a)
+              asm.load(:a, :d)
+              asm.load([:hli], :a)
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_list_fill_halves")
+              asm.ret
+              asm.label("rt_list_fill_words")
+              asm.load(:a, :e)
+              asm.load([:hli], :a)
+              asm.load(:a, :d)
+              asm.load([:hli], :a)
+              asm.load_high(:a, value + 2)
+              asm.load([:hli], :a)
+              asm.load_high(:a, value + 3)
+              asm.load([:hli], :a)
+              asm.dec(:bc)
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.jump_relative(:nz, "rt_list_fill_words")
               asm.ret
               asm.label("rt_list_fill_wider")
             end
@@ -882,7 +921,7 @@ module VBlank
               asm.ret
             end
 
-            # A WHOLE LIST MOVED BETWEEN SAVE MEMORY AND WORK MEMORY AS A BLOCK (IR save_load_list,
+            # A whole list moved between save memory and work memory as a block (IR save_load_list,
             # save_store_list; Reference#exec_save_load_list, #exec_save_store_list). A record that
             # keeps a list used to read and write it an item at a time, each a call that copied
             # its numbers, checked the place in 32 bits, switched save memory on and off and opened
@@ -928,23 +967,35 @@ module VBlank
               asm.load(:d, :h)
               asm.load(:e, :l) # DE = the list's first slot
               asm.pop(:hl)
+              # The bytes go in runs that stay inside one 256-byte page of save memory, each run's
+              # count in C: the end of a bank is the end of a page, so it is tested once a run and
+              # never in the loop over the bytes, which is five instructions, ten machine cycles a
+              # byte (Pan Docs, "CPU Instruction Set").
+              left = memory.args + 24 # 16 bits: the bytes left after the run under way
               asm.load_high(:a, count)
+              asm.load_high(left, :a)
               asm.load(:c, :a)
               asm.load_high(:a, count + 1)
-              asm.load(:b, :a)
+              asm.load_high(left + 1, :a)
               asm.or_a(:c)
               asm.jump(:z, "rt_save_off")
-              asm.label("rt_save_load_list_byte")
+              asm.label("rt_save_load_list_run")
               asm.load(:a, :h)
               asm.cp_a(sram_end)
               asm.call(:z, "rt_save_next")
+              emit_save_page_run(asm, left, "rt_save_load_list")
+              asm.label("rt_save_load_list_byte")
               asm.load(:a, [:hli])
               asm.load([:de], :a)
               asm.inc(:de)
-              asm.dec(:bc)
-              asm.load(:a, :b)
-              asm.or_a(:c)
+              asm.dec(:c)
               asm.jump_relative(:nz, "rt_save_load_list_byte")
+              asm.load_high(:a, left)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_load_list_run")
+              asm.load_high(:a, left + 1)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_load_list_run")
               asm.jump("rt_save_off")
 
               asm.label("rt_save_store_list")
@@ -981,19 +1032,48 @@ module VBlank
               asm.load(:a, Frame::SAVE_WRITE_OUTSIDE)
               asm.call("rt_save_at") # HL = where the place is seen
               asm.pop(:de) # DE = the oldest item's slot
+              # In runs, as the load is, each also held short of where the ring ends, so the loop
+              # over the bytes tests neither the bank nor the ring.
+              left = q.entry # 16 bits: the bytes left after the run under way
               asm.load_high(:a, q.entry)
               asm.load(:c, :a)
               asm.load_high(:a, q.entry + 1)
-              asm.load(:b, :a)
               asm.or_a(:c)
               asm.jump(:z, "rt_save_off")
-              asm.label("rt_save_store_list_byte")
+              asm.label("rt_save_store_list_run")
               asm.load(:a, :h)
               asm.cp_a(sram_end)
               asm.call(:z, "rt_save_next")
+              emit_save_page_run(asm, left, "rt_save_store_list")
+              # The slots up to where the ring ends, never nought: the copy comes round to the
+              # first slot the moment it gets there. Fewer than the run: the run stops there,
+              # and what it gives up goes back on what is left.
+              asm.load_high(:a, ring_end)
+              asm.sub_a(:e)
+              asm.load(:b, :a)
+              asm.load_high(:a, ring_end + 1)
+              asm.sbc_a(:d)
+              asm.jump_relative(:nz, "rt_save_store_list_byte")
+              asm.load(:a, :c)
+              asm.dec(:a)
+              asm.cp_a(:b)
+              asm.jump_relative(:c, "rt_save_store_list_byte")
+              asm.load(:a, :c)
+              asm.sub_a(:b)
+              asm.load(:c, :b)
+              asm.load(:b, :a)
+              asm.load_high(:a, left)
+              asm.add_a(:b)
+              asm.load_high(left, :a)
+              asm.load_high(:a, left + 1)
+              asm.adc_a(0)
+              asm.load_high(left + 1, :a)
+              asm.label("rt_save_store_list_byte")
               asm.load(:a, [:de])
               asm.load([:hli], :a)
               asm.inc(:de)
+              asm.dec(:c)
+              asm.jump_relative(:nz, "rt_save_store_list_byte")
               # Past the last slot: round to the first.
               asm.load_high(:a, ring_end)
               asm.cp_a(:e)
@@ -1008,11 +1088,159 @@ module VBlank
               asm.adc_a(0)
               asm.load(:d, :a)
               asm.label("rt_save_store_list_in_ring")
+              asm.load_high(:a, left)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_store_list_run")
+              asm.load_high(:a, left + 1)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "rt_save_store_list_run")
+              asm.jump("rt_save_off")
+            end
+
+            # One run of a move to or from save memory, HL being where save memory is seen: its
+            # count put in C, up to the end of HL's 256-byte page or the 16 bits +left+ in the
+            # quick memory if sooner, and taken off +left+. A count of 256 is C at nought, which
+            # a loop ending DEC C / JR NZ takes as 256. +left+ is not nought.
+            def emit_save_page_run(asm, left, prefix)
+              asm.load_high(:a, left + 1)
+              asm.and_a(:a)
+              asm.jump_relative(:nz, "#{prefix}_page")
+              asm.load_high(:a, left)
+              asm.load(:c, :a)
+              asm.add_a(:l) # where the bytes left end, when that is inside this page
+              asm.jump_relative(:c, "#{prefix}_page")
+              asm.xor_a(:a)
+              asm.load_high(left, :a) # none left after this run
+              asm.jump_relative("#{prefix}_counted")
+              # The rest of the page: 256 - L bytes, taken off what is left as left - 256 + L.
+              asm.label("#{prefix}_page")
+              asm.load(:a, :l)
+              asm.cpl
+              asm.inc(:a)
+              asm.load(:c, :a)
+              asm.load_high(:a, left)
+              asm.add_a(:l)
+              asm.load_high(left, :a)
+              asm.load_high(:a, left + 1)
+              asm.adc_a(0)
+              asm.dec(:a)
+              asm.load_high(left + 1, :a)
+              asm.label("#{prefix}_counted")
+            end
+
+            # A list's items copied into a list of bytes (IR list_pack, Backends::ListPackBlocks): what
+            # a save's snapshot is made of. A slot keeps its bytes lowest first (rt_list_write), as the
+            # list of bytes wants them, so the run is a copy, one LD A,(DE) and one LD (HL+),A a byte
+            # (Pan Docs, "CPU Instruction Set"), where a list_set a byte took two calls, each taking its
+            # numbers and finding its slot again.
+            #
+            # rt_list_pack(list, into, at): every item of +list+, oldest first, into +into+ from its
+            # slot +at+ on. The lowering calls it only for a run it has seen fits, into a list of bytes
+            # never taken from its front, so the run lands at +into+'s slots plus +at+ and nothing is
+            # checked here. The list read is a ring, so its oldest item can be in any slot: the copy
+            # runs from there to where its slots end, and what is left from its first slot.
+            def emit_list_pack(asm, memory, q)
+              into = arg(memory, 1, 3)
+              at = arg(memory, 2, 3)
+              ring_end = memory.args + 24 # where the list's slots end
+              rest = memory.args + 26 # the bytes left after the first run
+
+              asm.label("rt_list_pack")
+              emit_args_read(asm, 3)
+              # Where the run goes, kept on the stack: the slots of +into+, from slot +at+.
+              asm.load_high(:a, into)
+              asm.load(:l, :a)
+              asm.load_high(:a, into + 1)
+              asm.load(:h, :a)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.load_high(:a, at)
+              asm.load(:e, :a)
+              asm.load_high(:a, at + 1)
+              asm.load(:d, :a)
+              asm.add_hl(:de)
+              asm.push(:hl)
+              asm.load(:a, arg_at(memory, 0, 3))
+              asm.call("rt_list_open")
+              # The bytes to copy: the length × the width.
+              asm.load_high(:a, q.length)
+              asm.load_high(q.entry, :a)
+              asm.load_high(:a, q.length + 1)
+              asm.load_high(q.entry + 1, :a)
+              emit_times_slot_width(asm, q, q.entry, "rt_list_pack")
+              # Where the slots end, and DE where the oldest item is.
+              asm.load_high(:a, q.capacity)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.capacity + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.load(:a, :l)
+              asm.load_high(ring_end, :a)
+              asm.load(:a, :h)
+              asm.load_high(ring_end + 1, :a)
+              asm.load_high(:a, q.front)
+              asm.load(:e, :a)
+              asm.load_high(:a, q.front + 1)
+              asm.load(:d, :a)
+              asm.call("rt_list_slot_address")
+              asm.load(:d, :h)
+              asm.load(:e, :l)
+              # BC = the room from the oldest item to where the slots end, and HL = the bytes less it.
+              asm.load_high(:a, ring_end)
+              asm.sub_a(:e)
+              asm.load(:c, :a)
+              asm.load_high(:a, ring_end + 1)
+              asm.sbc_a(:d)
+              asm.load(:b, :a)
+              asm.load_high(:a, q.entry)
+              asm.sub_a(:c)
+              asm.load(:l, :a)
+              asm.load_high(:a, q.entry + 1)
+              asm.sbc_a(:b)
+              asm.load(:h, :a)
+              asm.jump_relative(:c, "rt_list_pack_in_one")
+              # More than the room: the first run fills it, and the rest comes after.
+              asm.load(:a, :l)
+              asm.load_high(rest, :a)
+              asm.load(:a, :h)
+              asm.load_high(rest + 1, :a)
+              asm.jump_relative("rt_list_pack_runs")
+              asm.label("rt_list_pack_in_one")
+              asm.load_high(:a, q.entry)
+              asm.load(:c, :a)
+              asm.load_high(:a, q.entry + 1)
+              asm.load(:b, :a)
+              asm.xor_a(:a)
+              asm.load_high(rest, :a)
+              asm.load_high(rest + 1, :a)
+              asm.label("rt_list_pack_runs")
+              asm.pop(:hl)
+              asm.call("rt_list_pack_run")
+              asm.load_high(:a, rest)
+              asm.load(:c, :a)
+              asm.load_high(:a, rest + 1)
+              asm.load(:b, :a)
+              asm.push(:hl)
+              list_address(asm, q)
+              asm.load(:de, HEADER)
+              asm.add_hl(:de)
+              asm.load(:d, :h)
+              asm.load(:e, :l)
+              asm.pop(:hl)
+              # BC bytes from DE to HL, none for a BC of nought.
+              asm.label("rt_list_pack_run")
+              asm.load(:a, :b)
+              asm.or_a(:c)
+              asm.ret(:z)
+              asm.label("rt_list_pack_byte")
+              asm.load(:a, [:de])
+              asm.load([:hli], :a)
+              asm.inc(:de)
               asm.dec(:bc)
               asm.load(:a, :b)
               asm.or_a(:c)
-              asm.jump_relative(:nz, "rt_save_store_list_byte")
-              asm.jump("rt_save_off")
+              asm.jump_relative(:nz, "rt_list_pack_byte")
+              asm.ret
             end
 
             # The 16-bit count at quick-memory address +at+ made a count of bytes: doubled once for a

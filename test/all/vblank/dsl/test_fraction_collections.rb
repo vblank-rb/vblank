@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-# MANY OF SOMETHING THAT HOLDS A FRACTION.
+# Many of something that holds a fraction.
 #
 # A variable takes a Float and carries the scale through every piece of arithmetic, so a game
 # writes halves and quarters and never mentions fixed point. A list and a pool field are where
-# a game keeps MANY of something, and they have to do the same — otherwise the moment a game
+# a game keeps many of something, and they have to do the same — otherwise the moment a game
 # needs sixty particles drifting at fractional speeds it has to pick a scale and carry it by
 # hand, which is the exact bookkeeping the fraction support exists to remove.
 #

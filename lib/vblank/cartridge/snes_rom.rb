@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A SUPER NINTENDO CARTRIDGE: the banks the SNES lowering linked, laid out the LoROM way, with
+    # A Super Nintendo cartridge: the banks the SNES lowering linked, laid out the LoROM way, with
     # the header and vectors the console reads.
     #
     # The header sits at $FFC0 of the first bank, which in a LoROM file is offset $7FC0: a title of
@@ -20,7 +20,7 @@ module VBlank
     # emulation mode, so reset is the emulation one; the game switches to native mode at once, and
     # the vertical blank's interrupt (NMI) and the rest are the native ones from then on.
     #
-    # THE BOARD. A plain cartridge is ROM alone (with battery-backed RAM when the game saves). A
+    # The board. A plain cartridge is ROM alone (with battery-backed RAM when the game saves). A
     # cartridge with a Super FX 2 is a board of its own, and its header declares it, because an emulator
     # or a flash cart reads the header to know which board to be:
     #
@@ -66,7 +66,7 @@ module VBlank
 
       PLAIN = Board.new(name: :plain, map_mode: LOROM_FAST, fast: true, most_banks: 128, chip_ram_bytes: 0,
                         save_bank: SRAM_BANK, most_save_bytes: Console::SNES_PLAIN_SAVE_MEMORIES.last.first * 1024)
-      # THE SAVE ON A SUPER FX BOARD. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
+      # The save on a super FX board. The chip's 64K at $70 is all spoken for (Runtime::ChipPaint):
       # the painted screen's 56K, the tiles' generations, the list of tiles the chip readied, the
       # blocks a rectangle and a picture are handed over in, and the chip's numbers in what is
       # left. A save of 32K does not fit beside them. So a game that saves gets a board with 128K
@@ -90,6 +90,8 @@ module VBlank
       # What the build worked out about the cartridge, for the tools that read a running one
       # back, or nil.
       attr_reader :built
+
+      include ProfileNotes::WithRoutineSizes
 
       # A size as the header holds it, a byte: the power of two of its kilobytes (32K is 5); and the
       # bytes a header's byte stands for. SNESReading's save file is the size the header gives.
@@ -174,7 +176,7 @@ module VBlank
         end
       end
 
-      # HOW MUCH OF THE SOUND CHIP'S MEMORY THE GAME USES. The chip has 64K of its own, which the
+      # How much of the sound chip's memory the game uses. The chip has 64K of its own, which the
       # console's processor cannot see: its program, the table of its recordings and the recordings
       # are sent there (IR::Backends::SNES::Runtime::Sound#image). +used+ counts from its first
       # byte, the chip's own working memory included, to the end of what the game sends; +room+ is
@@ -195,9 +197,9 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
+      # How many frames its passes took: the cartridge run in the emulator
       # (Diagnostics::SNESProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       #
@@ -205,9 +207,10 @@ module VBlank
       # read by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the
       # game's and the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::SNESProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Super Nintendo")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Super Nintendo")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "Super Nintendo")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::SNESProfiler, tape: tape, frames: frames, keys: keys,
                                                                                    settle: settle, format: format, out: out,
@@ -218,8 +221,13 @@ module VBlank
         result = Diagnostics::SNESProfiler.run(self, frames: frames, settle: settle || Diagnostics::SNESProfiler::SETTLE,
                                                      keys: keys)
         case format
-        when :human then Diagnostics::SNESProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h))
+        when :human
+          Diagnostics::BuildNotes.render(self, out)
+          Diagnostics::SNESProfiler.render(result, out: out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{size / 1024} KB")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::BuildNotes.as_json(self))
+                                            .merge(Diagnostics::RoutineSizes.as_json(routine_sizes))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

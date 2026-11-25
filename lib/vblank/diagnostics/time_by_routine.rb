@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A FRAME'S TIME, BY ROUTINE, for a console whose emulator adds up the time each instruction took
+    # A frame's time, by routine, for a console whose emulator adds up the time each instruction took
     # by the address it started at (Core#take_processor_time on the Super Nintendo and the Genesis).
     # Every address is in a routine: one of the game's, which +routine_at+ names, or the runtime's,
     # found by the label before it. +waits+ matches the runtime's labels that are only waiting for
@@ -26,6 +26,15 @@ module VBlank
 
         raise ArgumentError, "A #{console} profile cannot press a button as the measuring starts yet. To fix this, leave " \
                              "out --press. To press a button on a given frame, give a tape of presses (--tape)."
+      end
+
+      # Only the Advance's build keeps where each line of a routine is (Diagnostics::RoutineLines).
+      # The others name each routine's time, and with a tape each frame's.
+      def self.refuse_lines!(lines, console)
+        return if lines.nil?
+
+        raise ArgumentError, "A #{console} profile cannot show the lines of a routine yet. A Game Boy Advance profile " \
+                             "can. To fix this, remove lines: (--lines). The profile still names the time of each routine."
       end
 
       # +code+ is a build's labels and their addresses, and +line+ how much of the emulator's count a

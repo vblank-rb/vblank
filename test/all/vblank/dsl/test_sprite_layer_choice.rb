@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SPRITE THAT CHANGES WHICH LAYER IT IS IN while the game runs: what `put_in_layer` refuses.
+# A sprite that changes which layer it is in while the game runs: what `put_in_layer` refuses.
 #
 # Where it is drawn is in test/console/gba/vblank/dsl/test_sprite_layer_choice_on_the_advance.rb.
 # Those games stand a hero between two backgrounds at once, a floor and an arch, so he has a

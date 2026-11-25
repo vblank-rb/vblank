@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # A PAINTED SCREEN, lowered for a Super Nintendo: each drawing statement a call into
+          # A painted screen, lowered for a Super Nintendo: each drawing statement a call into
           # Runtime::Paint, and what it paints — its colours, its pictures, its text — made into
           # SNES::PaintedArt while the program is built. Mixed into Lowering.
           #
@@ -15,7 +15,7 @@ module VBlank
           # colour picked as the game runs is one of two.
           module Paint
             STATEMENT_KINDS = %i[
-              clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              clear_screen fill_rect draw_rect_at pixel inside blit blit_pose draw_text
               draw_digit save_region restore_region camera draw_column_at
             ].freeze
 
@@ -23,7 +23,6 @@ module VBlank
               case node.kind
               when :clear_screen then emit_clear_screen(node)
               when :fill_rect then emit_fill_rect(node)
-              when :dma_fill_rect then emit_fill_rect(node)
               when :draw_rect_at then emit_fill_rect(node)
               when :pixel then emit_pixel(node)
               when :inside then emit_inside(node)
@@ -84,10 +83,19 @@ module VBlank
 
             # Whether +program+'s painted screen shows text on a layer of its own (Runtime::TextLayer):
             # it writes text that can go there, and never moves the camera, whose room in video RAM
-            # the layer takes.
+            # the layer takes, and shows no sprite over the picture, whose tiles take the room the
+            # layer's tiles would.
             def self.text_layer?(program)
               painted?(program) && !doubled?(program) && program.walk.none? { |node| node.kind == :camera } &&
+                !sprites_over_picture?(program) &&
                 program.walk.any? { |node| node.kind == :draw_text && layer_pixels(node) }
+            end
+
+            # Whether +program+ shows sprites over its painted screen of small pixels
+            # (Runtime::Paint, "sprites over the picture"). Big pixels refuse such a sprite on every
+            # console (Guardrails::Checks::BiggerPixelsNotMadeYet).
+            def self.sprites_over_picture?(program)
+              painted?(program) && !doubled?(program) && IR::SpritesOverPicture.any?(program)
             end
 
             # Whether +program+'s painted screen can take turns between two pictures
@@ -214,6 +222,19 @@ module VBlank
             def painted? = @painted
 
             def doubled? = @doubled
+
+            # The sprites' colours on a painted screen: the second half of the colour memory, where
+            # Art put each set of colours a sprite over the picture uses, kept from the painting
+            # (PaintedArt#keep_places), once those sets are all made and before anything is painted.
+            def keep_sprite_colors_from_painting
+              return unless @painted && Paint.sprites_over_picture?(@program)
+
+              sprites_at = Art::PALETTES * Art::PLACES
+              _, count = @art.colors_shown.find { |first, _| first == sprites_at }
+              return unless count
+
+              @painted_art.keep_places(sprites_at, @art.cgram.unpack("v*")[sprites_at, count])
+            end
 
             # The painted picture's rows: the small picture's with big pixels.
             def painted_height = @doubled ? Runtime::PaintDoubled::HEIGHT : Runtime::Picture::SCREEN_HEIGHT
@@ -479,7 +500,7 @@ module VBlank
               @asm.label(done)
             end
 
-            # A COLUMN ON A SCREEN OF BIG PIXELS is handed to the runtime as it is (Runtime::PaintDoubled's
+            # A column on a screen of big pixels is handed to the runtime as it is (Runtime::PaintDoubled's
             # rt_paint_column), which works out the rows and pixels across shown and draws it, with
             # the picture's record (#doubled_column_sections). The step down the picture is its height
             # in 65536ths over the height drawn, and a division of 32 bits is a routine of a bit at a
@@ -513,7 +534,7 @@ module VBlank
             # The number +node+ written to the direct page at +at+: a variable's or a number's two
             # halves straight there, anything else worked out first, which leaves it in R0.
             def emit_column_number(node, at)
-              halves = operand_halves(node)
+              halves = halves_in_place(node)
               unless halves
                 value(node)
                 return if at == R0
@@ -603,7 +624,7 @@ module VBlank
               runtime_call("rt_paint_clear", [Build.int(place_of_color(node.color))])
             end
 
-            # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
+            # Reference#exec_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
               emit_fill_call([*[node.x, node.y, node.w, node.h].map { |edge| value_node(edge) },
                               Build.int(place_of_color(node.color))])
@@ -666,7 +687,7 @@ module VBlank
             # picked while the game runs, one of two pictures, the picked one when +showing+ is not
             # nought.
             #
-            # TEXT WHOSE COLOUR IS PICKED AS THE GAME RUNS is painted in an INK of its own, where
+            # Text whose colour is picked as the game runs is painted in an ink of its own, where
             # there is a place of the colour list to spare for one: a third picture of the words,
             # painted in the ink's place, whose colour is set as the text is drawn
             # (Runtime::Paint's rt_paint_blit_inked). The ink's pixels are the same whichever colour

@@ -5,10 +5,10 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE PICTURE: the backgrounds and the sprites, set up at power-on and copied to the
+          # The picture: the backgrounds and the sprites, set up at power-on and copied to the
           # console in the vertical blank after each pass.
           #
-          # WHAT THE CONSOLE IS TOLD TO DRAW. Mode 1 (BGMODE): two background layers of sixteen-colour
+          # What the console is told to draw. Mode 1 (BGMODE): two background layers of sixteen-colour
           # tiles (BG1 in front of BG2) and a third of four-colour tiles (BG3), and 128 sprites over
           # all of them. Video RAM, 32K words, is laid out once:
           #
@@ -17,7 +17,7 @@ module VBlank
           #   $5000-$5FFF  BG2's map
           #   $6000-$7FFF  the sprites' tiles, 512 of them
           #
-          # THE THIRD LAYER holds a status bar or a background held above a row shown beside two other
+          # The third layer holds a status bar or a background held above a row shown beside two other
           # backgrounds, or a status bar beside a sprite behind a background (+third_layer+,
           # Lowering::Picture.third_layer?), and is left off in every other game. Its map
           # is the last 1K words of the backgrounds' tiles, $3C00-$3FFF, a bar's 32×32 cells, so
@@ -30,7 +30,7 @@ module VBlank
           # third-layer bit is left clear, so the bar is behind every sprite, as the interpreter draws
           # it; the line table below hides the other two layers on its rows.
           #
-          # WHAT THE GAME CHANGES IS KEPT IN WORK RAM and copied in the blank (rt_upload): the
+          # What the game changes is kept in work RAM and copied in the blank (rt_upload): the
           # sprite table, written whole every pass a game places its sprites (a shadow of the
           # console's 544 bytes); a map put up, copied whole from the cartridge; single cells
           # changed (a queue of them); and where each layer is scrolled to. The console takes video
@@ -57,7 +57,7 @@ module VBlank
           #   rt_tile_run_copy     a run's list made into its tiles, for the next blank (a game that
           #                        paints tiles from lists)
           #
-          # A STATUS BAR is one of the two layers, shown from its top row to the bottom of the screen
+          # A status bar is one of the two layers, shown from its top row to the bottom of the screen
           # and hidden above it, while the other layer is shown above it and hidden below. Which
           # layers the console draws is TM, one register for the whole screen; but the copying
           # engine can write a register a line at a time as the picture is drawn (HDMA), from a short
@@ -68,7 +68,7 @@ module VBlank
           # and its rows past its map show the backdrop: tile 0 is see-through. The table is made in
           # the blank, with the scroll, so the two always agree.
           #
-          # A BACKGROUND BENT ROW BY ROW (`scroll_each_row`) is the same engine writing the layer's
+          # A background bent row by row (`scroll_each_row`) is the same engine writing the layer's
           # scroll across, BGnHOFS, on every line (channel 2 for BG1, 3 for BG2). The game works out
           # each row's offset at every frame boundary, for the frame after, into the layer's
           # BEND_OFFSETS (Lowering::Picture#emit_bends); as the pass ends, each row's offset and the
@@ -77,7 +77,7 @@ module VBlank
           # There are two tables for each layer, and the blank switches the channel to the one just
           # made, so a pass whose copy takes several blanks never shows a table half made.
           #
-          # TILES PAINTED FROM A LIST (a run, Builder::TileRuns) hold their pixels as the game writes
+          # Tiles painted from a list (a run, Builder::TileRuns) hold their pixels as the game writes
           # them: a byte is two pixels, the left one in the low four bits, a tile eight rows of four
           # bytes. The console keeps a tile's pixels in planes (SNES::Art#tile_bytes): for each row,
           # bit 0 of each of its eight pixels in one byte and bit 1 in the next, the leftmost pixel in
@@ -118,10 +118,15 @@ module VBlank
             LAYER_SCROLL_Y = 14
             LAYER_STATE_BYTES = 16
             # Cells changed since the last blank: how many, then each its video RAM address and word
-            # (a table, so right after the count unless the build put the tables far).
+            # (a table, so right after the count unless the build put the tables far). Must stay in
+            # that order, address then word: the blank copies the entries straight to VMADD and
+            # VMDATA (#emit_cells_upload).
             CELLS = "rt cells"
             CELL_ENTRIES = "rt cell entries"
             MOST_CELLS = 256
+            # The most of the queue sent on one look at the line: 64 cells, two lines of the copying
+            # engine's time with its setting up, inside the lines Blank::LINES_FOR_CELLS keeps.
+            CELL_PIECE_BYTES = 256
             # The most of a map copied at once: a quarter of a 64×64 map, half of what a blank holds.
             MAP_PIECE = 2048
             # A status bar's top row, its layer, whether either changed since the last blank, and the
@@ -154,12 +159,28 @@ module VBlank
             # The most lines one step of the table counts.
             MOST_STEP_LINES = 127
             SCREEN_HEIGHT = 224
+            SCREEN_WIDTH = 256
             # The channels the copying engine writes registers on a line at a time, a bit each, as
-            # HDMAEN takes them: the bar's and the bends' share the register, so it is written from
-            # here whole.
+            # HDMAEN takes them: the bar's, the bends' and the boxes' (BackgroundBox) share the
+            # register, so it is written from here whole.
             HDMA_CHANNELS = "rt hdma channels"
             # A bent layer's rows (a word each, the screen's height of them), its two line tables, and
             # for each layer which of its two the channel reads (0 or 1).
+            # The video memory address rt_set_cell works out for the cell at +column+ and +row+ of
+            # +layer+'s map, for a row in its first 32 (below them the address hangs on how wide the
+            # map put up is): the layer's map start, the second screen of 32×32 across for a column
+            # from 32, then the row and column in that screen, a word a cell (fullsnes, "SNES PPU
+            # Background", BGnSC).
+            def self.cell_address(layer, column, row, third_layer:)
+              raise ArgumentError, "row #{row} is past the first 32" unless (0...32).cover?(row)
+
+              start = if layer.zero? then LAYER_MAPS[0]
+                      elsif layer == 1 || !third_layer then LAYER_MAPS[1]
+                      else THIRD_LAYER_MAP
+                      end
+              start + (row * 32) + (column & 31) + (column.anybits?(32) ? 1024 : 0)
+            end
+
             def self.bend_offsets(layer) = "rt bend offsets #{layer}"
             def self.bend_tables(layer) = "rt bend tables #{layer}"
             BEND_SHOWN = "rt bend shown"
@@ -169,7 +190,7 @@ module VBlank
             BEND_STEP_LINES = SCREEN_HEIGHT / 2
             REPEAT = 0x80 # A step's count with this bit: a new value on every line of it
             BEND_TABLE_BYTES = 1 + (BEND_STEP_LINES * 2) + 1 + (BEND_STEP_LINES * 2) + 1
-            # A BEND THAT HOLDS ONE VALUE FOR WHOLE BANDS OF ROWS needs no value for every line. A step
+            # A bend that holds one value for whole bands of rows needs no value for every line. A step
             # with no REPEAT bit writes the register once and leaves it for as many lines as it counts,
             # so such a layer's table is a step for each band, three bytes where the other is 450.
             # Its rows hold those steps in place of a word a row: each step BAND_STEP_BYTES, the lines
@@ -220,7 +241,7 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
-            # A SCENE'S OWN SPRITE TILES, in a game whose sprites do not fit video memory all at once,
+            # A scene's own sprite tiles, in a game whose sprites do not fit video memory all at once,
             # waiting for the next blank to go in: where they are on the cartridge (three bytes and
             # a spare), how many bytes are left, where the next goes in video memory, and the byte
             # the sprite table is filled with while they go in. A scene whose sprites the frame of
@@ -234,7 +255,7 @@ module VBlank
             SCENE_TILES_HELD = 10
             SCENE_TILES_BYTES = 12
 
-            # THE SAME FOR ITS BACKGROUND TILES, where they go, how many bytes and from where.
+            # The same for its background tiles, where they go, how many bytes and from where.
             SCENE_BACKGROUND_TILES = "rt scene background tiles"
 
             # INIDISP's bit that turns the picture off, which is also what lets video memory be written
@@ -252,7 +273,8 @@ module VBlank
             def layer_maps(third_layer) = third_layer ? [*LAYER_MAPS, THIRD_LAYER_MAP] : LAYER_MAPS
 
             def reserve(memory, bar: false, row_held: false, alone_flag_in_line_table: false, bends: false, scene_bends: false, tile_runs: [], math_turns: false, bar_covers: false,
-                        tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false)
+                        tile_sizes: false, scene_tiles: false, scene_background_tiles: false, held_runs: {}, third_layer: false,
+                        boxes: false)
               memory.reserve(ROW_HELD, 2) if row_held
               memory.reserve(ROW_HELD_ALONE, 2) if alone_flag_in_line_table
               memory.reserve(SCENE_TILES, SCENE_TILES_BYTES) if scene_tiles
@@ -265,7 +287,7 @@ module VBlank
               tile_runs.each_with_index { |bytes, number| memory.reserve_far(tile_run_staging(number), bytes) }
               held_runs.each_key { |number| memory.reserve(tile_run_held(number), 2) }
               memory.reserve(BAR, BAR_BYTES) if bar
-              memory.reserve(HDMA_CHANNELS, 2) if bar || bends
+              memory.reserve(HDMA_CHANNELS, 2) if bar || bends || boxes
               if bends
                 memory.reserve(BEND_SHOWN, LAYER_MAPS.length * 2)
                 LAYER_MAPS.each_index do |layer|
@@ -293,15 +315,18 @@ module VBlank
             # +banded+ means the game's bends are kept as steps (Lowering::Picture#bends_by_bands?).
             # +held_hides_sprites+ for a game with a background shown alone without sprites
             # (Lowering::Picture.held_hides_sprites?): the line table can leave the sprites out then.
+            # +sprites_over_picture+ for a painted screen with sprites over it (Paint).
             def emit(asm, memory, work:, painted: false, bar: false, bent: [], banded: false, tile_runs: 0, run_scratch: nil, straight_tile_runs: false,
                      see_through: nil, sprite_depths: false, big_tiles: 0, sprite_squares: false, changing_colors: false,
-                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false)
-              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer)
+                     math_turns: false, scene_bars: false, held_runs: {}, third_layer: false, held_hides_sprites: false,
+                     sprites_over_picture: false, cells_dropped: false)
+              emit_start(asm, memory, painted, see_through, big_tiles, changing_colors, math_turns, third_layer,
+                         sprites_over_picture: sprites_over_picture)
               emit_see_through_math(asm, memory) if math_turns
               emit_scene_tiles_noted(asm, memory) if memory.reserved?(SCENE_TILES)
               emit_scene_background_tiles_noted(asm, memory) if memory.reserved?(SCENE_BACKGROUND_TILES)
               emit_sprites(asm, memory, work, sprite_depths, sprite_squares)
-              emit_backgrounds(asm, memory, work, third_layer)
+              emit_backgrounds(asm, memory, work, third_layer, cells_dropped)
               emit_bar(asm, memory, scene_bars: scene_bars) if bar
               emit_bends_prepare(asm, memory, work, bent, banded) unless bent.empty?
               emit_tile_run_copy(asm, memory, run_scratch) if tile_runs.positive?
@@ -319,8 +344,9 @@ module VBlank
             end
 
             # The registers, then the tiles and the colours copied in while the screen is off — or,
-            # for a +painted+ screen, Runtime::Paint's.
-            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false, math_turns = false, third_layer = false)
+            # for a +painted+ screen, Runtime::Paint's, and with +sprites_over_picture+ the sprites'.
+            def emit_start(asm, memory, painted, see_through = nil, big_tiles = 0, changing_colors = false, math_turns = false,
+                           third_layer = false, sprites_over_picture: false)
               h = Console::SNESHardware
               asm.label("rt_picture_start")
               # WRIO's top bit lets a read of SLHV latch the line the picture is on, which the copy
@@ -332,6 +358,7 @@ module VBlank
               asm.rep(0x20)
               if painted
                 asm.jsl(asm.long("rt_paint_start"))
+                emit_sprites_over_picture_start(asm) if sprites_over_picture
                 asm.jml(asm.long("rt_sprites_begin"))
                 return
               end
@@ -364,7 +391,22 @@ module VBlank
               asm.rtl
             end
 
-            # A LAYER HALF SEE-THROUGH (8-bit A): the layers behind it on the sub screen as well (TS);
+            # Sprites over a painted picture (Paint, "sprites over the picture"): their tiles from
+            # OBSEL's base at $6000 with the second 256 straight after, 8×8 and 16×16 as on a tiled
+            # screen; the painted layer and the sprites on the main screen; and the sprites' tiles
+            # copied to the last of video RAM. With the screen off, before the first pass is shown.
+            def emit_sprites_over_picture_start(asm)
+              h = Console::SNESHardware
+              asm.sep(0x20)
+              asm.lda(SPRITE_TILES >> 13)
+              asm.sta(asm.abs(h::OBSEL))
+              asm.lda(0x01 | SPRITES_SHOWN)
+              asm.sta(asm.abs(h::TM))
+              asm.rep(0x20)
+              emit_dma_to_vram(asm, Paint::SPRITE_TILES_AT, "art sprite tiles", "art sprite tiles bytes")
+            end
+
+            # A layer half see-through (8-bit A): the layers behind it on the sub screen as well (TS);
             # colour math adding the sub screen rather than the fixed colour (CGWSEL bit 1); and, on
             # the see-through layer's own pixels alone, adding and halving the sum (CGADSUB: bit 6
             # halves, the low bits name the layers, bit 7 left clear adds). The sprites are not named,
@@ -372,7 +414,7 @@ module VBlank
             # the fixed colour unhalved, which is why the build wants a background covering the
             # screen behind the layer.
             #
-            # A LAYER ADDED TO WHAT IS BEHIND IT is the same with bit 6 clear. A game can turn that
+            # A layer added to what is behind it is the same with bit 6 clear. A game can turn that
             # off and on again: CGADSUB takes the number it was last told, from the blank, so the
             # layer turns solid between two pictures (+math_turns+, rt_see_through_math).
             def emit_see_through(asm, memory, see_through, math_turns)
@@ -598,13 +640,13 @@ module VBlank
             # table, at the sprite's place plus the piece's own; a piece wholly off the screen is not
             # written, and nor is any piece once the table's 128 rows are used.
             #
-            # A ROW'S PLACE ON THE SCREEN is nine bits across and eight down, and both come round: a
+            # A row's place on the screen is nine bits across and eight down, and both come round: a
             # piece at -3 across is kept as 509, which the console draws three columns off the left
             # edge, and one at -3 down as 253, which it draws with its top three rows above the
             # screen. So a piece that reaches the screen is written as its place's low bits, and one
             # that does not is not written at all, where coming round would show it somewhere else.
             #
-            # A SQUARE OF 16×16 reaches eight pixels further, so with +squares+ every piece is asked
+            # A square of 16×16 reaches eight pixels further, so with +squares+ every piece is asked
             # about that reach. A small piece just off an edge then takes a row and draws nothing,
             # which is a few rows at worst for what the squares save. Each piece carries its own
             # size bit, and a row's two bits in the upper table are that and across's ninth bit.
@@ -620,7 +662,7 @@ module VBlank
               piece_x = work + 4
               piece_y = work + 6
 
-              # ONLY THE ROWS THE LAST PASS WROTE ARE HIDDEN AGAIN. Rows are handed out counting down
+              # Only the rows the last pass wrote are hidden again. Rows are handed out counting down
               # from the last, so the rows a pass wrote are the ones from where NEXT_ROW stopped to
               # the end, and every row above that is still as the begin before hid it. Hiding all
               # 128 rows was 128 turns of a loop of nine every pass, a sprite or none; this is a
@@ -852,7 +894,7 @@ module VBlank
             # (the table "art grids") copied onto +layer+ in the next blank, and with +from_corner+
             # its view at the corner. rt_background_scroll(layer, x, y). rt_set_cell(layer, column,
             # row, word): one cell of the layer's map, in the next blank.
-            def emit_backgrounds(asm, memory, work, third_layer = false)
+            def emit_backgrounds(asm, memory, work, third_layer = false, cells_dropped = false)
               r = ->(n) { Memory.register(n) }
               layers = memory[LAYERS]
 
@@ -887,6 +929,8 @@ module VBlank
               asm.stz(asm.abs_x(layers + LAYER_SCROLL_Y))
               asm.label("rt_background_put_up_done")
               asm.rtl
+
+              emit_cells_drop(asm, memory, r, third_layer) if cells_dropped
 
               asm.label("rt_background_scroll")
               asm.jsr(asm.abs("rt_layer_state"))
@@ -954,6 +998,7 @@ module VBlank
               asm.lda(asm.abs(memory[CELLS]))
               asm.cmp(MOST_CELLS)
               asm.bcc("rt_set_cell_room")
+              asm.label("rt_cells_full") # also the lowering's, for a cell queued where it is written
               asm.lda(Frame::CELLS_FULL)
               asm.jml(asm.long("rt_fault"))
               asm.label("rt_set_cell_room")
@@ -968,7 +1013,69 @@ module VBlank
               asm.rtl
             end
 
-            # STATUS BAR. rt_bar_place(layer, top): the bar on +layer+ shown from row +top+, held to
+            # rt_cells_drop(map_start): every cell of the layer whose map starts at video RAM word
+            # +map_start+ taken out of the queue, the rest kept in their order. A map handed to a
+            # background replaces the cells the pass changed on it (Reference#exec_show_map), and the
+            # blank copies the queue after the map. A map of the first two layers is at most 0x1000
+            # words; the third layer's is one screen, 0x400, and the first layer's map starts right
+            # after it, so its cells are told apart by that smaller size.
+            def emit_cells_drop(asm, memory, r, third_layer)
+              asm.label("rt_cells_drop")
+              if third_layer
+                asm.lda(0x1000)
+                asm.sta(asm.direct(r.call(4))) # how many words of video RAM the map holds
+                asm.lda(asm.direct(r.call(0)))
+                asm.cmp(THIRD_LAYER_MAP)
+                asm.bne("rt_cells_drop_sized")
+                asm.lda(LAYER_MAPS[0] - THIRD_LAYER_MAP)
+                asm.sta(asm.direct(r.call(4)))
+                asm.label("rt_cells_drop_sized")
+              end
+              asm.lda(asm.abs(memory[CELLS]))
+              asm.asl
+              asm.asl
+              asm.sta(asm.direct(r.call(3))) # the end of the queue, in bytes
+              asm.stz(asm.direct(r.call(1))) # where the entry looked at is
+              asm.stz(asm.direct(r.call(2))) # where the next entry kept goes
+              asm.label("rt_cells_drop_next")
+              asm.lda(asm.direct(r.call(1)))
+              asm.cmp(asm.direct(r.call(3)))
+              asm.bcs("rt_cells_drop_done")
+              asm.tax
+              asm.lda(memory.indexed(asm, CELL_ENTRIES))
+              asm.sec
+              asm.sbc(asm.direct(r.call(0)))
+              asm.cmp(third_layer ? asm.direct(r.call(4)) : 0x1000)
+              asm.bcc("rt_cells_drop_past") # in the layer's map
+              asm.lda(memory.indexed(asm, CELL_ENTRIES))
+              asm.pha
+              asm.lda(memory.indexed(asm, CELL_ENTRIES, 2))
+              asm.pha
+              asm.lda(asm.direct(r.call(2)))
+              asm.tax
+              asm.pla
+              asm.sta(memory.indexed(asm, CELL_ENTRIES, 2))
+              asm.pla
+              asm.sta(memory.indexed(asm, CELL_ENTRIES))
+              asm.lda(asm.direct(r.call(2)))
+              asm.clc
+              asm.adc(4)
+              asm.sta(asm.direct(r.call(2)))
+              asm.label("rt_cells_drop_past")
+              asm.lda(asm.direct(r.call(1)))
+              asm.clc
+              asm.adc(4)
+              asm.sta(asm.direct(r.call(1)))
+              asm.bra("rt_cells_drop_next")
+              asm.label("rt_cells_drop_done")
+              asm.lda(asm.direct(r.call(2)))
+              asm.lsr
+              asm.lsr
+              asm.sta(asm.abs(memory[CELLS]))
+              asm.rtl
+            end
+
+            # Status bar. rt_bar_place(layer, top): the bar on +layer+ shown from row +top+, held to
             # the screen (0 to its height, where none of it shows), from the next blank on.
             def emit_bar(asm, memory, scene_bars: false)
               r = ->(n) { Memory.register(n) }
@@ -1020,7 +1127,7 @@ module VBlank
               asm.rtl
             end
 
-            # A BACKGROUND HELD ABOVE A ROW (`above_row:`) is the bar's line table turned over: every
+            # A background held above a row (`above_row:`) is the bar's line table turned over: every
             # layer shows above the row, and from it down that one layer is switched off, so what is
             # under it shows and nothing the layer's scroll does can reach those rows. No processor
             # time goes on it once the table is made. rt_background_held_above(layer, row), and in a
@@ -1327,7 +1434,7 @@ module VBlank
                              tiles: memory.scratch(2), tile: memory.scratch(2), planes: memory.scratch(4))
             end
 
-            # TILES PAINTED FROM A LIST. rt_tile_run_copy(run): run number +run+'s list made into its
+            # Tiles painted from a list. rt_tile_run_copy(run): run number +run+'s list made into its
             # tiles in the console's form, at its staging, and owed to video RAM in the next blank.
             # Bytes past what the list holds are nought, see-through, as the interpreter reads them.
             def emit_tile_run_copy(asm, memory, s)
@@ -1504,7 +1611,7 @@ module VBlank
               end
             end
 
-            # IN THE BLANK: EACH RUN HELD IN THE CARTRIDGE and owed a copy, straight from the picture it
+            # In the blank: each run held in the cartridge and owed a copy, straight from the picture it
             # shows to its tiles in video RAM, a strip at a time ("art held strips", in the order
             # Lowering::Picture.held_runs counts them). +held_runs+: each run's number and its strips.
             def emit_held_run_upload(asm, memory, work, held_runs)
@@ -1547,12 +1654,73 @@ module VBlank
               end
             end
 
-            # THE COPY IN THE BLANK, with the screen on (Blank says how). A map put up goes first, a
+            # The cells changed, sent by the copying engine. Each entry of the queue is a cell's
+            # address in video memory and then its word, four bytes laid out as the four ports
+            # VMADDL, VMADDH, VMDATAL and VMDATAH are, so the engine told to write four ports one
+            # after another (DMAP's transfer mode 4, DMA_TO_FOUR_PORTS) sets the address and writes
+            # the word for every cell of the queue in one copy (fullsnes, "SNES DMA and HDMA",
+            # transfer modes, and "SNES PPU Video Memory"). A cell costs the engine four bytes at
+            # eight clocks each, and the processor's work is the setting up of each piece's copy,
+            # the same however many cells the piece holds.
+            #
+            # Behind a map put up first, the cells can find the blank too short and wait for the
+            # next, so they go before the colours: a frame between shows some of the cells in the old
+            # colours, which is the pass's change arriving, and never the new colours over an old
+            # cell. They go CELL_PIECE_BYTES at a time, each when
+            # the blank has the lines left for it (Blank's rt_blank_time_for_cells). +work+'s first
+            # word holds the bytes still to send, its second this piece's.
+            def emit_cells_upload(asm, memory, work)
+              h = Console::SNESHardware
+              left = asm.direct(work)
+              piece = asm.direct(work + 2)
+              asm.lda(asm.abs(memory[CELLS]))
+              asm.beq("rt_upload_cells_done")
+              asm.asl # four bytes a cell
+              asm.asl
+              asm.sta(left)
+              asm.ldx(0)
+              asm.label("rt_upload_cell_piece")
+              asm.jsr(asm.abs("rt_blank_time_for_cells"))
+              asm.lda(left)
+              asm.cmp(CELL_PIECE_BYTES)
+              asm.bcc("rt_upload_cell_piece_bytes")
+              asm.lda(CELL_PIECE_BYTES)
+              asm.label("rt_upload_cell_piece_bytes")
+              asm.sta(piece)
+              asm.sta(asm.abs(h::DMA_BASE + h::DASL))
+              asm.txa
+              asm.clc
+              asm.adc(memory[CELL_ENTRIES] & 0xFFFF) # the table is whole in one bank, so this never carries
+              asm.sta(asm.abs(h::DMA_BASE + h::A1TL))
+              asm.sep(0x20)
+              asm.lda(memory[CELL_ENTRIES] >> 16)
+              asm.sta(asm.abs(h::DMA_BASE + h::A1B))
+              asm.lda(h::DMA_TO_FOUR_PORTS)
+              asm.sta(asm.abs(h::DMA_BASE + h::DMAP))
+              asm.lda(h::VMADDL & 0xFF)
+              asm.sta(asm.abs(h::DMA_BASE + h::BBAD))
+              asm.lda(1)
+              asm.sta(asm.abs(h::MDMAEN))
+              asm.rep(0x20)
+              asm.txa
+              asm.clc
+              asm.adc(piece)
+              asm.tax
+              asm.lda(left)
+              asm.sec
+              asm.sbc(piece)
+              asm.sta(left)
+              asm.bne("rt_upload_cell_piece")
+              asm.stz(asm.abs(memory[CELLS]))
+              asm.label("rt_upload_cells_done")
+            end
+
+            # The copy in the blank, with the screen on (Blank says how). A map put up goes first, a
             # piece of MAP_PIECE bytes at a time as the blanks have room, with the old picture still
-            # up; then, together in one blank, the sprite table, the colours, each layer's map
-            # register and its scroll; then the cells changed, each when the blank has a line left
-            # for it. A painted screen's copy is Paint's rt_paint_upload. With the screen still off,
-            # before the first pass is shown, everything goes at once.
+            # up; then the cells changed (#emit_cells_upload); then, together in one blank, the sprite
+            # table, the colours, each layer's map register and its scroll. A painted screen's copy
+            # is Paint's rt_paint_upload. With the screen still off, before the first pass is shown,
+            # everything goes at once.
             def emit_upload(asm, memory, work, painted, bar, bent, tile_runs, math_turns = false, scene_bars = false, held_runs = {},
                             third_layer = false, held_hides_sprites = false)
               h = Console::SNESHardware
@@ -1625,32 +1793,7 @@ module VBlank
               emit_scene_tiles_upload(asm, memory, work) if memory.reserved?(SCENE_TILES)
               emit_tile_run_upload(asm, memory, work, tile_runs, held_runs)
 
-              # The cells changed, each a word at its address. Many take more than a blank, so they
-              # go before the colours: a frame between shows some of the cells in the old colours,
-              # which is the pass's change arriving, and never the new colours over an old cell.
-              #
-              # Asking the line takes as long as writing the cell, so it is asked once for each
-              # eight cells, which is what a blast of twenty cells does not have time to pay for.
-              asm.ldx(0)
-              asm.label("rt_upload_cell")
-              asm.lda(asm.abs(memory[CELLS]))
-              asm.beq("rt_upload_cells_done")
-              asm.txa
-              asm.and_a((Blank::CELLS_A_LOOK - 1) * 4)
-              asm.bne("rt_upload_cell_in_time")
-              asm.jsr(asm.abs("rt_blank_time_for_cells"))
-              asm.label("rt_upload_cell_in_time")
-              asm.dec(asm.abs(memory[CELLS]))
-              asm.lda(memory.indexed(asm, CELL_ENTRIES))
-              asm.sta(asm.abs(h::VMADDL))
-              asm.lda(memory.indexed(asm, CELL_ENTRIES, 2))
-              asm.sta(asm.abs(h::VMDATAL))
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.inx
-              asm.bra("rt_upload_cell")
-              asm.label("rt_upload_cells_done")
+              emit_cells_upload(asm, memory, work)
 
               # Together: the sprite table whole, the colours if a fade or a tint moved them, and
               # each layer's map register, for a map just put up, and scroll.
@@ -1703,7 +1846,9 @@ module VBlank
               emit_bar_table(asm, memory, work, scene_bars: scene_bars, third_layer: third_layer,
                                                 held_hides_sprites: held_hides_sprites) if bar
               emit_bends_shown(asm, memory, bent)
-              emit_hdma_on(asm, memory) if bar || !bent.empty?
+              boxes = BackgroundBox.kept?(memory)
+              asm.jsr(asm.abs("rt_background_box_upload")) if boxes
+              emit_hdma_on(asm, memory) if bar || !bent.empty? || boxes
               asm.rts
             end
           end

@@ -38,7 +38,7 @@ require_relative "../lib/vblank"
 
 module Raycaster
   MAP_W = 8 # an 8x8 maze: a solid border ring with a few inner walls
-  MAP = Ractor.make_shareable([
+  MAP = [
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 0, 1, 1, 0, 0, 0, 1,
@@ -47,7 +47,7 @@ module Raycaster
     1, 0, 0, 1, 0, 0, 0, 1,
     1, 0, 0, 0, 0, 0, 0, 1,
     1, 1, 1, 1, 1, 1, 1, 1
-  ])
+  ]
 
   COL_W = 8 # each screen strip is 8 pixels wide
   STEPS_PER_CELL = 4          # a ray advances a quarter of a cell at a time...
@@ -59,7 +59,7 @@ module Raycaster
   # a quarter turn (128) later.
   TURN = 512
   QUARTER = TURN / 4
-  SIN = Ractor.make_shareable((0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) })
+  SIN = (0...TURN).map { |a| Math.sin(a * 2 * Math::PI / TURN) }
 
   SOFTEN = 0.5
   MIN_H = 8
@@ -79,11 +79,11 @@ module Raycaster
 
   # The palette. Sky and floor bracket the eye line, and the three wall shades are the
   # depth cue: a near wall catches the light, a far one falls into the gloom.
-  SKY = Ractor.make_shareable(VBlank::Graphics::Color.rgb(5, 7, 12))
+  SKY = VBlank::Graphics::Color.rgb(5, 7, 12)
   FLOOR = VBlank::Graphics::Color.rgb(11, 8, 5)
-  NEAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(29, 27, 23))
+  NEAR = VBlank::Graphics::Color.rgb(29, 27, 23)
   MID = VBlank::Graphics::Color.rgb(20, 18, 15)
-  FAR = Ractor.make_shareable(VBlank::Graphics::Color.rgb(11, 10, 9))
+  FAR = VBlank::Graphics::Color.rgb(11, 10, 9)
   WALL_SHADES = [NEAR, MID, FAR].freeze
 
   GAME = VBlank.game("RAYCAST", consoles: %i[gba snes]) do
@@ -124,19 +124,19 @@ module Raycaster
       # pixels and is SLOWER. Measured: 20 frames a second against 30. Setting up a
       # transfer costs about what a short one moves, so ninety small fills lose to two
       # big ones.
-      dma_fill_rect 0, 0, screen_width, horizon, SKY
-      dma_fill_rect 0, horizon, screen_width, screen_height - horizon, FLOOR
+      fill_rect 0, 0, screen_width, horizon, SKY
+      fill_rect 0, horizon, screen_width, screen_height - horizon, FLOOR
 
       view -= 4 if held(:left)
       view += 4 if held(:right)
 
       # Walking. The step is WALK cells in the direction the player faces — a cosine and
       # a sine, each times the walking speed. Backing up is the same step with its sign
-      # changed, and `negate!` changes the sign of the variable it names.
+      # changed, and `flip!` changes the sign of the variable.
       step_x = sin[view + QUARTER] * WALK
       step_y = sin[view] * WALK
-      negate! :_step_x if held(:down)
-      negate! :_step_y if held(:down)
+      step_x.flip! if held(:down)
+      step_y.flip! if held(:down)
 
       if held(:up) || held(:down)
         # Try the step, and take it only if the cell it lands in is empty — otherwise

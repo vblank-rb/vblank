@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # WHAT TWO MACHINES DISAGREED ABOUT. +pass+ is the first checkpoint at which their game states
+    # What two machines disagreed about. +pass+ is the first checkpoint at which their game states
     # differ, and +last_agreed_pass+ the checkpoint before it where every machine's state was the
     # same (0 when there was none), so the first pass that went wrong lies between the two. +crcs+
     # holds what each player's machine had at +pass+, by player number. +tape+ is the presses of the
@@ -21,7 +21,7 @@ module VBlank
       # Where #write_in put the two files: the tape, and the report as words.
       Written = Data.define(:tape, :report)
 
-      # THE TAPE AND THE REPORT WRITTEN INTO +folder+, for a person to keep after the match has
+      # The tape and the report written into +folder+, for a person to keep after the match has
       # stopped: `match.tape`, which `vblank run GAME --tape match.tape --on interpreter` plays, and
       # `report.txt`, these words. Each machine writes its own, and the tapes of two machines that
       # went different ways hold different presses from the pass where they parted. Returns a Written.
@@ -39,7 +39,7 @@ module VBlank
       end
     end
 
-    # RAISED ON A MACHINE THAT FOUND ITS GAME DIFFERS FROM ANOTHER'S. It stops the match there:
+    # Raised on a machine that found its game differs from another's. It stops the match there:
     # going on would only play two different games. A machine that agrees with the others
     # still stops, because every machine that compared the same two checkpoints finds the same.
     class Desync < StandardError

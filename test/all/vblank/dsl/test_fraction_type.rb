@@ -9,7 +9,7 @@ require "differential"
 # for the rules and the evidence they were argued from.
 #
 # The behaviour is asserted by putting the answer on screen as a marker and reading where
-# it landed, so these tests say what a program DOES rather than which nodes it built.
+# it landed, so these tests say what a program does rather than which nodes it built.
 class TestFractionType < Minitest::Test
   include Differential
 
@@ -168,7 +168,7 @@ class TestFractionType < Minitest::Test
     assert_equal 15, marker_x { ((var(:c, 3.0) / var(:d, 2.0)) * 10).to_i }
   end
 
-  # Two that hold DIFFERENT amounts of fraction still cannot be divided, the same way
+  # Two that hold different amounts of fraction still cannot be divided, the same way
   # they cannot be added — the answer would be wrong by a factor of thousands.
   def test_dividing_fractions_of_different_scales_is_a_build_error
     err = assert_raises(ArgumentError) do

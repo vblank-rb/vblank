@@ -7,16 +7,16 @@
  *   the system's file dialog; it must be a release the game reads (its size, then its SHA-1), and
  *   the release's unpacking part plays handed the bytes that were checked, as fast as the computer goes, drawing its
  *   progress bar. The bytes it made, after the header for the file's SHA-1, are the pack, written to
- *   the folder. SETTINGS plays the menu again with the window's menu open.
+ *   the folder. Settings plays the menu again with the window's menu open.
  *
  * Every sentence is the build's (rg_shell_facts), filled in here by rg_words_fill.
  *
- * ONE WINDOW, FROM THE MENU TO THE GAME. A part is a program of its own (rg_shell.h says why), and
+ * One window, from the menu to the game. A part is a program of its own (rg_shell.h says why), and
  * a window cannot be handed from one program to another. So this program, which becomes the game,
  * opens its window before any of this runs and keeps it, and a part has none: it is started with
  * --part RESULT, sends each picture it draws down its standard output, is sent the buttons held for
  * each frame on its standard input, and where a game would halt writes where its variables and
- * lists stand into RESULT and ends (rg_sdl.c has both ends: its rg_shell_window shows a part, and
+ * lists stand into result and ends (rg_sdl.c has both ends: its rg_shell_window shows a part, and
  * its --part plays one). The file chooser and the box a refusal is told in are that window's own,
  * and the last picture a part drew stays up until the next thing is drawn, so nothing closes or
  * opens between the menu, the chooser, the unpacking and the game.
@@ -356,7 +356,7 @@ static uint8_t *result_list(const char *text, const char *name, size_t *count) {
 
 /* --- what a test picks in place of the file dialog --- */
 
-/* A TEST'S PICKS (--shell-picks FILE): a line for each time LOAD ROM asks for the copy, in order.
+/* A test's picks (--shell-picks FILE): a line for each time LOAD ROM asks for the copy, in order.
  * A line holding a path is that file or folder picked; an empty line is the dialog closed with
  * nothing picked. +next+ is the line the next ask takes. */
 typedef struct {
@@ -401,7 +401,7 @@ typedef enum { NO_PACK_KEPT, KEPT_PACK_READ, KEPT_PACK_NOT_READ } kept_pack;
 
 /* What is kept at +path+.
  *
- * A PACK THIS BUILD DOES NOT READ IS NOT TOLD TO THE PLAYER IN A BOX. It is what an older build of
+ * A pack this build does not read is not told to the player in a BOX. It is what an older build of
  * the game kept, which every player who takes a new build has; nothing went wrong and there is
  * nothing in its path or its size a player can use. Why it was not read goes on the error stream,
  * for whoever made the build, and the menu says the data must be read again (its start file's

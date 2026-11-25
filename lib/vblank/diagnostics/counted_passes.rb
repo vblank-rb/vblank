@@ -2,12 +2,12 @@
 
 module VBlank
   module Diagnostics
-    # HOW MANY TIMES ROUND THE GAME LOOP A CONSOLE GOT, for one whose runtime counts it: the passes
+    # How many times round the game loop a console got, for one whose runtime counts it: the passes
     # it finished (see Verifier for what a pass is). The Color's runtime and the Super Nintendo's
     # each keep a count of their own, so this reads that and costs nothing — +count_passes:+ is
     # not needed. Nil for a program with no game loop.
     #
-    # WHAT THE RUNTIME COUNTS is the times the game waited for the screen, which is the passes
+    # What the runtime counts is the times the game waited for the screen, which is the passes
     # only for a game loop that waits for it once, at its top — the way `game_loop` waits unless
     # it is told `frame_sync: :manual`. It is then one ahead: the first wait comes before the first
     # pass has run at all, so after the bodies of thirty passes the count reads thirty-one, whether

@@ -4,15 +4,84 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # WHAT A PROGRAM RESERVES, against the memory there really is.
+        # An error about a game that keeps more numbers, lists and pools than the console has
+        # memory for. The build stops, says how much the game needs and how much there is, and
+        # names the biggest users, so it is clear what to make smaller. There are three ways to
+        # run out.
+        #
+        # ### Everything together does not fit
+        #
+        # > This program reserves about <size> of memory for its data. But <what the console
+        # > has.> The biggest users are <list :name (size), ...>. To fix this, use a smaller
+        # > capacity for a pool or a list. Or use fewer fields. Or use narrower items
+        # > (`width: :byte`). <Or use fewer variables.> Then it all fits.
+        #
+        # The advice to use fewer variables is left out where variables cannot be what
+        # crowds the memory. What the console has reads "the console has only <size> of quick memory and <size>
+        # of roomier memory, and both are full." on a console with two memories, or "the
+        # <console> has only <size> of work memory, and about <size> of that is free for your
+        # data. The rest holds the call stack and the framework's own state." on one with one.
+        #
+        # ### The variables do not fit in the quick memory
+        #
+        # > This program reserves about <size> of the console's quick memory for things that
+        # > can only live there. But the console has only <size> of it, and about <size> of
+        # > that is free for your data — the rest holds the call stack and the framework's own
+        # > state. A list or a pool can move to the roomier memory; a variable cannot, because
+        # > a variable is reached by its distance from the start of the quick one. The biggest
+        # > users are <list>. To fix this, use fewer variables. Or keep the same numbers in a
+        # > list, which can move.
+        #
+        # ### The lists kept out of the quick memory do not fit
+        #
+        # > This program keeps about <size> of lists and pools out of the quick memory. These
+        # > are the lists and pools with `fast: false`, and the pools that are bigger than
+        # > <size>. They can only go in the roomier memory. The console has only <size> of
+        # > roomier memory.
+        #
+        # It goes on to name the biggest of them and ends "If a list or a pool is small,
+        # remove `fast: false` from it. Then the build can put it in the quick memory."
+        #
+        # ### One list does not fit in one part of the memory
+        #
+        # On a console that keeps all of a list in one part of its work memory (the Color), the
+        # whole can fit while one list does not. The error is at that list's line:
+        #
+        # > list :<name> needs about <size>. A <console> keeps all of a list in one part of its
+        # > work memory. The largest part holds <size>. To fix this, give the list a smaller
+        # > capacity. Or use narrower items (`width: :byte`).
+        #
+        # Where the list fits in a part but the lists declared before it left no part room enough,
+        # it reads:
+        #
+        # > list :<name> needs about <size>. A <console> keeps all of a list in one part of its
+        # > work memory. The lists before it fill the parts, and the most room left in one part is
+        # > about <size>. To fix this, give this list or an earlier list a smaller capacity. Or use
+        # > narrower items (`width: :byte`).
+        #
+        # ### What else the message can say
+        #
+        # Where the build keeps part of the roomier memory for itself (for sound or saves), the
+        # message adds "The build keeps about <size> of the roomier memory for its own use:
+        # <list>." Where it keeps part of the one work memory for a feature the game uses (the
+        # Color's color tables for fades), it adds the same sentence about the work memory. Where a `save_data` record is among the biggest users, it adds "A save_data
+        # record holds a copy of everything it keeps". Where the game made variables with no
+        # `var` line, it adds "These names are variables with no `var` line: <names>." and can
+        # say how many are copies, with the advice:
+        #
+        # > To need no copy, read the name before the line that changes the number. Or, after
+        # > the call that changes it, read the number again.
+        #
+        #--
+        # What a program reserves, against the memory there really is.
         #
         # The console has two work memories: 32K of quick on-chip RAM and 256K of roomier
-        # RAM on a chip of its own. A COLLECTION can live in either — the framework puts
+        # RAM on a chip of its own. A collection can live in either — the framework puts
         # what a frame touches in the quick one and lets the rest fall into the roomy one
         # — so a program with a lot of state is no longer a build failure just because it
         # will not all fit near to hand.
         #
-        # What CANNOT move is a variable. Every variable is reached by naming the base of
+        # What cannot move is a variable. Every variable is reached by naming the base of
         # the quick memory and riding a distance inside the load instruction, which is what
         # makes a variable read two instructions instead of four; a variable in the roomy
         # memory would be neither quick nor near. Nor can a sprite's save-under buffer,
@@ -25,7 +94,7 @@ module VBlank
         # a list can, and only the whole is counted.
         #
         # So this checks three things, and all are real ceilings rather than budgets anybody
-        # chose. What must be in the quick memory has to fit in it. What is kept OUT of it —
+        # chose. What must be in the quick memory has to fit in it. What is kept out of it —
         # a collection marked cold, where the console's build keeps such a one in the roomier
         # memory whatever room the quick one has (Console::Kit#cold_collections_kept_roomier?)
         # — has to fit the roomier one alone. And everything the program declares, together,
@@ -33,19 +102,20 @@ module VBlank
         # plain-language error: how much is needed, how much there is, and the biggest users
         # so the fix is obvious.
         #
-        # THE ROOMIER MEMORY IS NOT ALL THE GAME'S. The build keeps buffers of its own there
+        # The roomier memory is not all the game's. The build keeps buffers of its own there
         # (the sound mixer's, the sound effects table, the save chip's), and the console's kit
         # says which, read off the program before it is lowered (Console::Kit#roomier_memory_reserved).
         # Both of the last two checks count against what is left. What the kit cannot read off
         # the program (the sprite drawing's records, which only laying out the sprites can size)
         # is not counted, and the lowering still refuses a game that runs out over those.
         #
-        # THE NUMBERS ARE THE CONSOLE'S (Console::Description#work_memory_bytes and the two
+        # The numbers are the console's (Console::Description#work_memory_bytes and the two
         # beside it), since a game for the Color is checked against the Color. That console has
         # one 8K work memory and nothing roomier beside it, so there everything the game keeps
         # is counted against the one memory and the second check has nothing to add. The
         # Color's build refuses a game that runs out where it lays it out too
         # (Backends::GBC::Memory::Full); this says it sooner, and names the biggest users.
+        #++
         class IwramBudget
           NAME = :iwram_budget
           PLAIN_NAME = "the #{Messages::PlainWords::QUICK_MEMORY} budget".freeze
@@ -80,9 +150,11 @@ module VBlank
           # fill the memory with variables it never declared, and "2205 variables" would not help
           # it look. The class is named rather than asked of self (`self.class`), which crashed
           # Ruby once with several Ractors building at once (Validator#plain_name says why).
-          def told_of(names, hidden_notes) = IwramBudget.new(made_names: names, hidden_notes: hidden_notes)
+          def told_of(facts)
+            IwramBudget.new(made_names: facts.variables_with_no_var_line, hidden_notes: facts.hidden_variable_notes)
+          end
 
-          # ONE THING THE PROGRAM KEEPS IN MEMORY, as the messages name it: its +label+ ("pool
+          # One thing the program keeps in memory, as the messages name it: its +label+ ("pool
           # :enemy", "120 variables"), its +bytes+, and the +node+ of the line that declared it
           # (nil for a sum over the whole program). +movable+ marks one that can go in the roomier
           # memory; +saved+ a save_data record's lists, whose fix is different (#save_record_advice);
@@ -108,13 +180,15 @@ module VBlank
               cold_bytes = cold.sum(&:cold_bytes)
               return cold_overflow_findings(cold, cold_bytes, roomier, reserved, console) if cold_bytes > roomier
             end
-            return [] if total <= console.free_work_memory_bytes + roomier
+            work_reserved = console.roomier_memory? ? [] : kit.work_memory_reserved(program)
+            free = console.free_work_memory_bytes - work_reserved.sum(&:bytes)
+            return list_placement_findings(program, console, kit, pinned, free) if total <= free + roomier
 
             # Blame the biggest user, which is the capacity to shrink. The plain
             # variable count and the sprites' save-buffers are sums over the whole
             # program with no one declaration behind them, so a program whose biggest
             # user is one of those blames the program itself.
-            [Finding.new(check: NAME, severity: :error, message: message(total, users, reserved, console),
+            [Finding.new(check: NAME, severity: :error, message: message(total, users, reserved, console, work_reserved),
                          node: users.first.node || :program)]
           end
 
@@ -127,6 +201,44 @@ module VBlank
           end
 
           private
+
+          # A console that keeps each list whole in one part of its work memory (the Color, whose
+          # parts are its two halves: Console::Description#largest_list_bytes is the larger) can
+          # have room enough in all while one list fits in neither part. So the lists are placed as
+          # its build places them: the variables first, then each list in the order the game
+          # declares them, in the first part with room for it (Backends::GBC::Memory#reserve). Each
+          # list that fits in no part is blamed at its own line, after the total has been checked.
+          def list_placement_findings(program, console, kit, fixed_bytes, free)
+            most = console.largest_list_bytes or return []
+
+            rooms = [free - most - fixed_bytes, most]
+            rooms = [0, rooms.sum] if rooms.first.negative?
+            list_declarations(program, kit).filter_map do |name, (bytes, node)|
+              label = Messages::MadeNames.collection_words(name)
+              next list_finding(node, list_too_big_message(label, bytes, most, console)) if bytes > most
+
+              part = rooms.index { |room| room >= bytes }
+              next list_finding(node, list_unplaced_message(label, bytes, rooms.max, console)) unless part
+
+              rooms[part] -= bytes
+              nil
+            end
+          end
+
+          def list_finding(node, message) = Finding.new(check: NAME, severity: :error, node: node, message: message)
+
+          def list_too_big_message(label, bytes, most, console)
+            "#{label} needs about #{human_size(bytes)}. A #{console.title} keeps all of a list in one part of its " \
+              "work memory. The largest part holds #{human_size(most)}. To fix this, give the list a smaller " \
+              "capacity. Or use narrower items (`width: :byte`)."
+          end
+
+          def list_unplaced_message(label, bytes, left, console)
+            "#{label} needs about #{human_size(bytes)}. A #{console.title} keeps all of a list in one part of its " \
+              "work memory. The lists before it fill the parts, and the most room left in one part is about " \
+              "#{human_size(left)}. To fix this, give this list or an earlier list a smaller capacity. Or use " \
+              "narrower items (`width: :byte`)."
+          end
 
           # The cold collections are over the roomier memory on their own. A collection marked
           # cold (`fast: false`, or a pool too big to share the quick memory, which the builder
@@ -223,9 +335,9 @@ module VBlank
 
           def round_up_word(bytes) = (bytes + 3) & ~3
 
-          def message(total, users, reserved, console)
+          def message(total, users, reserved, console, work_reserved)
             "This program reserves about #{human_size(total)} of memory for its data. But " \
-              "#{memory_message(console)}#{reserved_message(reserved)} The biggest users are #{top_users(users)}. To fix this, use a " \
+              "#{memory_message(console)}#{reserved_message(reserved)}#{work_reserved_message(work_reserved)} The biggest users are #{top_users(users)}. To fix this, use a " \
               "smaller capacity for a pool or a list. Or use fewer fields. Or use narrower items " \
               "(`width: :byte`).#{variables_advice(console)}#{save_record_advice(users)} Then it all " \
               "fits.#{made_variables_message}"
@@ -324,6 +436,14 @@ module VBlank
 
             parts = reserved.map { |item| "#{item.label} (#{human_size(item.bytes)})" }.join(", ")
             " The build keeps about #{human_size(reserved.sum(&:bytes))} of the roomier memory for its own use: #{parts}."
+          end
+
+          # What the build keeps in the one work memory for itself, for what this game uses.
+          def work_reserved_message(reserved)
+            return "" if reserved.empty?
+
+            parts = reserved.map { |item| "#{item.label} (#{human_size(item.bytes)})" }.join(", ")
+            " The build keeps about #{human_size(reserved.sum(&:bytes))} of the work memory for its own use: #{parts}."
           end
 
           def top_users(users)

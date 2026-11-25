@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # A TILE PICKED AS THE PROGRAM RUNS (Nodes::SetTile#picked_by), AS THE TESTS IT STANDS FOR.
+    # A tile picked as the program runs (Nodes::SetTile#picked_by), as the tests it stands for.
     #
     # A backend that keeps a table of its console's cells indexes it with the number (the
     # Genesis's, the Super Nintendo's and the Color's lowerings). One that does not writes this
@@ -13,6 +13,19 @@ module VBlank
     # The trees are of new nodes with copies of the step's values, so the program is untouched.
     module PickedTile
       module_function
+
+      # A word no cell holds, since no tile has the top number with every other bit set: what an entry
+      # of a table of cells holds for a number that stands for no tile.
+      NO_CELL = 0xFFFF
+
+      # The table of cell words +node+ picks from: entry n is the word the block's own +word+ gives the
+      # tile for the number +picks_from+ + n, or NO_CELL where the number stands for no tile or the
+      # block gives it none (nil). Nil where no number stands for a tile there at all, and the cell is
+      # never written.
+      def words(node)
+        words = node.picks.map { |tile| (tile && yield(tile)) || NO_CELL }
+        words.all?(NO_CELL) ? nil : words
+      end
 
       # The statement that does what +node+ does, or nil where no number stands for a tile.
       def tests(node)
@@ -30,7 +43,7 @@ module VBlank
         which
       end
 
-      # THE STEP WITH ITS TILE WRITTEN IN, for a number known as the cartridge is built: a game
+      # The step with its tile written in, for a number known as the cartridge is built: a game
       # whose data pack is read with it knows every number the pack holds, so a letter read from
       # the pack at a place written in the program is one tile, written as a tile named in the
       # program is. A SetTile of that tile, or nil where +number+ stands for no tile and the cell is

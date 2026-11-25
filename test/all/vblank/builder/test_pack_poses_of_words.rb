@@ -122,7 +122,7 @@ module PackPoseOfWordsGames
   private def pose_from_pack(...) = pose_from_pack_and_file(...).first
 end
 
-# A POSE READ FROM AN ORIGINAL THAT KEEPS A FRAME AS THE CONSOLE'S OWN SPRITE ENTRIES
+# A pose read from an original that keeps a frame as the console's own sprite entries
 # (Original::FrameLayout's parts of two bytes, and its pieces of several tiles each way). The
 # made-up original keeps a frame as a Genesis game does: a word that counts the pieces, then eight
 # bytes a piece, which are y as a word, a size byte, a byte the picture does not use, the tile
@@ -131,7 +131,7 @@ end
 class TestPackPosesOfWords < Minitest::Test
   include PackPoseOfWordsGames
 
-  # THE SAME PIECES PAINTED BY HAND, one tile of 8x8 at a time. +tile_of+ is the tile a piece
+  # The same pieces painted by hand, one tile of 8x8 at a time. +tile_of+ is the tile a piece
   # holds at a column and row of itself. A piece that is mirrored shows its last column first,
   # each tile back to front; one that is upside down shows its last row first, each tile's rows
   # in reverse.
@@ -155,7 +155,7 @@ class TestPackPosesOfWords < Minitest::Test
       painted = game_player.run(pose_painted_by_hand(DOWN_COLUMNS), frames: 4).screen
 
       assert_equal painted.to_a, read.to_a
-      # The mirrored piece's top left pixel is the top right pixel of its LAST column's first tile.
+      # The mirrored piece's top left pixel is the top right pixel of its last column's first tile.
       place = VIDEO.fetch(6 + (2 * 2)).fetch(7)
 
       refute_equal 0, place, "the pixel this test reads must not be see-through"

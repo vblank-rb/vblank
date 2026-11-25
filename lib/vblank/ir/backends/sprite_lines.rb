@@ -3,18 +3,18 @@
 module VBlank
   module IR
     module Backends
-      # HOW MANY SPRITES A LINE OF THE SCREEN SHOWS. A console that draws a sprite as pieces, each
+      # How many sprites a line of the screen shows. A console that draws a sprite as pieces, each
       # an entry of its sprite table, reads the table again for every line of the screen as it draws
       # it, and has time for only so much of it on one line. Each console runs out its own way:
       #
-      # - THE GAME BOY COLOR takes the first ten entries that cover the line, in the table's order,
-      #   and leaves the rest out of THAT LINE ONLY. Each entry is one piece eight pixels wide.
-      # - THE SUPER NINTENDO takes the first 32 entries that reach the line, then fetches their
-      #   pictures in slivers eight pixels wide, starting from the entry it took LAST and each entry's
+      # - The Game Boy Color takes the first ten entries that cover the line, in the table's order,
+      #   and leaves the rest out of that line only. Each entry is one piece eight pixels wide.
+      # - The Super Nintendo takes the first 32 entries that reach the line, then fetches their
+      #   pictures in slivers eight pixels wide, starting from the entry it took last and each entry's
       #   slivers left to right, and has time for 34 slivers. A sliver off the screen is not fetched.
-      #   So past 32 entries the ones furthest back go, and past 34 slivers the entries IN FRONT lose
+      #   So past 32 entries the ones furthest back go, and past 34 slivers the entries in front lose
       #   their right-hand slivers first.
-      # - THE GENESIS takes the first 20 entries that reach the line, then draws them front-most
+      # - The Genesis takes the first 20 entries that reach the line, then draws them front-most
       #   first until it has drawn 320 pixels: each spends its whole width, its blank pixels and those
       #   off the screen too, and the one that crosses 320 is drawn only as far as the pixels left.
       #
@@ -31,7 +31,7 @@ module VBlank
       # any other piece takes its place on each line it covers whether or not that line has room left
       # to draw it.
       #
-      # HOW MANY SPRITES THE SCREEN SHOWS. The table itself holds only so many entries (the Color's
+      # How many sprites the screen shows. The table itself holds only so many entries (the Color's
       # forty, the Super Nintendo's 128, the Genesis's 80: #sprite_pieces_drawn_a_screen). The Color's
       # cartridge fills it front-most first with every piece on the screen — a piece wholly off any
       # edge is not written — so with more than that, the pieces furthest back find it full. The
@@ -53,7 +53,7 @@ module VBlank
           end
         end
 
-        # WHERE EACH PIECE OF A PICTURE STANDS IN IT, [across, down, width, height] in pixels, in the
+        # Where each piece of a picture stands in it, [across, down, width, height] in pixels, in the
         # order the table holds them, the first in front, as a console whose entries are +shape+
         # (Console::Description#sprite_piece_shape) cuts it.
         #
@@ -78,7 +78,7 @@ module VBlank
           end
         end
 
-        # PIECES AS THE BUILD MADE THEM. #picture_places cuts a picture by the console's rule, but a
+        # Pieces as the build made them. #picture_places cuts a picture by the console's rule, but a
         # console's build can choose otherwise where the rule cannot see why: the Super Nintendo's
         # gives up squares of 16×16 for pieces of 8×8 where its video memory has no room for them,
         # for a picture, a crowded screen or the whole game, and cuts a copy drawn in other colours
@@ -159,7 +159,7 @@ module VBlank
         end
         private_class_method :small_picture_places, :square_picture_places, :rectangle_picture_places
 
-        # WHICH SLICES OF A FRAME'S SPRITES ARE LEFT OUT. +sprites+ are the frame's, front-most first
+        # Which slices of a frame's sprites are left out. +sprites+ are the frame's, front-most first
         # (the table's order), each [x, y, places] with places as #picture_places gives them. +limit+
         # is what a line draws (a Limit, or nil for no limit) and +table_entries+ how many the table
         # holds, nil for no limit. What comes back is one entry for each sprite: nil for one drawn
@@ -171,7 +171,7 @@ module VBlank
         # +table_from+ is the end of the table a console's cartridge fills first: :front, the Color's,
         # so a full table leaves out the pieces furthest back; :back, the Super Nintendo's and the
         # Genesis's, whose runtimes place the sprite furthest back first, so a full table leaves out
-        # the pieces IN FRONT. +entry_reach+ is how far past the screen's left or top edge a piece
+        # the pieces in front. +entry_reach+ is how far past the screen's left or top edge a piece
         # still takes an entry, where that is further than the piece's own width or height (#entry_reach).
         def self.left_out(sprites, limit:, screen_width:, screen_height:, table_entries: nil, table_from: :front, entry_reach: nil)
           pieces = sprites.each_with_index.flat_map do |(x, y, places), at|
@@ -202,7 +202,7 @@ module VBlank
           end
         end
 
-        # HOW FAR OFF THE SCREEN A PIECE STILL TAKES AN ENTRY of +program+'s table, past its left or
+        # How far off the screen a piece still takes an entry of +program+'s table, past its left or
         # top edge, where that is further than its own width or height; nil where it is not. The Super
         # Nintendo's runtime asks every piece about a square's reach in a game with any square of
         # 16×16 (SNES::Runtime::Picture#emit_sprites), so there a piece of 8×8 up to 15 pixels off

@@ -5,9 +5,9 @@ require "tmpdir"
 require "pathname"
 require "stringio"
 require "comparison_games"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
-# A CARTRIDGE THE FRAMEWORK DID NOT BUILD, played from a script: any cartridge file. What the
+# A cartridge the framework did not build, played from a script: any cartridge file. What the
 # build worked out about a cartridge — which variable is where, which sprite is which — is not
 # in the file, so nothing in such a cartridge has a name. A script watches it by its pixels and
 # by its memory.
@@ -27,7 +27,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # A CARTRIDGE FILE IS PLAYED FROM A SCRIPT THAT COUNTS FRAMES, given as its path, and its
+  # A cartridge file is played from a script that counts frames, given as its path, and its
   # moments fall on the frames the script says. The box is where twenty frames of RIGHT put
   # it, read off the screen.
   def test_a_cartridge_file_is_played_from_a_counted_script
@@ -43,7 +43,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # A SCRIPT WATCHES SUCH A CARTRIDGE BY ITS PIXELS AND BY ITS MEMORY, and each wait ends on
+  # A script watches such a cartridge by its pixels and by its memory, and each wait ends on
   # the frame it should: the box reaches column 60 on frame 30, twenty frames of RIGHT after
   # ten of standing. Where the game keeps the box's column is known here only because the
   # test built the game; somebody watching a cartridge they did not build finds the address
@@ -81,7 +81,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # NOTHING IN SUCH A CARTRIDGE HAS A NAME, so asking for a variable or a sprite by one is a
+  # Nothing in such a cartridge has a name, so asking for a variable or a sprite by one is a
   # friendly error: it says the cartridge was not built here, and what to read instead. It
   # does not tell somebody with a cartridge file how to assemble one.
   def test_asking_such_a_cartridge_for_a_name_says_why_and_what_to_read
@@ -98,7 +98,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # A cartridge assembled HERE from machine code, with no record handed over, plays too and
+  # A cartridge assembled here from machine code, with no record handed over, plays too and
   # has no names either — but that one is a slip, and is told how to put it right.
   def test_a_cartridge_assembled_with_no_build_record_plays_and_says_how_to_get_one
     builder = VBlank::Builder.new
@@ -117,7 +117,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     assert_match(/build_record/, err.message)
   end
 
-  # A SAVE OF A SIZE THIS FRAMEWORK'S CARTRIDGES NEVER HAVE is one a cartridge somebody else
+  # A save of a size this framework's cartridges never have is one a cartridge somebody else
   # made can have. It is kept as its bytes, so such a cartridge can be started from it, and
   # a playthrough of one ends with the save handed back and not with an error about its size.
   def test_a_save_of_a_size_of_its_own_is_kept_as_its_bytes
@@ -131,7 +131,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # A CARTRIDGE FILE SAVES AND STARTS FROM A SAVE LIKE ANY OTHER, and nothing is written
+  # A cartridge file saves and starts from a save like any other, and nothing is written
   # beside it: an emulator left to itself would put a save file there, and the next playing
   # would start in it. The hero example saves a walk of twelve steps; started again from
   # what came back, its file screen holds twelve, read from memory at the address the build
@@ -153,7 +153,15 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     Dir.mktmpdir("cartridges") do |folder|
       path = File.join(folder, "hero.gba").tap { |written| built.write(written) }
       saved = saving.play(path).save
-      shown = file_screen.play(path, save: saved).game.mem32(built.var_addresses.fetch(:shown0))
+      # A file has no build record, so the first file's steps are read where the build put the
+      # first slot of the game's list `shown`.
+      place = built.built.lists.fetch(:shown)
+      game = file_screen.play(path, save: saved).game
+      shown = case place.bytes
+              when 1 then game.mem8(place.base)
+              when 2 then game.mem16(place.base)
+              else game.mem32(place.base)
+              end
 
       assert_equal 12, shown
       assert_equal ["hero.gba"], Dir.children(folder)
@@ -169,7 +177,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # NOTHING IS WRITTEN BESIDE THE CARTRIDGE FILE, a save file least of all. An emulator left
+  # Nothing is written beside the cartridge file, a save file least of all. An emulator left
   # to itself writes one there, and the next playing would start in it; here the folder
   # holds the cartridge and nothing else afterwards.
   def test_nothing_is_left_beside_a_cartridge_file_that_was_played
@@ -180,7 +188,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     end
   end
 
-  # TWO CARTRIDGE FILES ARE COMPARED AS TWO BUILT CARTRIDGES ARE: no drift between a file and
+  # Two cartridge files are compared as two built cartridges are: no drift between a file and
   # itself, and a quicker walker's file drifts from the first frame its box has moved.
   def test_two_cartridge_files_are_compared
     with_walker_file do |path, built|
@@ -201,7 +209,7 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     assert_match(/no cartridge file/, err.message)
   end
 
-  # THE SECOND CARTRIDGE OF A COMPARISON IS LOOKED AT BEFORE THE FIRST IS PLAYED. This script
+  # The second cartridge of a comparison is looked at before the first is played. This script
   # gives up on its first wait, so had it been played before the missing file was noticed,
   # that is the error there would be.
   def test_a_second_cartridge_that_is_not_there_is_refused_before_the_first_is_played

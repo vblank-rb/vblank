@@ -3,6 +3,45 @@
 module VBlank
   module Effects
     module Packs
+      # A camera that follows a character
+      #
+      # `camera_follows` is the view almost every adventure game uses, for a world bigger than the
+      # screen. The hero stays put and the world slides past underneath. Move the hero like any other
+      # sprite, with `move`, and the world slides instead. Moving, facing, animating and turning all
+      # work. The sprite's position is where it sits on the screen and not where it stands in the
+      # world, so `blocked_by` and `overlaps?` against something placed in the world do not line up
+      # with it.
+      #
+      # ```ruby picture=loop frames=64
+      # VBlank.game "FOLLOW", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image(:tree, "." => :transparent,
+      #                "#" => :orange) do
+      #     "..####..\n.######.\n" * 4
+      #   end
+      #   image(:hero, "#" => :yellow) do
+      #     "################\n" * 16
+      #   end
+      #   tiles :land, "T" => :tree
+      #   rows = "#{'       T' * 8}\n" +
+      #          "#{'   T    ' * 8}\n"
+      #   world = background :world, tiles: :land,
+      #                              map: rows * 10
+      #   hero = sprite :hero, at: [0, 0]
+      #   hero.center_on_screen
+      #   camera_follows hero, across: world
+      #   game_loop do
+      #     # the hero stays in the middle,
+      #     # and the world slides left
+      #     hero.move :right
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
+      # hero.move :right if held(:right)   # ordinary sprite code, and the world slides left
+      # ```
+      #--
       # A camera that follows a character through a world bigger than the screen — the
       # view almost every adventure game uses. The hero stays put and the world slides
       # past underneath.
@@ -11,8 +50,8 @@ module VBlank
       # kernel: a `background` that scrolls, and a hardware sprite the console composites
       # over it. Following is not — it is two statements a frame and two hidden variables.
       #
-      # WHAT IT ACTUALLY CHANGES, which is more than saving a line. Without it, a game
-      # whose world is bigger than the screen has to keep the hero's WORLD position in
+      # What it actually changes, which is more than saving a line. Without it, a game
+      # whose world is bigger than the screen has to keep the hero's world position in
       # variables of its own, pin the sprite's picture somewhere by hand, and point the
       # camera at the difference. The hero is then a pair of numbers rather than a sprite,
       # so none of the sprite verbs apply to it: no `move` with its automatic facing, no
@@ -28,41 +67,43 @@ module VBlank
       #   hero.move :right if held(:right)   # ordinary sprite code...
       #   # ...and the world slides left instead, because the camera follows.
       #
-      # WHAT DOES NOT COMPOSE, and it is worth knowing rather than discovering: the
-      # sprite's position is where it sits on the SCREEN, not where it stands in the
+      # What does not compose, and it is worth knowing rather than discovering: the
+      # sprite's position is where it sits on the screen, not where it stands in the
       # world. So `blocked_by` (whose walls are places on the map) and `overlaps?` against
       # something placed in the world do not line up with it. Moving, facing, animating
       # and turning all do.
+      #++
       module FollowCamera
-        HOME_X = :__camera_home_x # Where the followed sprite sits on screen
-        HOME_Y = :__camera_home_y
-        ROUTINE = :__camera_follow
+        HOME_X = :__camera_home_x # :nodoc: Where the followed sprite sits on screen
+        HOME_Y = :__camera_home_y  # :nodoc:
+        ROUTINE = :__camera_follow  # :nodoc:
 
-        # Point the camera at +sprite+ and keep it there, scrolling +across+ under it.
+        # Points the camera at a sprite and keeps it there, scrolling a background under it.
         #
-        #   world = background :world, tiles: :terrain, map: MAP
-        #   hero  = sprite :guy, at: [0, 0]
-        #   hero.center_on_screen
-        #   camera_follows hero, across: world
+        # Call it once, where the sprite is declared. Wherever the sprite is standing at that moment
+        # is where it stays: the middle of the screen for an adventure game, low down for a
+        # platformer, wherever you put it. From there the framework moves the world under it every
+        # frame. One sprite per game leads the camera, and calling it again with a different sprite
+        # is an error and not two cameras fighting over one world.
         #
-        # Call it once, where the sprite is declared. Wherever the sprite is standing at
-        # that moment is where it stays — the middle of the screen for an adventure game,
-        # low down for a platformer, wherever you put it. From there the framework moves
-        # the world under it every frame.
+        # ```ruby
+        # world = background :world, tiles: :terrain, map: MAP
+        # hero  = sprite :guy, at: [0, 0]
+        # hero.center_on_screen
+        # camera_follows hero, across: world
+        # camera_follows hero, across: world, at: [120, 80]   # standing by the pond
+        # ```
         #
-        # One sprite per game leads the camera. Calling it again with a different sprite
-        # is a friendly error rather than two cameras fighting over one world.
-        #
-        # `at:` sets where in the WORLD the character starts, which is the question you
-        # want answered right here and which the sprite's own position cannot answer — that
-        # is where it sits on the screen, and under a follow camera those are two different
-        # things. Leave it out to start at the world's top-left corner.
-        #
-        #   camera_follows hero, across: world, at: [120, 80]   # standing by the pond
-        #
-        # @param sprite [HardwareSprite] the character to follow
-        # @param across [Background] the world it walks through
-        # @param at [Array(Integer, Integer), nil] where the character stands in the world
+        # * `sprite` - the character to follow.
+        # * `across:` - the background, the world it walks through.
+        # * `at:` - where in the world the character starts, as `[x, y]`. The sprite's own position
+        #   cannot answer this, because it is where the sprite sits on the screen, and under a
+        #   follow camera those are two different things. Left out, it starts at the world's
+        #   top-left corner.
+        #--
+        # Every frame the routine looks at how far the sprite has drifted from where it is meant to
+        # sit, scrolls the world by exactly that much, and puts the sprite back before it is drawn.
+        #++
         def camera_follows(sprite, across:, at: nil)
           follow_camera_arguments!(sprite, across, at)
 
@@ -91,17 +132,26 @@ module VBlank
         # for the same reason, so it reads the same way.
         def self.checks = CHECKS
 
-        # A follow camera with no frames to happen on.
+        # A warning about a game that follows a character with the camera and has no `game_loop`:
         #
+        # > This game follows a character with `camera_follows`, but it has no `game_loop`. A
+        # > camera moves the world a little on every frame, so it needs frames to run on. With no
+        # > game loop there are none: the world never moves, and the character walks off the
+        # > screen. To fix this, put the game in a `game_loop`.
+        #
+        # Following is a small move of the camera made once a frame, as each turn of the
+        # `game_loop` ends. Without a game loop the world never scrolls and the character walks
+        # off the edge of the screen. Put the game's frames in a `game_loop`.
+        #
+        #--
         # Following is a small correction made once per frame, so it only exists over time.
-        # The framework runs it at the frame boundary a `game_loop` gives it. With no game
-        # loop there is no boundary: the world never scrolls, and the hero walks off the
-        # edge of the screen and keeps going.
+        # The framework runs it at the frame boundary a `game_loop` gives it.
+        #++
         class NeedsGameLoop
-          NAME = :follow_camera_needs_game_loop
-          PLAIN_NAME = "a follow camera with no frames to run on"
+          NAME = :follow_camera_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a follow camera with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game follows a character with `camera_follows`, but it has no " \
             "`game_loop`. A camera moves the world a little on every frame, so it needs " \
             "frames to run on. With no game loop there are none: the world never moves, " \
@@ -136,10 +186,10 @@ module VBlank
         # Cheap argument checking, inline where the mistake is written rather than in a
         # guardrail — these are wrong the moment they are typed.
         def follow_camera_arguments!(sprite, across, at)
-          # THE SCREEN COMES FIRST, and the order is the point: on a bitmap screen nothing
+          # The screen comes first, and the order is the point: on a bitmap screen nothing
           # about this verb applies, so saying "you need a background" would send somebody
           # off to make one that could not help them either. A bitmap screen has no world
-          # to move through — its picture IS the screen, and panning past the edge shows
+          # to move through — its picture is the screen, and panning past the edge shows
           # the backdrop rather than more of a map.
           unless @screen_mode == :tiled
             raise ArgumentError,
@@ -170,7 +220,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

@@ -1,12 +1,14 @@
 # frozen_string_literal: true
 
-# MORE PLAYERS THAN A CONSOLE SEATS: four people at one game, each moving a marker of their own,
+# More players than a console seats: four people at one game, each moving a marker of their own,
 # and a crowd of sixteen, the most any build reads (IR::Buttons::MOST_PLAYERS). `:any` is every
 # connected player, and the game asks how many are connected.
 #
 # Every build that plays on a computer reads sixteen players, and so does the interpreter, but no
-# console's cartridge does: the Advance, the Color and the Genesis read one controller and the
-# Super Nintendo two, and each refuses a game that reads more. So these tests are not in
+# console's cartridge does: the Advance and the Color read one controller, and the Super Nintendo,
+# the Genesis and the PlayStation four (test_snes_multitap.rb, test_genesis_team_player.rb and
+# test_ps1_multitap.rb, in those lowerings' folders), and each
+# refuses a game that reads more. So these tests are not in
 # test/all/, which every cartridge run plays too, and not in test/console/, which a console's
 # cartridge run plays. They are played through game_player by each run whose player reads them
 # all: the interpreter (test/interpreter/vblank/builder/test_many_players_interpreter.rb), and the

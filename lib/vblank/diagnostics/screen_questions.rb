@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # THE QUESTIONS ASKED OF A WHOLE SCREEN, answered in Ruby, for a console whose emulator is not the
+    # The questions asked of a whole screen, answered in Ruby, for a console whose emulator is not the
     # Advance's. The Advance's emulator answers them in its C extension (RubyGBAEmulator::Screen, see
     # Emulator.screen_questions), and this gives the same answers to the same questions, word for word
     # and number for number: the Genesis's, the Super Nintendo's and the PlayStation's emulators hand
@@ -10,11 +10,11 @@ module VBlank
     # Advance's emulator, and a `path:` source in its Gemfile never builds that emulator's extension, so
     # its picture is never asked through that extension (Console::Kit#screen_questions).
     #
-    # A SCREEN is four bytes a pixel, red, green, blue and a byte of nothing, a row at a time from the
+    # A screen is four bytes a pixel, red, green, blue and a byte of nothing, a row at a time from the
     # top. Every answer is at five bits a channel, the precision a console shows, unless it says
     # otherwise: the top five bits of each byte.
     #
-    # IT IS SLOWER THAN THE C, and is written so the common case costs little. Two screens of the same
+    # It is slower than the C, and is written so the common case costs little. Two screens of the same
     # bytes are known to be one picture in one comparison of the strings, which is nearly every frame of
     # two cartridges that agree, and a row of the same bytes holds no difference.
     module ScreenQuestions

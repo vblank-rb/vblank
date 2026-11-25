@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE THINGS A GAME HOLDS A HANDLE TO. A verb on Builder hands one of these back — a Value, a
+# The things a game holds a handle to. A verb on Builder hands one of these back — a Value, a
 # Sprite, a List, a Pool — and the game then talks to it. So this is the half of the surface a
 # game names directly, along with the kinds of thing those handles are made of.
 
@@ -11,25 +11,36 @@ require_relative "dsl/scale"
 require_relative "dsl/changing_word"
 require_relative "dsl/value"
 require_relative "dsl/condition"
+require_relative "dsl/text_with_numbers" # Words with a game number in them, for draw_text
 require_relative "dsl/branch"
 require_relative "dsl/plain_ruby"          # A game block in normal Ruby, read with Prism and rewritten
 require_relative "dsl/plain_ruby_call_changes" # What a call of game code in that block can change
+require_relative "dsl/plain_ruby_arrays"   # Which Arrays in that block are game lists, and the list each makes
 require_relative "dsl/plain_ruby_names"    # What each local name in that block is
+require_relative "dsl/plain_ruby_promotion" # Which names in that block become game variables, and why
 require_relative "dsl/plain_ruby_checks"   # What that block is refused
 require_relative "dsl/plain_ruby_steps"    # What the rewritten block calls as it runs
+require_relative "dsl/plain_ruby_counts"   # Ruby's counting loops, run by the game on a number it keeps
+require_relative "dsl/plain_ruby_known_rounds" # A counting loop on numbers known while building: written out, or a loop
+require_relative "dsl/plain_ruby_jumps"    # `break` and `next` in a loop the game runs
 require_relative "dsl/plain_ruby_writes"   # What a write in that block does
+require_relative "dsl/plain_ruby_item_questions" # Ruby's questions about items, such as max, in that block
 require_relative "dsl/plain_ruby_instance_variables" # What an instance variable in game code is
+require_relative "dsl/plain_ruby_struct_settings" # What a Struct's block says about an Array of it
+require_relative "dsl/plain_ruby_struct_methods"  # A Struct's methods, read as game code wherever written
 # A handle that does its work in game words is written in normal Ruby, as a game is, so it comes in
 # the way a part of a game does. Everything above this line is what that needs.
 VBlank.require_game_file "dsl/bounds"
 VBlank.require_game_file "dsl/pixel_bounds"
 require_relative "dsl/box"
+require_relative "dsl/sort_order"   # Which way a game's sort! or sort_by! puts an Array
 require_relative "dsl/list"
 require_relative "dsl/save_data"
 require_relative "dsl/random_numbers"      # The random-number stream, for a save_data record to keep
 require_relative "dsl/table"
 require_relative "dsl/field_ref"
 VBlank.require_game_file "dsl/pool"
+VBlank.require_game_file "dsl/struct_array"  # An Array of Structs game code changes, kept as a pool
 require_relative "dsl/direction"
 require_relative "dsl/grid"
 VBlank.require_game_file "dsl/sprite"

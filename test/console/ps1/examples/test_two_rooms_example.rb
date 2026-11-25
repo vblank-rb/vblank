@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/two_rooms").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/two_rooms").to_s)
 
 # The Two Rooms example (examples/two_rooms.rb) on every run that plays games as the PlayStation: a
 # game that works out which of its rooms it can see through a doorway and draws only those, laid out

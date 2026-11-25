@@ -4,6 +4,20 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a Ruby name set from a button (`held` or `pressed`) before the game starts
+        # to play, and read by the game while it plays:
+        #
+        # > `<name>` at <file:line> gets its value from a button before the game starts to play.
+        # > The game reads it while it plays. It keeps the button as it was at the start, so it does
+        # > not change. Read the button where it is used: put the `pressed` or `held` test in the
+        # > routine or the loop that reads it.
+        #
+        # A line such as `jump = pressed(:a)` written while the game sets up runs once, at power-on,
+        # before anybody can press anything. The name keeps that one answer, so the game never sees
+        # a press. Write the `pressed` or `held` test inside the `func`, the scene or the game loop
+        # that uses it, so it is asked every time.
+        #
+        #--
         # A local set from a button (`held`, `pressed`) while the game sets up, and read by game
         # code: a `func`, a scene or the game loop. A Ruby local keeps the answer of its line, so
         # the local holds the buttons as they were at power-on, and the game never sees a press.
@@ -12,6 +26,7 @@ module VBlank
         # once, before anybody can press it, is never what a game means. It reports from data
         # rather than from the tree, since the line leaves only a copy behind. See
         # Builder#record_kept_button.
+        #++
         class PressKeptFromSettingUp
           NAME = :press_kept_from_setting_up
           PLAIN_NAME = "a button read while the game sets up, and used as it plays"

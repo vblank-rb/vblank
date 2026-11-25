@@ -2,37 +2,29 @@
 
 require "test_helper"
 
-# WHAT ASKING ABOUT FULL COLLECTIONS COSTS A BUILD: one more run of a scene, however many
+require "ractor_workers"
+
+# What asking about full collections costs a build: one more run of a scene, however many
 # collections the game has. Each run plays the scene in the emulator, so a run a collection is
 # minutes of every build of a game with dozens of them, and every cold test cartridge too.
 class TestFullCollectionsCost < Minitest::Test
   # Counts the runs by wrapping the profiler's own method, which changes the whole process.
   runs_on_the_main_ractor!
+  include RactorWorkers
 
   Profiler = VBlank::Diagnostics::Profiler
 
   def setup = require_emulator!
 
-  # How many times the profiler runs while the block measures +rom+. The real run is put back by
-  # name after: a method defined again from another method's handle could not be called from any
-  # other Ractor for the rest of the run.
+  # How many times the profiler runs while the block measures +rom+.
   #
-  # The stand-in counts only on the main Ractor. The workers playing the other files run beside
-  # this class and measure builds of their own while it is in place; a stand-in made from a block
-  # nobody made shareable would stop them with "defined with an un-shareable Proc in a different
-  # Ractor", so it is made shareable (CountedRuns) and keeps its count in the main Ractor's own
-  # storage.
+  # The stand-in counts only on the main Ractor, in that Ractor's own storage. The workers playing
+  # the other files run beside this class and measure builds of their own while it is in place.
+  # RactorWorkers#while_swapped says how the swap keeps the run callable from every Ractor.
   private def runs_of(rom)
     Ractor.current[CountedRuns::COUNT] = 0
-    Profiler.singleton_class.alias_method(:__real_run, :run)
-    Profiler.singleton_class.remove_method(:run)
-    Profiler.define_singleton_method(:run, CountedRuns::STAND_IN)
-    yield rom
+    while_swapped(Profiler, :run, CountedRuns::STAND_IN) { yield rom }
     Ractor.current[CountedRuns::COUNT]
-  ensure
-    Profiler.singleton_class.remove_method(:run)
-    Profiler.singleton_class.alias_method(:run, :__real_run)
-    Profiler.singleton_class.remove_method(:__real_run)
   end
 
   # The stand-in #runs_of gives the profiler, made in a module so the block's self is one every

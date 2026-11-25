@@ -2,7 +2,7 @@
 
 require "digest"
 
-# A MADE-UP LITTLE ROOM READ FROM A DATA PACK: a computer original that keeps a level as data (as
+# A made-up little room read from a data pack: a computer original that keeps a level as data (as
 # Descent keeps its mines), and a game that draws it as a lit place from the pack's slots, its
 # shading and its viewer's start too (Builder::PackPlaces). Beside it, the same game written in Ruby,
 # which is its answer key.

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # A DRAW ORDER'S SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into
+          # A draw order's sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into
           # Lowering, beside KeyedSort, whose sort it starts past the things not showing.
           #
           # A draw order of many things declared and a few showing is what a game with actors waiting in
@@ -23,7 +23,7 @@ module VBlank
           # showing, and the sort moves it forward past the things strictly behind it, so it stays behind
           # the things level with it, as the interpreter has it.
           #
-          # THE WALK STOPS AT A MARK. Walking from the last entry, the walk would need a count of the
+          # The walk stops at a mark. Walking from the last entry, the walk would need a count of the
           # entries left, kept and taken down at every sprite placed, to know where to stop. Instead the
           # last entry not showing, the one just before the first showing, is taken out after the sort
           # and the number past the run's last sprite written in its slot: the walk's table sends that
@@ -124,7 +124,7 @@ module VBlank
               @asm.load([kept.changed], :a)
             end
 
-            # THE SORT, for a list handed +shown+: the stop mark taken out, each place asked, the list moved
+            # The sort, for a list handed +shown+: the stop mark taken out, each place asked, the list moved
             # round when one came or went, the sort past the entries not showing, and the mark put in.
             def emit_shown_keyed_sort(node, kept)
               slots = list_placed(node).first + Runtime::Lists::HEADER
@@ -176,40 +176,58 @@ module VBlank
             # with it, and +changed+ set where one came or went. A place known to show always is not asked:
             # its flag stays as it started. Where the sort makes the numbers, each is worked out where its
             # place shows.
+            #
+            # What a place does when its flag turns over is written once (#emit_flag_turned), and a place
+            # tests its flag where it stands and calls that code only where it turned over. A pass where
+            # nothing came or went runs the same instructions as with all of it written out, and a place
+            # is eighteen bytes of this rather than forty: the Color sees its cartridge a bank of 16 KB at
+            # a time, and every byte of a draw order's sort is a byte of the bank its scene must share.
             def emit_shown_marked(node, kept)
+              shown_again = fresh("sort_flag_shown_again")
+              gone = fresh("sort_flag_gone")
+              marked_all = fresh("sort_places_marked")
               node.shown.each_with_index do |showing, place|
                 next emit_sort_key_set(kept, place) if folded(showing) == 1
 
-                emit_place_marked(showing, place, kept)
+                emit_place_marked(showing, place, kept, shown_again, gone)
               end
+              @asm.jump_relative(marked_all)
+              emit_flag_turned(kept, shown_again, shows: true)
+              emit_flag_turned(kept, gone, shows: false)
+              @asm.label(marked_all)
             end
 
-            def emit_place_marked(showing, place, kept)
+            # +place+ asked whether it shows, its number written where it does, its flag tested, and
+            # #emit_flag_turned called where the flag says otherwise, with HL the flag.
+            def emit_place_marked(showing, place, kept, shown_again, gone)
               hidden = fresh("sort_place_hidden")
               marked = fresh("sort_place_marked")
-              flag = kept.flags + place
               emit_jump_unless_showing(showing, hidden)
               emit_sort_key_set(kept, place)
-              @asm.load(:a, [flag])
+              @asm.load(:hl, kept.flags + place)
+              @asm.load(:a, [:hl])
               @asm.and_a(:a)
-              @asm.jump(:nz, marked)
-              @asm.load(:a, 1)
-              @asm.load([flag], :a)
-              @asm.load([kept.changed], :a)
-              @asm.load(:hl, kept.hidden)
-              @asm.dec([:hl])
-              @asm.jump(marked)
+              @asm.call(:z, shown_again)
+              @asm.jump_relative(marked)
               @asm.label(hidden)
-              @asm.load(:a, [flag])
+              @asm.load(:hl, kept.flags + place)
+              @asm.load(:a, [:hl])
               @asm.and_a(:a)
-              @asm.jump(:z, marked)
-              @asm.xor_a(:a)
-              @asm.load([flag], :a)
-              @asm.inc(:a)
+              @asm.call(:nz, gone)
+              @asm.label(marked)
+            end
+
+            # The code a place calls when its flag turns over, at +label+, with HL the flag: the flag made
+            # 1 where the place +shows+ again and 0 where it has gone, +changed+ set, and the count of
+            # places not showing moved by one.
+            def emit_flag_turned(kept, label, shows:)
+              @asm.label(label)
+              @asm.load([:hl], shows ? 1 : 0)
+              @asm.load(:a, 1)
               @asm.load([kept.changed], :a)
               @asm.load(:hl, kept.hidden)
-              @asm.inc([:hl])
-              @asm.label(marked)
+              shows ? @asm.dec([:hl]) : @asm.inc([:hl])
+              @asm.ret
             end
 
             # On to +hidden+ unless +showing+ is 1, each test of it asked on its own where it is a product
@@ -232,7 +250,7 @@ module VBlank
               @setting_sort_keys = false
             end
 
-            # THE LIST MOVED ROUND, on a pass where a place came or went: copied aside, then the entries not
+            # The list moved round, on a pass where a place came or went: copied aside, then the entries not
             # showing written back from the front in the order they stood, then the entries showing after
             # them in theirs. HL reads the copy, DE writes the list, C counts; each entry's flag is read
             # with B holding the entry.

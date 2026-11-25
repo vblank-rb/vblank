@@ -4,12 +4,12 @@ require "digest"
 require "tmpdir"
 require "pack_turning_background_games"
 
-# A MADE-UP ADVANCE ORIGINAL WHOSE SCREEN IS A TEXT LAYER OF 256 COLOURS: more tiles than a byte
+# A made-up Advance original whose screen is a text layer of 256 COLOURS: more tiles than a byte
 # can name, each a byte a pixel in the same one table of 256 colours, and a map of two bytes a cell
 # as the Advance keeps one: the tile in bits 0 to 9, mirrored in bit 10, upside down in bit 11, and
 # a bank of colours in bits 12 to 15, which the Advance does not read under tiles of 256 colours.
 # The made-up map sets those bits on some cells, as an original's map may. A game shows it through
-# a data pack, its unpacking writing each cell as a map cell (Original::MapCell), and the SAME
+# a data pack, its unpacking writing each cell as a map cell (Original::MapCell), and the same
 # background is made beside it from pictures the game draws itself, which is the answer key. The
 # cells are decoded here from the Advance's layout, not by any reader of VBlank's.
 module PackTableTileBackgroundGames
@@ -94,7 +94,7 @@ module PackTableTileBackgroundGames
     [b.program, b.made_data_pack_file]
   end
 
-  # THE ANSWER KEY: the same screen with each cell decoded here, and written in the game as a
+  # The answer key: the same screen with each cell decoded here, and written in the game as a
   # picture of 8x8 in the table's colours, turned as the cell says.
   private def table_tile_drawn_game(&more)
     b = VBlank::Builder.new

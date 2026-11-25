@@ -4,7 +4,7 @@ require "test_helper"
 require "pack_at_start_tests"
 require "pack_sound_tests"
 
-# A GAME HANDED ITS DATA PACK AS IT STARTS, played as C and checked against the interpreter on
+# A game handed its data pack as it starts, played as C and checked against the interpreter on
 # every frame (PackAtStartTests in test/pack_at_start_tests.rb, which says why these are not in
 # test/all/). The C runtime reads the file it is handed and fills the tables, the tiles and the
 # pictures that come from it before the game's first statement.

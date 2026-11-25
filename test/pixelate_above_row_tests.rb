@@ -2,7 +2,7 @@
 
 require "pixelate_backgrounds_tests"
 
-# THE BACKGROUNDS IN BLOCKS UNDER ONE HELD ABOVE A ROW (`above_row:`), on every console that holds a
+# The backgrounds in blocks under one held above a row (`above_row:`), on every console that holds a
 # background above a row and shows its backgrounds in blocks: the Super Nintendo, and DOS, whose
 # processor builds the view. Each console's folder has a test file that includes these:
 #
@@ -132,7 +132,7 @@ module PixelateAboveRowTests
     b.program
   end
 
-  # A SCROLLED ARENA keeps the grid fixed to the screen: every block shows the pixel the arena has,
+  # A scrolled arena keeps the grid fixed to the screen: every block shows the pixel the arena has,
   # as drawn, at the block's top left on the screen, wherever the scroll puts the map: from the bar's
   # last row down, the arena alone in its own blocks, a block that straddles that row read at its
   # first row. The scrolls: a whole tile across and far down a 512-row map (the Super Nintendo's
@@ -180,10 +180,7 @@ module PixelateAboveRowTests
         state = 1 if step == 4
         state = 0 if step == 9
         pixelate size, sprites: false
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :stage
-        end
+        call({ 0 => :menu, 1 => :stage }, number: :state)
       end
     end
     b.finalize_program

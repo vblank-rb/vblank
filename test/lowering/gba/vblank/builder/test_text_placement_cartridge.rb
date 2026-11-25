@@ -19,7 +19,7 @@ class TestTextPlacementCartridge < Minitest::Test
     assert_equal [left, left + 2], v.sprites.map(&:x).sort, "the I is one pixel and a gap"
   end
 
-  # A LIVE NUMBER KEEPS ITS COLUMNS, proportional font or not, so a digit that changes
+  # A live number keeps its columns, proportional font or not, so a digit that changes
   # never moves the ones beside it: "18" in a font where 1 is one pixel and 8 is five
   # still puts its 8 a whole cell along.
   def test_a_live_number_on_a_tiled_screen_keeps_a_column_per_digit

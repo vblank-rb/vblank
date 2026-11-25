@@ -2,12 +2,12 @@
 
 module VBlank
   module Audio
-    # A RECORDING AS THE SUPER NINTENDO'S SOUND CHIP KEEPS IT: BRR, the chip's packed format, for a
+    # A recording as the Super Nintendo's sound chip keeps it: BRR, the chip's packed format, for a
     # recording taken out of a Super Nintendo game, handed over as it is rather than as samples.
     #
     #   sample :horn, brr: HORN_BRR, brr_loop: 27, rate: 16_000
     #
-    # WHAT BRR IS (fullsnes, "SNES APU DSP BRR Samples"). Blocks of nine bytes: a header byte, then
+    # What BRR is (fullsnes, "SNES APU DSP BRR Samples"). Blocks of nine bytes: a header byte, then
     # sixteen samples of four bits each, the high four bits of a byte first. The header's top four
     # bits are the block's shift, how far each four-bit sample is moved up. The next two are its
     # filter, how each sample is guessed from the two decoded before it so that only the
@@ -17,7 +17,7 @@ module VBlank
     # bytes: the chip's table of recordings keeps it beside where the recording starts, so a game
     # gives it here as +loop_at+, how many bytes into the recording it is.
     #
-    # The Super Nintendo build hands the chip these bytes unchanged. EVERY OTHER BUILD, and the
+    # The Super Nintendo build hands the chip these bytes unchanged. Every other build, and the
     # interpreter, plays the samples the chip would decode from them (#decoded), each dropped to
     # the byte a sample those builds mix (the top eight of the chip's sixteen bits), so the game
     # sounds the same everywhere but for that.
@@ -59,7 +59,7 @@ module VBlank
       # How many samples the recording is, played through once.
       def sample_count = bytes.bytesize / BLOCK_BYTES * BLOCK_SAMPLES
 
-      # THE SAMPLES THE CHIP DECODES, played through once and then, for one that loops, round its
+      # The samples the chip decodes, played through once and then, for one that loops, round its
       # loop. Each sample is guessed from the two the chip decoded before it, so the first time round
       # a loop starts from the end of what came before the loop point, and every later time from
       # the end of the time before: they can differ, and a loop can settle into several times round
@@ -99,7 +99,7 @@ module VBlank
         samples.drop(from)
       end
 
-      # THE CHIP'S DECODER, one block onto +samples+ (fullsnes, "SNES APU DSP BRR Samples"; the same
+      # The chip's decoder, one block onto +samples+ (fullsnes, "SNES APU DSP BRR Samples"; the same
       # arithmetic is decode_brr in blargg's SPC_DSP.cpp, which bsnes plays). A sample is kept as the
       # chip keeps it, its fifteen bits doubled into sixteen; +older+ is the one before last halved
       # back, so the filters' shifts round as the chip's do. Filter one guesses 15/16 of the last

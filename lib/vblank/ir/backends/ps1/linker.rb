@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHERE EVERYTHING GOES IN RAM, and the holes the assembler left filled in.
+        # Where everything goes in RAM, and the holes the assembler left filled in.
         #
         # A PlayStation program is loaded whole into main RAM before it starts, so there are no banks
         # and nothing to switch: the sections go one after the other from where the PS-X EXE is loaded
@@ -22,7 +22,7 @@ module VBlank
 
           class Error < StandardError; end
 
-          # Raised when the GAME is more than RAM has room for. It names the game's parts by what they
+          # Raised when the game is more than RAM has room for. It names the game's parts by what they
           # are, never by the sections they went in.
           class TooBig < LoweringError; end
 

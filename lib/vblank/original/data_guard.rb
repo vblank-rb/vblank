@@ -4,11 +4,11 @@ require "open3"
 
 module VBlank
   module Original
-    # ONE STAGED FILE AS THE GUARD SEES IT: its path, how many bytes git holds for it, and its first
+    # One staged file as the guard sees it: its path, how many bytes git holds for it, and its first
     # line. The bytes and the line are what is staged, not what is on disk.
     StagedFile = Data.define(:path, :size, :first_line)
 
-    # THE CHECK THAT KEEPS THE ORIGINAL'S DATA OUT OF A PORT'S HISTORY, run by its pre-commit hook.
+    # The check that keeps the original's data out of a port's history, run by its pre-commit hook.
     #
     # None of the original's cartridge, art, maps, text or sound is the port's to give away. The
     # build reads the player's own copy and writes what it pulls out of it somewhere git ignores. But
@@ -35,10 +35,10 @@ module VBlank
     #   question. Every other refusal still applies to it, so a cartridge or a tool's output named
     #   there is refused as before.
     #
-    # WHAT THE GAME SUPPLIES: its consoles, and any folders, kinds and mark of its own. It names them
+    # What the game supplies: its consoles, and any folders, kinds and mark of its own. It names them
     # in its Rakefile (DataGuardTasks), whose task the hook runs.
     class DataGuard
-      # THE KINDS OF FILE A CONSOLE'S ORIGINALS ARE KEPT IN, by the suffixes the dumping tools give
+      # The kinds of file a console's originals are kept in, by the suffixes the dumping tools give
       # them: the cartridge or disc, and the save the emulator keeps beside it. Players' copies come
       # from many tools, each with its own habits, so each console has several.
       # Shareable, since a game's tests make the guard on cores of their own.
@@ -50,7 +50,7 @@ module VBlank
                                                     ps1: %w[bin cue iso img mcr]
                                                   })
 
-      # KINDS THAT ARE ALSO EVERYDAY TEXT: a Genesis dump is often .md, and so is every Markdown file
+      # Kinds that are also everyday text: a Genesis dump is often .md, and so is every Markdown file
       # a repository keeps. Such a file is a cartridge only at a cartridge's size: no Genesis cartridge
       # was smaller than 128 KB, and no README is that big.
       TEXT_KINDS_LEAST_CARTRIDGE_BYTES = Ractor.make_shareable({ "md" => 128 * 1024 })

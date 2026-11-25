@@ -36,7 +36,7 @@ module HardwareSpriteGames
 end
 
 # Hardware sprites: on a `screen :tiled`, `sprite :hero, at:` gives a sprite the
-# console composites over the tiled background — the SAME handle you get in bitmap
+# console composites over the tiled background — the same handle you get in bitmap
 # mode (x / y / move), so the game code doesn't change. These assert the observable
 # result: the right sprite over the background at its position, no trail when it
 # moves, and the friendly guardrails — on the interpreter oracle and on real

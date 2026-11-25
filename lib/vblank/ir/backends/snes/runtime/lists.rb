@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE LISTS: a game's `list`, and every field of a pool, as the interpreter keeps them
+          # The lists: a game's `list`, and every field of a pool, as the interpreter keeps them
           # (Reference::ListValue) — items added at the back and taken from either end, read and
           # written by index, and the game stopped, in the interpreter's words, by an index outside
           # the list, an item added to a full one or taken from an empty one.
@@ -27,6 +27,10 @@ module VBlank
             LENGTH = 4
             WIDTH = 6
             HEADER = 8
+            # The width a list of two-byte slots read back with no sign keeps in its header, in place
+            # of 2: a number from 0 to 65535 (Lowering#unsigned_list?). It sorts between two and four,
+            # so every routine that asks only how many bytes a slot is finds two.
+            UNSIGNED_HALF = 3
             # How many bytes each number of the header is (CartridgeHeadlessRun#read_lists). A list is
             # kept in one 64K bank of work RAM (Memory#reserve), so it never has more than 65,535 slots.
             FIELD_BYTES = 2
@@ -252,6 +256,8 @@ module VBlank
               asm.ldy(asm.direct(s.slot))
               asm.cmp(2)
               asm.beq("rt_list_fill_half")
+              asm.cmp(UNSIGNED_HALF)
+              asm.beq("rt_list_fill_half")
               asm.bcs("rt_list_fill_word")
               emit_fill_bytes(asm, s)
               emit_fill_halves(asm, s)
@@ -307,6 +313,68 @@ module VBlank
               asm.label("rt_list_fill_word_in_ring")
               asm.dex
               asm.bne("rt_list_fill_word")
+              asm.rtl
+            end
+
+            # rt_list_pack(list, into, at): where a list_pack's runs are, for the block moves the
+            # lowering writes after the call (Lowering#emit_list_pack_block). A slot keeps its bytes
+            # lowest first, as the list of bytes wants them, so the items are a copy of the slots: from
+            # the oldest item to where the slots end, and what is left from the first slot. The
+            # lowering calls it only for a run it has seen fits, into a list of bytes never taken from
+            # its front, so the run lands at +into+'s slots plus +at+.
+            #
+            # Leaves R3 the first run's bytes and X where it starts, R4 the rest's bytes and R5 where
+            # it starts, and Y where the first goes, each the low 16 bits of a place in its list's bank.
+            def emit_pack(asm, s)
+              asm.label("rt_list_pack")
+              asm.jsr(asm.abs("rt_list_pointer"))
+              asm.ldy(LENGTH)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.sta(asm.direct(R4))
+              asm.ldy(WIDTH)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.cmp(2)
+              asm.bcc("rt_list_pack_bytes") # a byte a slot
+              asm.asl(asm.direct(R4))
+              asm.cmp(4)
+              asm.bcc("rt_list_pack_bytes") # two bytes
+              asm.asl(asm.direct(R4))
+              asm.label("rt_list_pack_bytes")
+              # Where the slots end, and then where the oldest item is.
+              asm.ldy(CAPACITY)
+              asm.lda(asm.ind_long_y(s.list))
+              asm.jsr(asm.abs("rt_list_slot_at"))
+              asm.lda(asm.direct(s.slot))
+              asm.sta(asm.direct(s.count))
+              asm.lda(0)
+              asm.jsr(asm.abs("rt_list_slot_of_a"))
+              # The first run: to where the slots end, or fewer where the list ends first.
+              asm.sec
+              asm.lda(asm.direct(s.count))
+              asm.sbc(asm.direct(s.slot))
+              asm.cmp(asm.direct(R4))
+              asm.bcc("rt_list_pack_to_end")
+              asm.lda(asm.direct(R4))
+              asm.label("rt_list_pack_to_end")
+              asm.sta(asm.direct(R3))
+              asm.lda(asm.direct(R4))
+              asm.sec
+              asm.sbc(asm.direct(R3))
+              asm.sta(asm.direct(R4))
+              asm.lda(asm.direct(s.list))
+              asm.clc
+              asm.adc(HEADER)
+              asm.sta(asm.direct(R5))
+              asm.lda(asm.direct(s.list))
+              asm.clc
+              asm.adc(asm.direct(s.slot))
+              asm.tax
+              asm.lda(asm.direct(R1))
+              asm.clc
+              asm.adc(HEADER)
+              asm.clc
+              asm.adc(asm.direct(R2))
+              asm.tay
               asm.rtl
             end
 
@@ -412,7 +480,7 @@ module VBlank
               asm.rts
             end
 
-            # THE SLOTS (all reached with JSR):
+            # The slots (all reached with JSR):
             #
             #   rt_list_slot_of_index   the slot the index in R1 names, into s.slot as how far into
             #                           the list it is; an index outside the list stops the game
@@ -485,6 +553,8 @@ module VBlank
               asm.sta(asm.direct(R0 + 2))
               asm.rts
               asm.label("rt_list_read_narrow")
+              asm.cpx(UNSIGNED_HALF)
+              asm.beq("rt_list_read_done") # no sign: the high half stays nought
               asm.cpx(2)
               asm.beq("rt_list_read_half")
               asm.and_a(0x00FF)

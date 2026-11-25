@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # THE MENU OVER THE WINDOW a game is played in (WindowMenu says what it holds and how it
+    # The menu over the window a game is played in (WindowMenu says what it holds and how it
     # looks): how it behaves, and where each of its boxes and words goes. Nothing here knows about
     # a window, so it is played in tests with none; the window hands it the keys meant for it
     # (#press), draws what it asks for (#drawing), and does what its settings ask for.
@@ -27,6 +27,13 @@ module VBlank
 
       attr_reader :settings, :controls
 
+      # What the box about the settings file says above the problems themselves.
+      SETTINGS_PROBLEMS_INTRO = "The window cannot use some of the settings file. It uses the rest, and the game plays as usual."
+      # What the OK of a box says beside it.
+      CLOSE_CAPTION = "Press a button to close this."
+      # The title a shell's refusals are told under (#tell), the shell's Load ROM line.
+      SHELL_TOLD_TITLE = "Load ROM"
+
       # +settings+ as the player last left them; +picture+, the game's picture's size, to say how
       # big the window is at each size; +scales+, the sizes the window can be made, in times the
       # picture's, which the frontend may make fewer than WindowMenu::SCALES (what fits the screen);
@@ -34,15 +41,27 @@ module VBlank
       # one is being chosen the window hands it the next key or gamepad button (#capture_key).
       # +states+ answers #text_for(slot) with the words for a place a state is kept (when it was
       # taken, or that it is empty); a menu given none has no Save or Load heading, which is how a
-      # match with other players has none.
+      # match with other players has none. +developer+ false leaves out the Developer heading, as a
+      # frontend with no window of the game's variables does (WindowMenu.headings).
+      #
+      # +match_players+ is the most players the game takes, for a window that can start a match from
+      # its menu (WindowMenu::MATCH_HEADING); nil for none.
       def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
-                     controls: Settings.new(key_names: NumberedKeys.new), states: nil)
+                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, developer: true, match_players: nil)
         @scales = scales
         @controls = controls
+        @developer = developer
+        @match_most = match_players
+        @match_players = WindowMenu::MATCH_PLAYERS.min # how many a host waits for, the Players line's
+        @match_request = nil
+        @typing = nil # the match line being typed into, and what is typed: [line, text]
         self.states = states
         self.settings = settings
         @picture = picture
         @open = @quit = false
+        @variables_open = false
+        @filter = +"" # the letters typed into the window of variables
+        @variables_scroll = 0 # the first of the lines it finds that the window shows
         @state_request = nil
         @heading = 0
         @row = -1
@@ -52,11 +71,42 @@ module VBlank
       # has them once its game does. The menu starts again on its first heading.
       def states=(states)
         @states = states
-        @headings = WindowMenu.headings(states: states ? true : false,
-                                        buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
         @state_request = nil
-        @heading = 0
-        @row = -1
+        show_headings
+      end
+
+      # The most players the game takes, which offers a match from the menu (WindowMenu::MATCH_HEADING),
+      # or nil, which takes the offer away: inside a match, or once one is asked for. The menu starts
+      # again on its first heading.
+      def match_players=(most)
+        @match_most = most
+        @match_players = @match_players.clamp(WindowMenu::MATCH_PLAYERS.min, most) if most
+        @typing = nil
+        show_headings
+      end
+
+      # The match the player asked for (a WindowMenu::MatchRequest), once, or nil. The window ends the
+      # game being played and starts the match.
+      def take_match_request
+        request = @match_request
+        @match_request = nil
+        request
+      end
+
+      def match_request_pending? = !@match_request.nil?
+
+      # Whether an address or a room code is being typed on a match line: the window hands the menu the
+      # keys that type (#type_key), and Escape gives it up (#cancel_typing) rather than closing the window.
+      def typing? = !@typing.nil?
+
+      # What is wrong with the address typed, said under the lines after Enter, or nil.
+      def typing_problem = (@typing_problem if typing?)
+
+      # Gives up what is being typed, and keeps the menu open. Gives whether anything was.
+      def cancel_typing
+        was = typing?
+        @typing = nil
+        was
       end
 
       # What the player asked to save or load (a WindowMenu::StateRequest), once, or nil. The window
@@ -90,6 +140,7 @@ module VBlank
         @open = !@open
         @heading = 0
         @row = -1
+        @typing = nil
         @controls.capture_cancel
       end
 
@@ -101,8 +152,12 @@ module VBlank
 
       # One of :up, :down, :left, :right, :enter or :close, pressed while the menu is open.
       def press(key)
+        return cancel_typing if key == :close && typing?
         return toggle if key == :close
         return press_on_bar(key) if @row.negative?
+        return ask_typed_match if key == :enter && typing?
+
+        @typing = nil # moving off the line gives up what was typed on it
 
         line = lines[@row]
         case key
@@ -113,28 +168,217 @@ module VBlank
         end
       end
 
-      # WHAT A WINDOW DRAWS over the game, in its own pixels: the menu when it is open, and in the
-      # top right corner what the window is doing — the frame rate when it is asked for, how long
-      # the game's own work took a frame (+frame_work+, in milliseconds, the developer's reading),
-      # and PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as
-      # fast. +width+ is the window's in pixels, and +density+ how many pixels a point is (two on a
-      # Retina screen). Gives WindowMenu::Box and WindowMenu::Words, back to front.
-      def drawing(width:, density:, held: false, fast_forward: nil, frame_rate: nil, frame_work: nil)
+      # What the window says over the picture until the player presses a button: what could not be used
+      # in the settings file (+problems+, the sentences as text, a file's name over its own), in the
+      # middle as the window opens, since a player who opened the game by double-clicking it has no
+      # terminal to read; and what the window tells the player (#tell) under a +title+, at the foot of
+      # the window, so a shell's own menu shows above it: a file a shell refused (the title Load ROM),
+      # a save file that is not the game's, a game that stopped on a fault. Each has an OK, and the
+      # next button pressed answers both (#answer_messages). Nothing waits for them: the game plays
+      # on under them, and what happens once one is answered is the teller's.
+      def problems=(text)
+        @problems = (text unless text.nil? || text.empty?)
+      end
+
+      def tell(words, title: SHELL_TOLD_TITLE)
+        @told = (words unless words.nil? || words.empty?)
+        @told_title = title
+      end
+
+      # A button was pressed: whatever was said over the picture has been seen.
+      def answer_messages
+        @problems = @told = nil
+      end
+
+      def messages_shown? = !(@problems || @told).nil?
+
+      # Whether the window of the game's variables is open (WindowMenu::VARIABLE_ROWS).
+      def variables_open? = @variables_open
+
+      # One of :up, :down or :close, pressed while the window of variables is open and the menu is not:
+      # up and down scroll it a line, and close shuts it. Gives whether the key was the window's.
+      def press_on_variables(key)
+        return false unless @variables_open && !@open
+
+        case key
+        when :up then @variables_scroll = [@variables_scroll - 1, 0].max
+        when :down then @variables_scroll += 1
+        when :close then @variables_open = false
+        else return false
+        end
+        true
+      end
+
+      # Key +key+ (SDL's scancode) pressed while the window of variables is open and the menu is not: a
+      # letter, digit or underscore goes on the end of what the window finds, and Backspace takes the
+      # last off. Gives whether the key was the window's.
+      #
+      # While a match line is being typed into (#typing?), the key types the address or room code there
+      # instead (WindowMenu.typed_for_match).
+      def type_key(key)
+        return type_for_match(key) if typing? && @open
+        return false unless @variables_open && !@open
+
+        if key == WindowMenu::BACKSPACE_KEY
+          @filter = @filter[0...-1]
+        else
+          letter = WindowMenu.typed_letter(key) or return false
+          @filter += letter if @filter.length < WindowMenu::FILTER_MOST
+        end
+        @variables_scroll = 0
+        true
+      end
+
+      # What a window draws over the game, in its own pixels: the window of the game's +variables+
+      # when it is open (name and value pairs, as the frontend read them from the game, with
+      # +variables_dropped+ more it had no room to read), the menu when it is open, and in the top
+      # right corner what the window is doing — the frame rate when it is asked for, how long the
+      # game's own work took a frame (+frame_work+, in milliseconds, the developer's reading), and
+      # PAUSED while the game is +held+ or the speed while it is played +fast_forward+ times as fast.
+      # +width+ and +height+ are the window's in pixels, and +density+ how many pixels a point is (two
+      # on a Retina screen). Gives WindowMenu::Box and WindowMenu::Words, back to front.
+      #
+      # +notice+ is a line for the player (a player left the match), said in the corner under the rest.
+      def drawing(width:, height:, density:, held: false, fast_forward: nil, frame_rate: nil, frame_work: nil, variables: [],
+                  variables_dropped: 0, notice: nil)
         @out = []
         @density = density
         @font = Graphics::MenuFont.load
-        top = 0
+        top = @open ? size(:bar) : 0
+        draw_variables(top, variables, variables_dropped) if @variables_open
+        draw_status(width, top, held, fast_forward, frame_rate, frame_work, notice)
+        draw_message(@told_title, [@told], width, told_width(width)) { |high| height - size(:message_gap) - high } if @told
+        if @problems
+          draw_message("The settings file", problems_texts, width, problems_width(width)) { |high| (height - high) / 2 }
+        end
         if @open
-          top = draw_bar(width)
+          draw_bar(width)
           draw_lines(top)
         end
-        draw_status(width, top, held, fast_forward, frame_rate, frame_work)
+        @out
+      end
+
+      # Whether every box shown fits a window +width+ by +height+ pixels at +density+, its words broken
+      # to the box's width: what is told with a gap above and below it, and the settings file's box
+      # with the status corner's gap. A window too small for one is made bigger by its frontend, a
+      # whole number of times the picture at a time, rather than a word being cut off (Live::SDL and
+      # rg_sdl.c's grow_window_for_messages). The density and font #drawing keeps are put back as
+      # they were, so asking changes nothing.
+      def messages_fit?(width:, height:, density:)
+        kept = [@density, @font]
+        @density = density
+        @font = Graphics::MenuFont.load
+        told_fits = !@told || message_height([@told], told_width(width)) + (2 * size(:message_gap)) <= height
+        problems_fits = !@problems || message_height(problems_texts, problems_width(width)) + (2 * size(:status_gap)) <= height
+        told_fits && problems_fits
+      ensure
+        @density, @font = kept
+      end
+
+      # What a window waiting for its game draws (a game a helper process builds, BuildWatch): +lines+
+      # of words in the middle of a window +width+ by +height+ pixels, one under another, a line too
+      # wide for the window broken between words. Gives WindowMenu::Words.
+      def waiting_drawing(lines, width:, height:, density:)
+        @out = []
+        @density = density
+        @font = Graphics::MenuFont.load
+        rows = lines.flat_map { |line| break_to_width(line, width - (2 * size(:pad))) }
+        line = size(:status_line)
+        top = (height - (rows.size * line)) / 2
+        rows.each_with_index { |text, index| add_words(text, (width - width_of(text)) / 2, top + (index * line), :text) }
         @out
       end
 
       private
 
+      # +text+ as lines no wider than +room+ pixels, broken between words; a word wider than that (a
+      # file's path) is cut into pieces that fit, each on a line of its own but the last, which the
+      # next word can join.
+      def break_to_width(text, room)
+        text.split.each_with_object([]) do |word, rows|
+          if rows.empty? || width_of("#{rows.last} #{word}") > room
+            rows.concat(pieces_to_width(word, room))
+          else
+            rows[-1] = "#{rows.last} #{word}"
+          end
+        end
+      end
+
+      # +word+ as pieces no wider than +room+ pixels, each as many letters as fit and at least one.
+      def pieces_to_width(word, room)
+        pieces = []
+        rest = word
+        loop do
+          take = rest.length
+          take -= 1 while take > 1 && width_of(rest[0, take]) > room
+          pieces << rest[0, take]
+          rest = rest[take..]
+          return pieces if rest.empty?
+        end
+      end
+
+      # How wide the box of what is told is: nine tenths of the window.
+      def told_width(width) = width * 9 / 10
+
+      # How wide the settings file's box is: its own width, or as wide as the window has room for.
+      def problems_width(width) = [size(:message_width), width - (2 * size(:status_gap))].min
+
+      def problems_texts = [SETTINGS_PROBLEMS_INTRO, @problems]
+
       def lines = @headings[@heading].lines
+
+      # The headings shown, for the states, the console's buttons and the match offered now, from the
+      # first heading.
+      def show_headings
+        @headings = WindowMenu.headings(states: @states ? true : false, developer: @developer, match: !@match_most.nil?,
+                                        buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
+        @heading = 0
+        @row = -1
+      end
+
+      # The settings a slider moves that the menu keeps for itself, not the player's Settings, which the
+      # settings file keeps: they last as long as the window.
+      OWN_SETTINGS = %i[match_players].freeze
+
+      # A slider's number now.
+      def slider_value(line) = OWN_SETTINGS.include?(line.setting) ? @match_players : @settings.setting(line.setting)
+
+      # A key typed on a match line: a character it takes, or Backspace taking the last off. Gives whether
+      # the key was the line's.
+      def type_for_match(key)
+        line, text = @typing
+        @typing_problem = nil # said until the next key
+        if key == WindowMenu::BACKSPACE_KEY
+          @typing = [line, text[0...-1]]
+          return true
+        end
+        typed = WindowMenu.typed_for_match(key, line.asks) or return false
+        @typing = [line, text + typed] if text.length < WindowMenu::TYPED_MOST
+        true
+      end
+
+      def start_typing(line)
+        @typing = [line, +""]
+        @typing_problem = nil
+      end
+
+      # Enter on a match line being typed into: the match asked for with what is typed, unless nothing is,
+      # or an address is not one, which is said under the lines (#typing_problem) until the next key.
+      def ask_typed_match
+        line, text = @typing
+        return if text.empty?
+
+        @typing_problem = WindowMenu.address_problem(text) if line.asks == :address
+        ask_match_and_close(line, text) unless @typing_problem
+      end
+
+      # A match asked for from +line+, and the menu closed, as the window ends the game to start it.
+      def ask_match_and_close(line, text)
+        @match_request = WindowMenu::MatchRequest.new(does: line.does, text: text,
+                                                      players: (@match_players if text.nil?))
+        @typing = nil
+        @open = false
+      end
 
       def press_on_bar(key)
         case key
@@ -150,13 +394,17 @@ module VBlank
 
       def slide(line, direction)
         least, most = limits(line)
-        now = @settings.setting(line.setting)
-        @settings = @settings.with(line.setting => (now + (direction * line.step)).clamp(least, most))
+        moved = (slider_value(line) + (direction * line.step)).clamp(least, most)
+        return @match_players = moved if line.setting == :match_players
+
+        @settings = @settings.with(line.setting => moved)
       end
 
-      # How far a slider goes: the window's size no further than the frontend allows.
+      # How far a slider goes: the window's size no further than the frontend allows, and a match's
+      # players no more than the game takes.
       def limits(line)
         return [[line.range.min, @scales.min].max, [line.range.max, @scales.max].min] if line.setting == :scale
+        return [line.range.min, [line.range.max, @match_most].min] if line.setting == :match_players
 
         [line.range.min, line.range.max]
       end
@@ -167,12 +415,21 @@ module VBlank
         when :button then @controls.capture_for_button(line.place)
         when :hotkey then @controls.capture_for_hotkey(line.place)
         when :state then ask_state_and_close(line.request)
+        when :match then line.asks ? start_typing(line) : ask_match_and_close(line, nil)
         when :action
           @open = false if line.does == :resume
           @quit = true if line.does == :quit
+          show_variables(!@variables_open) if line.does == :variables
           @controls.reset_keys if line.does == :reset_keys
           @controls.reset_hotkeys if line.does == :reset_hotkeys
         end
+      end
+
+      # The window of variables opened or shut from its line, and the menu closed so the game plays
+      # under it.
+      def show_variables(shown)
+        @variables_open = shown
+        @open = false
       end
 
       # A save or load chosen from a line: asked for, and the menu closes so the game goes on.
@@ -226,8 +483,8 @@ module VBlank
       def draw_lines(top)
         pad = size(:pad)
         row = size(:row)
-        notice = @controls.notice
-        inner = [lines.map { |line| width_of(line.label) + size(:label_gap) + right_width(line) }.max,
+        notice = @controls.notice || typing_problem
+        inner =[lines.map { |line| width_of(line.label) + size(:label_gap) + right_width(line) }.max,
                  size(:least_width), *(width_of(notice) if notice)].max
         wide = inner + (2 * pad)
         high = (lines.size * row) + (2 * pad) + (lines.count(&:line_before) * size(:line_before)) + (notice ? row : 0)
@@ -247,6 +504,113 @@ module VBlank
         add_words_in_row(notice, @heading_left + pad, y, row, :paused) if notice
       end
 
+      # The window of the game's variables, in the top left corner, under the bar when the menu is
+      # open: its title, the letters typed or what to type, a heading of Name and Value, a line for
+      # each variable the letters find from the one scrolled to, and which lines those are. It is as
+      # wide as its widest name needs, never narrower than variables_width, and always the same
+      # height, so it stands still as the list changes.
+      def draw_variables(top, variables, dropped)
+        pad = size(:pad)
+        row = size(:row)
+        rows = WindowMenu::VARIABLE_ROWS
+        found = variables.select { |name, _| name.downcase.include?(@filter) }
+        @variables_scroll = @variables_scroll.clamp(0, [found.size - rows, 0].max)
+        value_room = width_of(WindowMenu::WIDEST_VALUE)
+        inner = [size(:variables_width), *variables.map { |name, _| width_of(name) + size(:label_gap) + value_room }].max
+        wide = inner + (2 * pad)
+        high = ((rows + 4) * row) + (2 * pad)
+        x = size(:status_gap)
+        y = top + size(:status_gap)
+        border = pixels(1)
+        add_box(x, y, wide, high, size(:corner), :border)
+        add_box(x + border, y + border, wide - (2 * border), high - (2 * border), size(:corner) - border, :box)
+        left = x + pad
+        right = left + inner
+        line = y + pad
+        add_words_in_row("Game variables", left, line, row, :text)
+        line += row
+        if @filter.empty? then add_words_in_row("Type letters to find a name", left, line, row, :dim)
+        else add_words_in_row(@filter, left, line, row, :text)
+        end
+        line += row
+        add_words_in_row("Name", left, line, row, :dim)
+        add_words_in_row("Value", right - width_of("Value"), line, row, :dim)
+        line += row
+        add_box(left, line, inner, border, 0, :border)
+        found[@variables_scroll, rows].each do |name, value|
+          add_words_in_row(name, left, line, row, :text)
+          add_words_in_row(value.to_s, right - width_of(value.to_s), line, row, :text)
+          line += row
+        end
+        add_words_in_row(variables_footer(found.size, dropped), left, y + pad + ((rows + 3) * row), row, :dim)
+      end
+
+      # Which of the lines found are shown, or that none are, and how many the frontend had no room for.
+      def variables_footer(count, dropped)
+        said = if count.zero? then @filter.empty? ? "No variables" : "No name has these letters"
+               else "#{@variables_scroll + 1} to #{[@variables_scroll + WindowMenu::VARIABLE_ROWS, count].min} of #{count}"
+               end
+        dropped.positive? ? "#{said}, and #{dropped} more not shown" : said
+      end
+
+      # A box of words over the picture, +wide+ pixels across the middle of a window +width+ wide, its
+      # top where the block puts it given how high it is: its +title+, then each of +texts+ broken to
+      # fit, a line across between one and the next, and an OK with what answers it beside it, or
+      # under it in a box too narrow for both.
+      def draw_message(title, texts, width, wide)
+        pad = size(:pad)
+        row = size(:row)
+        inner = wide - (2 * pad)
+        rows = texts.map { |text| wrap_lines(text, inner) }
+        high = message_height(texts, wide)
+        x = (width - wide) / 2
+        y = yield(high)
+        border = pixels(1)
+        add_box(x, y, wide, high, size(:corner), :border)
+        add_box(x + border, y + border, wide - (2 * border), high - (2 * border), size(:corner) - border, :box)
+        left = x + pad
+        line = y + pad
+        add_words_in_row(title, left, line, row, :text)
+        line += row
+        rows.each_with_index do |lines, index|
+          if index.positive?
+            add_box(left, line + (size(:line_before) / 2), inner, border, 0, :border)
+            line += size(:line_before)
+          end
+          lines.each do |text|
+            add_words_in_row(text, left, line, row, :text) unless text.empty?
+            line += row
+          end
+        end
+        ok = ok_width
+        add_box(left, line + pixels(2), ok, row - pixels(4), size(:frame_corner), :chosen)
+        add_words_in_row("OK", left + ((ok - width_of("OK")) / 2), line, row, :text)
+        if caption_below_ok?(inner)
+          add_words_in_row(CLOSE_CAPTION, left, line + row, row, :dim)
+        else
+          add_words_in_row(CLOSE_CAPTION, left + ok + pad, line, row, :dim)
+        end
+      end
+
+      def ok_width = width_of("OK") + (2 * size(:pad))
+
+      # Whether what answers a box is said under its OK, in a box whose words are +inner+ pixels wide.
+      def caption_below_ok?(inner) = ok_width + size(:pad) + width_of(CLOSE_CAPTION) > inner
+
+      # How high a box +wide+ pixels across is with +texts+ in it (#draw_message).
+      def message_height(texts, wide)
+        inner = wide - (2 * size(:pad))
+        lines = texts.sum { |text| wrap_lines(text, inner).size }
+        rows = lines + (caption_below_ok?(inner) ? 3 : 2)
+        (rows * size(:row)) + ((texts.size - 1) * size(:line_before)) + (2 * size(:pad))
+      end
+
+      # +text+ as lines no wider than +room+ pixels: each of its own lines broken between words, a
+      # line with no words in it kept as an empty one.
+      def wrap_lines(text, room)
+        text.split("\n").flat_map { |part| part.split.empty? ? [""] : break_to_width(part, room) }
+      end
+
       # How much room the right of a line takes: a slider, a shortcut, or a check mark.
       def right_width(line)
         case line.kind
@@ -254,8 +618,18 @@ module VBlank
         when :check then size(:check)
         when :button, :hotkey then width_of(@controls.text_for(line))
         when :state then width_of(state_line_words(line))
+        when :match then [width_of(match_line_words(line)), *(width_of("W" * 16) if line.asks)].max
         else line.shortcut ? width_of(line.shortcut) : 0
         end
+      end
+
+      # What a match line shows at its right: what is typed on it, with a mark where the next letter goes,
+      # or what to do to begin typing.
+      def match_line_words(line)
+        return "" unless line.asks
+        return "#{@typing.last}_" if @typing&.first == line
+
+        "Enter, then type"
       end
 
       # What a state line shows at its right: its key, or when its slot's state was taken.
@@ -274,16 +648,19 @@ module VBlank
         when :state
           text = state_line_words(line)
           add_words_in_row(text, right - width_of(text), y, row, :dim)
+        when :match
+          text = match_line_words(line)
+          add_words_in_row(text, right - width_of(text), y, row, @typing&.first == line ? :fast : :dim) unless text.empty?
         end
       end
 
-      # A slider as Dear ImGui draws one: a frame, a grab as far along it as the number is, and the
+      # A slider: a frame, a grab as far along it as the number is, and the
       # number written in the middle.
       def draw_slider(line, x, y, wide, high)
         add_box(x, y, wide, high, size(:frame_corner), :frame)
         inset = pixels(2)
         least, most = limits(line)
-        value = @settings.setting(line.setting)
+        value = slider_value(line)
         travel = wide - size(:grab) - (2 * inset)
         along = most > least ? travel * (value - least) / (most - least) : 0
         add_box(x + inset + along, y + inset, size(:grab), high - (2 * inset), pixels(2), :grab)
@@ -295,19 +672,21 @@ module VBlank
         case line.written
         when :times then "#{value}x"
         when :percent then "#{value}%"
+        when :count then value.to_s
         when :window then "#{value}x  (#{@picture[0] * value} × #{@picture[1] * value})"
         end
       end
 
       # What the window is doing, in a see-through box in the top right corner, under the bar when
       # the menu is open.
-      def draw_status(width, top, held, fast_forward, frame_rate, frame_work)
+      def draw_status(width, top, held, fast_forward, frame_rate, frame_work, notice)
         said = []
         said << ["#{frame_rate} fps", :text] if frame_rate
         said << ["#{frame_work} ms of work a frame", :text] if frame_work
         if held then said << ["PAUSED", :paused]
         elsif fast_forward then said << ["FAST FORWARD #{fast_forward}x", :fast]
         end
+        said << [notice, :text] if notice
         return if said.empty?
 
         pad = size(:status_pad)

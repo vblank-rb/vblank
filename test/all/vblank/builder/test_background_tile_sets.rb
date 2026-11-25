@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "many_tiles"
 
-# A BACKGROUND WHOSE MAPS DRAW FROM MORE THAN ONE SET OF TILES, which is how a game moves
+# A background whose maps draw from more than one set of tiles, which is how a game moves
 # between areas: every room of an area draws from the one set the area loads, and going
 # to another area brings that area's set in. Each set fits the console's tile memory on
 # its own; the sets together need not.
@@ -147,10 +147,7 @@ class TestBackgroundTileSets < Minitest::Test
         pass += 1
         mode = 0 if pass == 4
         mode = 1 if pass == 6
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :mode)
       end
     end
   end
@@ -231,7 +228,9 @@ class TestBackgroundTileSets < Minitest::Test
     assert_match(/two maps named :room/, error.message)
   end
 
-  def test_set_tile_on_a_walking_background_is_refused
+  # A key names a tile of the area showing (test/all/vblank/dsl/test_background_room_cells.rb); a
+  # number the game works out names no area's key.
+  def test_set_tile_on_a_walking_background_by_a_worked_out_number_is_refused
     error = refused do
       screen :tiled
       image(:a, "#" => :red) { (["#" * 8] * 8).join("\n") }
@@ -240,10 +239,11 @@ class TestBackgroundTileSets < Minitest::Test
       tiles :two, "#" => :b
       ground = background :ground, tiles: { shrine: :one, clearing: :two },
                                    map: { shrine: { hall: ["#"] }, clearing: { glade: ["#"] } }
-      game_loop { ground.set_tile 0, 0, "#" }
+      which = var :which, 0
+      game_loop { ground.set_tile 0, 0, which }
     end
 
-    assert_match(/use show_map/, error.message)
+    assert_match(/key of the tileset/, error.message)
   end
 
   def test_areas_whose_tiles_are_different_sizes_are_refused
@@ -338,7 +338,7 @@ class TestBackgroundTileSets < Minitest::Test
     refute_empty VBlank::IR::Backends::GBA.new.lower(two_big_areas(0))
   end
 
-  # TWO AREAS WHOSE TILES TOGETHER ARE MORE THAN THE COLOR HOLDS AT ONCE, 300 each, walked into
+  # Two areas whose tiles together are more than the color holds at once, 300 each, walked into
   # and back out of while the game plays: each area's tiles come in as a map of it is shown.
   WALK_AT = 4
 
@@ -412,10 +412,7 @@ class TestBackgroundTileSets < Minitest::Test
         where = 1 if tick == 8
         state = 0 if tick == 10
         where = 0 if tick == 12
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end

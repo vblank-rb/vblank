@@ -5,7 +5,7 @@ require "made_up_original"
 require "open3"
 require "tmpdir"
 
-# THE PACE OF A LONG UNPACKING ON THE WEB. A port's unpacking routine is built as the port's Ruby
+# The pace of a long unpacking on the web. A port's unpacking routine is built as the port's Ruby
 # unrolls it, so it is one long routine with a wait for the next frame inside its busiest loop (a
 # port rendering its music writes a sample at a time, and waits every few hundred). Printed whole,
 # V8 never optimised it, and Wolfenstein's shareware took minutes to unpack in a web shell where its
@@ -13,7 +13,7 @@ require "tmpdir"
 # written out one after another, played as a web shell's worker plays it (unpacking_harness.js), and
 # held to the pack the all-in-one build made.
 #
-# COUNTED, NOT TIMED. A time fails whenever other work shares the cores, so what made the routine
+# Counted, not timed. A time fails whenever other work shares the cores, so what made the routine
 # slow is counted in the JavaScript it is printed as, which no load can change: the lines of its
 # longest function (V8 gives up optimising a function past a size, and the sample loop printed whole
 # is thousands of lines), and the game's sums written as calls into the runtime (rg_add and its

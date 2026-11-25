@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# AN UPSIDE-DOWN POSE COSTS NO SPRITE MEMORY: the console draws an object upside down for
+# An upside-down pose costs no sprite memory: the console draws an object upside down for
 # nothing, so the build stores the picture once and says "that one, turned over". That holds
 # whether the game asked for the turn with `upside_down` or drew the turned art by hand — the
 # sameness is judged on the pixels.
@@ -62,7 +62,7 @@ class TestSpriteUpsideDownStorage < Minitest::Test
     assert_equal alone, sprite_bytes(program(walk) { |names| mirror(upside_down(names)) })
   end
 
-  # A sprite that TURNS keeps both: once an object is turning, the two bits that would flip it
+  # A sprite that turns keeps both: once an object is turning, the two bits that would flip it
   # name its rotation group instead, so the turned-over pose needs pixels of its own.
   def test_a_turning_sprite_keeps_its_upside_down_pose_as_pixels
     walk = [lopsided(6, 4), lopsided(8, 5, 12, 10)]

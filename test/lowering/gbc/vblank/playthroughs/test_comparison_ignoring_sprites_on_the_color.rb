@@ -3,7 +3,7 @@
 require "test_helper"
 require "sprite_box_fields"
 
-# EVERY SPRITE'S BOX LEFT OUT (`ignoring_sprites: true`) on the Game Boy Color, read from the
+# Every sprite's box left out (`ignoring_sprites: true`) on the Game Boy Color, read from the
 # console's own table of forty eight-pixel pieces: each 8 wide, and 8 or 16 tall as the register LCDC
 # sets.
 #

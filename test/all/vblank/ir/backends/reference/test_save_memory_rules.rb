@@ -10,7 +10,7 @@ module SaveMemoryRulesPrograms
   private def byte_write(at, value) = B.save_write(B.int(at), B.int(value), width: :byte)
 end
 
-# THE RULES OF THE SAVE MEMORY A PROGRAM SAYS IT HAS, kept by the interpreter.
+# The rules of the save memory a program says it has, kept by the interpreter.
 #
 # Battery-backed memory takes any byte anywhere, as often as you like. Flash does not: a write
 # can only turn bits off, and the only way to turn them back on is to wipe a whole 4K block,

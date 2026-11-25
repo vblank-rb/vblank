@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_buffered_blit"
 
-# Drawing a whole PICTURE on the tear-free screen, read back off the Advance's own cartridge in
+# Drawing a whole picture on the tear-free screen, read back off the Advance's own cartridge in
 # the emulator: the same picture at the same place with the same clipping as the interpreter
 # draws. The picture and the program that draws it are kept in BufferedBlitGames in
 # test/all/vblank/builder/test_buffered_blit.rb, with the tests every run plays; the ones only
@@ -71,9 +71,9 @@ class TestBufferedBlitCartridge < Minitest::Test
     end
   end
 
-  # INSIDE AN AREA the edges move, and that is what makes an edge off by one visible at
-  # all. A row one past the bottom of the SCREEN lands in memory nobody ever shows, so
-  # no pixel can tell you about it; a row one past the bottom of an AREA lands in plain
+  # Inside an area the edges move, and that is what makes an edge off by one visible at
+  # all. A row one past the bottom of the screen lands in memory nobody ever shows, so
+  # no pixel can tell you about it; a row one past the bottom of an area lands in plain
   # sight, on a part of the screen the area said to leave alone.
   private def area_program(x, y, buffered:)
     program(

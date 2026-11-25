@@ -6,6 +6,12 @@ require "mkmf"
 # SDL2, no Tk — this is the headless core for dev/test verification. rcheevos
 # (RetroAchievements) is opt-in and compiled out by default; see the bottom.
 
+# ON WINDOWS (MinGW), Ruby's win32.h declares gettimeofday with a struct timezone, and MinGW's
+# sys/time.h, which libmgba's headers include, declares it again with restrict pointers; the two
+# clash and nothing that includes both compiles. Defining MinGW's own guards for that declaration
+# and for the header keeps Ruby's alone, which win32.h already gives with the same struct timeval.
+$CPPFLAGS << " -D_GETTIMEOFDAY_DEFINED -D_SYS_TIME_H_" if RUBY_PLATFORM.include?("mingw")
+
 def add_mgba_deps
   # Dependencies libmgba pulls in, needed when linking the static archive.
   $libs << " -lz" unless $libs.include?("-lz")
@@ -66,6 +72,17 @@ def static_mgba?
     dirs.none? { |dir| File.exist?("#{dir}/libmgba.#{RbConfig::CONFIG['SOEXT']}") }
 end
 
+# On Windows, where RubyInstaller's build tools (MSYS2) install libraries: its UCRT64 prefix, where
+# `ridk exec pacman -S mingw-w64-ucrt-x86_64-mgba` puts libmgba. nil elsewhere.
+def msys2_prefix
+  return nil unless defined?(RubyInstaller::Runtime)
+
+  prefix = File.join(RubyInstaller::Runtime.msys2_installation.msys_path, "ucrt64")
+  prefix if File.directory?(prefix)
+rescue StandardError
+  nil # this Ruby has no MSYS2 set up
+end
+
 def find_mgba
   # 1. MGBA_DIR env var (explicit override — e.g. a local libmgba build).
   if ENV["MGBA_DIR"]
@@ -89,6 +106,7 @@ def find_mgba
     "/usr/local",    # Intel Homebrew / manual builds
     "/usr"           # System
   ]
+  search_prefixes << msys2_prefix if msys2_prefix
 
   # Debian/Ubuntu multiarch lib dirs (e.g. /usr/lib/aarch64-linux-gnu).
   multiarch_dirs = Dir.glob("/usr/lib/*-linux-gnu").select { |d| File.directory?(d) }
@@ -113,6 +131,7 @@ unless find_mgba
       macOS:   brew install mgba
       Debian:  sudo apt install libmgba-dev
       Fedora:  build from source
+      Windows: ridk exec pacman -S mingw-w64-ucrt-x86_64-mgba mingw-w64-ucrt-x86_64-pkgconf
 
     Or point at a local build with MGBA_DIR=/path/to/mgba/install
   MSG

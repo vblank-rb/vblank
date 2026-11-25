@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TEST THE GAME MAKES BRANCHES ON THE COMPARE ITSELF, with no 0 or 1 worked out on the way. The
+# A test the game makes branches on the compare itself, with no 0 or 1 worked out on the way. The
 # instruction counts are the contract here; the games played further down are what says the
 # shorter code still means the same thing.
 class TestConditionBranches < Minitest::Test

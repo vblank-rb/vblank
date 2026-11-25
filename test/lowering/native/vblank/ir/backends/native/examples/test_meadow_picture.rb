@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/meadow").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/meadow").to_s)
 
 # examples/meadow.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, through a walk out of the cabin and back: down through the door into the meadow,

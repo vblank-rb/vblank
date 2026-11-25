@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE EVERYTHING THE CONSOLE DRAWS FOR YOU GOES, worked out once from the program
+        # Where everything the console draws for you goes, worked out once from the program
         # before a single instruction is emitted.
         #
         # A tiled screen is not painted by the game. The console composes it on its own,
@@ -57,7 +57,7 @@ module VBlank
                                             :priority, :in_blocks, :affine, :small, :char_base,
                                             :map_count, :map_bytes, :grid, :colors, :sets, :stream)
 
-          # A BACKGROUND'S MAPS KEPT WHOLE IN THE CARTRIDGE, for one whose maps are bigger than
+          # A background's maps kept whole in the cartridge, for one whose maps are bigger than
           # the grid or of different sizes (see MapStreaming). +maps+ holds each map row after
           # row at its own size, one after another; +table+ holds four words a map — how far
           # into +maps+ it starts, its columns, its rows, and what a cell outside it holds (the
@@ -65,9 +65,15 @@ module VBlank
           # +name+ is the background's, and +routine+ the one that brings its view along (see
           # MapStreaming#emit_stream_view_routine), which is one for each scene's declaration of
           # a background declared in several.
-          StreamedMaps = Data.define(:name, :routine, :maps, :table)
+          #
+          # +kept+ is set where the game changes a cell of it (`set_tile`): the map showing is then
+          # kept in the roomy memory, +kept_bytes+ for the biggest map, and the strips come from that
+          # copy (see MapStreaming#emit_kept_map_source), and +writer+ is the routine that changes a
+          # cell of it. +cells+ is each of the background's tiles as a map entry holds it, every
+          # set's, nil the blank.
+          StreamedMaps = Data.define(:name, :routine, :maps, :table, :kept, :kept_bytes, :writer, :cells)
 
-          # BRINGING ANOTHER SET OF TILES IN, for a background that walks between areas. Every
+          # Bringing another set of tiles in, for a background that walks between areas. Every
           # set's tile pictures are in +tiles+, +stride+ bytes each, and one of them at a time
           # sits +at+ bytes into video memory. +sets_of_maps+ is a byte a map saying which set
           # it draws from; +char_base_table+ is a byte a set holding where the layer counts that
@@ -80,7 +86,7 @@ module VBlank
           TileSetSwap = Data.define(:tiles, :at, :stride, :sets_of_maps, :char_base_table, :var,
                                     :colors, :color_units, :routine, :areas, :area_numbers)
 
-          # THE AREA WHOSE COLOURS THE CONSOLE'S BACKGROUND TABLE HOLDS, by its number (see
+          # The area whose colours the console's background table holds, by its number (see
           # #area_number), or NO_AREA while it holds a scene's own table. Two backgrounds that walk
           # together read one table, so the second to bring an area in finds the area's colours
           # already up and sends none (BackgroundDrawing#emit_bring_set_in). And a group a walking
@@ -109,7 +115,7 @@ module VBlank
           # they go up as declared.
           def walking_placements(nodes) = nodes.filter_map { |node| declared_background(node)&.then { |bg| bg if bg.sets } }
 
-          # A BACKGROUND OF ONE NAME DECLARED IN SEVERAL SCENES is a declaration in each, and
+          # A background of one name declared in several scenes is a declaration in each, and
           # each scene lays its own tiles, maps and colours out from the same starting place
           # (see #place_each_scene and #assign_tile_banks). So the same name can land in a
           # different place in each scene — after a scene's other backgrounds, which differ —
@@ -129,24 +135,24 @@ module VBlank
             @declarations.filter_map { |(declared, scene), place| [scene, place] if declared == name }.to_h
           end
 
-          # THE OTHER LISTS OF COLOURS A LAYER CAN BE DRAWN FROM, for a background that was
+          # The other lists of colours a layer can be drawn from, for a background that was
           # told `draw_with`, and nil for every other one.
           #
           # +blob+ holds them end to end in the cartridge, a whole bank of sixteen for each list
-          # and the layer's OWN colours last — so picking one is arithmetic on a number rather
+          # and the layer's own colours last — so picking one is arithmetic on a number rather
           # than a test per list, and a number naming none of them can be answered by handing
           # over the last one instead of by branching around the write.
           #
           # A layer's tiles can be drawn from several lists, each in a group of sixteen of its
-          # own, and then one version of the layer is a list for EACH: those sit side by side
+          # own, and then one version of the layer is a list for each: those sit side by side
           # in the blob, one version after another. +banks+ is the group each of the layer's
           # lists is in, in that order, which the swap writes into; +shift+ is how far apart two
           # versions are, as a power of two, so finding one is a shift rather than a multiply —
           # three lists take the room of four. +count+ is how many versions there are besides
-          # its own. +at+ names the variable holding where the version it is showing NOW starts,
+          # its own. +at+ names the variable holding where the version it is showing now starts,
           # which is what lets a tint put the swap back after walking the whole table over it.
           #
-          # A LAYER THAT WALKS BETWEEN AREAS has one set of versions for each area, area after
+          # A layer that walks between areas has one set of versions for each area, area after
           # area, +area_bytes+ apart (nil for every other layer). Each area hands its groups out
           # again, so a group this layer's list is in, in one area, can be another layer's in the
           # next. So +banks+ there is a list for each area, in the order of the layer's sets: the
@@ -154,7 +160,7 @@ module VBlank
           # groups only.
           BackgroundColorLists = Data.define(:blob, :banks, :count, :at, :shift, :area_bytes)
 
-          # A BACKGROUND'S GRID OF CELLS, for changing one of them while the game runs: how many
+          # A background's grid of cells, for changing one of them while the game runs: how many
           # cells there are each way, and what to write into one to show a given tile. Nothing
           # else needs either, and a background that turns and resizes has no grid of this shape
           # at all — its cells hold a tile number and nothing else, so it is nil there.
@@ -162,7 +168,7 @@ module VBlank
             def holds?(col, row) = col >= 0 && col < cols && row >= 0 && row < rows
           end
 
-          # WHAT ONE SCENE NEEDS OF THE TILED SCREEN: which layers are switched on, and which
+          # What one scene needs of the tiled screen: which layers are switched on, and which
           # of the console's two arrangements this screen is — four layers that scroll, or two
           # that scroll beside one that turns and resizes.
           # +bar+ marks that a status bar is on this screen, which switches the display's second window
@@ -172,7 +178,7 @@ module VBlank
           # The priority a status bar's layer is given: the back, so every sprite is in front.
           BAR_PRIORITY = 3
 
-          # WHAT ONE SCENE SENDS AS IT TAKES OVER, in one place: its own tile pictures (a
+          # What one scene sends as it takes over, in one place: its own tile pictures (a
           # SceneTiles for each stretch, or nil), the screen it has on (a SceneScreen, for a
           # tiled scene), its own sprite pictures (blob, at, units for each), and the blobs of its sprite colour
           # table and its background colour table (or nil). Each pass that decides one of these
@@ -209,15 +215,16 @@ module VBlank
           # is a list that borrows its group as the game runs (see LentColors).
           RecolorBanks = Data.define(:table, :own, :lends)
 
-          # LISTS OF SPRITE COLOURS THAT BORROW A GROUP, for a game whose things between them
+          # Lists of sprite colours that borrow a group, for a game whose things between them
           # draw with more lists than the console has groups. +blob+ holds each such list's
           # colours, sixteen to a list, in the order the lists are numbered; +banks+ are the
           # groups nothing else uses in any scene, which the lists take turns in. Which list
           # holds which group is worked out as the game runs (see
           # SpriteDrawing#emit_lend_colors_routine). +families+ is the blob holding each lent
           # list's family, a word a list in the same order, or nil for a game with none (see
-          # ScreenLayout#lent_families).
-          LentColors = Data.define(:blob, :banks, :families) do
+          # ScreenLayout#lent_families). +wearers+ is each lent list's number -> the names of the
+          # sprite objects drawn with it, so a list that found no group can be told by them.
+          LentColors = Data.define(:blob, :banks, :families, :wearers) do
             # Where the colours of the group lent out as number +k+ are written.
             def group_at(k) = OBJ_PALETTE + (banks[k] * PaletteBanks::BANK_SIZE * 2)
 
@@ -234,7 +241,7 @@ module VBlank
           # the two never meet.
           LENT_MARK = 0x10000
 
-          # WHERE A LIST OF COLOURS THAT CHANGES LANDED (see IR::Nodes::ColorList). +blob+ is the
+          # Where a list of colours that changes landed (see IR::Nodes::ColorList). +blob+ is the
           # sets it can hold, laid end to end in the cartridge sixteen colours each, with the
           # colours it was declared with last; +count+ is how many sets come before those.
           # +group_at+ is where the group of sixteen its sprites read sits in the console's
@@ -244,7 +251,7 @@ module VBlank
           # when it is in the one every scene shows.
           ChangingColors = Data.define(:blob, :count, :group_at, :source_var, :scene)
 
-          # THE BACKDROP, WHERE IT FOLLOWS A LIST (IR::Nodes::ColorList#backdrop_place): +name+ is the
+          # The backdrop, where it follows a list (IR::Nodes::ColorList#backdrop_place): +name+ is the
           # list's, and +blob+ the one colour the backdrop is in each set the list can hold, laid end
           # to end a halfword each, the colour it was declared with last, as a ChangingColors blob
           # lays its sets out; +count+ is how many come before that one.
@@ -255,7 +262,7 @@ module VBlank
           # instead — one colour, from this blob, on the frame the list's own are.
           BackdropColors = Data.define(:name, :blob, :count)
 
-          # A LIST OF COLOURS THAT CHANGES, FOLLOWED BY A BACKGROUND DRAWN WITH SEVERAL SUCH LISTS
+          # A list of colours that changes, followed by a background drawn with several such lists
           # (IR::Nodes::Background#follows_each). The console keeps two tables of colours, one the
           # backgrounds read and one the sprites read, and a list's colours are written into a
           # group of the sprites' (ChangingColors). A background's tiles cannot read that group, so
@@ -283,14 +290,19 @@ module VBlank
           # the screen, and the table holds +scene_count+ rows for its values and one for any other.
           LayerDepths = Data.define(:table, :own, :scene_var, :scene_count)
 
-          # EVERYTHING THAT CHANGES BETWEEN POSES THAT ARE NOT INTERCHANGEABLE, one word
+          # Where a sprite that can be put in and out of a see-through layer keeps the see-through
+          # bit of its first word for each layer, counted as LayerDepths counts them, and which
+          # entry is the layer it was declared in.
+          SeeThroughPicks = Data.define(:table, :own)
+
+          # Everything that changes between poses that are not interchangeable, one word
           # each, read by the per-frame draw.
           #
           # A uniform sprite needs none of this: its size is the same every frame, so it
           # sits in the sprite's own entry and the pose is a stride. Once the poses differ
           # in size, four things move with the pose — which tiles, what shape, what size,
           # and how far along to draw it so the picture does not shift. A pose that is
-          # another one MIRRORED or turned UPSIDE DOWN breaks the stride too, since its tiles
+          # another one mirrored or turned UPSIDE DOWN breaks the stride too, since its tiles
           # are the pose it was turned from, and adds a bit for each way. All of it fits in
           # one word: one read a frame and some shifting, against storing every pose at the
           # biggest one's size and every turned pose a second time.
@@ -301,7 +313,7 @@ module VBlank
           #           30   draw it mirrored, left to right
           #           31   draw it upside down
           #
-          # ONE WORD PER PIECE PER POSE, laid out PIECE FIRST: a picture too big for one
+          # One word per piece per pose, laid out piece first: a picture too big for one
           # object is drawn as several, and each of them reads its own row of this. Piece
           # first is what keeps the read cheap — the game's pose number is scaled by four and
           # the piece's row is a constant the build already knows, so a piece costs the same
@@ -349,7 +361,7 @@ module VBlank
                               colors: run.colors, places: ("\x00" * (width * height)).b, colors_name: run.colors_name)
           end
 
-          # Does this sprite turn or change size? It does unless BOTH its angle and its size
+          # Does this sprite turn or change size? It does unless both its angle and its size
           # are still the constants they default to. Either one being a variable (or any
           # other constant) means it goes through one of the console's rotation groups; both
           # at their defaults draws upright at its drawn size, for free.
@@ -369,7 +381,7 @@ module VBlank
             @bitmaps = bitmaps
             @modes = modes
             # How the picture stacks: which scenery and sprites there are, in what order, and
-            # how deep each sits — and the same picture cut into what can be on screen AT ONCE,
+            # how deep each sits — and the same picture cut into what can be on screen at once,
             # which is what the console's four layers and four depths actually have to cover.
             @picture = IR::Stacking.picture(program)
             @screenfuls = IR::Stacking.screenfuls(program)
@@ -450,7 +462,7 @@ module VBlank
             BackdropColors.new(name: node.name, blob: blob, count: node.recolors.length)
           end
 
-          # WHICH GROUPS OF SIXTEEN A LAYER IS DRAWING FROM A LIST OF ITS OWN, so a tint that
+          # Which groups of sixteen a layer is drawing from a list of its own, so a tint that
           # walks the whole colour table can put those back rather than over: for each, where
           # the group sits, the variable holding where the layer's current version starts, how
           # far along that version this group's list is, and the scene the layer belongs to (nil
@@ -500,7 +512,7 @@ module VBlank
           # set the layer is in, the number of that set, and its area's number (see AREA_COLORS_UP).
           WalkingArea = Data.define(:set_var, :set, :area_number)
 
-          # THE SAME FOR SPRITES: each group of sixteen that a list of colours which changes is
+          # The same for sprites: each group of sixteen that a list of colours which changes is
           # written into, in the same four parts, so whatever rewrites the sprite colours — a
           # tint, a scene sending its own — can put the set in force back.
           def obj_recolor_restore_banks
@@ -544,6 +556,11 @@ module VBlank
           # display which, as it takes over (see #scene_screens_for).
           def layers_differ_by_scene? = @scene_sends.each_value.filter_map(&:screen).uniq.size > 1
 
+          # Does the game ever switch the background layers off to send them something, a scene's
+          # scenery or its own sprite pictures as it takes over (a painted scene's too), or a set of
+          # tiles a background walks to, and on again after? (See BackgroundDrawing::LAYERS_HELD.)
+          def layers_off_while_sending? = walks_areas? || @scene_sends.each_value.any? { |send| send.screen || send.art }
+
           # The screen of the first tiled scene declared — the one boot sets up where the
           # scenes differ (see Drawing#first_scene_layers).
           def first_scene_screen = @scene_sends.each_value.find(&:screen)&.screen
@@ -562,10 +579,10 @@ module VBlank
           # by +value+ in the variable that picks it, and the table's blob.
           ScenePickedColors = Data.define(:scene, :value, :blob)
 
-          # THE SPRITE COLOUR TABLES SENT WITH THE SPRITES (see
+          # The sprite colour tables sent with the sprites (see
           # SpriteDrawing#emit_scene_colors_on_change), and the one variable that picks their scenes.
           # Only in a game whose loop writes the frame's sprites, and where every scene sending a
-          # table of its own is reached one way: by one clause of a `case_var` on that one variable,
+          # table of its own is reached one way: by one clause of a scene dispatch on that one variable,
           # and by nothing else. There the variable says which scene's sprites are up, so it can say
           # which table goes in. A scene also called by name, or picked by a second variable, is up
           # when the variable does not say so, and two variables could each send a table over the
@@ -598,7 +615,7 @@ module VBlank
             ScenesPicked.new(state: states.first, picks: picks)
           end
 
-          # Every way each scene is reached: [variable, value] for each `case_var` clause naming it,
+          # Every way each scene is reached: [variable, value] for each scene dispatch clause naming it,
           # nil for each call by name.
           def scene_reaches
             @program.walk.each_with_object(Hash.new { |hash, scene| hash[scene] = [] }) do |node, reached|
@@ -621,21 +638,21 @@ module VBlank
           # sprites take.
           def twin_object_count = @placed_fade.places_spent { |name| @obj_pictures.fetch(name).pieces }
 
-          # THE SPRITES WHOSE ROWS OF THE CONSOLE'S TABLE HAVE TO BE WRITTEN EVERY FRAME, even
+          # The sprites whose rows of the console's table have to be written every frame, even
           # when nothing in the program moves them. There are two, and both are this layout's
           # own doing:
           #
-          #   A SPRITE THAT KEEPS ONE FRAME AT A TIME copies its pictures into its room as the
+          #   A sprite that keeps one frame at a time copies its pictures into its room as the
           #   frame is drawn, and the scene it belongs to marks that room empty again as it
           #   takes over — later in the same frame. Written once, the copy would be undone and
           #   never made again, so the sprite would draw whatever tiles were left there.
           #
-          #   A SPRITE KEPT OUT OF A PLACED FADE has a twin standing over it, and where the
+          #   A sprite kept out of a placed fade has a twin standing over it, and where the
           #   fade sits in the stack is a number the game moves. The twin is filled in from the
           #   sprite's own numbers on the way past, so it can only be written when the sprite
           #   is.
           #
-          #   A SPRITE DRAWN WITH A LIST THAT BORROWS ITS GROUP shows it still needs the group by
+          #   A sprite drawn with a list that borrows its group shows it still needs the group by
           #   being written: a group nothing was drawn with on the frame before is free to lend
           #   to another list (see SpriteDrawing#emit_lend_colors_routine).
           def written_every_frame
@@ -645,7 +662,7 @@ module VBlank
             end
           end
 
-          # WHERE EACH PIECE OF A SPRITE STANDS, pose by pose: for every pose, one
+          # Where each piece of a sprite stands, pose by pose: for every pose, one
           # [x, y, width, height, mirrored, upside_down] per piece, measured from the corner of the canvas
           # the art was drawn on.
           #
@@ -674,7 +691,7 @@ module VBlank
           # the table (see SpriteDrawing::HeldTable). Nought for a game with no sprites.
           def sprite_table_rows = @sprite_table_rows || 0
 
-          # WHICH PLACE OF THE SPRITE TABLE EACH DECLARED SPRITE WAS GIVEN.
+          # Which place of the sprite table each declared sprite was given.
           #
           # The console composes the picture from a table of 128 sprites, and each row of it is known
           # by its place — a number the build handed out and the author never saw (a game
@@ -688,7 +705,7 @@ module VBlank
           # of them the one thing the author declared. Both come back as the whole run of places
           # under that name, which is what somebody asking where a thing is wants.
           #
-          # Keyed on the name the AUTHOR wrote. The program's own names for these are handed out
+          # Keyed on the name the author wrote. The program's own names for these are handed out
           # as it is built, so they mean nothing to anybody, and a sprite drawn for something the
           # author named nothing (a letter of text) is left out rather than given one.
           def sprite_slots
@@ -708,17 +725,17 @@ module VBlank
             @picture.objects.each { |node| yield node, @objects[node.name] }
           end
 
-          # HOW FAR ALONG THE BUILD MOVED EACH OF A SPRITE'S STORED POSES.
+          # How far along the build moved each of a sprite's stored poses.
           #
           # A pose is kept trimmed to the part of its canvas that actually draws something, and
           # the sprite is told to stand that much further along so the picture does not move (see
-          # SpriteCut#pose_box). A pose drawn BACKWARDS is trimmed from the other side, so it
+          # SpriteCut#pose_box). A pose drawn backwards is trimmed from the other side, so it
           # stands a different amount further along again. Both are this backend's own doing, so
           # a place read back off the console is that much past the corner of the picture — right
           # for a sprite facing one way and wrong for the same sprite facing the other, which is
           # the worst way for a number to be wrong.
           #
-          # Keyed by the PLACE in the console's table — which is the one thing a row of that table
+          # Keyed by the place in the console's table — which is the one thing a row of that table
           # holds about itself that is its own — and then by whatever tells that place's poses apart
           # (see #pose_key, which is where the two answers to that are).
           #
@@ -731,7 +748,32 @@ module VBlank
             end
           end
 
-          # WHICH SPRITE IS IN A PLACE SPRITES OF SEVERAL SCENES TAKE TURNS AT (see
+          # Which picture each sprite's first place is showing, by the name the game gave it.
+          #
+          # Keyed as #sprite_offsets is, by the place in the console's table and then by what tells
+          # that place's poses apart (#pose_key), so a row read back off the console finds its
+          # picture the way it finds how far it was moved. Only a sprite's first place is here: a
+          # picture cut into pieces is one picture, named once. Two poses stored as one picture
+          # facing one way are one key, and the first of them names it.
+          def shown_picture_names
+            each_built_sprite.each_with_object({}) do |(node, sprite), named|
+              named[sprite.slot] = pose_pictures(node, sprite)
+            end
+          end
+
+          # The keys of #sprite_offsets that more than one pose answers to at different distances,
+          # each with the poses it could be (see Cartridge::BuildRecord#sprite_pose_choices). Keyed
+          # as #sprite_offsets is; a place with no such key is left out.
+          def sprite_pose_choices
+            each_built_sprite.each_with_object({}) do |(node, sprite), choices|
+              sprite.pieces.times do |piece|
+                found = pose_choices(node, sprite, piece)
+                choices[sprite.slot + piece] = found if found
+              end
+            end
+          end
+
+          # Which sprite is in a place sprites of several scenes take turns at (see
           # Cartridge::BuildRecord#sprite_turns). The block gives the address of what the
           # variable picking the scenes held when the table was last written for a change of
           # scene, and of the pose a sprite keeping one frame at a time is showing.
@@ -745,13 +787,15 @@ module VBlank
               pose_var = sprite.frames && address_of.call(sprite.resident_frame_var)
               sprite.pieces.times do |piece|
                 (turns[sprite.slot + piece] ||= []) << VBlank::Cartridge::BuildRecord::SpriteTurn.new(
-                  at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var
+                  at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var,
+                  pictures: piece.zero? ? pose_pictures(node, sprite) : {},
+                  choices: pose_choices(node, sprite, piece)
                 )
               end
             end
           end
 
-          # WHAT THE PICTURES COST IN VIDEO MEMORY, and what storing them the small way saved.
+          # What the pictures cost in video memory, and what storing them the small way saved.
           #
           # The console keeps sprite pictures in 32K and background tiles in a block of their
           # own, and a game that outgrows either gets a build error rather than a slow frame. So
@@ -771,9 +815,27 @@ module VBlank
           def object_transformed?(node) = self.class.transformed?(node)
           def object_scales?(node) = self.class.scales?(node)
 
-          # Is this sprite in a layer the program sees through? Then its own table entry
-          # marks it so, and the display blends it with what is behind it.
-          def see_through_object?(node) = @see_through.include?(node.layer)
+          # Is this sprite in a layer the program sees through, in every layer it can be put in? Then
+          # its own table entry marks it so, and the display blends it with what is behind it.
+          def see_through_object?(node) = sprite_layers(node).all? { |layer| @see_through.include?(layer) }
+
+          # The layers a sprite can be in, counted as #layer_depth_row counts them: each it can be put
+          # in, then the one it was declared in.
+          def sprite_layers(node) = [*node.layers, node.layer]
+
+          # The see-through bit of a sprite's first word for each layer it can be in, for a sprite put
+          # in and out of a see-through layer as the game runs, or nil for one whose bit is the same in
+          # every layer (#see_through_object?). The bit is the display's own: it blends that sprite
+          # with what is behind it, so moving the sprite out of the layer is clearing it.
+          def sprite_see_through_table(node)
+            words = sprite_layers(node).map { |layer| @see_through.include?(layer) ? LayerBlend::OBJ_SEMI_TRANSPARENT : 0 }
+            return nil if words.uniq.one?
+
+            blob = :"__see_through_picks_#{words.join('_')}"
+            @blobs[blob] = words.pack("V*")
+            keep_unpacked!(blob) # read from the middle, by the layer the game picked
+            SeeThroughPicks.new(table: blob, own: node.layers.length)
+          end
 
           # Turn the tiled backgrounds into the data tile hardware reads — one shared color
           # palette, the tile pictures, and a map per layer — and stash them as ROM blobs
@@ -782,7 +844,7 @@ module VBlank
           # the run-time half.
           def prepare_backgrounds(program)
             # Back to front. A layer can put a background behind one declared before it,
-            # and this order becomes the hardware layer number, which IS the paint order —
+            # and this order becomes the hardware layer number, which is the paint order —
             # so it has to be settled here, before any layer is given a number.
             #
             # A `screen :rotozoom` background lives on its own rotate/scale layer (BG2) —
@@ -833,27 +895,34 @@ module VBlank
           # Does the game hold a background to a box (`show_only_inside`), which takes the display's
           # second window (see BackgroundDrawing#emit_box_background)? A line that only ever shows a
           # background everywhere (held 0, written in the program) needs no window, as
-          # Checks::BoxedBackgroundCannotShare says.
+          # Checks::BoxedBackgroundCannotShare says, and nor does one only ever hidden whole.
           def boxes_backgrounds?
             return @boxes_backgrounds unless @boxes_backgrounds.nil?
 
-            @boxes_backgrounds = @program.walk.any? do |node|
-              node.kind == :box_background && !(node.held.kind == :int && node.held.value.zero?)
-            end
+            @boxes_backgrounds = @program.walk.any? { |node| node.kind == :box_background && node.in_part? }
           end
           public :boxes_backgrounds?
+
+          # Does the game hide a background whole (`hide`), which switches its layer off in the
+          # display's settings (see BackgroundDrawing#emit_layer_switch)?
+          def hides_layers?
+            return @hides_layers unless @hides_layers.nil?
+
+            @hides_layers = @program.walk.any? { |node| node.kind == :box_background && node.hides_whole? }
+          end
+          public :hides_layers?
 
           # Fill in part of what +scene+ sends as it takes over.
           def record_scene_send(scene, **part) = @scene_sends[scene] = scene_send(scene).with(**part)
 
-          # WHERE A SCENE'S OWN TILE PICTURES ARE SENT AS IT TAKES OVER: the blob holding them,
+          # Where a scene's own tile pictures are sent as it takes over: the blob holding them,
           # how far into video memory they go, and how many halfwords that is. A scene sends a
           # list of these, one for each stretch of its room that holds something, so the copy
           # skips the gaps no map names (see BackgroundTiles#stretches). Only scenes with
           # pictures of their own are here.
           SceneTiles = Data.define(:blob, :offset, :units)
 
-          # WHERE A RUN OF PAINTED TILES SITS: how far into video memory it starts, how many
+          # Where a run of painted tiles sits: how far into video memory it starts, how many
           # bytes it takes, and the list its pixels are copied from.
           #
           # +places+ is where it starts on each screen that shows it, by scene (nil for one
@@ -890,13 +959,13 @@ module VBlank
             def moves? = at.nil?
           end
 
-          # A RUN OF PAINTED TILES IN A BACKGROUND THAT WALKS BETWEEN AREAS. Each set of tiles lays
+          # A run of painted tiles in a background that walks between areas. Each set of tiles lays
           # the room out afresh, so the run sits somewhere else in each, or nowhere in a set
           # that leaves it out. +table+ is a word for each set, the address the run starts at, or
           # 0; +var+ names which set is in place.
           WalkingRun = Data.define(:table, :var)
 
-          # THE SCENERY EVERY SCREEN SHOWS GOES IN FIRST, and stays for the whole game: its
+          # The scenery every screen shows goes in first, and stays for the whole game: its
           # pictures are sent at boot and its maps are set up once. What it takes is what
           # each scene has left.
           def place_shared_scenery(slots, banks, big)
@@ -905,7 +974,7 @@ module VBlank
             store
           end
 
-          # THEN EACH SCENE'S OWN, IN THE SAME ROOM AS EVERY OTHER SCENE'S.
+          # Then each scene's own, in the same room as every other scene's.
           #
           # This is what makes the budget one scene's rather than the whole game's, the way
           # it already is for sprite pictures. Two scenes are never on screen together, so
@@ -946,13 +1015,13 @@ module VBlank
             raise LoweringError, tiles_overflow_message(e, @picture.scenery.reject(&:scene) + nodes, scene)
           end
 
-          # WHICH OF THE CONSOLE'S FOUR SCROLLING LAYERS EACH BACKGROUND GETS.
+          # Which of the console's four scrolling layers each background gets.
           #
-          # A layer is spent while something is being DRAWN, so the four have to cover one
+          # A layer is spent while something is being drawn, so the four have to cover one
           # screenful and never the whole program: two scenes that take turns can have four
           # backgrounds each, because the console is only ever holding one scene's.
           #
-          # WHICH LAYER A BACKGROUND SITS ON IS NOT WHAT PUTS IT IN FRONT, and that is what
+          # Which layer a background sits on is not what puts it in front, and that is what
           # makes this straightforward. Paint order is a separate field of the layer's own
           # settings — its priority — so a slot is only a set of registers to use, free to be
           # handed out in whatever order suits, while the picture's order is carried by the
@@ -966,7 +1035,7 @@ module VBlank
           # There is always a slot to hand out, because #check_layers_fit! has already refused
           # a screenful asking for more than there are. It runs first for that reason.
           #
-          # TWO BACKGROUNDS AT ONE LEVEL are the exception to "a slot is only registers". They
+          # Two backgrounds at one level are the exception to "a slot is only registers". They
           # get the same priority, and the console then draws the lower-numbered layer in
           # front. So the backgrounds of a level take their slots front first, and the front one
           # gets the lower number.
@@ -1009,7 +1078,7 @@ module VBlank
           # against, read from the same place (the Advance's description) so the two cannot
           # drift apart.
           #
-          # A screen holding a background that TURNS has fewer, and they are not the same
+          # A screen holding a background that turns has fewer, and they are not the same
           # ones: the console gives its rotate hardware to a particular layer (AFFINE_BG) and
           # the arrangement that provides it leaves only the two below that one scrolling.
           def scrolling_slots(screenful)
@@ -1017,14 +1086,14 @@ module VBlank
             (0...most).to_a
           end
 
-          # WHAT EACH SCENE TELLS THE DISPLAY — and this is the half that has to happen while
-          # the game RUNS, where the numbering above is settled during the build.
+          # What each scene tells the display — and this is the half that has to happen while
+          # the game runs, where the numbering above is settled during the build.
           #
           # Both were settled once for the whole program, from every background in it. That
           # was right while every background had a layer of its own and one arrangement held
           # the lot. Now that scenes share them, neither is:
           #
-          #   A scene that uses FEWER layers than the one before it left the extra ones
+          #   A scene that uses fewer layers than the one before it left the extra ones
           #   switched on and still pointed at the last scene's maps, so walking out of a
           #   parallax field into a plain room showed the field's far layers through the
           #   room's floor.
@@ -1055,7 +1124,7 @@ module VBlank
             SceneScreen.new(on: on, turning: turning, bar: screenful.scenery.any?(&:bar?))
           end
 
-          # DO THE DECLARED LAYERS FIT AN ARRANGEMENT THE CONSOLE HAS? A layer that did not
+          # Do the declared layers fit an arrangement the console has? A layer that did not
           # fit would simply not be drawn, and a picture missing one layer reads as a bug in
           # the art rather than as a budget — so lowering stops rather than dropping it.
           #
@@ -1070,10 +1139,10 @@ module VBlank
             raise LoweringError, refusal if refusal
           end
 
-          # SORT EVERY TILE OF EVERY LAYER INTO THE COLOR TABLE THEY ALL READ FROM.
+          # Sort every tile of every layer into the color table they all read from.
           #
           # A layer is stored one way or the other as a WHOLE — that is one bit in the
-          # layer's own settings — but within a small-storage layer each TILE names which
+          # layer's own settings — but within a small-storage layer each tile names which
           # bank of sixteen it draws from. So a tileset of hundreds of colors still stores
           # small, as long as no single 8x8 tile needs more than fifteen at once, which is
           # almost always true and is why this is worth doing.
@@ -1088,7 +1157,7 @@ module VBlank
           # A background that walks between areas takes its colours a different way, since an
           # area's colours go in with its tiles (see #assign_area_banks).
           #
-          # EACH SCENE'S COLOURS ARE ITS OWN, the way its tile pictures are (see #place_each_scene).
+          # Each scene's colours are its own, the way its tile pictures are (see #place_each_scene).
           # Two scenes are never on screen together, so the colours every scene shows are laid
           # out first and keep their place throughout, and each scene's own go on from them into
           # the room the other scenes use too; a scene sends its table as it takes over. So a
@@ -1118,7 +1187,7 @@ module VBlank
             [SceneBanks.new(by_scene: by_scene), big]
           end
 
-          # ONE TABLE FOR THE WHOLE GAME, for one whose walking backgrounds every scene shows. An
+          # One table for the whole game, for one whose walking backgrounds every scene shows. An
           # area's colours are up in every scene then, and each area lays its colours out in the
           # room after what never changes — the same room a scene's own colours would take. So a
           # scene's colours go in that one table beside every area's, as they all did before
@@ -1148,7 +1217,7 @@ module VBlank
           # scene shows.
           def scene_phrase(scene, otherwise) = scene ? "the scene :#{IR::Modes.strip_scene_prefix(scene)}" : otherwise
 
-          # WHERE A BACKGROUND TILE'S COLOURS ARE, in a game whose scenes each have a table of
+          # Where a background tile's colours are, in a game whose scenes each have a table of
           # background colours: the table of the scene the tile's background belongs to, which
           # goes on from the one every scene shows. +by_scene+ holds one table per scene, the
           # one every scene shows under nil; a scene whose backgrounds walk between areas holds
@@ -1193,7 +1262,7 @@ module VBlank
             def table_of(key) = @by_scene.fetch(key.last) { @by_scene.fetch(nil) }
           end
 
-          # THE COLOURS OF A GAME THAT WALKS BETWEEN AREAS, which are one area's at a time.
+          # The colours of a game that walks between areas, which are one area's at a time.
           #
           # An area brings its own colours in with its tiles, into the same groups of sixteen
           # every other area's colours use — so the colours that have to fit in the console's
@@ -1269,7 +1338,7 @@ module VBlank
                   "give each of them its maps of :#{walking.first.sets.first} first."
           end
 
-          # WHERE A TILE'S COLOURS ARE, for a game whose backgrounds walk between areas: the
+          # Where a tile's colours are, for a game whose backgrounds walk between areas: the
           # table of the area the tile belongs to, or the one every area shares for anything
           # else. +entries+ is the table at power-on, the first area's.
           class AreaBanks
@@ -1336,7 +1405,7 @@ module VBlank
           # A layer stored the big way is read a whole byte a pixel, so it is handed over as
           # +wide+ — its colours must run across the whole table, however few of them there
           # are. A layer that went big because one greedy tile has too many colours is wide
-          # on the count alone; a TURNING layer is the one that needs saying, because the
+          # on the count alone; a turning layer is the one that needs saying, because the
           # console gives it no other way to be read (its map holds one byte a cell, with no
           # room to name a bank) and it can still be drawn from a handful of colours.
           def bank_pictures(nodes, big)
@@ -1405,7 +1474,7 @@ module VBlank
           # run's address is.
           def obj_tile_vram_offset = SpriteDrawing::OBJ_TILE_BASE - VRAM_START
 
-          # SPRITES OVER A PAINTED SCREEN HAVE HALF THE SPRITE MEMORY.
+          # Sprites over a painted screen have half the sprite memory.
           #
           # A painted screen keeps its picture in video memory too, and a whole picture is
           # bigger than the room set aside for backgrounds: the direct-colour screen's runs
@@ -1435,7 +1504,7 @@ module VBlank
             ", because the painted screen keeps its picture in the other half of that memory"
           end
 
-          # WHERE EACH RUN OF PAINTED TILES LANDED, as bytes into video memory: the copy that
+          # Where each run of painted tiles landed, as bytes into video memory: the copy that
           # paints it writes there (see BackgroundDrawing#emit_copy_tiles). One copy is one
           # stretch of memory, so the run has to have landed in order and side by side, which
           # it does because its tiles are stored one after another and never shared.
@@ -1464,7 +1533,7 @@ module VBlank
             same.values.all?(first)
           end
 
-          # WHERE EACH RUN OF PAINTED TILES LANDED IN EACH SET of a background that walks between
+          # Where each run of painted tiles landed in each set of a background that walks between
           # areas (see WalkingRun).
           def note_walking_painted_runs(node, images, painted_at)
             images.map { |image| @painted_runs.fetch(image) }.uniq.each do |run|
@@ -1515,7 +1584,7 @@ module VBlank
           end
 
           # What every layer shares, once they are all stored: the one color table and the
-          # one run of tile pictures, with how many TILES got each storage and what the small
+          # one run of tile pictures, with how many tiles got each storage and what the small
           # ones saved. Those two are counted off the layers rather than off the banks, since
           # a layer stored the big way is one picture there however many tiles it has.
           def shared_scenery_summary(nodes, big, colors, boot:, fullest:)
@@ -1586,6 +1655,8 @@ module VBlank
               end
             end
             cell_for = cells_of_sets.first
+            every_set_cell = cells_of_sets.reduce(:merge) # the sets number different tiles of the background
+            refuse_emptied_cell_of_two_blanks!(node, set_stores)
             stored = set_stores.first.first
             entries = map_entries(node.map, cols, rows, stored.blank) { |index| cell_for.fetch(index) }
 
@@ -1618,11 +1689,27 @@ module VBlank
               char_base: stored.char_base,
               map_count: grids.size, map_bytes: entries.size * 2,
               # A tile of nil is the empty cell (Nodes::SetTile), the layer's blank tile, as the map's own are.
-              grid: (MapGrid.new(cols: cols, rows: rows, cells: cell_for.merge(nil => stored.blank)) unless streams),
+              # Every set's tiles are there, each as its own set names it: a cell is written with a
+              # tile of the area showing, whose set is the one in video memory.
+              grid: (MapGrid.new(cols: cols, rows: rows, cells: every_set_cell.merge(nil => stored.blank)) unless streams),
               colors: background_color_lists(node, banks, small),
               stream: stream
             ))
             note_followed_groups(node, banks, small)
+          end
+
+          # A cell emptied (`set_tile` with no tile) is the layer's blank tile, one entry for the
+          # background whichever area is up (MapGrid#cells, StreamedMaps#cells). Each set's blank is
+          # where that set's tiles are counted from, so sets counted from different places have
+          # different blanks, and the one entry would be wrong for all but the first. Refused here
+          # rather than written wrong.
+          def refuse_emptied_cell_of_two_blanks!(node, set_stores)
+            return if set_stores.map { |stored, _| stored.blank }.uniq.one?
+            return unless @program.walk.any? { |each| each.kind == :set_tile && each.name == node.name && each.tile.nil? && !each.picked? }
+
+            raise LoweringError, "background :#{node.name} walks between areas whose tiles sit in different places, and " \
+                                 "the game empties a cell of it. The Game Boy Advance build does not make that yet. To " \
+                                 "fix this, give the cell a see-through tile of the area instead."
           end
 
           # Keep which group of background colours each changing list +node+ follows is written
@@ -1698,8 +1785,12 @@ module VBlank
             sizes = :"__bg_map_sizes_#{declaration_tag(node)}"
             @blobs[sizes] = table.pack("V*")
             keep_unpacked!(sizes)
+            kept = @program.walk.any? { |each| each.kind == :set_tile && each.name == node.name }
             StreamedMaps.new(name: node.name, routine: MapStreaming.view_routine(node.name, scene: own_scene(node)),
-                             maps: maps, table: sizes)
+                             maps: maps, table: sizes, kept: kept,
+                             writer: (MapStreaming.cell_write_routine(node.name, scene: own_scene(node)) if kept),
+                             kept_bytes: grids.map { |map| IR::TileMap.size_of(map).reduce(:*) * 2 }.max,
+                             cells: cells_of_sets.reduce(:merge).merge(nil => set_stores.first.first.blank))
           end
 
           # What it takes to bring one of a background's sets of tiles in (see TileSetSwap): every
@@ -1755,7 +1846,7 @@ module VBlank
                                      shift: BackgroundDrawing::COLOR_LIST_SHIFT + room.bit_length - 1, area_bytes: nil)
           end
 
-          # THE OTHER LISTS OF A LAYER THAT WALKS BETWEEN AREAS: each area's versions, area after
+          # The other lists of a layer that walks between areas: each area's versions, area after
           # area, in the order of the layer's sets (see BackgroundColorLists). A version of an
           # area holds a list for each group the layer's lists are in there, and nothing for any
           # other group: another layer walking beside this one can have its own list there. Only
@@ -1825,13 +1916,13 @@ module VBlank
           # background declared with a single map has just that one.
           def every_map(node) = node.maps&.any? ? node.maps : [node.map]
 
-          # KEEP A BLOB OUT OF THE PACKER. A background's maps are laid end to end so the map
+          # Keep a blob out of the packer. A background's maps are laid end to end so the map
           # numbered N can be found by counting N strides along from the first — arithmetic
           # the game does as it runs, and which packing the lot into one compressed stream
           # would destroy. Registering the codec here is what stops the first upload packing
           # it (see BlobUpload#pack_blob, which asks this table before doing anything).
           #
-          # WHAT A SCENE SENDS AS IT TAKES OVER is kept unpacked too, for a different reason:
+          # What a scene sends as it takes over is kept unpacked too, for a different reason:
           # time. Packed data is unpacked by the console's own built-in routine, a few bytes at
           # a time, and a scene's art is sent inside the pass that switches to it — so a big
           # scene unpacking its tiles and maps made that pass run three frames long, and the
@@ -1843,7 +1934,7 @@ module VBlank
 
           def regular_map_size(cols, rows) = REGULAR_MAP_SIZES.fetch([cols, rows]) << MAP_SIZE_SHIFT
 
-          # A MAP WIDER OR TALLER THAN ONE BLOCK IS SEVERAL BLOCKS, and the console reads
+          # A map wider or taller than one block is several blocks, and the console reads
           # them in a fixed order: the left half first, then the right, and for a tall map
           # the top pair before the bottom pair. So a 64x64 map is four 32x32 squares laid
           # out top-left, top-right, bottom-left, bottom-right — not 64 rows of 64.
@@ -1881,7 +1972,7 @@ module VBlank
           end
 
           # Fold an affine background's tiles into the shared character block (same as a
-          # regular one) but build its MAP differently: one byte per cell, not two, because
+          # regular one) but build its map differently: one byte per cell, not two, because
           # the console's rotate/scale layer reads a plain tile number with no flip bits —
           # so it can name only 256 tiles, not the 1024 a regular layer's map can.
           #
@@ -1973,7 +2064,7 @@ module VBlank
             AFFINE_MAP_SIZES.fetch(side) << MAP_SIZE_SHIFT
           end
 
-          # ASKED ONE SCREENFUL AT A TIME, the same way the layers are (see #layer_slots).
+          # Asked one screenful at a time, the same way the layers are (see #layer_slots).
           # A level is spent while something is being drawn, so what has to fit is what can be
           # on screen together — and scenes that take turns never are. Counted across the
           # whole program instead, a game that declared a stack and three backgrounds in each
@@ -2015,19 +2106,19 @@ module VBlank
 
           # What the console's stacking hardware is told about how deep a thing sits.
           #
-          # It counts the other way round from the picture: 0 is the FRONT and 3 the back,
+          # It counts the other way round from the picture: 0 is the front and 3 the back,
           # and there are only four of them. So the levels the picture needs are flipped
           # onto that scale, deepest first. Several named layers can land on one number,
           # which is the point — the console has more layers than it has priorities, and
           # it can already tell apart what shares one (a sprite is drawn over a background
           # of the same priority, and two sprites keep their table order).
           #
-          # READ OFF ONE SCREENFUL, for the same reason the layer slots are: there are four
+          # Read off one screenful, for the same reason the layer slots are: there are four
           # of these too, and they are spent while something is being drawn. A game whose
           # scenes take turns would otherwise run out of depths having never shown more than
           # four things at once — and ask the console for a priority it does not have.
-          # THE FURTHEST BACK IT HAS TO BE ON ANY SCREEN, which matters for scenery every
-          # screen shows. Such a thing is drawn once, where it was declared, so it carries ONE
+          # The furthest back it has to be on any screen, which matters for scenery every
+          # screen shows. Such a thing is drawn once, where it was declared, so it carries one
           # priority — while the screens it appears on can hold different numbers of layers,
           # and so place it differently.
           #
@@ -2114,7 +2205,7 @@ module VBlank
                       Guardrails::Checks::PosesWithDifferentColors.new.refusal_message(program)
             raise LoweringError, refusal if refusal
             build_shared_object_palette(nodes)
-            # EVERY SPRITE'S PICTURES, cut into the rectangles the console draws and encoded,
+            # Every sprite's pictures, cut into the rectangles the console draws and encoded,
             # before any of them is given a place: a picture the console can draw in one go is
             # one object, and a bigger one is several (see PoseCutter), so the places are handed
             # out in runs rather than one apiece. None of this changes while the pictures are
@@ -2132,7 +2223,7 @@ module VBlank
             # The window twins take the front slots and every real sprite moves back by as
             # many, which changes nothing about what is in front of what (a twin paints
             # nothing, and the sprites keep their order among themselves). It has to be
-            # this way round: a twin only holds the effect off a sprite that is BEHIND it.
+            # this way round: a twin only holds the effect off a sprite that is behind it.
             front = @placed_fade.place_fade_windows { |name| @obj_pictures.fetch(name).pieces }
             slot_of = nodes.to_h { |node| [node.name, front + @sprite_rows.rows.fetch(node.name)] }
             @sprite_table_rows = front + @sprite_rows.count
@@ -2198,7 +2289,7 @@ module VBlank
             end
           end
 
-          # A SPRITE WHOSE PICTURES DO NOT ALL FIT KEEPS ONE FRAME IN SPRITE MEMORY AT A TIME.
+          # A sprite whose pictures do not all fit keeps one frame in sprite memory at a time.
           #
           # Every picture a sprite can show normally sits in the console's 32K of sprite memory
           # from the moment its scene starts, so a character costs every frame of every
@@ -2206,7 +2297,7 @@ module VBlank
           # frame is pointing at different tiles — and it is what every sprite gets while the
           # pictures fit.
           #
-          # When they do not, the sprite with the most to give back is given room for ONE frame
+          # When they do not, the sprite with the most to give back is given room for one frame
           # instead, and whenever the frame it is showing changes, that frame's pictures are
           # copied into the room out of the cartridge before the sprite is drawn. It is how the
           # console's own retail games put a full cast on screen: The Minish Cap gives each
@@ -2219,7 +2310,7 @@ module VBlank
           # each time it steps. The cartridge holds every frame at the same stride, blank room
           # included, so finding a frame is one multiply.
           #
-          # What is weighed is a SET OF PICTURES and every sprite showing it (see PictureSet),
+          # What is weighed is a set of pictures and every sprite showing it (see PictureSet),
           # because a set is stored once however many sprites show it — so it gives nothing back
           # until all of them are kept to one frame, and then each costs a frame's room. A pool is
           # the usual case, and is often worth more kept whole. What has to give back is what is
@@ -2232,7 +2323,7 @@ module VBlank
             best if best&.bytes_freed_by_one_frame(scene)&.positive?
           end
 
-          # THE LEAST SPRITE MEMORY EACH SCENE COULD NEED, by scene as SpriteLayout#screens returns
+          # The least sprite memory each scene could need, by scene as SpriteLayout#screens returns
           # them: laid out again with every set of pictures kept to one frame at a time where that
           # is smaller than the set kept whole. Only the report reads it, so nothing of this layout
           # is kept — not its records, not its blobs.
@@ -2265,7 +2356,7 @@ module VBlank
             end
           end
 
-          # WHERE EACH SPRITE UP IN +scene+ DREW FROM, its own and the ones every screen shows: the
+          # Where each sprite up in +scene+ drew from, its own and the ones every screen shows: the
           # run of tiles it was given, what is in them and who else draws from the same run.
           # A sprite is listed under the name the game wrote — nil for one it named nothing, a
           # letter of text — and the sprites of one name drawing from one run, a pool's slots, are
@@ -2345,7 +2436,7 @@ module VBlank
             PoseSends.new(objects: objects, pictures: @obj_pictures, blobs: {}).pools.values.flat_map(&:sprites).to_set
           end
 
-          # OUT OF SPRITE MEMORY: the friendly words, and the map of the last try with them.
+          # Out of sprite memory: the friendly words, and the map of the last try with them.
           def sprite_memory_full!(nodes)
             raise SpriteMemoryFull.new(sprite_art_overflow_message(nodes),
                                        sprite_memory: sprite_memory_report(@sprite_art.sprites, least: nil))
@@ -2361,7 +2452,7 @@ module VBlank
             # A sprite whose pictures all come by groups holds nothing of its own, and is not named.
             holding = nodes.select { |node| up_in_scene?(node, scene) && sprites[node.name].tile_units.positive? }
             worst = holding.max_by(3) { |node| sprites[node.name].tile_units }
-            # Name the PICTURES rather than the sprites: an author named the pictures, and a
+            # Name the pictures rather than the sprites: an author named the pictures, and a
             # sprite's own name is the framework's.
             named = worst.map { |node| ":#{node.poses.first} (#{sprites[node.name].tile_units * 32})" }
             biggest = named.any? ? ", and its biggest pictures are #{named.uniq.join(', ')}" : ""
@@ -2373,7 +2464,7 @@ module VBlank
               "#{" Sharing already saved #{@sprite_art.saved} bytes." if @sprite_art.saved.positive?}"
           end
 
-          # THE SET OF PICTURE GROUPS TO MAKE SMALLER, when the scene's groups are what fill it: the
+          # The set of picture groups to make smaller, when the scene's groups are what fill it: the
           # sentences that name the set and its worst groups up together, or nothing where taking
           # every group's room out of the scene would still leave it too full.
           def picture_groups_overflow_words(scene)
@@ -2397,14 +2488,14 @@ module VBlank
             "The fullest is the :#{scene.to_s.delete_prefix('_scene_')} scene"
           end
 
-          # WHICH ROTATION GROUP EACH TURNING SPRITE USES. The console draws a sprite that turns
+          # Which rotation group each turning sprite uses. The console draws a sprite that turns
           # or changes size through one of 32 parameter groups (its "affine slot"); a sprite that
           # does neither keeps its default upright, drawn-size settings, gets no group, and costs
           # nothing. More than 32 is a friendly error — the hardware simply has no more.
           #
           # Worked out here, beside the sprites' places and before any of them is built, because
           # it is the same kind of fact: something the build hands the sprite. It used to be
-          # written into each sprite AFTER it was built, which left the drawing reading a field
+          # written into each sprite after it was built, which left the drawing reading a field
           # nothing in the construction mentioned.
           def affine_slots(nodes)
             turning = nodes.select { |node| object_transformed?(node) }
@@ -2484,18 +2575,18 @@ module VBlank
           # Sort the sprites' colors into the table they all read from.
           #
           # A sprite that draws from few enough colors is stored half a byte a pixel and
-          # reads one BANK of that table — sixteen colors of its own, shared with nothing
+          # reads one bank of that table — sixteen colors of its own, shared with nothing
           # unless it happens to use the same ones. It costs half the sprite memory of the
           # same picture stored the old way, and nothing about the program asks for it: the
           # count of colors in the art decides it. A sprite with more colors than a bank
           # holds keeps the whole-byte storage and reads across the whole table, exactly
           # as every sprite did before this.
           #
-          # The unit is the SPRITE, not the picture, because which way the console reads a
+          # The unit is the sprite, not the picture, because which way the console reads a
           # sprite is one bit in that sprite's own table entry — so all of its poses are
           # stored the same way, out of one bank.
           #
-          # THE SIXTEEN GROUPS TAKE TURNS BY SCENE, the way the pictures do. The sprites every
+          # The sixteen groups take turns by scene, the way the pictures do. The sprites every
           # screen shows are laid out first and keep their groups throughout; each scene's own
           # go on from that into the same groups as every other scene's (see
           # PaletteBanks#allocate_after), and that scene's table is sent as it takes over (see
@@ -2537,7 +2628,7 @@ module VBlank
             end
           end
 
-          # A GAME IN A BORDER LEAVES THE LAST GROUP OF SPRITE COLOURS TO THE BORDER (see
+          # A game in a border leaves the last group of sprite colours to the border (see
           # BorderSprites). A game laid out for the Color has at most eight lists of three colours for
           # its sprites, so its table never comes near; one that does would put its colours where the
           # border's are, and is told so rather than drawn in the border's colours.
@@ -2564,7 +2655,7 @@ module VBlank
             end
           end
 
-          # MORE LISTS THAN GROUPS: the lists that borrow a group as the game runs, numbered.
+          # More lists than groups: the lists that borrow a group as the game runs, numbered.
           #
           # The original games hand groups out this way — a thing takes one as it is made and
           # gives it back as it goes — so what has to fit is what is on screen at once, never a
@@ -2572,10 +2663,12 @@ module VBlank
           # draw with borrows, except two kinds that keep a group of their own. A list told to
           # hold other colours as the game runs already is a group that takes turns. And a list
           # the same as a sprite's own colours shares that sprite's group for nothing, so
-          # borrowing would only cost one.
+          # borrowing would only cost one. The same means the same colours drawn: a list that differs
+          # from a sprite's only in its see-through slot shares that sprite's group too.
           def lists_to_lend(nodes)
             own = nodes.filter_map { |node| authored_palette(node) }
-            nodes.flat_map { |node| node.recolors.grep(Array) }.uniq.reject { |list| own.include?(list) }
+            nodes.flat_map { |node| node.recolors.grep(Array) }.uniq
+                 .reject { |list| own.any? { |colors| PaletteBanks.same_drawn_colors?(colors, list) } }
                  .each_with_index.to_h
           end
 
@@ -2596,11 +2689,12 @@ module VBlank
               @blobs[families] = @lent_lists.each_value.map { |number| family.fetch(number, 0) }.pack("V*")
               keep_unpacked!(families) # read by the list's number
             end
-            @lending = LentColors.new(blob: blob, banks: spare, families: families)
+            wearers = @lent_lists.to_h { |list, number| [number, nodes.select { |node| node.recolors.include?(list) }.map(&:name)] }
+            @lending = LentColors.new(blob: blob, banks: spare, families: families, wearers: wearers)
           end
 
-          # LENT LISTS ONE SPRITE WEARS BY TURNS, AND NO OTHER SPRITE EVER DOES — the lists of its
-          # `draw_with` that borrow — are a FAMILY, numbered from 1. A sprite stepping through them
+          # Lent lists one sprite wears by turns, and no other sprite ever does — the lists of its
+          # `draw_with` that borrow — are a family, numbered from 1. A sprite stepping through them
           # a frame at a time (a fade done with lists) wears a new one every frame, and a group
           # goes back only once a whole frame has passed without it, so every such sprite would
           # hold two groups at once: the one it wears and the one it wore. With a family it takes
@@ -2622,7 +2716,7 @@ module VBlank
           # Does +node+ draw with a list that borrows its group?
           def lends?(node) = node.recolors.any? { |list| lent?(list) }
 
-          # WHICH TABLE EACH CHANGING LIST'S GROUP GOES IN: name -> the scene, or nil for the table
+          # Which table each changing list's group goes in: name -> the scene, or nil for the table
           # every scene shows. A list only one scene's sprites draw with takes a group while
           # that scene is up and gives it back to the others. One that sprites of several
           # scenes draw with — or a sprite every scene shows — keeps one group throughout, so
@@ -2680,7 +2774,7 @@ module VBlank
           # The colour table +nodes+ draw from, going on from +after+ for a scene's own. +lists+
           # are the changing lists whose groups go in this table.
           def object_banks(nodes, after: nil, scene: nil, lists: [])
-            pictures = nodes.map do |node|
+            pictures = nodes.flat_map do |node|
               colors = []
               node.poses.each do |image|
                 bmp = @bitmaps.fetch(image) do
@@ -2689,7 +2783,17 @@ module VBlank
                 end
                 scan_object_colors(bmp, colors)
               end
-              PaletteBanks::Picture.new(key: node.name, colors: colors, authored: authored_palette(node))
+              authored = authored_palette(node)
+              if sprite_bank_parts(node)
+                (@banked_sprite_colors ||= {})[node.name] = colors.size
+                next bank_part_pictures(node, authored)
+              end
+              # A pose of several banks whose cut cannot follow its pieces (SpriteCut#parts_of: more
+              # pieces than one sprite takes, or a sprite that turns) has entries that mix banks, so
+              # it is stored a whole byte a pixel, drawn from the whole table.
+              next PaletteBanks::Picture.new(key: node.name, colors: colors, wide: true) if authored && authored.length > PaletteBanks::BANK_SIZE
+
+              PaletteBanks::Picture.new(key: node.name, colors: colors, authored: authored)
             end
             pictures += recolor_pictures(nodes) + changing_list_pictures(lists)
             # Nothing is ever drawn from the first entry of the sprites' table, so its first
@@ -2699,10 +2803,57 @@ module VBlank
             raise SpriteColorsOverflow, object_colors_overflow_message(pictures, scene)
           end
 
+          # A sprite of poses of several banks (Assets::Image#banked?, `image ..., banks:`), drawn the
+          # console's way: each entry of the sprite table names its own bank of sixteen (GBATEK, "LCD
+          # OBJ - OAM Attributes": attribute 2, bits 12-15), so each bank's part of the poses' list is
+          # laid as a bank of its own, pinned as written, and two sprites or lists of the same colours
+          # share it. The sprite's own key is its first part, so it is stored the small way.
+          def bank_part_pictures(node, authored)
+            places = @bitmaps.fetch(node.poses.first).bank_places
+            parts = authored.each_slice(places).each_with_index.map do |part, k|
+              PaletteBanks::Picture.new(key: bank_part_key(node.name, k), colors: [], authored: part)
+            end
+            [PaletteBanks::Picture.new(key: node.name, colors: [], authored: authored.first(places)), *parts]
+          end
+
+          # What the bank of part +part+ of sprite +name+'s colours is asked for by.
+          def bank_part_key(name, part) = [:bank_part, name, part]
+
+          # Whether +key+ is one #bank_part_key made.
+          def bank_part_key?(key) = key.is_a?(Array) && key.first == :bank_part
+
+          # How many colours +picture+ (a PaletteBanks::Picture) draws, for a message: a sprite cut
+          # into banks counts every bank's colours it draws, which its own picture does not hold.
+          def colors_counted(picture) = @banked_sprite_colors&.[](picture.key) || picture.colors.size
+
+          # Which bank's part each entry of each pose of +node+ DRAWS, for a sprite whose poses are all
+          # of several banks and cut along their pieces (SpriteCut#parts_of): a list for each pose, an
+          # entry a box, in the order of the cut. nil for any other sprite, which is drawn as before:
+          # one that turns, resizes or is painted is one box, and one drawn with other lists names one
+          # bank for all its entries. A pose that is another one turned has the parts of that one.
+          def sprite_bank_parts(node)
+            (@sprite_bank_parts ||= {}).fetch(node.name) do
+              @sprite_bank_parts[node.name] = bank_parts_found(node)
+            end
+          end
+
+          def bank_parts_found(node)
+            images = node.poses.map { |pose| @bitmaps.fetch(pose) }
+            return nil unless images.all?(&:banked?) && images.map(&:colors).uniq.one?
+            return nil if object_transformed?(node) || painted_sprite?(node) || !node.recolors.empty?
+
+            cutter = SpriteCut.new(@bitmaps)
+            mirrors = PoseCutter.new(@bitmaps).cut(node, transformed: false).mirrors
+            parts = images.map { |bmp| cutter.parts_of(bmp) }
+            return nil if parts.each_with_index.any? { |list, k| list.nil? && mirrors[k].nil? }
+
+            parts.each_with_index.map { |list, k| mirrors[k] ? parts.fetch(mirrors[k].source) : list }
+          end
+
           # The table a sprite's colours are in: its scene's, or the one every screen shows.
           def obj_banks_for(node) = @obj_banks.fetch(node.scene)
 
-          # THE OTHER LISTS A SPRITE CAN BE DRAWN WITH, each a bank of its own.
+          # The other lists a sprite can be drawn with, each a bank of its own.
           #
           # Which colours a sprite's pixels show is the bank named in its table entry, and
           # nothing else — the pixels themselves are places in a bank. So drawing a sprite with
@@ -2720,7 +2871,7 @@ module VBlank
             end
           end
 
-          # A LIST THAT CHANGES TAKES ONE GROUP, AND SHARES IT WITH NOTHING. Its colours are
+          # A list that changes takes one group, and shares it with nothing. Its colours are
           # written into the group as the game runs, so anything else reading those sixteen —
           # a picture that happens to use the same colours, another list declared the same —
           # would change colour with it. However many sets pass through it, and however many
@@ -2851,7 +3002,7 @@ module VBlank
           # sprite that stays where it was declared. Kept the same way as the bank table above:
           # one word each, already shifted to where the sprite's entry carries it.
           #
-          # A DEPTH IS A NUMBER ON ONE SCREEN, and the same layer can be a different number on
+          # A depth is a number on one screen, and the same layer can be a different number on
           # the next. The console counts depth from the front, so a room with a top layer puts
           # the ground floor one further back than a room without one does — and a sprite every
           # room shows has to be told the number of the room that is up. Where the rooms agree
@@ -2889,7 +3040,7 @@ module VBlank
                     "The sprite :#{node.declared || node.name} can put_in_layer, and it is on screens where its " \
                     "layers are at different depths. The game does not pick those screens with one variable, " \
                     "so the sprite cannot know which screen is up. To fix this, declare the sprite inside each " \
-                    "scene, or pick every scene with one `case_var`."
+                    "scene, or pick every scene with one `case`."
             end
             [states.first, rows.to_h { |scene, row| [gates[scene].last, row] }]
           end
@@ -2927,25 +3078,26 @@ module VBlank
           # console's sprite table holds. Name the greediest pictures, since "255 colors"
           # on its own leaves the author hunting through their own art.
           def object_colors_overflow_message(pictures, scene = nil)
-            worst = pictures.max_by(3) { |picture| picture.colors.size }
-            named = worst.map { |picture| ":#{picture.key} (#{picture.colors.size})" }.join(", ")
+            counted = pictures.reject { |picture| bank_part_key?(picture.key) }
+                              .map { |picture| [picture.key, colors_counted(picture)] }
+            named = counted.max_by(3) { |_, count| count }.map { |key, count| ":#{key} (#{count})" }.join(", ")
             "#{whose_sprites(scene)} use more colors between them than the console's sprite table holds " \
               "(#{PaletteBanks::CAPACITY}, one of which means see-through).#{shared_sprites_note(scene)} The sprites " \
               "with the most colors are #{named}. Draw them from fewer colors, or use fewer sprites at once."
           end
 
-          # ONE SPRITE'S PICTURES, encoded once for the whole build (see SpritePictures).
+          # One sprite's pictures, encoded once for the whole build (see SpritePictures).
           #
           # Where each pose's tiles begin, in the 32-byte units a tile number counts in —
           # taken from the bytes already written rather than from a tile count, since a
           # picture stored the big way is two units to the tile. One number per piece, and
           # a mirrored pose adds nothing and points back at the pose it mirrors.
           #
-          # A PIECE THAT HOLDS TILES ALREADY WRITTEN IS NOT WRITTEN AGAIN, and this is the
+          # A piece that holds tiles already written is not written again, and this is the
           # one saving a game written straight against the console cannot have. An object
-          # reads a CONTIGUOUS run of tiles, so by hand every frame of an animation has to
+          # reads a contiguous run of tiles, so by hand every frame of an animation has to
           # be its own run and a part that did not move between two frames is kept twice.
-          # A pose built as a table of PIECES is under no such rule — each piece names its
+          # A pose built as a table of pieces is under no such rule — each piece names its
           # own first tile — so the head and the still arm of a walk cycle are stored once
           # and every frame points at them. Judged on the encoded bytes, which hold the
           # pixels and the size of the box together, so two pieces match only when they
@@ -2956,12 +3108,18 @@ module VBlank
             # A painted picture is kept whole, never trimmed to what it draws: it draws nothing
             # until the game paints it, and then whatever the game paints.
             cut = cutter.cut(node, transformed: object_transformed?(node) || painted_sprite?(node))
-            mirrors = cut[:mirrors]
-            boxes = cut[:boxes]
+            mirrors = cut.mirrors
+            boxes = cut.boxes
             pieces = boxes.map(&:size).max
             place = obj_banks_for(node).placement(node.name)
             encoded = node.poses.each_with_index.map do |image, k|
-              boxes[k].map { |box| cutter.encode(@bitmaps.fetch(image), place, box) } unless mirrors[k]
+              next if mirrors[k]
+
+              bmp = @bitmaps.fetch(image)
+              # A sprite cut into banks stores each entry from its own piece (SpriteCut#piece_places_of).
+              next SpriteCut.new(@bitmaps).piece_places_of(bmp).map { |own| cutter.encode_piece(own, bmp.bank_places) } if sprite_bank_parts(node)
+
+              boxes[k].map { |box| cutter.encode(bmp, place, box) }
             end
             in_set = grouped_pose_sets(node, mirrors)
             grouped = {}
@@ -2998,12 +3156,23 @@ module VBlank
             pad_object_pieces(boxes, starts, stored, place, pieces)
             SpritePictures.new(node: node, place: place, boxes: boxes, mirrors: mirrors, encoded: encoded,
                                stored: stored, starts: starts, repeats: repeats,
-                               width: cut[:width], height: cut[:height],
+                               width: cut.width, height: cut.height,
                                animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: grouped,
-                               tile_set: nil)
+                               tile_set: nil, piece_banks: sprite_piece_banks(node, pieces))
           end
 
-          # A SPRITE WHOSE POSES ARE DRAWN FROM A SET OF SPRITE TILES THE GAME LOADS (Nodes::TilePose):
+          # The bank each entry of each pose of +node+ names, for a sprite of poses of several banks
+          # (#sprite_bank_parts), a filler entry naming 0; nil for any other sprite.
+          def sprite_piece_banks(node, pieces)
+            parts = sprite_bank_parts(node) or return nil
+
+            banks = obj_banks_for(node)
+            parts.map do |list|
+              list.map { |part| banks.placement(bank_part_key(node.name, part)).bank } + Array.new(pieces - list.length, 0)
+            end
+          end
+
+          # A sprite whose poses are drawn from a set of sprite tiles the game loads (Nodes::TilePose):
           # each of a pose's tiles is one object of 8×8, pointing at that tile in the set's room, so
           # a pose keeps no tiles of its own and a load changes every pose drawing the tiles it
           # writes. Nothing is stored but the blank tile a pose with fewer pieces than another is
@@ -3031,13 +3200,13 @@ module VBlank
                                stored: stored, starts: starts, repeats: 0,
                                width: poses.map(&:width).max, height: poses.map(&:height).max,
                                animates: const_int(node.pose).nil? && node.poses.length > 1, grouped: {},
-                               tile_set: [sets.first, own])
+                               tile_set: [sets.first, own], piece_banks: nil)
           end
 
           # Does +node+ show a pose drawn from a set of sprite tiles?
           def tile_pose_sprite?(node) = node.poses.any? { |pose| @tile_poses.key?(pose) }
 
-          # THE SET OF PICTURE GROUPS EACH POSE OF A SPRITE IS COPIED IN BY, by the pose's number,
+          # The set of picture groups each pose of a sprite is copied in by, by the pose's number,
           # for the poses that are.
           #
           # Two kinds of sprite keep every picture whatever its groups: one that turns or resizes,
@@ -3077,9 +3246,10 @@ module VBlank
             boxes = pictures.boxes
             mirrors = pictures.mirrors
             # Poses that trimmed alike carry their one size in the sprite's own entry. Poses
-            # that differ carry NOTHING here — the size and shape come out of the table with
+            # that differ carry nothing here — the size and shape come out of the table with
             # the rest of what changes, so these bases must not also hold the canvas's.
             shape, size = alike ? OBJ_SIZES.fetch(boxes.first.first.last(2)) : [0, 0]
+            piece_banks = (object_piece_bank_bits(pictures) unless alike)
             Sprite.new(
               slot: slot,
               pieces: pictures.pieces, # how many of the console's 128 places this one sprite takes
@@ -3094,14 +3264,15 @@ module VBlank
               pose_count: node.poses.length, # how long one piece's row of the pose table is
               # Every pose trimmed the same way is the ordinary case — a walk cycle drawn
               # inside one outline — and it keeps the plain draw: one size in the sprite's
-              # own entry, one stride between poses. Poses that came out DIFFERENT sizes, or
+              # own entry, one stride between poses. Poses that came out different sizes, or
               # that are another pose mirrored, carry a table instead (#object_pose_table),
               # read once a frame.
               alike: alike,
               mirrors: mirrors, # which poses are drawn backwards or upside down, so the draw knows to mark it
               pose_table: alike ? nil : :"__poses_#{name}",
               pose_words: alike ? nil : object_pose_table(name, boxes, starts, mirrors, tile_index,
-                                                          pictures.pieces),
+                                                          pictures.pieces, piece_banks),
+              piece_banks: piece_banks, # each piece's own bank, for a sprite of poses of several banks
               # Where the first pose sits inside the canvas it was drawn on. The sprite is
               # drawn that much further along so the picture does not move; for poses that
               # differ it comes out of the table instead.
@@ -3125,14 +3296,17 @@ module VBlank
               # which is every picture that names no layers.
               # A sprite that can change layer leaves the depth out, since a frame decides it.
               attr2_base: (node.layers.nil? ? hardware_priority(name) << OBJ_PRIORITY_SHIFT : 0) |
-                (place.narrow? && node.recolors.empty? ? place.bank << OBJ_BANK_SHIFT : 0),
+                (place.narrow? && node.recolors.empty? && piece_banks.nil? ? place.bank << OBJ_BANK_SHIFT : 0),
               recolor: node.recolor, recolor_banks: sprite_recolor_bank_table(node),
               layer_pick: node.layer_pick && IR::Build.var_ref(node.layer_pick),
               layer_depths: sprite_layer_depth_table(node),
+              see_through_picks: sprite_see_through_table(node),
             )
           end
 
-          def object_pose_table(name, boxes, starts, mirrors, tile_unit, pieces)
+          # +piece_banks+ (Sprite#piece_banks) follow the words in the table, one word each, so the
+          # draw finds a piece's bank as far past its word as the words are long.
+          def object_pose_table(name, boxes, starts, mirrors, tile_unit, pieces, piece_banks = nil)
             blob = :"__poses_#{name}"
             words = (0...pieces).flat_map do |piece|
               boxes.each_with_index.map do |list, k|
@@ -3142,7 +3316,7 @@ module VBlank
                   (mirrors[k]&.across ? POSE_MIRRORED : 0) | (mirrors[k]&.down ? POSE_UPSIDE_DOWN : 0)
               end
             end
-            @blobs[blob] = words.pack("V*")
+            @blobs[blob] = (words + (piece_banks || [])).pack("V*")
             # Kept unpacked: the draw reads one word straight out of the middle of this,
             # picked by the pose the game is showing, and there is no seeking into a
             # compressed stream.
@@ -3150,9 +3324,18 @@ module VBlank
             words
           end
 
-          # A POSE THAT DRAWS LESS THAN ANOTHER HAS FEWER PIECES TO DRAW IT WITH, and the
+          # The bank bits of attribute 2 for each piece of each pose (SpritePictures#piece_banks), in
+          # the order of the pose table's words: a piece's poses one after another. nil for a sprite
+          # whose pieces name no banks of their own.
+          def object_piece_bank_bits(pictures)
+            banks = pictures.piece_banks or return nil
+
+            (0...pictures.pieces).flat_map { |piece| banks.map { |list| list.fetch(piece) << OBJ_BANK_SHIFT } }
+          end
+
+          # A pose that draws less than another has fewer pieces to draw it with, and the
           # frame must not have to test how many. So the short poses are filled out with a
-          # piece that draws NOTHING: one blank tile the whole sprite shares, sitting in the
+          # piece that draws nothing: one blank tile the whole sprite shares, sitting in the
           # table like any other piece and composited by the console as nothing at all. That
           # costs one tile of picture memory once, against a test on every piece of every
           # frame — and it means the draw is the same code for every piece.
@@ -3183,7 +3366,64 @@ module VBlank
             end
           end
 
-          # WHAT TELLS ONE POSE FROM ANOTHER once the cartridge is built, which has two answers.
+          # One piece's keys (#pose_key) that poses moved different distances share, as a
+          # PoseChoices holding a PoseChoice for every pose at each and where the game keeps the
+          # pose it picked (#pose_source), which is what tells them apart; nil where it has none.
+          #
+          # Poses are stored once for each different picture after trimming, so two pictures that
+          # are the same block at different places on their canvas keep one copy, and the row
+          # holds the same tiles for both: only how far along the sprite stands differs, which is
+          # the sprite's place added to the distance, and a row read back holds the sum.
+          def pose_choices(node, sprite, piece)
+            words = sprite.pose_words&.slice(piece * sprite.pose_count, sprite.pose_count)
+            return nil if words.nil? || sprite.frames
+
+            poses = (0...sprite.pose_count).group_by { |pose| pose_key(sprite, pose, words.fetch(pose)) }
+            keys = poses.each_with_object({}) do |(key, sharing), choices|
+              next if sharing.uniq { |pose| decode_pose_offset(words.fetch(pose)) }.size < 2
+
+              choices[key] = sharing.map do |pose|
+                dx, dy = decode_pose_offset(words.fetch(pose))
+                VBlank::Cartridge::BuildRecord::PoseChoice.new(picture: piece.zero? ? node.poses.fetch(pose) : nil,
+                                                               pose: pose, dx: dx, dy: dy)
+              end
+            end
+            return nil if keys.empty?
+
+            VBlank::Cartridge::BuildRecord::PoseChoices.new(pose_from: pose_source(node.pose), keys: keys)
+          end
+
+          # The pose node itself where a reader of the running cartridge can work it out from its
+          # memory, or nil: numbers, variables, slots of a list at a fixed place (how a pool's
+          # thing reads its own slot of the pool's copy), and sums and products of those, which is
+          # every way the builder writes a sprite's pose (a facing times the steps of a walk, plus
+          # the step).
+          def pose_source(pose)
+            pose if readable_pose?(pose)
+          end
+
+          # Operators a reader works a pose out with (see #pose_source).
+          POSE_OPERATORS = %i[+ - *].freeze
+
+          def readable_pose?(node)
+            case node.kind
+            when :int, :var_ref then true
+            when :list_get then node.index.kind == :int
+            when :binop then POSE_OPERATORS.include?(node.op) && readable_pose?(node.lhs) && readable_pose?(node.rhs)
+            else false
+            end
+          end
+
+          # A sprite's pictures by what tells its first piece's poses apart (#pose_key), the first
+          # pose keeping a key two poses share.
+          def pose_pictures(node, sprite)
+            words = sprite.pose_words&.first(sprite.pose_count)
+            (0...sprite.pose_count).each_with_object({}) do |pose, named|
+              named[pose_key(sprite, pose, words&.at(pose))] ||= node.poses.fetch(pose)
+            end
+          end
+
+          # What tells one pose from another once the cartridge is built, which has two answers.
           #
           # For nearly every sprite it is what the console's own row holds — the first tile it draws
           # and whether it is drawn backwards — because every pose has a place in sprite memory of
@@ -3192,13 +3432,13 @@ module VBlank
           # to the same tile and the same direction are the same stored picture and were moved the
           # same distance, so nothing is lost where those collapse together.
           #
-          # A sprite KEPT TO ONE FRAME at a time has no such place, and that is the whole of what
+          # A sprite kept to one frame at a time has no such place, and that is the whole of what
           # this used to get wrong. Every pose of one is copied into the same room, so the row holds
           # that one tile whichever pose is in it and all of them collapsed onto a single entry —
           # every pose then answered to whichever trim was written down last, and the position read
           # back was out by the difference for all the others. Right on most frames of a cycle and
           # wrong on a few, which is the worst way for a number to be wrong. So it is known by its
-          # pose NUMBER instead; GBA#streamed_sprite_pose_vars returns where that number is read from.
+          # pose number instead; GBA#streamed_sprite_pose_vars returns where that number is read from.
           def pose_key(sprite, pose, word)
             return pose if sprite.frames
             return decode_pose_tile(word) if word

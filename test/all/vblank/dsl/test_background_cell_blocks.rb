@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
-# A BLOCK OF A BACKGROUND'S CELLS CHANGED IN ONE LINE (`fill_tiles`, `fill_cells`, `restore_cells`)
+# A block of a background's cells changed in one line (`fill_tiles`, `fill_cells`, `restore_cells`)
 # shows what the same cells written one by one with `set_tile` and `set_cell` show, on every frame:
 # a block partly off the map changes the cells on it, a cell written after a block in the same pass
 # shows over it, and a block put back shows the map as it was declared.

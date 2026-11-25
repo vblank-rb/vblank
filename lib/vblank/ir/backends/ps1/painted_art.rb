@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHAT A PAINTED SCREEN DRAWS WITH, made while the program is built: every picture the game
+        # What a painted screen draws with, made while the program is built: every picture the game
         # blits, and every text and digit it writes (each drawn once in its font and colour, as the
         # Genesis's PaintedArt does), cut into pieces, each piece a texture in PS1::TextureMemory.
         #
-        # A PIECE IS READ BY THE GRAPHICS CHIP FROM A TEXTURE PAGE, 256 texels square, whose left edge is
+        # A piece is read by the graphics chip from a texture page, 256 texels square, whose left edge is
         # a multiple of 64 halfwords and whose top is line 0 or 256 (TextureMemory says how). So a piece
         # is at most 256 down and never crosses line 256, and at most PIECE_WIDTH_TEXELS across, which a
         # page holds from any of its first 64 halfwords at 15 bits: a picture bigger than that is cut into

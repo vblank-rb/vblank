@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THE SAMPLE CLOCK — how fast the mix feeds the sound hardware, and how much it writes a frame.
+# The sample clock — how fast the mix feeds the sound hardware, and how much it writes a frame.
 #
 # The mixer fills a buffer once a frame and points the sound DMA at it. Handing over cleanly at
 # every frame boundary puts two conditions on the clock, and missing either one puts an impulse
@@ -109,7 +109,7 @@ class TestMixerSampleClock < Minitest::Test
     end
   end
 
-  # A FRAME THAT MIXES FAR MORE THAN THE ONE BEFORE IT still hands over in one piece.
+  # A frame that mixes far more than the one before it still hands over in one piece.
   #
   # The DMA takes a lot whenever the sound hardware asks, on a grid the clock fixes, and between
   # two hand-overs it takes as many lots as grid points fell between them. So a hand-over made
@@ -151,7 +151,7 @@ class TestMixerSampleClock < Minitest::Test
                     "climb faster than #{(bar / 2).round} — so the stream was broken where they joined"
   end
 
-  # A GAME WHOSE PASS RUNS PAST THE END OF THE FRAME still hands over in one piece.
+  # A game whose pass runs past the end of the frame still hands over in one piece.
   #
   # The hand-over is the first thing the screen's interrupt does, but the interrupt itself can
   # be held off: a whole-screen clear is one long DMA, and nothing interrupts the console while

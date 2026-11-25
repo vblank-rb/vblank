@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A PICTURE THAT STOPS EARLY GAINS A SUPER NINTENDO CARTRIDGE (`screen :bitmap, shown_rows:`).
+# What a picture that stops early gains a Super Nintendo cartridge (`screen :bitmap, shown_rows:`).
 # Video memory takes writes only while the console is not drawing, so the rows given up, with the
 # screen off there, are time to copy in as well as the blank's (Runtime::Letterbox). What is
 # measured is the copy itself: a game repaints the whole screen in another colour every pass, too

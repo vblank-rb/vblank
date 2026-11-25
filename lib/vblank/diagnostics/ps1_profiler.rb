@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHERE A PLAYSTATION PROGRAM'S FRAMES WENT, measured by running it.
+    # Where a PlayStation program's frames went, measured by running it.
     #
     # A pass of the game loop is meant to fit in one frame. One that does not shows the same picture
     # twice and the game runs at half speed for that pass, with nothing on screen to show why. The
@@ -15,7 +15,7 @@ module VBlank
     # that waited. The build records where each of the game's routines went (PS1::GameRoutine); the
     # runtime's code is named by the label before it.
     #
-    # THE GRAPHICS CHIP DRAWS WHILE THE PROCESSOR GOES ON. The runtime puts its commands in a list the
+    # The graphics chip draws while the processor goes on. The runtime puts its commands in a list the
     # DMA hands to the chip, and waits only where a list must be gone before the next is sent, or where
     # a pass's picture must be whole (rt_draw_list_send_wait, rt_draw_list_finish_wait and
     # rt_draw_list_drawn_wait); a place's faces go straight to the chip's port and wait for room in its
@@ -46,16 +46,13 @@ module VBlank
 
       FILE_NAME = "game.exe"
 
-      # The buttons a game names, as the PlayStation's core names the pad's.
-      PAD_BUTTONS = IR::Backends::PS1::HeadlessRun::PAD_BUTTONS
-
       # What a run came to: the +passes+ measured, the +frames+ they took, the frame rate that is, the
       # frames the slowest took and which pass of the game it was, and how many passes took each number
       # of frames; TimeByRoutine::Report's five; +gpu_share+, the graphics chip's time drawing out of all
       # the time measured, 0 to 1; and +measured_frames+, the frames the time was read over, counted
       # from 1 at power-on as a tape counts them.
       #
-      # A pass waits for the NEXT blank, so one that ends a line after a blank began while it ran waits a
+      # A pass waits for the next blank, so one that ends a line after a blank began while it ran waits a
       # whole frame for the one after. +lines_past_blank+ gives, by the frames each took, how many lines
       # past that blank each pass of more than a frame ran: the lines sooner it had to end to take a
       # frame fewer, in the order they ran. +late_passes+ is the same lines for the passes that went to
@@ -106,16 +103,12 @@ module VBlank
       # memory and takes the pad's own names for its buttons.
       class Meter < TapeProfile::ProcessorTimeMeter
         def hold(core, buttons)
-          IR::Buttons.by_controller(buttons).each_with_index do |held, port|
-            core.set_buttons(pad_buttons(held), port: port) if port.zero? || !held.empty?
+          IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(buttons).each_with_index do |held, port|
+            core.set_buttons(held, port: port)
           end
         end
 
         def words(core) = [core.ram_read32(@passes_at), core.ram_read32(@shown_at)]
-
-        private
-
-        def pad_buttons(buttons) = buttons.filter_map { |button| PAD_BUTTONS[button.to_sym] }
       end
 
       # The time of the +frames+ after +settle+ passes, the graphics chip's share of it, which frames
@@ -124,7 +117,9 @@ module VBlank
         places = rom.built
         shown_at = places.runtime.fetch(IR::Backends::PS1::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
-          core.set_buttons(keys.filter_map { |button| PAD_BUTTONS[button.to_sym] })
+          # A game for more than two is measured with a Multitap in, as it is played.
+          core.plug_in_multitap if IR::Backends::PS1::Runtime::Pads.reads_multitap?(places.source_program)
+          IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(keys).each_with_index { |held, port| core.set_buttons(held, port: port) }
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.ram_read32(places.waits_counted_at) <= settle
           first = core.frames + 1
           core.take_processor_time # the first ask starts the count
@@ -186,7 +181,7 @@ module VBlank
         TimeByRoutine.render(result, out: out)
       end
 
-      # Said only of passes that took more than a frame: each waited for the NEXT break between pictures,
+      # Said only of passes that took more than a frame: each waited for the next break between pictures,
       # so the lines it ran past the one that began while it ran are what cost it a whole frame.
       def self.print_lines_past_blank(frames, lines, out)
         passes = lines.one? ? "1 pass" : "#{lines.size} passes"

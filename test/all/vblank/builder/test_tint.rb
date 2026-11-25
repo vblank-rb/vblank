@@ -61,7 +61,7 @@ module TintGames
   end
 
   # A tiled screen: one solid background under one sprite, in different colors. The
-  # scenery and the sprite draw from two different tables and BOTH have to move, which
+  # scenery and the sprite draw from two different tables and both have to move, which
   # is the thing the table mechanism buys over every other way of doing this.
   private def tiled_tint(amount, extra_frames: 0)
     tile = SOLID_TILE
@@ -128,7 +128,7 @@ module TintGames
     b.program
   end
 
-  # A game whose scenes cross the two display systems puts a DIFFERENT color table in the
+  # A game whose scenes cross the two display systems puts a different color table in the
   # same place on each switch, so a tint remembered from before the crossing describes a
   # table that is no longer there. Here a tear-free scene tints itself fully red, hands
   # over to a tiled scene, and comes back with the tint lifted — and the picture has to be
@@ -158,10 +158,7 @@ module TintGames
           state = 0
           level = 0
         end
-        case_var :state do
-          when_val 0, :field
-          when_val 1, :away
-        end
+        call({ 0 => :field, 1 => :away }, number: :state)
       end
     end
     b.finalize_program
@@ -170,8 +167,8 @@ module TintGames
 end
 
 # `tint` — moving the whole picture toward a color, which is `fade`'s sibling and not a
-# fade with a color argument. A fade changes BRIGHTNESS (a display can do that to a
-# finished picture); a tint mixes a color IN. They reach the screen by different means
+# fade with a color argument. A fade changes brightness (a display can do that to a
+# finished picture); a tint mixes a color in. They reach the screen by different means
 # and round differently, so the numbers below are asserted rather than derived.
 #
 # The Advance's cartridge read in the emulator, and what a tint costs it, are in

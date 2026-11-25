@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # SPRITE TILES THE GAME LOADS, AND POSES DRAWN FROM THEM (`sprite_tiles`, Nodes::SpriteTiles,
+          # Sprite tiles the game loads, and poses drawn from them (`sprite_tiles`, Nodes::SpriteTiles,
           # Nodes::TilePose, Nodes::LoadSpriteTiles), lowered for a Game Boy Color. Mixed into Lowering.
           #
           # The Color draws a sprite as pieces, and each piece names its tile in sprite memory. So a

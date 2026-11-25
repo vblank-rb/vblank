@@ -6,6 +6,19 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a `blit` of an image that is also a sprite's image:
+        #
+        # > This game blits the image :<name> by hand. But :<name> is also a sprite. A sprite draws
+        # > itself every frame. It remembers the pixels under it, so it leaves no trail.
+        #
+        # A `blit` by hand stamps a second copy that nothing erases, so the picture smears a
+        # trail as it moves.
+        #
+        # To fix this, move the sprite (change its x and y) and remove the `blit :<name>`. Or, for
+        # a plain stamp that does not move, give the stamp a different image name, so it is not
+        # the sprite's image.
+        #
+        #--
         # The double-drawn-sprite footgun: blitting, by hand, an image that's already
         # a sprite. A sprite draws itself every frame and remembers the pixels
         # underneath it so it leaves no trail; a hand `blit` of the same image stamps
@@ -18,6 +31,7 @@ module VBlank
         # beside a save/restore-region op (nothing else emits those), so those blits
         # are the framework's. Any OTHER blit of the same image is one the developer
         # wrote by hand. Advisory.
+        #++
         class ManualSpriteBlit
           NAME = :manual_sprite_blit
           PLAIN_NAME = "a sprite drawn by hand"

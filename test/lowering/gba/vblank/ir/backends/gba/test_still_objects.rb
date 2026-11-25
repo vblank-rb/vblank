@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT A SPRITE THAT NEVER MOVES COSTS THE FRAME, which is a fact about the emitted code
+# What a sprite that never moves costs the frame, which is a fact about the emitted code
 # rather than about the picture — so it is asserted here, and that the picture comes out the
 # same either way is asserted here too, on both backends.
 #
@@ -53,15 +53,12 @@ class TestStillObjects < Minitest::Test
       end
       scene(:playing) { sprite(:hero, at: [100, 100]).move(:right, by: 1) }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
 
-  # THE ONE THAT MATTERS. One still sprite and thirteen of them are the same frame: nothing
+  # The one that matters. One still sprite and thirteen of them are the same frame: nothing
   # about them changes once they are on screen, so the frame writes none of them.
   def test_what_still_sprites_cost_the_frame_does_not_depend_on_how_many
     one = frame_bytes(title_screen(letters: 1))
@@ -71,7 +68,7 @@ class TestStillObjects < Minitest::Test
                  "thirteen sprites that never move must cost the frame what one does"
   end
 
-  # ...and a sprite the game DOES move is written every frame, as it must be. Without this
+  # ...and a sprite the game does move is written every frame, as it must be. Without this
   # the test above passes by never writing anything at all. Being the title's, it is written
   # by the title's own sprite routine (see test_scene_sprite_writes.rb).
   def test_a_sprite_the_game_moves_is_written_every_frame
@@ -119,7 +116,7 @@ class TestStillObjects < Minitest::Test
                  "and gone once the playing scene has taken over"
   end
 
-  # A GAME WITH NO SCENES AT ALL, where nothing can change what is on screen once it is up —
+  # A game with no scenes at all, where nothing can change what is on screen once it is up —
   # so the table is written on the first frame and never again, and the frame has no variable
   # to watch.
   private def one_screen
@@ -137,7 +134,7 @@ class TestStillObjects < Minitest::Test
     (1..8).each { |f| assert_backends_agree(one_screen, frames: f) }
   end
 
-  # A TIMER'S HANDLER IS NOT SETUP, however it reads on the page. It is written above the
+  # A timer's handler is not setup, however it reads on the page. It is written above the
   # game loop, like everything a program declares, and the console goes back into it many
   # times a second — so a sprite it moves moves, and the frame has to keep writing it. This
   # is the shape that makes "it runs before the loop, so it runs once" wrong.
@@ -159,7 +156,7 @@ class TestStillObjects < Minitest::Test
                     "a timer's handler runs again and again, so what it moves must really move"
   end
 
-  # A SCENE NUMBERED -1, which is a value the frame's own bookkeeping must not be confused
+  # A scene numbered -1, which is a value the frame's own bookkeeping must not be confused
   # by. A program numbers its states however it likes, so "nothing has been written yet"
   # cannot be said as a number and has to be kept apart from them. Get it wrong and the still
   # sprites are never written at all: a title screen blank for ever, with nothing in the
@@ -170,7 +167,7 @@ class TestStillObjects < Minitest::Test
       image :sign, width: 16, height: 16, data: Array.new(256, YELLOW)
       var :state, -1
       scene(:title) { sprite(:sign, at: [40, 40]) }
-      game_loop { case_var(:state) { when_val(-1, :title) } }
+      game_loop { call({ -1 => :title }, number: :state) }
     end
   end
 
@@ -178,7 +175,7 @@ class TestStillObjects < Minitest::Test
     assert_backends_agree(a_scene_numbered_below_nothing, frames: 4)
   end
 
-  # CHANGING THE SCREEN WIPES THE SPRITE TABLE, which is the one thing that can take a still
+  # Changing the screen wipes the sprite table, which is the one thing that can take a still
   # sprite away without the program doing anything. A bitmap title handing over to a tiled
   # game clears the table on the way in, so what was written once has to be written once more
   # — and nothing in the program says so.
@@ -197,10 +194,7 @@ class TestStillObjects < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end

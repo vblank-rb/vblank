@@ -7,7 +7,7 @@ require "fileutils"
 require "json"
 require "tmpdir"
 
-# A SHELL OF A PORT WHOSE ORIGINAL IS A FOLDER OF FILES (FolderOriginal's fixture), played as a web
+# A shell of a port whose original is a folder of files (FolderOriginal's fixture), played as a web
 # page. LOAD ROM opens the browser's folder picker; the page finds each file the release names in any
 # case among the folder's own files, checks each by its size and SHA-1, joins them in the release's
 # order and unpacks them, and reads nothing else. It refuses a folder in the words the Ruby shell uses
@@ -59,6 +59,32 @@ class TestJSShellFolder < Minitest::Test
       FileUtils.mv(File.join(copy, "INDEX.MU1"), File.join(copy, "old", "INDEX.MU1"))
 
       assert_match "copy does not hold a whole release of Folder Game: the MU1 release lacks INDEX.MU1", refusal_picking(folder, copy)
+      assert_nil kept_pack(folder)
+    end
+  end
+
+  # A folder dropped on the menu is read as the picker's is: its own files, the release's alone,
+  # each read only when named. A folder inside it is left out and nothing in it is read.
+  def test_a_dropped_folder_keeps_the_all_in_one_pack_and_reads_no_inner_folder
+    Dir.mktmpdir do |folder|
+      copy = fixture_copy_in(folder)
+      FileUtils.mkdir_p(File.join(copy, "old"))
+      File.binwrite(File.join(copy, "old", "EXTRA.BIN"), "extra")
+      out = open_shell(folder, ["settle", "play 3", "drop #{copy}", "play 2", "settle", "entries-read"])
+      read = out.grep(/\Aentries-read /).first
+
+      assert_equal folder_port(folder_original).data_pack_file, kept_pack(folder), "byte for byte"
+      assert_match(/INDEX\.MU1/, read)
+      refute_match(%r{old/}, read)
+      refute_match(/EXTRA/, read)
+    end
+  end
+
+  def test_a_file_dropped_where_the_copy_is_a_folder_is_refused
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "drop #{File.join(fixture_copy_in(folder), 'INDEX.MU1')}", "play 3", "text said"])
+
+      assert_match(/INDEX\.MU1 is one file\. A copy of Folder Game is a folder/, out.grep(/\Atext said /).first)
       assert_nil kept_pack(folder)
     end
   end

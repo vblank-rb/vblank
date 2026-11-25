@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE PLAYSTATION, measured in the emulator: a `repeat`, and a game's
+# A turn of a loop on the PlayStation, measured in the emulator: a `repeat`, and a game's
 # `while i < n` with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while).
 # The R3000's own way is a count in a register, ADDIU, a compare and a branch with its delay slot
 # (psx-spx, "CPU Opcode Encoding"). A count here is kept in a saved register where the body cannot
@@ -15,8 +15,16 @@ class TestPS1LoopCost < Minitest::Test
 
   # Measured: a repeat 10.4 a turn setting and 22.3 reading with its count in main RAM, 8.7 and 18.3 in
   # a register. A counted while was 21.6 and 35.6 while it was written as it reads (its hidden count
-  # kept, `i` loaded to be compared and added to each turn); counted, in a register, 9.9 and 19.0.
-  BOUNDS = { repeat_set: 10, repeat_read: 21, while_set: 11, while_read: 21 }.freeze
+  # kept, `i` loaded to be compared and added to each turn); counted, in a register, 9.9 and 19.0. A
+  # search asking each turn whether to `break` or go to its `next` round was 59.9 and 59.8 while a jump
+  # set a hidden number the loop's test and the rest of the turn read; 20.8 and 47.7 with a jump that
+  # is a branch (the `next` loop is a while that is not counted).
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 47.5 a turn; the same rounds written out are
+  # 40.5 a round.
+  BOUNDS = { repeat_set: 10, repeat_read: 21, while_set: 11, while_read: 21, while_break: 23, while_next: 53,
+             steps: 50 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

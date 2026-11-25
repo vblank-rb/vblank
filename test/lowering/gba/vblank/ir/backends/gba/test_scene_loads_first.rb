@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A scene that LOADS FIRST, on the console. A scene copies its pictures into video memory as it
+# A scene that loads first, on the console. A scene copies its pictures into video memory as it
 # takes over, and on the pass it shares with the scene's first pass of game the two together
 # can run past the end of the frame — so whether a hand-over costs a frame depends on how much
 # art the scene holds, and changes as a game adds rooms. `loads_first: true` gives the copy a
@@ -15,7 +15,7 @@ require "test_helper"
 class TestSceneLoadsFirst < Minitest::Test
   HEAVY = 14 # pictures, 64 by 64 in sixteen colours, two thousand bytes each
   LIGHT = 1
-  WORK = 15_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
+  WORK = 30_000 # trips round a loop each pass: inside a frame alone, past it with the heavy copy
   FRAMES = 30
 
   private def hand_over(pictures:, loads_first:)
@@ -36,10 +36,7 @@ class TestSceneLoadsFirst < Minitest::Test
         repeat(WORK) { |i| sum = sum + (i * 3) }
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         step += 1
       end
     end
@@ -54,7 +51,7 @@ class TestSceneLoadsFirst < Minitest::Test
     assert_emulator_loads_rom(rom, frames: FRAMES, count_passes: true).passes
   end
 
-  # THE PASS THAT COPIES DOES NO SPRITE WORK: it shows nothing new, and the pictures are not in
+  # The pass that copies does no sprite work: it shows nothing new, and the pictures are not in
   # video memory yet. So nothing the scene's sprites write reaches the sprite table until the pass
   # after, which has the frame's time for them. A game's copy that only just fits its frame
   # is that much further from running over.
@@ -92,10 +89,7 @@ class TestSceneLoadsFirst < Minitest::Test
       end
       scene(:play, loads_first: true) { nil }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         step += 1
       end
     end

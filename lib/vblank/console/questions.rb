@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT A LINE OF A GAME ASKS OF THE CONSOLE IT RUNS ON: which verb's answer (Console::Answers)
+    # What a line of a game asks of the console it runs on: which verb's answer (Console::Answers)
     # has the words for it, what the line asks for in words of its own, and — for a verb that works
     # but has a part some consoles lack, the Color's `held` for a shoulder button it does not have —
     # whether this console has that part, read from its description.
@@ -17,9 +17,12 @@ module VBlank
     module Questions
       # +verb+ whose answer has the words, what the line asks for in +words+, and +can+: whether the
       # console has the part asked for, or nil where the verb's own answer decides.
-      Question = Data.define(:verb, :words, :can)
+      # +reason+, when given, is what the refusal says in place of the verb's whole answer.
+      Question = Data.define(:verb, :words, :can, :reason) do
+        def initialize(verb:, words:, can:, reason: nil) = super
+      end
 
-      # A VERB WRITTEN IN OTHER VERBS leaves no step of its own: a `pulse` is a sprite's size walked
+      # A verb written in other verbs leaves no step of its own: a `pulse` is a sprite's size walked
       # every frame, an iris is the game's light closing. The steps alone would have a console
       # answer for the verb underneath, in words about a sprite that resizes or a light, which is
       # not what the author wrote. So the program notes that the verb was written
@@ -47,6 +50,21 @@ module VBlank
           written = WRITTEN_VERBS[verb] or next
           Question.new(verb, written.words, nil)
         end
+      end
+
+      # A cell written on the frame being drawn: a bar's is asked under the status bar's answer, a
+      # plain background's under its own words, which say why the console cannot.
+      def cell_written_now_question(node, console)
+        bar = node.root.walk.any? { |named| named.kind == :background && named.name == node.name && named.bar? }
+        if bar
+          return Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
+                              console.changes_cells_while_drawing)
+        end
+
+        Question.new(:background, "This line shows a cell of background :#{node.name} on the frame being drawn (`now: true`)",
+                     console.changes_cells_while_drawing,
+                     "it writes its video memory only between frames, so the cell shows on the frame after the pass. " \
+                     "To fix this, take away `now: true`.")
       end
 
       # The verb whose steps +verb+ is made of, or nil for a verb with steps of its own.
@@ -80,11 +98,8 @@ module VBlank
           Question.new(:layers, "This game changes how much one layer shows through another as the game runs",
                        console.blends || (console.mixes_by_half && node.added == true))
         when :set_tile
-          if node.now
-            Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
-                         console.changes_cells_while_drawing)
-          end
-        when :held, :pressed then button_question(node, console)
+          cell_written_now_question(node, console) if node.now
+        when :held, :pressed, :pulled then button_question(node, console)
         when :players_connected
           Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
         when :program then program_question(node, console)
@@ -100,8 +115,13 @@ module VBlank
                                       "(`cells_in_front: true`)", console.cells_in_front)
           end
         when :box_background
-          Question.new(:background, "This line shows a background only inside a box (`show_only_inside`)",
-                       !console.background_box.nil?)
+          if node.whole
+            Question.new(:background, "This line switches a background off and on (`hide`, `show`)",
+                         !console.background_box.nil?)
+          else
+            Question.new(:background, "This line shows a background only inside a box (`show_only_inside`)",
+                         !console.background_box.nil?)
+          end
         when :song
           if node.voices.any? { |part| part.events.any? { |event| IR::Tunes.glides?(event) } }
             Question.new(:songs, "This game has a recorded note that glides (`glides: true`)", console.glides_recordings)
@@ -137,7 +157,7 @@ module VBlank
       # (`enable_sound main_volume:`, kept on the program since it is said once for the whole game). A
       # line answers one question, so where both are asked the one this console cannot do is it.
       def program_question(program, console)
-        most = program.most_players
+        most = program.max_players
         questions = []
         questions << Question.new(:held, "This game takes up to #{most} players (`players:`)", most <= console.controllers) if most && most > 1
         if program.main_volume

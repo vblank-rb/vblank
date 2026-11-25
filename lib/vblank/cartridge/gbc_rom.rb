@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A GAME BOY COLOR CARTRIDGE: the banks the GBC lowering linked, with the header the console
+    # A Game Boy Color cartridge: the banks the GBC lowering linked, with the header the console
     # reads before it will start one.
     #
     # The header sits at 0x0100 to 0x014F of bank 0. The processor starts at 0x0100, so the first
@@ -44,6 +44,10 @@ module VBlank
                                                 [true, false] => MBC3_TIMER_BATTERY,
                                                 [true, true] => MBC3_TIMER_RAM_BATTERY })
 
+      # The type bytes of a cartridge with a clock chip: the keys of CARTRIDGE_TYPES whose first
+      # element (clock) is true.
+      CLOCK_TYPES = Ractor.make_shareable(CARTRIDGE_TYPES.select { |(clock, _), _| clock }.values)
+
       # ...and an MBC5 with a rumble motor (Runtime::Rumble), by whether it has that memory.
       MBC5_RUMBLE = 0x1C
       MBC5_RUMBLE_RAM_BATTERY = 0x1E
@@ -55,11 +59,7 @@ module VBlank
       # came from), for the tools that read a running one back, or nil.
       attr_reader :built
 
-      # The variables the build added that the author never declared (see
-      # Diagnostics::HiddenVariables).
-      attr_writer :hidden_variables
-
-      def hidden_variables = @hidden_variables || []
+      include ProfileNotes::WithRoutineSizes
 
       # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ marks that it carries a motor.
       def initialize(banks, title:, save_bytes: 0, clock: false, rumble: false, built: nil)
@@ -75,10 +75,15 @@ module VBlank
 
       def size = @bytes.bytesize
 
-      # Whether its header declares a clock chip.
-      def clock? = [MBC3_TIMER_BATTERY, MBC3_TIMER_RAM_BATTERY].include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
+      # The 16K banks the cartridge holds.
+      BANK_BYTES = 0x4000
 
-      # WHAT EVERY GAME BOY CARTRIDGE'S HEADER HOLDS, the Color's too, whoever made it — asked of a
+      def bank_count = size / BANK_BYTES
+
+      # Whether its header declares a clock chip.
+      def clock? = CLOCK_TYPES.include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
+
+      # What every Game Boy cartridge's header holds, the Color's too, whoever made it — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
       #
       # The console a cartridge of this kind is for; whether +bytes+ are one (every Game Boy
@@ -100,9 +105,9 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0")
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
-      # WHERE ITS FRAMES WENT: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
+      # Where its frames went: the cartridge run in the emulator (Diagnostics::GBCProfiler), reported
       # for a person or as JSON. +keys+ are held from power-on, and +settle+ frames run before the
       # +frames+ measured.
       #
@@ -112,9 +117,10 @@ module VBlank
       # Each frame keeps its +routines+ busiest routines, the game's and the runtime's each (three
       # where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GBCProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Game Boy Color")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Game Boy Color")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "Game Boy Color")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GBCProfiler, tape: tape, frames: frames, keys: keys,
                                                                                   settle: settle, format: format, out: out,
@@ -126,9 +132,13 @@ module VBlank
                                                     keys: keys)
         case format
         when :human
-          Diagnostics::HiddenVariables.render(self, IR::Printer.for(out))
+          Diagnostics::BuildNotes.render(self, out)
           Diagnostics::GBCProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h.merge(Diagnostics::HiddenVariables.as_json(self))))
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{bank_count} banks")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::RoutineSizes.as_json(routine_sizes))
+                                            .merge(bank_count: bank_count)
+                                            .merge(Diagnostics::BuildNotes.as_json(self))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

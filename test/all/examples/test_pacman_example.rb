@@ -4,10 +4,10 @@ require "test_helper"
 
 require "stringio"
 require "differential"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # The Pac-Man example (examples/pacman.rb): the tiled-mode flagship. Pac, the
-# pellets, and the ghost are HARDWARE sprites composited over a TILED room; Pac
+# pellets, and the ghost are hardware sprites composited over a tiled room; Pac
 # faces the way he moves, eats pellets on contact, and the ghost chases him. Asserts
 # the whole stack renders and behaves, on every run's player; the Advance's cartridge
 # read back in the emulator is in test/lowering/gba/examples/test_pacman_example_cartridge.rb.

@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-# WHICH PART OF THE DISPLAY A FADE TO BLACK OR WHITE USES.
+# Which part of the display a fade to black or white uses.
 #
 # There are two ways to darken a whole picture on this console and a game gets one of
 # them, decided here rather than in either backend, so the ROM and the headless
-# interpreter cannot drift apart about it. What the two LOOK like is asserted where the
+# interpreter cannot drift apart about it. What the two look like is asserted where the
 # picture is — `test/all/vblank/builder/test_layer_transparency.rb`. This file is the
 # rule: four decisions, each in the words somebody would ask them in.
 class TestFading < Minitest::Test
@@ -65,7 +65,7 @@ class TestFading < Minitest::Test
     end
   end
 
-  # DECISION ONE: a fade walks the colours exactly when there is a layer to keep.
+  # Decision one: a fade walks the colours exactly when there is a layer to keep.
   #
   # Walking them is not free — it is a blend per colour the game declared, on each frame
   # the fade moves — where the display's own blend is free however much is on screen. So
@@ -87,7 +87,7 @@ class TestFading < Minitest::Test
     refute_predicate fading(plain_tiled_program), :any_fade_walks_palette?
   end
 
-  # A layer DECLARED see-through and then fixed at nothing is solid, so there is nothing
+  # A layer declared see-through and then fixed at nothing is solid, so there is nothing
   # behind it to keep and walking the colours would buy a picture nobody can tell from the
   # free fade. Worth its own test because the declaration is what a reader notices, and
   # naming the layer is the easy thing to key the whole decision off.
@@ -97,7 +97,7 @@ class TestFading < Minitest::Test
     refute fading(prog).palette_walk?(fades(prog).first)
   end
 
-  # ...and an amount the game works out DOES buy it, because nothing at build time knows
+  # ...and an amount the game works out does buy it, because nothing at build time knows
   # what it will be and it is not 0 for long if it was worth writing.
   def test_a_layer_as_see_through_as_the_game_works_out_buys_the_walk
     prog = see_through_program(transparency: :worked_out)
@@ -105,10 +105,10 @@ class TestFading < Minitest::Test
     assert fading(prog).palette_walk?(fades(prog).first)
   end
 
-  # DECISION TWO: neither bitmap screen changes.
+  # Decision two: neither bitmap screen changes.
   #
   # Seeing through a layer needs a tiled screen, so a bitmap screen never has anything
-  # for a fade to protect. The tear-free one is the one worth asserting: it DOES draw
+  # for a fade to protect. The tear-free one is the one worth asserting: it does draw
   # through a colour table, so it is the screen somebody would expect to change, and it
   # does not.
   def test_a_plain_bitmap_screen_fades_the_way_it_always_did
@@ -123,7 +123,7 @@ class TestFading < Minitest::Test
     refute fading(prog).palette_walk?(fades(prog).first)
   end
 
-  # DECISION THREE: a fade placed in the stack keeps the display's blend.
+  # Decision three: a fade placed in the stack keeps the display's blend.
   #
   # Being placed is the one thing only the blend unit can do — the console hides a
   # brightness change from the layers in front of a line, where a table of colours is
@@ -145,7 +145,7 @@ class TestFading < Minitest::Test
     assert_empty fading(see_through_program).blend_fades
   end
 
-  # DECISION FOUR: a fade that asks for finer steps walks the colours wherever there is a
+  # Decision four: a fade that asks for finer steps walks the colours wherever there is a
   # table to walk.
   #
   # An amount with a fraction is the asking. The display counts in sixteenths, so a long

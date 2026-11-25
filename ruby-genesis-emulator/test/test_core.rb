@@ -69,6 +69,16 @@ class TestCore < Minitest::Test
     assert_equal "\xDE\xAD\xBE\xEF".b, @core.wram.byteslice(0x200, 4)
   end
 
+  # A state saved puts back the work RAM it was saved with, over whatever was written after.
+  def test_a_saved_state_puts_work_ram_back
+    @core.wram_write32(0xFF8000, 0x1234_5678)
+    state = @core.serialize
+    @core.wram_write32(0xFF8000, 0x0BAD_F00D)
+    @core.unserialize(state)
+
+    assert_equal 0x1234_5678, @core.wram_read32(0xFF8000)
+  end
+
   def test_colour_memory_reads_what_the_cartridge_wrote
     assert_equal COLOR, @core.cram.unpack1("v")
     assert_equal 0b110_100_010, @core.color_ram.first
@@ -123,6 +133,36 @@ class TestCore < Minitest::Test
     @core.set_buttons(%i[b right])
     @core.run_frame
     assert_equal 0b100111, @core.wram_read8(0x0102) & 0x3F, "B is bit 4 and right is bit 3, 0 where down"
+  end
+
+  # Reads a Team Player in the second port the way plutiedev's "Sega multitap" gives: TH and TR made
+  # outputs, then TR toggled for each nibble after the first two, every nibble's low four bits
+  # stored at $FF0110 on. Nibbles 0 and 1 are the start (%0011, %1111), 2 and 3 noughts, 4 to 7 the
+  # four plugs' kinds, then each plug's two nibbles of buttons (right, left, down, up; then start,
+  # A, C, B), 0 where a button is down.
+  PAD2_DATA = 0xA10005
+  PAD2_CONTROL = 0xA1000B
+  TEAM_PLAYER_WRITES = [0x60, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00, 0x20, 0x00, 0x20].freeze
+  TEAM_PLAYER_CODE = [
+    *move_byte(0x60, PAD2_CONTROL),
+    *TEAM_PLAYER_WRITES.each_with_index.flat_map { |value, nibble| [*move_byte(value, PAD2_DATA), *copy_byte(PAD2_DATA, 0xFF0110 + nibble)] },
+    *LOOP
+  ].freeze
+
+  # Port 1 of #set_buttons is the tap's first plug, port 2 its second.
+  def test_a_team_player_in_the_second_port_hands_over_its_plugs
+    @core.destroy
+    @core = RubyGenesisEmulator::Core.new(HandMadeCartridge.write(@dir, TEAM_PLAYER_CODE))
+    @core.plug_in_team_player
+    @core.set_buttons(%i[right], port: 1)
+    @core.set_buttons(%i[b], port: 2)
+    @core.run_frame
+    nibbles = (0...TEAM_PLAYER_WRITES.size).map { |nibble| @core.wram_read8(0xFF0110 + nibble) & 0x0F }
+
+    assert_equal [0b0011, 0b1111, 0, 0], nibbles.first(4), "the tap's start"
+    assert_equal [0, 0, 0, 0], nibbles[4, 4], "four three-button pads"
+    assert_equal [0b0111, 0b1111], nibbles[8, 2], "the first plug's right"
+    assert_equal [0b1111, 0b1110], nibbles[10, 2], "the second plug's B"
   end
 
   def test_a_button_a_genesis_pad_lacks_is_refused

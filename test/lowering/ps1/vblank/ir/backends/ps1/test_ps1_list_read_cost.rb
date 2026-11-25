@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE PLAYSTATION, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the PlayStation, `x = row[i]`, measured in the emulator: the
 # index tested against the list's length, shifted by the slot's width, added to the list's place and
 # the slot loaded (PS1::Lowering#emit_slot_place). The console's own code loads a field of a record
 # it holds the address of with one LW, LH or LB at a 16-bit offset (psx-spx, "CPU Load/Store
@@ -25,6 +25,19 @@ class TestPS1ListReadCost < Minitest::Test
 
       assert_operator cost, :<, bound, "a read at a #{index} costs #{cost.round(1)} cycles"
     end
+  end
+
+  # A slot named by a number written in the program, `x += a[1]`, is one load at an address known as
+  # the code is written, with no check (PS1::Lowering#fixed_slot_address), straight into the register
+  # the sum wants (#emit_load_simple). Measured: 18 cycles a read. Of these four lists of 32 words
+  # only the first fits the room the scratchpad keeps for lists (#place_list), so three of the four
+  # loads wait on main RAM; a variable, kept in the scratchpad, costs next to nothing.
+  WRITTEN_SLOT_BOUND = 21
+
+  def test_a_read_of_a_written_slot_costs_under_its_bound
+    cost = ListReadCostGames.cycles_a_read(:ps1, :written, FRAME_CYCLES, width: :word)
+
+    assert_operator cost, :<, WRITTEN_SLOT_BOUND, "a written slot costs #{cost.round(1)} cycles"
   end
 
   # The reads are the interpreter's on every pass.

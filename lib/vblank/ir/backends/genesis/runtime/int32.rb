@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE ARITHMETIC OF IR::Int32 that is too long to write where it is used: multiplying,
+          # The arithmetic of IR::Int32 that is too long to write where it is used: multiplying,
           # dividing, the remainder, and shifting by a count worked out as the game runs. Adding,
           # subtracting, the bitwise sums, turning a number round and comparing are one instruction
           # each on a processor whose registers are 32 bits wide, and the lowering writes them where
@@ -162,13 +162,13 @@ module VBlank
               asm.rts
             end
 
-            # NUMBERS WITH A FRACTION (Int32.mul_fix and Int32.div_fix), D0 and D1 and the count of the
+            # Numbers with a fraction (Int32.mul_fix and Int32.div_fix), D0 and D1 and the count of the
             # fraction's bits in D2, the answer in D0. Both need more than 32 bits while they work, which
             # the 68000 has only as two registers held as one: D4 the top half and D5 the bottom.
             #
             # rt_mul_fix forms the whole product of the two sizes, a shift and an add 32 times, and brings it
             # down by the bits. The interpreter shifts a product below nought down by flooring it, which
-            # is what taking the size's shifted-down value and turning it round does NOT do, so a product
+            # is what taking the size's shifted-down value and turning it round does not do, so a product
             # below nought has the bits' worth of ones added before it is shifted: -1.5 is the floor of
             # -1.25, not of -1.5's truncation. What does not fit 32 bits wraps.
             #

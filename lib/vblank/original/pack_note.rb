@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # ONE NOTE OF MUSIC IN A DATA PACK, as twelve bytes, low byte first:
+    # One note of music in a data pack, as twelve bytes, low byte first:
     #
     #   0-1   at          the tick it starts on, from the start of the part
     #   2-3   length      how many ticks it lasts (0: until the next note starts)
@@ -26,12 +26,12 @@ module VBlank
     # A note whose +at+ is END_OF_PART (65535) ends the part: the slot holds as many notes as the longest
     # part of its kind can have, and a shorter one ends there.
     #
-    # WHY A RECORD OF VBLANK'S OWN. A retail game keeps its music in its sound driver's own form,
+    # Why a record of VBLANK's own. A retail game keeps its music in its sound driver's own form,
     # commands a driver steps through, which no two games share. The port's unpacking routine
     # (`slots.fill_from_copy`) runs that form forward and writes the notes it plays here, so a
     # part reads the same record whatever the original was.
     #
-    # WHY A LOUDNESS AS WELL AS A VOLUME. A cartridge's sound engine mixes a recording at one of
+    # Why a loudness as well as a volume. A cartridge's sound engine mixes a recording at one of
     # 512 loudnesses where a console voice has 16 volumes, and a song lifted from one keeps its
     # quiet notes heard only at that scale (`volume:` with a fraction, sound.md).
     #
@@ -39,7 +39,7 @@ module VBlank
     # clock means nothing off the noise voice or on a part that is transposed (a transpose cannot
     # move the voice's own setting): there each is left as the part's own.
     #
-    # A NOTE WITH ITS VOICE'S SETTINGS (`slots.voiced_notes`) is thirty-two bytes: the twelve above,
+    # A note with its voice's settings (`slots.voiced_notes`) is thirty-two bytes: the twelve above,
     # then what else a Score::Note can say of its voice, as a sound driver sets them for each note
     # it strikes. Each is the note's only where bytes 20 and 21 name it (a bit of NAMES), and else
     # the part's own:
@@ -68,7 +68,7 @@ module VBlank
     #                      recording or the noise voice (a Score::Note's `hz:` of this over 16), in
     #                      place of the key's pitch; more than 0 and 524,288 Hz at most. The key byte
     #                      must still be 127 or less: past that the note is a rest
-    #   (glides)           GLIDES in the names, on a part that plays a recording: the note does not
+    #   (glides)           glides in the names, on a part that plays a recording: the note does not
     #                      strike, and the one sounding carries on at its pitch (`glides: true`), at
     #                      its volume or loudness and its shade, each the note's own where it names
     #                      none. Its instrument is the part's own (255): it reads the recording the
@@ -201,7 +201,7 @@ module VBlank
       # Whether the noise clock byte names a clock or the key's pitch.
       def clock_named? = noise_clock == PART_OWN || noise_clock < CLOCK_BYTES
 
-      # WHAT A VOICED RECORD'S SETTINGS ARE, AS A SCORE::NOTE IS GIVEN THEM: a Hash of the words of
+      # What a voiced record's settings are, as a SCORE::NOTE is given them: a Hash of the words of
       # those it names (`pitch_number:`, `decay:` or `swell:`, `duty:`, `vibrato:`, `slide_up:` or
       # `slide_down:`, `pan:`, `hz:`, `glides:`, `metallic:`), each left out where it names none. Its
       # wave is a number among the part's waves, which the part's reader looks up (#wave). A number past its

@@ -2,30 +2,88 @@
 
 module VBlank
   class Builder
-    # TILES WITH SEVERAL PICTURES HELD IN THE CARTRIDGE: `tile_pictures :water, colors: :pond,
-    # tiles: { deep: %i[deep0 deep1 deep2], edge: %i[edge0 edge1 edge2] }`.
+    # Tiles that take turns through pictures
     #
-    # Flowers that sway and water that lapses are a handful of tiles taking turns through a short
+    # Flowers that sway and water that laps are a handful of tiles taking turns through a short
     # loop of pictures, over a map that does not change. Every picture is drawn ahead of time, so
-    # the game has only to name which one a group shows, and the whole group changes as one.
+    # the game only names which one a group shows, and the whole group changes as one.
     #
+    # ```ruby picture=loop frames=48
+    # # Three pictures of one tile: water (1)
+    # # with a crest (2) that moves along.
+    # WAVES = (0..2).map do |n|
+    #   Array.new(64) do |at|
+    #     row, col = at.divmod(8)
+    #     row.even? && col / 3 == n ? 2 : 1
+    #   end
+    # end
+    #
+    # VBlank.game "WATER", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :pond, [:transparent,
+    #                  rgb(6, 10, 22), :cyan]
+    #   WAVES.each_with_index do |places, n|
+    #     image :"wave#{n}", width: 8, height: 8,
+    #           colors: :pond, places: places
+    #   end
+    #   water = tile_pictures :water,
+    #     colors: :pond,
+    #     tiles: { wave: %i[wave0 wave1 wave2] }
+    #   tiles :lake_tiles, "~" => water[:wave]
+    #   background :lake, tiles: :lake_tiles,
+    #                     map: "#{'~' * 8}\n" * 4
+    #   step = 0
+    #   game_loop do
+    #     step += 1
+    #     # every tile of the lake changes at once
+    #     water.show (step / 8) % 3
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
+    # tile_pictures :water, colors: :pond,
+    #                       tiles: { deep: %i[deep0 deep1 deep2], edge: %i[edge0 edge1 edge2] }
+    # ```
+    #--
     # They stand on painted tiles (see TileRuns), which is what makes them work everywhere a
     # background does: a group is a run of tiles, never merged with any other, whose colours come
     # from one list, so a picture is the same place numbers as any drawn from that list.
+    #++
     module TilePictures
       # The tiles in a group, and a group's picture bytes, are kept to what a game can use.
-      TILE_BYTES = TileRuns::TILE_BYTES
+      TILE_BYTES = TileRuns::TILE_BYTES  # :nodoc:
 
       # One run of a group (#declare_tile_picture_run).
-      TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)
+      TilePictureRun = Data.define(:list, :held, :run, :bytes_shown)  # :nodoc:
 
-      # The group +name+: each key of +tiles+ is one tile, and its value the pictures it goes
-      # through, in order, the same number for each. +colors+ is the `colors` list they are all
-      # drawn from. The tiles show their first pictures from the start.
+      # Declares a group of tiles that take turns through pictures, and returns the group.
       #
-      # A key that is a tile of a slot of the data pack (`pack[:video].tile(5)`) is a tile of the
-      # backgrounds drawn from that slot, and its pictures tiles of the pack too
-      # (PackTilePictures): the colours are then the bank each cell names, so there is no +colors+.
+      # Each key of `tiles` is one tile, and its value is the pictures the tile goes through, in
+      # order, with the same number for each tile. The tiles show their first pictures from the
+      # start. Name which picture the group shows with the group the verb returns.
+      #
+      # A key can also be a tile of a data pack slot, such as `pack[:video].tile(5)`. It is then a
+      # tile of the backgrounds drawn from that slot, its pictures are tiles of the pack too, and
+      # the colours are the bank each cell names, so there is no `colors:`.
+      #
+      # ```ruby
+      # field = tile_pictures :field, colors: :meadow, tiles: { flower: %i[upright left upright right] }
+      # tiles :meadow_tiles, "f" => field[:flower], "." => :grass
+      #
+      # game_loop do
+      #   passes += 1
+      #   field.show((passes / 15) % 4)   # a new picture every quarter second
+      # end
+      # ```
+      #
+      # * `name` - the group's name, as a symbol.
+      # * `tiles:` - a hash from each tile's key to the list of its pictures.
+      # * `colors:` - the `colors` list every picture is drawn from.
+      # * `fast:` - `true` to keep the pictures in the quick memory.
+      #--
+      # PackTilePictures handles the data pack form.
+      #++
       def tile_pictures(name, tiles:, colors: nil, fast: false)
         return declare_pack_tile_pictures(name, tiles, colors, fast: fast) if pack_tile_pictures?(tiles)
 
@@ -39,33 +97,37 @@ module VBlank
                                         run: part.run, shown: shown, bytes_shown: part.bytes_shown)
       end
 
-      # ONE RUN OF TILES TAKING TURNS THROUGH PICTURES: the run +name+ of +count+ tiles +side+
+      # One run of tiles taking turns through pictures: the run +name+ of +count+ tiles +side+
       # pixels square drawn from +colors+, the list in memory it shows, and the table in the
       # cartridge holding +bytes+, each picture's tiles one after another. A group of `tile_pictures`
       # is one of these; a group of a pack's tiles is one for each background and bank that draws
       # it. +held+ is a table the caller made (a DSL::Table) in place of one made of +bytes+.
+      # +shown_in+ is a list the caller made and fills (PackTilePictures#pictures_shown_at_start), for
+      # runs that all show the same bytes, in place of a list of the run's own.
       # Hands back a TilePictureRun: the list, the table (a DSL::Table), the run, and the bytes a
       # picture takes.
-      private def declare_tile_picture_run(name, count:, colors:, side:, bytes:, fast:, held: nil)
+      private def declare_tile_picture_run(name, count:, colors:, side:, bytes:, fast:, held: nil, shown_in: nil)
         bytes_shown = count * TILE_BYTES * ((side / 8)**2)
-        list_name = Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
-        at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0))
-        list = DSL::List.new(self, list_name)
+        list_name = shown_in&.name || Messages::MadeNames.make(:tile_pictures_part, group: name, part: :shown)
+        at_boot(Build.list_new(list_name, bytes_shown, width: :byte, fast: fast, full_of: 0)) unless shown_in
+        list = shown_in || DSL::List.new(self, list_name)
         held ||= table(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :pictures), bytes, width: :byte, signed: false)
         run = self.tiles(name, { from: list, count: count, colors: colors, held_in: held.name, tile_side: side })
         # At power-on, not here: this line can be inside a scene, whose body runs every pass, and
         # the first picture would be put back every time. A scene's screen copies a run in as it
         # comes up, so only a group declared outside any scene has its first copy to ask for.
-        at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: bytes_shown))
+        at_boot(Build.list_copy(list_name, table: held.name, at: Build.int(0), count: bytes_shown)) unless shown_in
         run.changed(now: true) unless recording_game_code?
         TilePictureRun.new(list: list, held: held, run: run, bytes_shown: bytes_shown)
       end
 
       # The block's statements, run where +test+ holds, for a group's `show`.
-      def with_test(test, &block) = push_container(Build.if_(test), &block)
+      # Hook a tile-picture group's `show` calls; documented on `tiles`.
+      def with_test(test, &block) = push_container(Build.if_(test), &block)  # :nodoc:
 
       # Keep which picture a group shows.
-      def set_shown_tile_picture(shown, wanted) = record(Build.set(shown.name, wanted))
+      # Hook a tile-picture group calls to keep which picture it shows; documented on `tiles`.
+      def set_shown_tile_picture(shown, wanted) = record(Build.set(shown.name, wanted))  # :nodoc:
 
       private
 
@@ -101,12 +163,32 @@ module VBlank
                                "To fix this, draw it with `image :#{image}, colors: :#{colors}, ...`."
         end
 
-        places = picture.places.bytes
+        places = picture_places(name, image, picture).bytes
         (0...side).step(8).to_a.product((0...side).step(8).to_a).flat_map do |top, left|
           (0...8).flat_map do |row|
             places[((top + row) * side) + left, 8].each_slice(2).map { |near, far| near | (far << 4) }
           end
         end
+      end
+
+      # The place in its list each pixel of a picture is drawn at. A picture given as places has
+      # them; one drawn as text art or loaded from a file has colours, which are found in its list,
+      # the see-through ones being place 0.
+      def picture_places(name, image, picture)
+        return picture.places if picture.places
+
+        list = picture.colors
+        if list.any? { |color| IR::StartFile.marker?(color) }
+          raise ArgumentError, "tile_pictures :#{name} cannot find the places of the picture :#{image}. Its colors are " \
+                               "read from the data pack as the game starts. To fix this, give the picture `places:`."
+        end
+
+        (0...(picture.width * picture.height)).map do |at|
+          next 0 unless picture.drawn_at?(at)
+
+          color = picture.color_at(at)
+          list.each_index.find { |place| place.positive? && list[place] == color } || list.index(color)
+        end.pack("C*")
       end
 
       def refuse_bad_tile_pictures!(name, tiles, colors)

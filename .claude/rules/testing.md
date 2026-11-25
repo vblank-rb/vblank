@@ -26,8 +26,9 @@ Which skill fits is "Skills" in `.claude/rules/shared/all-projects.md`. Here `td
 the altitude `.claude/CLAUDE.md` sets and in the folder the table below says; `code-review` is due for
 a change to shared code or a lowering's logic; `writing-for-agents` when editing these notes.
 
-The order around them: red test, fix, the touched test files, `rake test:golden`, `rake emitted:check`
-if a cartridge's contents changed, commit, review, its fixes folded into the commit.
+The order around them: red test, fix, the touched test files and those beside them,
+`rake emitted:check` if a cartridge's contents changed, commit, review, its fixes folded into the
+commit. Never `rake test:golden` unless the operator asks.
 
 ## Where a test file goes: the folder says which runs play it
 
@@ -104,7 +105,7 @@ to, sample for sample against the native one's), `midpoint_circle.rb` (the answe
 rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped by room),
 `status_bar_games.rb` (small games with a status bar, for the verb's and its handle's tests),
 `sprite_box_fields.rb` (a sea with a moving hollow box sprite and a cell of rock, built for any console, for each console's test of a comparison's `ignoring_sprites:`),
-`ractor_workers.rb` (for a test that starts Ractor workers by hand: quiet about Ractors being experimental, and a worker's error raised as it was),
+`ractor_workers.rb` (for a test that starts Ractor workers by hand: quiet about Ractors being experimental, and a worker's error raised as it was; and `while_swapped`, a library method stood in for by a test on the main Ractor while workers may call it),
 `compared_without_advance_emulator.rb` (two cartridges of a console that does not play in the Advance's emulator, compared in a child process where that emulator cannot load, for the Genesis's and the Super Nintendo's tests),
 `ps1_pass_work.rb` (a PlayStation game whose pass is a loop of work, and the turns of it, measured in the emulator as the test runs, that end every pass a given range of lines past the blank, for the profile's, the pad's and the checked run's tests of passes longer than a frame),
 `slow_pass_games.rb` (a box that steps a pixel a pass, and a build of it whose every fourth pass counts itself and moves the box a frame later, its busy loop's turns measured in the console's emulator as the test runs, built for any console, for each console's test of a comparison's `passes_compared_at: :end` and of where it starts after lead-ins that leave the two builds passes apart and what the one behind presses as it catches up),
@@ -146,8 +147,10 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `m4a_answers.rb` (the answer key for the Advance's common sound driver, MusicPlayer2000: a made-up song of VBlank's own using each command the reader reads, and a player written from the driver's source),
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `console_bios_cases.rb` (where a player's Game Boy Advance BIOS is found and whether it is used, the same for the Ruby and C rules, with made-up files and a made-up checksum, so no BIOS is needed),
+`profile_build_notes_tests.rb` (a game with a hidden number and a counted loop, and what `rom.profile` tells of them and of the routines' sizes, human and JSON, included by each console's profile file that has a cartridge),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
 `border_frame_tests.rb` (a game laid out for the Color, built for the Advance in a border, as the C, JavaScript and Ruby runs' windows show it: the whole screen, the border round the game's),
+`color_screen_tests.rb` (games laid out for the Color with a status bar and `hide_sprites`, played by each console they are for: the Advance in its border, and the Color),
 `state_image_tests.rb` (a game's whole state written at a frame and read into a fresh run, which plays on as the unbroken run did, played by the C, JavaScript and Ruby runs, each reading a state across from another),
 `runtime_feature_games.rb` (small games that do or do not use a runtime feature, for the native, JavaScript and Ruby runs' tests that a game takes in only the features it uses),
 `save_list_move_tests.rb` (a whole list moved to or from save memory as a block, held to the interpreter, played by each console whose lowering moves the block itself, the Color and the Super Nintendo, and by DOS, which moves it an item at a time),
@@ -155,15 +158,26 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `background_above_row_tests.rb` (a background held above a row of the screen, sliding inside its rows, beside two others, alone and alone without sprites, played by each console that holds one: the Super Nintendo and DOS),
 `sprite_layer_choice_tests.rb` (a sprite moved between layers in a room of two backgrounds, a floor and an arch, played by each console that shows two at once: the Advance and DOS),
 `main_volume_tests.rb` (the main volume of all a game's sound, `enable_sound main_volume:`, logged as the sound switches on, played by each console whose chip has one: not the Genesis),
-`players_connected_tests.rb` (how many players are connected, played by each console whose build reads one controller: the Advance, the Color, the Genesis and DOS),
-`many_players_tests.rb` (games and tests for four and for sixteen players, played by the interpreter and the game as C, JavaScript and Ruby, which read sixteen; no cartridge does, so not in `test/all/`),
-`wanderers_tests.rb` (`examples/wanderers.rb` with four players, as a computer builds it, played by the same runs for the same reason),
+`players_connected_tests.rb` (how many players are connected, played by each console whose build reads one controller: the Advance, the Color and DOS),
+`two_players_tests.rb` (two people at one console, each on a controller of their own, either's buttons and how many are connected, played by each console whose build reads two: the Super Nintendo, the Genesis and the PlayStation),
+`many_players_tests.rb` (games and tests for four and for sixteen players, played by the interpreter and the game as C, JavaScript and Ruby, which read sixteen; no cartridge does, so not in `test/all/`; four on the Super Nintendo's Multitap are `test_snes_multitap.rb`, on the Genesis's Team Player `test_genesis_team_player.rb`, and on the PlayStation's Multitap `test_ps1_multitap.rb`),
+`wanderers_tests.rb` (`examples/wanderers.rb` with four players, as a computer builds it, played by the same runs, and as the Super Nintendo, the Genesis and the PlayStation build it, through a Multitap, a Team Player and a Multitap, by `test_wanderers_on_snes.rb`, `test_wanderers_on_genesis.rb` and `test_wanderers_on_ps1.rb`),
+`multitap_file_tests.rb` (`examples/wanderers.rb` written to a file and opened with `multitap: true`, four players walking from one tape and, where a comparison plays the console, the file compared with itself, played by `test_multitap_file_on_the_super_nintendo.rb`, `test_multitap_file_on_the_genesis.rb` and `test_multitap_file_on_the_playstation.rb`),
 `list_reading_tests.rb` (a game's lists and pools read off a running cartridge, played by each console that has a cartridge),
+`list_made_first_tests.rb` (a full list read or written before it is made, played on a cartridge console's own build alone, which must stop the game as the interpreter does: the Super Nintendo, the Genesis, the Color and the PlayStation),
 `long_list_tests.rb` (a list of more than 65,535 slots, played by each console with the memory for one: the Advance, of bytes, and the PlayStation, of words),
 `probe_by_name_tests.rb` (a probe reading a built cartridge's variables, lists and pools by name, played by the Advance and the Color),
-`heard_alike_tests.rb` (two builds of one small tune held alike by what each cartridge puts out of its speakers, and a probe reading a frame's samples, played by each console whose emulator hands its sound over),
+`sprite_picture_tests.rb` (which picture each sprite of a built cartridge showed after each pass, and where, by name, held pass for pass to the interpreter's sprites rows, played by each console whose reader can say them),
+`twin_pictures_parts.rb` (a game file: a Struct drawn as two pictures stored as one, for the Advance reader's test of naming which a pool's thing shows),
+`sound_name_tests.rb` (which sound effects a built cartridge started on each frame and which song it was on, by name, held frame for frame to the interpreter's audio log, played by each console whose reader can say them),
+`snapshot_start_tests.rb` (two builds of a walking box compared from late in a tape, `starting_after:`, from snapshots of each console kept on disk, held to the comparison from power-on, played by the Advance and the Super Nintendo),
+`probe_snapshot_tests.rb` (a probe opened late in a tape, `starting_after:`, from a snapshot of the console kept on disk, held to a probe stepped there from power-on and counting the frames each stepped, played by the Advance, the Color, the Super Nintendo, the Genesis and the PlayStation; its walking box and tape, `SnapshotWalker`, are `tape_snapshot_tests.rb`'s too),
+`tape_snapshot_tests.rb` (`tape.play` and a film's cartridge side started late in a tape from a kept snapshot, held to the same playing from power-on and counting the frames each stepped, played by the same five),
+`probe_write_tests.rb` (a probe writing a value into a running cartridge's memory, in its processor's byte order, and saving and restoring the console, played by the Advance, the Super Nintendo, the Genesis and the PlayStation),
+`heard_alike_tests.rb` (two builds of one small tune held alike by what each cartridge puts out of its speakers, and a probe reading a frame's samples, played by every console; its `HeardVoiceTests`, chosen voices on each side and each voice's pitch, by each console whose emulator plays a voice alone: not the PlayStation),
 `build_once_tests.rb` (what a cartridge build does once, its plan and its routines, held on each console that builds a cartridge),
 `song_instrument_tests.rb` (a song part playing a recorded instrument, played by each console that mixes them),
+`recorded_fraction_volume_tests.rb` (a recorded note whose volume holds a fraction, in a song and as a sound effect, played by each console that mixes recordings: not the Color),
 `gliding_note_tests.rb` (a recorded note bent while it sounds, `glides: true`, played by each console whose build glides one),
 `note_envelope_tests.rb` (recorded notes with a loudness shape falling away on their voices, played by each console that mixes them),
 `snes_envelope_tests.rb` (an instrument given the Super Nintendo sound chip's own envelope bytes, by hand or from a data pack, played by each console that shapes a recording),
@@ -177,6 +191,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `loop_cost_games.rb` (a `repeat` and a counted `while`, setting a variable or reading a list at the count, 64 turns against 32, for each console's cost test of a loop's turn),
 `number_width_cost_games.rb` (tests of numbers the build proves small: how far apart two byte slots are, a variable against a number, a half slot shifted down, a table of bytes against a variable, four a pass against the same game with none, for each console's cost test of a narrow comparison),
 `narrow_variable_cost_games.rb` (a loop working three variables the build proves stay in 16 bits, 64 turns against 32, for each console's cost test of keeping them in two bytes),
+`unsigned_place_cost_games.rb` (a pool whose places, in 256ths of a pixel, stay from 0 to 65535 with `& 0xFFFF`, stepped once a pass, eight things against four, for each console's cost test of keeping them in two bytes read with no sign),
 `place_games.rb` (small games of places made of flat faces, played by each console that draws a place),
 `pack_place_games.rb` (a made-up computer original keeping a lit room as data, a game drawing it as a place, shading and viewer start from its data pack, and the same room written in Ruby, its answer key; for the registry and the interpreter's test),
 `called_routine_area_tests.rb` (a routine called inside an area, played by each console that keeps the area as it runs),
@@ -186,14 +201,19 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `layer_over_sprites_tests.rb` (a see-through background over sprites behind it and in front of it, played by the same two),
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance, the Super Nintendo and DOS),
 `pixelate_above_row_tests.rb` (those, with backgrounds in blocks under one held above a row, played by each console that holds one and shows blocks: the Super Nintendo and DOS),
+`ruby_answers.rb` (plain Ruby game code run as plain Ruby and as the game, its names compared, for
+`test_plain_ruby_answers.rb`) and `ruby_answers_parts.rb` (that suite's Structs and parts, a game file),
 `first_pass_presses.rb` (presses counted from a game's first pass, for a game that sets up save
 records first),
 `power_on_frame_games.rb` (a screen held to a reading of `frames_since_power_on`, built with and without
 a long setting up, and what each console's cartridge is held to as its emulator counts frames from
 power-on, for the Advance's, the Super Nintendo's, the Genesis's and the PlayStation's tests),
+`power_on_profile_tests.rb` (a profile with no frames settled first, and a tape's profile from its first frame, counting the passes the interpreter plays and none below nought, included by the Color's, the Super Nintendo's, the Genesis's and the PlayStation's profile tests),
 `no_frames_games.rb` (a small room played for no frames, which ends before the runtime turns the screen
 on, for the Super Nintendo's, the Genesis's and the PlayStation's tests of the picture such a run reports),
 `speakers.rb` (which speaker a cartridge's voice is heard from),
+`film_start_tests.rb` (a film's cartridge side and interpreter side of a moving game, painted, tiled, and tiled with more to set up, held to the same picture from the first pass, played by each console whose cartridge shows the interpreter's pictures pass for pass: the Advance, the Color, the Super Nintendo and the PlayStation),
+`heard_film.rb` (a film's sound read back by ffmpeg, each speaker's loudness a film frame at a time, and a game that starts a tone on a known pass, for the film's, the film tasks' and the film shell's tests),
 `many_tiles.rb` (backgrounds of many different tiles, for what a console does when they are too many to
 hold at once), `scene_sprite_pictures.rb` (scenes whose sprite pictures together are more than a console
 holds at once), `scene_color_lists.rb` (lists of fifteen colours, for a Super Nintendo screen's own
@@ -229,20 +249,37 @@ time; in a worktree set `VBLANK_SUITE_LOCK=checkout`.
 
 ## Ractors — fix what the runner reports
 
-The GBA run plays the suite through minitest-ractor, a Ractor per test, and reports every test
+The GBA run, and each run whose record says so (`Testing::Lowering::Run#ractors`), plays the suite
+through minitest-ractor, a Ractor per test, and reports every test
 that reached state the whole process shares. Those are order-dependent bugs, not noise; make the
 code Ractor-friendly rather than silencing the report.
 
 - read from a global or class variable while the test runs → read it once at load, into a constant
 - a module's registry, or a lazy `@thing ||= …` → one per Ractor: `Ractor.current[:key] ||= …` or
   `Ractor.store_if_absent(:key) { … }`
-- a fixture in a constant → nothing to do; `test_helper.rb` deep-freezes every constant a test
-  class declares
+- a fixture in a constant → nothing to do; `test_helper.rb` deep-freezes every constant a file
+  under `test/` declares, in a test class, a shared helper's module or at the top level
+  (`InRactors.share_constants_declared_in`). A game kept in a constant whose block holds game code
+  cannot be shared that way: return it from a method instead
+- a test made in a loop (`define_method`) → nothing to do; on a run in Ractors a test class, and a
+  module of tests a file under `test/` declares, makes it from a shareable copy of its block
+  (`InRactors::ShareableMethods`), and every other run keeps the block as written. A game's block
+  inside such a test cannot read the loop's variables as game code on that run, so write those
+  tests out over one private helper. A module made any other way (`Module.new` in a method, a
+  class that is not a test) keeps plain blocks
+- an example's constants → require it with `ShareableConstants.require_file(VBlank.root.join("examples/<name>").to_s)`
+  (`test/support/shareable_constants.rb`), which freezes what the file defined, so `examples/` stays
+  plain Ruby with no `Ractor.make_shareable`
 
 A test that changes the whole process on purpose (registering a font or guardrail, stubbing a
-library method, declaring a class, asserting the process's output) or starts a child process
-(which hangs inside a Ractor) says `runs_on_the_main_ractor!` at the top, with a line saying why.
-It is not somewhere to park a test nobody has looked at.
+library method, declaring a class, asserting the process's output) says `runs_on_the_main_ractor!`
+at the top, with a line saying why. It is not somewhere to park a test nobody has looked at.
+
+Starting a child process is not a reason. A test in a Ractor can start one (zig, node, a program a
+build makes, many at once), since `vblank/testing` makes standard output unbuffered. What fails is
+reading something only the main Ractor may, such as `RbConfig.ruby`; read it once at load, into a
+constant. Older files say a child process "hangs inside a Ractor": that is stale, and such a file
+moves into the pool when it is next worked on.
 
 ## Which frame's numbers the picture was drawn from
 

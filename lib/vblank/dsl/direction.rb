@@ -11,7 +11,7 @@ module VBlank
     # It's a shared vocabulary, not just a sprite thing: anything that moves or faces a
     # way (a sprite you steer, a snake's heading) can lean on the same names instead of
     # hand-writing the arithmetic.
-    module Direction
+    module Direction # :nodoc:
       # name -> [dx, dy] unit step. Screen coordinates, so "up" decreases y.
       UNIT = Ractor.make_shareable({
         up:    [0, -1], down:  [0,  1], left: [-1, 0], right: [1, 0],

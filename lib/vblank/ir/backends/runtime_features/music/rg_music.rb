@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE MUSIC PLAYER (`play_song`, `play_sound_effect`, `stop_music`, `hold_music`): songs walked a
+# The music player (`play_song`, `play_sound_effect`, `stop_music`, `hold_music`): songs walked a
 # frame at a time, the sound effects that are songs walked by the same player, the voices claimed by
 # rank, the music volume followed, and the pitch wobble, swell and shape stepping that only notes do.
 # Joined into the runtime's class after rg_sound.rb (and after the mix, for a game that has both)
@@ -48,7 +48,7 @@ RG_WAVE_QUARTERS = 6 # Where the wave voice's loudness for each volume starts in
 RG_SONG_STARTS = 1
 RG_NUMBERS_PER_SONG = 5
 RG_NUMBERS_PER_PART = 6
-RG_EFFECT_ROWS = 2
+RG_EFFECT_ROWS = 3
 RG_NUMBERS_PER_EFFECT = 6
 RG_EFFECT_SONG = 0
 RG_EFFECT_NOTES = 1
@@ -98,6 +98,7 @@ def rg_music_setup
   @rg_effect_running = Array.new(RG_EFFECTS_MOST, false)
   @rg_effect_frame = Array.new(RG_EFFECTS_MOST, 0)
   @rg_effect_cursors = Array.new(RG_EFFECTS_MOST)
+  @rg_effect_clock = 0 # the effects' timer, from power-on (rg_step_effect_clock)
 end
 
 # The game's own beep, wave or stop_wave took +voice+: a note held there wobbles no more and steps
@@ -120,6 +121,7 @@ def rg_counted_a_frame = @rg_game_sound_rules[RG_WAVE_QUARTERS + RG_VOLUMES + 1]
 def rg_song_count = @rg_game_music[0]
 def rg_effect_count = @rg_game_effects[0]
 def rg_notes_put_in_waveforms = @rg_game_effects[1]
+def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a frame, 0 for none
 
 # --- the player ---
 
@@ -273,7 +275,7 @@ def rg_step_wobbles
   end
 end
 
-# A SQUARE NOTE'S SHAPES, by its voice: rg_sound.c's shape_walk, and its other shape functions.
+# A square note's shapes, by its voice: rg_sound.c's shape_walk, and its other shape functions.
 RgShapeWalk = Struct.new(:bits, :frame, :steps)
 RG_EIGHTHS_OF_SHAPE = [1, 2, 4, 6].freeze
 
@@ -298,7 +300,7 @@ def rg_shape_stop(voice)
   rg_swell_stop(voice)
 end
 
-# A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, by its voice: rg_sound.c's swell_walk, and its
+# A song's swelling note held under the music volume, by its voice: rg_sound.c's swell_walk, and its
 # other swell functions.
 RgSwellWalk = Struct.new(:active, :step, :volume, :counted, :swelling, :wave_ticks, :eighths_high)
 RG_LOUDEST = RG_VOLUMES - 1
@@ -723,19 +725,36 @@ end
 
 def rg_effects_by_rank = RG_EFFECT_ROWS + (rg_effect_count * RG_NUMBERS_PER_EFFECT)
 
-# The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
-# and the effects below it.
-def rg_music_sound_frame
-  @rg_level = rg_full_level if @rg_level < 0
-  rg_refuse_too_many_effects
-  rg_switch_to_wanted_song
+# The sound effects' timer (rg_music.c's step_effect_clock): how many ticks the frame has.
+def rg_step_effect_clock
+  return 1 if rg_effect_clock_step.zero?
+
+  @rg_effect_clock += rg_effect_clock_step
+  ticks = @rg_effect_clock >> 16
+  @rg_effect_clock &= 0xFFFF
+  ticks
+end
+
+# Each effect asked for since the last tick, taken up for the tick playing now.
+def rg_move_asked_effects_to_tick
   rg_effect_count.times do |effect|
     @rg_effect_asked_now[effect] = @rg_effect_asked[effect]
     @rg_effect_asked[effect] = false
   end
+end
+
+# The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
+# and the effects below it. On a frame the effects' timer has no tick, the effects do nothing; a
+# frame of several ticks plays its later ones after the song (IR::Tunes, "Several ticks in one frame").
+def rg_music_sound_frame
+  @rg_level = rg_full_level if @rg_level < 0
+  rg_refuse_too_many_effects
+  rg_switch_to_wanted_song
+  ticks = rg_step_effect_clock
+  rg_move_asked_effects_to_tick if ticks.positive?
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
   by_rank = rg_effects_by_rank
-  at = 0
+  at = ticks.positive? ? 0 : rg_effect_count
   while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
     rg_play_effect_frame(@rg_game_effects[by_rank + at])
     at += 1
@@ -744,6 +763,10 @@ def rg_music_sound_frame
   while at < rg_effect_count
     rg_play_effect_frame(@rg_game_effects[by_rank + at])
     at += 1
+  end
+  (ticks - 1).times do
+    rg_move_asked_effects_to_tick
+    rg_effect_count.times { |place| rg_play_effect_frame(@rg_game_effects[by_rank + place]) }
   end
   rg_step_swells
   rg_step_wobbles
@@ -820,7 +843,7 @@ RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
 # "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
 # far into the tune, the volume its notes were set at, and how many notes and voices are held.
 RgMusicFields = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
-                           :held_voices)
+                           :held_voices, :effect_clock)
 
 # "music.parts", one a part of the playing tune: whether it walks its notes after the first time
 # through, and which comes next. The rest of a part is the song's, read again from it.
@@ -832,7 +855,7 @@ def rg_music_visit_sound_state
                                      wanted: @rg_wanted, playing: @rg_playing, ended: @rg_ended, stops: @rg_stops,
                                      stops_seen: @rg_stops_seen, held: rg_state_flag(@rg_music_held),
                                      song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
-                                     held_voices: @rg_holder_order.length
+                                     held_voices: @rg_holder_order.length, effect_clock: @rg_effect_clock
                                    ))
   songs = (-1...rg_song_count)
   unless [fields.wanted, fields.playing, fields.ended].all? { |song| songs.cover?(song) } &&
@@ -847,6 +870,7 @@ def rg_music_visit_sound_state
   @rg_music_held = fields.held != 0
   @rg_song_frame = fields.song_frame
   @rg_level = fields.level
+  @rg_effect_clock = fields.effect_clock
   rg_visit_part_walks
   rg_visit_held_notes(fields.held_notes)
   rg_visit_music_voices(fields.held_voices)

@@ -64,7 +64,7 @@ class TestSongTooManyPartsGuardrail < Minitest::Test
     assert_match(/remove `plays:` from it/, message)
   end
 
-  # THE TWO VOICES THE CONSOLE PLAYS ITSELF COST NO MIXER VOICE, which is the thing an author
+  # The two voices the console plays itself cost no mixer voice, which is the thing an author
   # cannot work out and the reason to reach for them before a ninth recording.
   def test_a_song_out_of_mixer_voices_is_pointed_at_the_two_that_cost_none
     message = detect(Array.new(TOO_MANY) { part(:organ) }).first.message

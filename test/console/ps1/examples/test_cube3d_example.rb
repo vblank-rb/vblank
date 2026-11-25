@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/cube3d").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/cube3d").to_s)
 
 # The Cube 3D example (examples/cube3d.rb) on every run that plays games as the PlayStation: a crate
 # seen from a viewer the player flies, laid out for the PlayStation's screen, 320 by 240. On the

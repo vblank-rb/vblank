@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# EACH SCENE'S BACKGROUND COLOURS ARE ITS OWN. The console holds one table of background
+# Each scene's background colours are its own. The console holds one table of background
 # colours, in sixteen groups of sixteen, and two scenes are never on screen together — so a
 # title screen and a room each get the whole table beside what every scene shows, the way a
 # scene's tile pictures already take turns with the other scenes'.
@@ -60,10 +60,7 @@ class TestSceneBackgroundColorsOnTheAdvance < Minitest::Test
       game_loop do
         pass += 1
         mode = 1 if pass == switch_at
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :mode)
       end
     end
   end
@@ -106,7 +103,7 @@ class TestSceneBackgroundColorsOnTheAdvance < Minitest::Test
         background :ground, tiles: :stones, map: Array.new(20) { |r| Array.new(30) { |c| ("a".ord + ((r + c) % 18)).chr }.join }
         background(:rays, tiles: :light, map: ["#"]).draw_with :shimmer
       end
-      game_loop { case_var(:mode) { when_val 0, :crowded } }
+      game_loop { call({ 0 => :crowded }, number: :mode) }
     end
     error = assert_raises(GBA::LoweringError) { GBA.new.lower(prog) }
     assert_includes error.message, ":crowded"
@@ -141,10 +138,7 @@ class TestSceneBackgroundColorsOnTheAdvance < Minitest::Test
         pass += 1
         mode = 1 if pass == 4
         mode = 0 if pass == 12
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :mode)
       end
     end
   end
@@ -175,7 +169,7 @@ class TestSceneBackgroundColorsOnTheAdvance < Minitest::Test
         background :ground, tiles: :stones, map: Array.new(20) { |r| Array.new(30) { |c| ("a".ord + ((r + c) % 15)).chr }.join }
         background(:rays, tiles: :light, map: ["#"]).draw_with :shimmer
       end
-      game_loop { case_var(:mode) { when_val 0, :both } }
+      game_loop { call({ 0 => :both }, number: :mode) }
     end
     error = assert_raises(GBA::LoweringError) { GBA.new.lower(prog) }
     assert_includes error.message, "no group is left"
@@ -207,10 +201,7 @@ class TestSceneBackgroundColorsOnTheAdvance < Minitest::Test
         room = 1 if pass == 3
         mode = 1 if pass == 5
         ground.show_map room
-        case_var(:mode) do
-          when_val 0, :plain
-          when_val 1, :signed
-        end
+        call({ 0 => :plain, 1 => :signed }, number: :mode)
       end
     end
   end

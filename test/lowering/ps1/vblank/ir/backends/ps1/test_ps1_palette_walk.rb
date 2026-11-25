@@ -3,13 +3,13 @@
 require "test_helper"
 require "palette_walk_tests"
 
-# test/palette_walk_tests.rb on a PlayStation, whose runtime works a colour out in rt_color_walked
+# test/palette_walk_tests.rb on a PlayStation, whose runtime works a colour out in rt_colors_walk_entry
 # (Runtime::Colors) for a screen drawn from tiles.
 class TestPS1PaletteWalk < Minitest::Test
   include PaletteWalkTests
 
   CONSOLE = :ps1
-  COLOR_ROUTINE = "rt_color_walked"
+  COLOR_ROUTINE = "rt_colors_walk_entry"
 
   # The PlayStation's graphics chip mixes by halves and sums, and how it fades part of the screen is
   # decided when it is made (Console::PS1Answers::UNMADE_VERBS): until then such a fade is refused as not

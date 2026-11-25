@@ -2,12 +2,12 @@
 
 require "stringio"
 
-# WORK THAT ENDS WHERE A TEST ASKS, on the PlayStation: a game whose every pass calls one routine that
+# Work that ends where a test asks, on the PlayStation: a game whose every pass calls one routine that
 # goes round `repeat(turns) { total += 3 }`, and the turns that make its pass end a given number of the
 # picture's lines past the blank its pass began before. A pass that runs over a frame, ends a few lines
 # late, or runs into a third frame is what the profile's and the checked run's tests are about.
 #
-# THE TURNS ARE MEASURED, NOT WRITTEN DOWN. How many cycles a turn takes is the lowering's, and it gets
+# The turns are measured, not written down. How many cycles a turn takes is the lowering's, and it gets
 # quicker (a count held in a register cut a turn from 10.4 cycles to 8.7), so a count written in a test
 # stops ending where it meant to and the test fails for a reason of its own. The pass's end is read off
 # two calibrating games, a few frames each, played in Beetle PSX through the profile, and the turns are

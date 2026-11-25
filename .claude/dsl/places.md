@@ -159,9 +159,10 @@ one, **right**, **up** and **ahead**). Worked example: `test/console/gba/vblank/
   rooms show, in what order, and how far the look goes is the game's to decide (the old first-person
   games walked from the player's room through each doorway it could see). Two settings and one verb
   let it:
-  - `faces: list` — draw only the faces whose numbers (what `face` gives back) a `list` holds, in its
-    order, a later one over an earlier. Its length is read as the drawing starts; a number that is not a
-    face of the place is passed over. A list that is not a list, or holds fractions, is a friendly error.
+  - `faces: seen` — draw only the faces whose numbers (what `face` gives back) an Array the game changes
+    holds (`seen = Array.new(capacity: 64)`), in its order, a later one over an earlier. Its size is read
+    as the drawing starts; a number that is not a face of the place is passed over. Anything but such an
+    Array, or one that holds fractions, is a friendly error.
   - `window: [left, top, right, bottom]` — hold the faces to a rectangle the game works out as it runs:
     whole numbers or variables, the right and bottom just past the last pixel, as `inside` counts. It is
     held inside the view; the projection does not move. Anything but four whole numbers is a friendly

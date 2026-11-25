@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # ONE PROGRAM, WRITTEN OUT AS C. Make one per program and ask for #source.
+        # One program, written out as C. Make one per program and ask for #source.
         #
         # Computer::Lowering builds the tree of statements; this prints it as C with Printer.
         class Lowering < Computer::Lowering

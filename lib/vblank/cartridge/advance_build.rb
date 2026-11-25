@@ -2,14 +2,14 @@
 
 module VBlank
   module Cartridge
-    # THE GAME BOY ADVANCE'S CARTRIDGE, from a checked program (see Console::AdvanceKit): lowered
+    # The Game Boy Advance's cartridge, from a checked program (see Console::AdvanceKit): lowered
     # to ARM by IR::Backends::GBA, checked again for what the lowering decided, and assembled.
     module AdvanceBuild
       module_function
 
-      # THE SETTINGS ONLY THE ADVANCE HAS (its console settings), by the name each is set with. A
-      # game for the Advance and the Color sets them once, and its Color cartridge is built without
-      # them; a build for the Color alone that sets one is refused
+      # The settings only the Advance has (its console settings, Console::AdvanceKit::CONSOLE_SETTINGS),
+      # by the name each is set with. A game for the Advance and the Color sets them once, and its
+      # Color cartridge is built without them; a build for the Color alone that sets one is refused
       # (Console.refuse_unusable_console_settings!).
       #
       #   code, maker     the four characters an emulator tells one cartridge from another by, and
@@ -21,13 +21,11 @@ module VBlank
       #                   decides unless set (see IR::Backends::GBA::TopOfQuickMemory)
       #   profile         a measurement taken earlier, a path or a Diagnostics::RoutineProfile,
       #                   which decides what goes in the quick memory
-      SETTINGS = %i[code maker fast_cartridge fast_code stack_room profile].freeze
+      SETTINGS = Console::AdvanceKit::CONSOLE_SETTINGS
 
       # The least stack room a game can ask for: the console's own routines a game calls need this
       # much of it.
       LEAST_STACK_ROOM = 64
-
-      def console_settings = SETTINGS
 
       # Refuses a value in +said+ (a setting's name to the value it was set to, for the settings
       # above) that the Advance's build cannot use, naming what it can.
@@ -85,6 +83,7 @@ module VBlank
         request.progress.done
         unless evaluated.dump_requests.empty?
           Diagnostics::FuncDumper.new(rom, backend.func_ranges, tables: backend.number_tables,
+                                                                spans: backend.attribution.statement_spans,
                                                                 out: request.out, err: request.err)
                                  .dump(evaluated.dump_requests)
         end
@@ -109,7 +108,7 @@ module VBlank
                                              built: backend.build_record(program))
       end
 
-      # A PROFILE THAT HAS DRIFTED FROM ITS GAME still decides what goes in the quick memory, and
+      # A profile that has drifted from its game still decides what goes in the quick memory, and
       # would go on doing it, quietly and increasingly wrongly, as the game moved on. So a routine
       # the profile names that the program no longer has is said out loud.
       #

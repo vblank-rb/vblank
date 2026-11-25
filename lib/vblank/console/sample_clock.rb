@@ -2,11 +2,11 @@
 
 module VBlank
   module Console
-    # A SAMPLE CLOCK A PER-FRAME MIXER CAN ACTUALLY KEEP UP WITH.
+    # A sample clock a per-frame mixer can actually keep up with.
     #
     # The mixer fills a buffer once a frame and points the sound copy at it; the copy then feeds
     # the hardware, which eats a sample every time a timer overflows. Handing over cleanly at every
-    # frame boundary puts TWO conditions on the clock, and missing either one puts an impulse in
+    # frame boundary puts two conditions on the clock, and missing either one puts an impulse in
     # the sound at the frame rate — not a drift you notice after a minute, a rattle under the whole
     # soundtrack, like a rolled tongue. Both are measured (test_mixer_sample_clock.rb), not
     # reasoned about.
@@ -14,7 +14,7 @@ module VBlank
     # ONE: as many samples must be written each frame as are read. The reads are fixed by the
     # clock — the timer overflows every +period+ cycles, so the hardware reads cycles_a_frame /
     # period samples a frame — and that is a whole number only when a frame divides by +period+
-    # exactly. Which means the RATE is a consequence of picking a clock, not something to choose
+    # exactly. Which means the rate is a consequence of picking a clock, not something to choose
     # first and then round. Picking it first is how this went wrong: a rate divided by a round 60
     # gave one sample a frame fewer than a console running at 59.7275 frames a second actually
     # eats.
@@ -30,7 +30,7 @@ module VBlank
     # lots are all in this set.
     #
     # So: take the rate the program's recordings suggest, and give back the nearest clock that
-    # satisfies both. Nearest BY RATIO, because that is how a rate is heard. The author never names
+    # satisfies both. Nearest by ratio, because that is how a rate is heard. The author never names
     # this rate and never sees it: their recordings are resampled to it as they play, at the pitch
     # and for the duration they were recorded at, so landing off it costs a little bandwidth or a
     # little mixing and nothing else. `rom.profile` says which rate a game got.
@@ -38,7 +38,7 @@ module VBlank
     # It is the console's, not a lowering's, because the interpreter mixes the very samples the
     # cartridge hands its hardware, and so has to mix them at the same rate.
     #
-    # A CONSOLE WHOSE SOUND CHIP PLAYS EACH RECORDING ON A VOICE OF ITS OWN (the Super Nintendo's)
+    # A console whose sound chip plays each recording on a voice of its own (the Super Nintendo's)
     # has no mix to hand over and no timer to pick: its voices read +hz+ samples a second, on a
     # clock of their own beside the display's. The interpreter keeps the same count of where each
     # recording has got to, so it reads at that rate too, a whole number of samples a frame — the

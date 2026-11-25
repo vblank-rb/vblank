@@ -7,7 +7,33 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # MORE BACKGROUND LAYERS THAN THE CONSOLE CAN STACK.
+        # An error for a screen that shows more backgrounds at one time than the console can stack.
+        # A background past the count would not be drawn at all, which looks like a mistake in the
+        # art, so the build stops and names both counts:
+        #
+        # > <The scene :name, or This game> shows <number of backgrounds> at one time (<names>).
+        # > The <console> shows <number of backgrounds> at one time
+        #
+        # To fix this, show no more than the console's number on one screen. On a console that
+        # can show a status bar or a background kept above a row as an extra layer, the message
+        # offers that too.
+        #
+        # A console that turns and resizes backgrounds has fewer scrolling ones beside a
+        # background that turns, and only so many that turn:
+        #
+        # > Background :<name> turns or resizes. Beside a background that turns, the <console>
+        # > shows <number of backgrounds> at one time.
+        #
+        # > <The scene :name, or This game> turns or resizes <number> backgrounds at one time
+        # > (<names>). The <console> can turn <number of backgrounds> at one time. To fix this, turn
+        # > <number of backgrounds>, and let the others scroll.
+        #
+        # Each scene is counted on its own, because scenes take turns with the layers. So a game
+        # with scenes can also move a background into a scene that has room. A game drawn only on
+        # a bitmap screen has no layers to run out of.
+        #
+        #--
+        # More background layers than the console can stack.
         #
         # A console stacks so many tile layers, and one that can turn a layer arranges them
         # one of two ways: the Advance has four that scroll and none that turn, or two that
@@ -23,7 +49,7 @@ module VBlank
         # art rather than as a budget. So this refuses the program and names both
         # counts.
         #
-        # WHY IT IS A GUARDRAIL AND NOT ONLY THE LOWERING'S BUSINESS. The rule is a
+        # Why it is a guardrail and not only the lowering's business. The rule is a
         # fact about the console, knowable from the program the moment it is written.
         # Left in the lowering it reached only a game that built a cartridge — and a
         # game's own tests run on the headless interpreter, because that is fast and
@@ -32,10 +58,11 @@ module VBlank
         # here, and so does the build before either of them, so all three refuse the
         # same programs in the same words.
         #
-        # TWO REFUSALS, IN THE ORDER THAT DIAGNOSES BEST. A program with two turning
+        # Two refusals, in the order that diagnoses best. A program with two turning
         # backgrounds AND too many scrolling ones is told about the second turner
         # first: cutting a scrolling layer would not save it, and the arrangement it
         # was counted against is not one the console has anyway.
+        #++
         class TooManyBackgroundLayers
           NAME = :too_many_background_layers
           PLAIN_NAME = "more backgrounds than the console stacks"
@@ -46,8 +73,8 @@ module VBlank
             # tile screen anywhere has no layers to run out of however many it writes.
             return [] unless Modes.draws_with_tiles?(program)
 
-            # EVERY COUNT HERE IS ONE SCREENFUL AT A TIME, never across the whole program.
-            # The console spends a layer while something is being DRAWN, so what has to fit
+            # Every count here is one screenful at a time, never across the whole program.
+            # The console spends a layer while something is being drawn, so what has to fit
             # is what can be on screen together — and two scenes that take turns never are.
             # A game with four scrolling backgrounds in each of two scenes asks for four
             # layers, twice, and fits; so do two scenes that each turn a background of their
@@ -74,7 +101,7 @@ module VBlank
 
           private
 
-          # What is wrong with ONE screen, or nil when it fits.
+          # What is wrong with one screen, or nil when it fits.
           #
           # The two refusals are in the order that diagnoses best. A screen with two turning
           # backgrounds AND too many scrolling ones is told about the second turner first:
@@ -86,7 +113,7 @@ module VBlank
               return error_finding(sharing.last, too_many_turning_message(sharing, screenful.scene, console))
             end
 
-            # HOW MANY SCROLLING ONES FIT depends on whether THIS screen holds a turning
+            # How many scrolling ones fit depends on whether this screen holds a turning
             # layer, because that is what decides which arrangement the console is put in as
             # the screen is set up.
             room = console.scrolling_backgrounds(turning: sharing.any?)
@@ -104,7 +131,7 @@ module VBlank
             error_finding(scrolling[room], too_many_scrolling_message(scrolling, sharing, held, screenful.scene, console))
           end
 
-          # THE ONE BACKGROUND OF THE SCREEN THAT GOES ON A LAYER BEYOND THE COUNT, or nil. A
+          # The one background of the screen that goes on a layer beyond the count, or nil. A
           # console with such a layer (Console::Description#layer_for_held_rows: the Super
           # Nintendo's third layer of mode 1, four colours a tile) keeps there a background shown
           # on some rows only, a status bar or one kept above a row, beside its two others. Only
@@ -128,7 +155,7 @@ module VBlank
           end
 
           # The way out a game with scenes has: scenes take turns, so a background turned in
-          # one of them stops counting against the others. Said about the TURNING one here,
+          # one of them stops counting against the others. Said about the turning one here,
           # where #move_into_scene_hint below is about a scrolling one — pointing at the wrong one is
           # advice that cannot be followed.
           def move_turner_hint(scene)
@@ -187,10 +214,10 @@ module VBlank
             console.turns_backgrounds? ? "#{count} scrolling background#{'s' unless count == 1}" : background_count_words(count)
           end
 
-          # WHAT THE COUNT IS ABOUT, said plainly, because the number only makes sense
+          # What the count is about, said plainly, because the number only makes sense
           # beside it: a game can have many more backgrounds than this, as long as no one
           # screen shows too many. A game that declares no scenes shows everything at once,
-          # so for that one the screenful IS the game and saying so would only puzzle.
+          # so for that one the screenful is the game and saying so would only puzzle.
           def scrolling_count_sentence(scrolling, scene, console)
             "#{screen_subject(scene)} shows #{scrolling_count_words(scrolling.size, console)} at one time " \
               "(#{name_list(scrolling)})."

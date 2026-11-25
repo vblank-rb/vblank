@@ -2,12 +2,12 @@
 
 require "test_helper"
 
-# ASKING WHERE A NAMED SPRITE IS — of the console, and of the oracle that stands in for it.
+# Asking where a named sprite is — of the console, and of the oracle that stands in for it.
 #
 # The console keeps a table of 128 sprites and composes the picture from it, and reading that
 # table answers questions the finished picture cannot: it tells a hidden sprite from one drawn
 # in the backdrop colour, from one behind a background, from one a pixel off the edge. What
-# the table says about each row is which SLOT it is in, and a slot is a number nobody wrote.
+# the table says about each row is which slot it is in, and a slot is a number nobody wrote.
 #
 # So a test with a cast used to identify its hero by guessing — by slot number (a magic number
 # that moves the day the game declares something earlier), by position (which needs the game to
@@ -308,7 +308,7 @@ class TestNamedSprites < Minitest::Test
   # --- where a sprite is, when the framework moved the picture to save memory ---
   #
   # A pose is stored trimmed to what it actually draws, and the sprite is put that much further
-  # along so the picture lands where it did. A pose drawn BACKWARDS is trimmed from the other
+  # along so the picture lands where it did. A pose drawn backwards is trimmed from the other
   # side, so it is put a different amount further along. Neither is anything the author wrote,
   # so a row that reported the console's own number would be quietly wrong by up to a canvas —
   # right for a sprite facing one way and wrong for the same sprite facing the other.

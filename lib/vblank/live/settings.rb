@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # WHAT THE WINDOW KEEPS FOR A PLAYER, and the settings file it is kept in: the window's own
+    # What the window keeps for a player, and the settings file it is kept in: the window's own
     # settings (WindowMenu::Settings, which the menu changes), which key and gamepad button is each
     # console button, and the keys the window keeps for itself (hotkeys). The rules are the desktop
     # build's, written again in Ruby from its runtime/rg_window.c — the same lines, the same
@@ -32,7 +32,8 @@ module VBlank
       # Super Nintendo's X and Y (and the PlayStation's Triangle and Square, which a game names :x
       # and :y) are W and Q, above the shoulders' S and A, and the top and left face buttons. The
       # Genesis's C is the C key, beside Z and X, and the left face button, which is Y's too: no
-      # console has both, and a window reads only the buttons its console has (+buttons+ below).
+      # console has both, and a window reads only the buttons its console has (+buttons+ below). A
+      # PlayStation's L2 and R2 are E and R, on the top row beside Q and W, and the gamepad's triggers.
       Button = Data.define(:name, :setting, :keys, :pad)
       BUTTONS = Ractor.make_shareable([
         Button.new("A", :a, [27], :east), Button.new("B", :b, [29], :south),
@@ -40,7 +41,8 @@ module VBlank
         Button.new("Right", :right, [79], :dpad_right), Button.new("Left", :left, [80], :dpad_left),
         Button.new("Up", :up, [82], :dpad_up), Button.new("Down", :down, [81], :dpad_down),
         Button.new("R", :r, [22], :right_shoulder), Button.new("L", :l, [4], :left_shoulder),
-        Button.new("X", :x, [26], :north), Button.new("Y", :y, [20], :west), Button.new("C", :c, [6], :west)
+        Button.new("X", :x, [26], :north), Button.new("Y", :y, [20], :west), Button.new("C", :c, [6], :west),
+        Button.new("L2", :l2, [8], :left_trigger), Button.new("R2", :r2, [21], :right_trigger)
       ])
 
       # A key the window keeps for itself, and the key it starts on: P, N, F3, F11, M, F1, Tab.
@@ -51,9 +53,11 @@ module VBlank
         Hotkey.new("Mute", :mute, 16), Hotkey.new("Show menu", :menu, 58), Hotkey.new("Fast forward", :fast_forward, 43)
       ])
 
-      # A gamepad's buttons, in SDL's order: each one's place here is SDL's number for it.
+      # A gamepad's buttons, in SDL's order: each one's place here is SDL's number for it. Its two
+      # triggers come after them, at the windows' own numbers (IR::ComputerControls::PADS), since SDL
+      # reads a trigger as an axis: SDL#triggers_down says which are pulled from Buttons::HELD_FROM.
       PAD_BUTTONS = %i[south east west north back guide start left_stick right_stick left_shoulder right_shoulder
-                       dpad_up dpad_down dpad_left dpad_right].freeze
+                       dpad_up dpad_down dpad_left dpad_right left_trigger right_trigger].freeze
 
       KEYS_A_BUTTON = 2 # The most keys one button can have
       PADS_A_BUTTON = 2 # The most gamepad buttons one button can have
@@ -62,9 +66,8 @@ module VBlank
       FAST_SPEEDS = (2..8)
       FLAGS = { "fullscreen" => :fullscreen, "mute" => :muted, "frame_rate" => :frame_rate, "frame_time" => :frame_time }.freeze
 
-      # The desktop build's starting values: the window's (WindowMenu::STARTING), and the frame
-      # time, which its developer view shows, not shown.
-      STARTING = Ractor.make_shareable(WindowMenu::STARTING.to_h.merge(frame_time: false))
+      # The desktop build's starting values: the window's (WindowMenu::STARTING).
+      STARTING = Ractor.make_shareable(WindowMenu::STARTING.to_h)
 
       # The key +hotkey+ starts on.
       def self.starting_key(hotkey) = HOTKEYS.find { |each| each.setting == hotkey }.key
@@ -276,7 +279,7 @@ module VBlank
       # read next, a game's: that file keeps only what it holds, and what changes while it plays.
       def mark_inherited = @owned.clear
 
-      # THE SETTINGS AS TEXT for the file: every one, for the file every game shares, or with
+      # The settings as text for the file: every one, for the file every game shares, or with
       # +own_only+ only those the file being written to holds for itself, for a game's own.
       def text(own_only: false)
         all = !own_only
@@ -304,7 +307,8 @@ module VBlank
           lines.concat(keys.empty? ? ["key.#{button.setting} = none"] : keys.map { |key| "key.#{button.setting} = #{key_name(key)}" })
         end
         lines << "" << "# Gamepad buttons: south, east, west, north, back, guide, start, left_stick, right_stick,"
-        lines << "# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right. A button has a line for each of its own."
+        lines << "# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right, left_trigger, right_trigger."
+        lines << "# A button has a line for each of its own."
         BUTTONS.each do |button|
           next unless all || PADS_A_BUTTON.times.any? { |slot| @owned[[:pad, button.setting, slot]] }
 
@@ -318,7 +322,7 @@ module VBlank
         "#{lines.join("\n")}\n"
       end
 
-      # READS SETTINGS TEXT over what is there now: each line it names a setting in replaces that
+      # Reads settings text over what is there now: each line it names a setting in replaces that
       # one and leaves the others, and that setting is now the file's own. Gives what could not be
       # used, a sentence each.
       def read(text)

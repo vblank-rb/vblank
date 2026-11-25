@@ -5,7 +5,7 @@
 # A disc of sunlight turns and swells overhead while two sheets of light shafts drift
 # past it at different speeds. That is the console's MIXED arrangement — two background
 # layers that scroll beside one that turns and resizes — and this file never says so. A
-# background turns because something turns it, and `sun.rotate` on the line below is the
+# background turns because something turns it, and `sun.rotate!` on the line below is the
 # whole of the asking.
 #
 # What makes it worth a title screen rather than a test is what happens next: press START
@@ -58,7 +58,7 @@ module Dive
     #
     # The steps are named here so that the list of them and the counter that walks it cannot
     # drift apart, and how long each is held is a SHIFT, so the counter is divided for free.
-    SHIMMER = Ractor.make_shareable(%i[shimmer0 shimmer1 shimmer2 shimmer3])
+    SHIMMER = %i[shimmer0 shimmer1 shimmer2 shimmer3]
     SHIMMER_HELD = 3 # eight frames a step
 
     # ...AND THEY ARE LIGHT, AND LIGHT ADDS. The near sheet is see-through, but not the way
@@ -76,18 +76,18 @@ module Dive
 
     # The far sheet: open water everywhere, with shafts of light leaning through it. It is
     # the backmost layer of this screen, so it has no holes — there is nothing behind it.
-    FAR = Ractor.make_shareable((0...CELLS).map do |r|
+    FAR = (0...CELLS).map do |r|
       (0...CELLS).map { |c| ((c + (r / 2)) % 8).zero? ? "|" : "." }.join
-    end)
+    end
 
     # The near sheet: nothing but shafts, leaning the other way. A blank cell is a hole
     # the layer behind shows through, which is what makes two sheets read as two.
-    NEAR = Ractor.make_shareable((0...CELLS).map do |r|
+    NEAR = (0...CELLS).map do |r|
       (0...CELLS).map { |c| ((c - (r / 3)) % 16) == 4 ? "|" : " " }.join
-    end)
+    end
 
     # The disc, cut into alternating wedges so that turning it is visible.
-    SUN = Ractor.make_shareable((0...CELLS).map do |r|
+    SUN = (0...CELLS).map do |r|
       (0...CELLS).map do |c|
         across = c - SUN_COL
         down = r - SUN_ROW
@@ -96,7 +96,7 @@ module Dive
         wedge = (Math.atan2(down, across) / Math::PI * (WEDGES / 2.0)).floor
         wedge.even? ? "O" : "o"
       end.join
-    end)
+    end
 
     def initialize(build)
       @build = build
@@ -121,7 +121,7 @@ module Dive
     end
 
     def update
-      @sun.rotate(@sun.angle + TURN_PER_FRAME)
+      @sun.rotate!(@sun.angle + TURN_PER_FRAME)
       breathe
       @far.scroll_by FAR_DRIFT, 0
       @near.scroll_by NEAR_DRIFT, 0

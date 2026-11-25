@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW A CONSOLE KEEPS A POOL (Backends::PoolLayout): which layout a pool is kept in, where its
+# How a console keeps a pool (Backends::PoolLayout): which layout a pool is kept in, where its
 # slots are in that layout, and the list of every console's own layouts that each console's
 # description is held to.
 class TestPoolLayout < Minitest::Test

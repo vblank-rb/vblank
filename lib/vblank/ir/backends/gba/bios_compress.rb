@@ -31,7 +31,7 @@ module VBlank
         # actually shrinks the blob, we report `:none` and the backend keeps the plain
         # copy. So packing can only help — it never makes a blob bigger.
         #
-        # This is purely how the GBA backend STORES its assets — a lowering concern, not
+        # This is purely how the GBA backend stores its assets — a lowering concern, not
         # a program behavior. The program does the same thing either way; only the cart
         # gets smaller. So it lives here in the GBA lowering and nowhere else: the
         # reference interpreter reads the raw asset data directly and never sees a
@@ -243,7 +243,7 @@ module VBlank
           # position walks its candidate matches nearest-first, which is the order that
           # decides ties, so the packed bytes come out the same as a full scan of the
           # window would give. Building it is one pass; it replaces a search that
-          # re-read up to 4096 earlier positions for EVERY byte of every asset.
+          # re-read up to 4096 earlier positions for every byte of every asset.
           def match_chains(data, n)
             previous = Array.new(n)
             latest = {}

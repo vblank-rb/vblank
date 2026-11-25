@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# WHAT A BUILD SAYS IT IS DOING (lib/vblank/messages/progress.rb).
+# What a build says it is doing (lib/vblank/messages/progress.rb).
 #
 # A big game takes a while to build, and a build that says nothing is indistinguishable from one
 # that has hung. These check the thing a build talks to: that the default says nothing at all,
@@ -46,17 +46,21 @@ class TestProgress < Minitest::Test
   # clock every few hundred, so a three-line program never gets as far as saying anything.
   # It has a routine and a frame in it because that is what the phase choosing what goes in the
   # quick memory has to choose BETWEEN — a program of loose statements gives it nothing to rank.
-  MANY_STATEMENTS = proc do
-    screen :bitmap
-    func(:paint) { 300.times { |n| pixel n % 240, n % 160, :red } }
-    game_loop { call :paint }
+  # Made by a method, not kept in a constant: a constant's block is shareable between Ractors,
+  # and a shareable block's game code cannot be read as normal Ruby.
+  private def many_statements
+    proc do
+      screen :bitmap
+      func(:paint) { 300.times { |n| pixel n % 240, n % 160, :red } }
+      game_loop { call :paint }
+    end
   end
 
   # Build it while a progress is listening, and hand back its phase lines in columns.
   private def phases_of_a_build
     out = StringIO.new
     VBlank.build("SPEAK", console: :gba, code: "ASPK", maker: "01", out: StringIO.new, err: StringIO.new,
-                          progress: Progress.to(out), &MANY_STATEMENTS)
+                          progress: Progress.to(out), &many_statements)
     phases_in(out)
   end
 
@@ -65,9 +69,9 @@ class TestProgress < Minitest::Test
     phases_of_a_build.to_h { |phase| [phase.name, phase.where] }
   end
 
-  # --- THE ONE THAT SAYS NOTHING ---------------------------------------------------------------
+  # --- the one that says nothing ---------------------------------------------------------------
 
-  # It is the DEFAULT, so every method has to be here. A caller asking "is anybody listening?"
+  # It is the default, so every method has to be here. A caller asking "is anybody listening?"
   # before every line is forty chances to forget one, and reads as uncertainty about something
   # that is never uncertain.
   def test_the_silent_one_answers_every_method
@@ -91,7 +95,7 @@ class TestProgress < Minitest::Test
                  "a build that did not ask for progress should not talk about itself")
   end
 
-  # --- THE ONE THAT WRITES ---------------------------------------------------------------------
+  # --- the one that writes ---------------------------------------------------------------------
 
   def test_it_names_each_phase_in_the_order_they_happened
     out = StringIO.new
@@ -102,7 +106,7 @@ class TestProgress < Minitest::Test
     assert_equal %w[reading checking lowering], out.string.lines.map { |line| line.split.first }
   end
 
-  # A phase's time is written when the phase ENDS, so it is only ever reported once it really
+  # A phase's time is written when the phase ends, so it is only ever reported once it really
   # has elapsed — which is why starting the next phase is what closes the last.
   def test_each_phase_says_how_long_it_took
     clock = FakeClock.new
@@ -132,10 +136,10 @@ class TestProgress < Minitest::Test
     assert_match(%r{27/27\s*\n\z}, out.string)
   end
 
-  # --- A PHASE THAT REPORTS TENS OF THOUSANDS OF TIMES -----------------------------------------
+  # --- a phase that reports tens of thousands of times -----------------------------------------
 
-  # THE ONE THAT WOULD COST MORE THAN IT REPORTS. Lowering ticks per instruction; printing that
-  # often would be slower than the work being described, so the SINK decides when to draw.
+  # The one that would cost more than it reports. Lowering ticks per instruction; printing that
+  # often would be slower than the work being described, so the sink decides when to draw.
   def test_a_hundred_thousand_ticks_is_not_a_hundred_thousand_lines
     clock = FakeClock.new
     out = a_terminal
@@ -176,7 +180,7 @@ class TestProgress < Minitest::Test
     assert_equal 0, built
   end
 
-  # --- WHERE IT IS WRITING DECIDES HOW MUCH IT SHOWS -------------------------------------------
+  # --- where it is writing decides how much it shows -------------------------------------------
 
   # A log is read afterwards and a carriage return in one is noise, so anywhere but a terminal
   # gets one tidy line per phase and nothing in between.
@@ -208,9 +212,9 @@ class TestProgress < Minitest::Test
     assert_equal 1, out.string.lines.length, "a rewritten line is still one line"
   end
 
-  # --- A PHASE THAT IS SAYING NOTHING ----------------------------------------------------------
+  # --- a phase that is saying nothing ----------------------------------------------------------
 
-  # THE ONE THING THE BUILD CANNOT REPORT ITSELF. A phase can spend fifteen seconds inside a
+  # The one thing the build cannot report itself. A phase can spend fifteen seconds inside a
   # single call, and while it is in there it says nothing because it is not running any of our
   # code. A line that is only redrawn when it is told would sit at 0.0s for all of it and read
   # as a hang, so the line keeps its own clock. Uses the real clock, because what is being
@@ -256,7 +260,7 @@ class TestProgress < Minitest::Test
                     "a redraw left the end of the line it replaced showing"
   end
 
-  # --- A PACK, AND A GAME'S OWN CODE -----------------------------------------------------------
+  # --- a pack, and a game's own code -----------------------------------------------------------
 
   # A pack's verbs are mixed into the builder, so `progress` resolves inside one the way `var`
   # and `held` do. Exactly the shape a third party would write.
@@ -304,7 +308,7 @@ class TestProgress < Minitest::Test
     assert_equal "4/4", said.where
   end
 
-  # ...and what a pack SAYS may never change what it BUILDS. Progress is an observation: a pack
+  # ...and what a pack says may never change what it BUILDS. Progress is an observation: a pack
   # that behaved differently when somebody was watching would be a bug that only shows up in the
   # mode nobody tests.
   def test_a_build_that_reports_makes_the_same_cartridge_as_one_that_does_not
@@ -331,7 +335,7 @@ class TestProgress < Minitest::Test
                  phases_in(out).find { |phase| phase.name == "reading the floors" }.where
   end
 
-  # --- THROUGH A REAL BUILD --------------------------------------------------------------------
+  # --- through a real build --------------------------------------------------------------------
 
   def test_a_real_build_names_every_phase_in_order
     assert_equal ["Reading game", "Checking program", "Checking for mistakes",
@@ -395,7 +399,7 @@ class TestProgress < Minitest::Test
     assert_equal "Checking for mistakes", phases_in(out).last.name
   end
 
-  # WHAT THE GUARDRAILS FOUND IS SAID AFTER THE BUILD, not in the middle of it. A paragraph of
+  # What the guardrails found is said after the build, not in the middle of it. A paragraph of
   # prose landing between two phases breaks the run of them in half, and the reader loses the
   # shape of the build — so the findings are held and written once every phase has had its say.
   def test_a_warning_is_said_after_the_build_and_not_in_the_middle_of_it
@@ -412,7 +416,7 @@ class TestProgress < Minitest::Test
                  "every phase should be said before the first word of a warning"
   end
 
-  # --- A BUILD THAT MEASURES ITS GAME ----------------------------------------------------------
+  # --- a build that measures its game ----------------------------------------------------------
 
   # A game built the way `ruby game.rb` builds it is built once, played scene by scene, and built
   # again from what that measured. The first build is a step of the real one, so it is one line —
@@ -420,7 +424,7 @@ class TestProgress < Minitest::Test
   # never a pause with nothing on the screen.
   def test_a_measured_build_says_each_phase_once
     out = StringIO.new
-    game = VBlank.game("MEASURED", consoles: %i[gba], &MANY_STATEMENTS)
+    game = VBlank.game("MEASURED", consoles: %i[gba], &many_statements)
     game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))
     phases = phases_in(out)
 

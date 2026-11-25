@@ -18,6 +18,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 
 - `screen` — works: `screen :bitmap` and `screen :tiled` work: the processor draws both into a picture in memory that the VGA card shows. The game's screen is the card's whole picture, 320 × 200 in mode 13h (the variants :mode_x and :vesa_640x480 are 320 × 240 and 640 × 480), so a game laid out from `screen_width` and `screen_height` fills it. A painted picture has a colour of fifteen bits in each pixel, kept as one of 256 colours in the card's palette. `tear_free: true` changes nothing: every painted screen is drawn in memory and sent to the card between frames, so none tears, what a game paints once stays painted, and `late:` has nothing to decide. `screen :rotozoom` works too: the processor draws the turned background. `pixel_size: 2` is refused: the build does not show a painted screen bigger yet.
 - `setting` — works: the same as on the Advance.
+- `feature?` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on DOS.
 - `built_for?` — works: true when asked about :dos.
 - `screen_width` — works: 320 on DOS, or what the variant says.
@@ -36,7 +37,6 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `timer` — works: a timer ticks by the frame, as the interpreter counts it.
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
-- `dma_fill_rect` — works: the processor fills the rectangle: DOS has no DMA copy for the picture.
 - `draw_rect_at` — works: the same as on the Advance.
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the program.
@@ -49,7 +49,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: the same as on the Advance.
-- `keep_showing` — works: the same as on the Advance.
+- `redraw_on_change` — works: the same as on the Advance.
 - `fade` — works: `fade` and `tint` change the palette the card shows, so the whole picture changes at once. A fade under a layer (`under:`) is refused: the card's 320 × 200 screen shows each pixel as one of 256 palette colours and cannot mix a faded colour with one that is not. How a fade of part of the screen (`inside:`, `outside:`) is made is decided when that is made: until then the build refuses it and says so.
 - `tint` — works: see `fade`.
 - `fade_in` — works: the same as on the Advance.
@@ -106,36 +106,18 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `start_over` — works: the same as on the Advance.
 - `clock` — works: the PC's clock chip keeps the date and the time.
 - `saves_keep_everything` — works: the same as on the Advance.
-- `set` — works: the same as on the Advance.
-- `add` — works: the same as on the Advance.
-- `add_var` — works: the same as on the Advance.
-- `sub` — works: the same as on the Advance.
-- `sub_var` — works: the same as on the Advance.
-- `copy` — works: the same as on the Advance.
-- `negate` — works: the same as on the Advance.
-- `negate!` — works: the same as on the Advance.
-- `flip` — works: the same as on the Advance.
-- `flip!` — works: the same as on the Advance.
-- `abs` — works: the same as on the Advance.
-- `abs!` — works: the same as on the Advance.
-- `negate_abs` — works: the same as on the Advance.
-- `negate_abs!` — works: the same as on the Advance.
-- `clamp` — works: the same as on the Advance.
-- `clamp!` — works: the same as on the Advance.
-- `approach` — works: the same as on the Advance.
-- `approach!` — works: the same as on the Advance.
 - `list` — works: the same as on the Advance.
 - `func` — works: `fast:` means nothing on DOS, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the program holds what each slot holds, as if the game had written it.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a PC has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a PC does not have.
 - `held` — works: a game names the pad's buttons by the shared names: `:a` is Ctrl, `:b` Alt, `:l` Z, `:r` X, `:start` Enter, `:select` Right Shift, and the arrows are the D-pad. There is no `:x` or `:y`, and no joystick: the build reads the keyboard alone. `player: 2` is refused.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `pulled` — works: 0 or 100. Each key of a keyboard is up or down, so a button reads 100 while it is held and 0 otherwise.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a console is played by one person.
 - `mark` — works: the same as on the Advance.
 - `players_connected` — works: 1.
@@ -173,7 +155,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 An answer above is what DOS does with a verb. The build for it is still growing,
 and a game that reaches one of these steps is refused, naming the step, until it is made.
 
-- everything past numbers, the game loop and a painted screen of pixels, rectangles, pictures, text and numbers: the verbs `place`, `viewer`, `change_picture`, `shading`, `screen_spot`, `draw_place`, `grid`, `keep_showing`, `fade_in`, `fade_out`, `flash_screen`, `fade_level`, `pixelate_in`, `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`, `camera_follows`, `color_walk`, `colors_in_use`, `mirror`, `upside_down`, `draw_in_order`, `hide_sprites`, `picture_groups`, `box`, `canvas`, `tile_pictures`, `sprite_tiles`, `font`, `text_width`, `text_height`, `menu`, `part`, `start_over`, `saves_keep_everything`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`, `negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `uses`, `data_pack`, `dump_func`, `entry`, `most_players`, `mark`, `rumble`, `random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `beep`, `draw_place`, `enable_sound`, `fill_face`, `hold_music`, `noise`, `play_from_list`, `play_sample`, `play_song`, `play_sound_effect`, `rumble`, `see_through`, `set_tile_block`, `shade_outside`, `show_light_now`, `stop_music`, `stop_sample`, `stop_wave`, `wave`
+- everything past numbers, the game loop and a painted screen of pixels, rectangles, pictures, text and numbers: the verbs `place`, `viewer`, `change_picture`, `shading`, `screen_spot`, `draw_place`, `grid`, `redraw_on_change`, `fade_in`, `fade_out`, `flash_screen`, `fade_level`, `pixelate_in`, `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`, `camera_follows`, `color_walk`, `colors_in_use`, `mirror`, `upside_down`, `draw_in_order`, `hide_sprites`, `picture_groups`, `box`, `canvas`, `tile_pictures`, `sprite_tiles`, `font`, `text_width`, `text_height`, `menu`, `part`, `start_over`, `saves_keep_everything`, `uses`, `data_pack`, `dump_func`, `entry`, `pulled`, `mark`, `rumble`, `random_numbers`, `enable_sound`, `define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `song`, `play_song`, `stop_music`, `hold_music`, `release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `songs`, `sound_effects`, `sample`, `instrument`; the steps `beep`, `draw_place`, `enable_sound`, `fill_face`, `hold_music`, `list_pack`, `noise`, `play_from_list`, `play_sample`, `play_song`, `play_sound_effect`, `pulled`, `rumble`, `see_through`, `set_tile_block`, `shade_outside`, `show_light_now`, `stop_full`, `stop_music`, `stop_sample`, `stop_wave`, `wave`
 - the 640 × 480 screen (variants: { dos: :vesa_640x480 }): a game that uses one is refused.
 - sprites put in order by a list: a game that uses one is refused.
 - a screen of tiles with other colours, or a sprite turning in blocks; sprites painted from a list: a game that uses one is refused.

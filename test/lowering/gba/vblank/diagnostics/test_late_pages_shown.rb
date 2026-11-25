@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT `late:` BOUGHT AND WHAT IT COST, said in the profile a game reads: the late pages a
+# What `late:` bought and what it cost, said in the profile a game reads: the late pages a
 # tear-free screen showed at once, and how many of those were shown part way down the picture,
 # where they can tear. Counted by how many times the instruction that shows one ran, so the
 # cartridge carries nothing extra to be counted. (When the console shows them is

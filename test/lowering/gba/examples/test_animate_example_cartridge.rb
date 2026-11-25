@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/animate").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/animate").to_s)
 
 # The Animate example's cartridge (examples/animate.rb): it builds, and the coin renders on the
 # console, read in the emulator. What the game shows is in

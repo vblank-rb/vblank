@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# A SCENE'S OWN BACKDROP. Colour 0 of the Super Nintendo's colour memory is what shows wherever
+# A scene's own backdrop. Colour 0 of the Super Nintendo's colour memory is what shows wherever
 # nothing is drawn, and it can change with the rest of a screen's colours, as the console's own
 # games change it. A title of a blue sky hands over to a stage of black, and a scene that says no
 # backdrop shows the game's.
@@ -41,10 +41,7 @@ class TestSceneBackdropOnTheSuperNintendo < Minitest::Test
         faded = 0 if tick == 9
         fade :white, faded
         state = 1 if tick == 6
-        case_var(:state) do
-          when_val 0, :board
-          when_val 1, :title
-        end
+        call({ 0 => :board, 1 => :title }, number: :state)
       end
     end
     b.finalize_program

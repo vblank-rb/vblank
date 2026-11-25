@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "pieced_original"
 
-# A PART OF THE UNPACKING IN PIECES (`slots.fill_from_copy :music, pieces: n`, a slot's
+# A part of the unpacking in pieces (`slots.fill_from_copy :music, pieces: n`, a slot's
 # `pieces:`): the pack is the same however the music is cut, and the routine split for several
 # workers (Original::PiecedUnpacking) makes it byte for byte; what would make a piece's own
 # program write another pack is refused as the routine is built.
@@ -77,7 +77,7 @@ class TestDataPackPieces < Minitest::Test
     assert_raises(ArgumentError) { VBlank::Original::PiecedUnpacking.worker_count(0, processors: 8) }
   end
 
-  # THE REFUSALS, each a pack whose split would not make the whole routine's pack.
+  # The refusals, each a pack whose split would not make the whole routine's pack.
   private def refusal_of
     Dir.mktmpdir do |folder|
       assert_raises(ArgumentError) do

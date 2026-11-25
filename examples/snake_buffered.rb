@@ -65,19 +65,19 @@ module BufferedSnake
 
   STEP = 6                     # frames between moves
   START_ROW   = (MIN_ROW + MAX_ROW) / 2
-  START_CELLS = Ractor.make_shareable([[5, START_ROW], [6, START_ROW], [7, START_ROW], [8, START_ROW]])
+  START_CELLS = [[5, START_ROW], [6, START_ROW], [7, START_ROW], [8, START_ROW]]
   FOOD_TRIES = 8
 
   # The snake on the title: a strip of skin 32 columns wide, each column drawn two pixels across,
   # with a diagonal stripe so that it reads as a body sliding along.
   SKIN_W = 32
-  SKIN = Ractor.make_shareable(Array.new(8) { |row| Array.new(SKIN_W) { |col| ((col + row) % 8) < 2 ? "o" : "#" }.join }.join("\n"))
+  SKIN = Array.new(8) { |row| Array.new(SKIN_W) { |col| ((col + row) % 8) < 2 ? "o" : "#" }.join }.join("\n")
   SKIN_X = (SCREEN_W - (SKIN_W * 2)) / 2
   SKIN_Y = 66
   SKIN_TALL = 12 # the strip is drawn 8 rows high and stretched to this
 
   # How far down each column hangs, one wave of it over 16 columns, 0 to 8 pixels.
-  SWAY = Ractor.make_shareable((0...16).map { |i| ((Math.sin(i * 2 * Math::PI / 16) + 1) * 4).round })
+  SWAY = (0...16).map { |i| ((Math.sin(i * 2 * Math::PI / 16) + 1) * 4).round }
 
   GAME = VBlank.game("SNAKEBUF", consoles: %i[gba]) do
     screen :bitmap, tear_free: true # <-- the whole difference. Remove it and it tears.
@@ -97,8 +97,8 @@ module BufferedSnake
     define_sound :die, frequency: 140, duty: :half, decay: :medium
 
     # The body: two parallel lists, one entry per cell (xs[i], ys[i]).
-    xs = list :xs, capacity: BODY_CAP
-    ys = list :ys, capacity: BODY_CAP
+    xs = Array.new(capacity: BODY_CAP)
+    ys = Array.new(capacity: BODY_CAP)
 
     state    = 0    # 0 = title, 1 = playing, 2 = game over
     blink    = true
@@ -135,10 +135,10 @@ module BufferedSnake
     func :draw_all do
       clear_screen :black
       draw_text "SCORE", SCORE_LABEL_X, SCORE_Y, :gray
-      dma_fill_rect 0, TOP_WALL_Y, SCREEN_W, CELL, :gray            # top wall
-      dma_fill_rect 0, BOTTOM_WALL_Y, SCREEN_W, CELL, :gray         # bottom wall
-      dma_fill_rect 0, TOP_WALL_Y, CELL, WALL_H, :gray             # left wall
-      dma_fill_rect RIGHT_WALL_X, TOP_WALL_Y, CELL, WALL_H, :gray  # right wall
+      fill_rect 0, TOP_WALL_Y, SCREEN_W, CELL, :gray            # top wall
+      fill_rect 0, BOTTOM_WALL_Y, SCREEN_W, CELL, :gray         # bottom wall
+      fill_rect 0, TOP_WALL_Y, CELL, WALL_H, :gray             # left wall
+      fill_rect RIGHT_WALL_X, TOP_WALL_Y, CELL, WALL_H, :gray  # right wall
       draw_number score, score_num_x, SCORE_Y, :white, digits: 3
       draw_rect_at food_x * CELL, food_y * CELL, CELL, CELL, :red
       repeat(xs.length) do |i|
@@ -150,8 +150,8 @@ module BufferedSnake
     # Start a fresh game: reset the body, face right, zero the score, place the food.
     # No board painting here — the playing scene repaints every frame anyway.
     func :new_game do
-      list :xs, capacity: BODY_CAP
-      list :ys, capacity: BODY_CAP
+      xs = Array.new(capacity: BODY_CAP)
+      ys = Array.new(capacity: BODY_CAP)
       START_CELLS.each do |cx, cy|
         xs.push cx
         ys.push cy
@@ -270,10 +270,10 @@ module BufferedSnake
     end
 
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :game_over
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :game_over
       end
     end
   end

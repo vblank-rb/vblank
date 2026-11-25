@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # ROUTINES THAT RUN ON THE SUPER FX, from the console's side. A routine marked `on_chip:
+          # Routines that run on the super FX, from the console's side. A routine marked `on_chip:
           # true`, on a cartridge with that chip, is made by ChipCode. Here it is still a routine like
           # any other: its label is 65816 code, which any call reaches. That code copies the
           # variables the chip needs into the chip's RAM, runs the chip until it stops, and copies
           # back the ones it can have changed. The console waits in between (Runtime::Chip).
           #
-          # A LIST THE CHIP REACHES LIVES IN THE CHIP'S RAM, at the top of the block of numbers, for
+          # A list the chip reaches lives in the chip's RAM, at the top of the block of numbers, for
           # the whole game. The chip cannot see the console's work RAM, and the console can see the
           # chip's RAM whenever the chip is stopped, by a long address like any other list's. So the
           # console's own code and Runtime::Lists reach such a list unchanged, and a run copies
@@ -83,7 +83,7 @@ module VBlank
             def chip_step_words(node)
               kind = node.kind
               return "a wait for the next frame" if kind == :wait_vblank
-              return "a change of scene (case_var), and a scene sets up the screen, which only the console can do" if kind == :case
+              return "a change of scene (a scene dispatch), and a scene sets up the screen, which only the console can do" if kind == :case
               return "a drawing step (#{kind})" if node.category == :draw
               return "a sound step (#{kind})" if node.category == :sound
               return "putting a list in order (list_sort)" if kind == :list_sort

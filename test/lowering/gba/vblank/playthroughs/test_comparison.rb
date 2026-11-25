@@ -3,9 +3,9 @@
 require "test_helper"
 require "stringio"
 require "comparison_games"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
-# A COMPARISON: TWO CARTRIDGES PLAYED SIDE BY SIDE ON THE SAME PRESSES, and the first frame on
+# A comparison: two cartridges played side by side on the same presses, and the first frame on
 # which their pictures differ. It is how somebody rebuilding a game learns where theirs has
 # drifted from the original, and how a framework change that moves something a frame early is
 # caught without two people squinting at two screens.
@@ -45,7 +45,7 @@ class TestComparison < Minitest::Test
     [].tap { |shown| each_frame_of(cartridge, tape) { |game, _frame| shown << game.frame_gba } }
   end
 
-  # THE SAME CARTRIDGE TWICE NEVER DRIFTS, over several hundred frames of a real game: out of
+  # The same cartridge twice never drifts, over several hundred frames of a real game: out of
   # the file screen and walking about.
   def test_a_cartridge_does_not_drift_from_itself
     wander = VBlank.playthrough "hero: new game, then wander" do
@@ -68,7 +68,7 @@ class TestComparison < Minitest::Test
     assert_equal 354, result.frames, "every frame of the script was played and compared"
   end
 
-  # A HERO THAT WALKS FASTER drifts on the first frame the world has moved under him, and
+  # A hero that walks faster drifts on the first frame the world has moved under him, and
   # not before: the same game built again with a quicker hero is the same picture through
   # the file screen and while he stands. The world is drawn in the gap before a frame from
   # where the hero stood then, so it shows a step one frame after the game took it.
@@ -92,7 +92,7 @@ class TestComparison < Minitest::Test
     assert_equal :standing, result.drift.moment
   end
 
-  # A CARTRIDGE WITH A COLOUR CHANGED drifts on the first frame that colour is on screen, and
+  # A cartridge with a colour changed drifts on the first frame that colour is on screen, and
   # not before: one of these two turns its ground red part way through and the other never
   # does. The frame it turns is asked of that cartridge on its own.
   def test_a_changed_colour_drifts_on_the_first_frame_it_is_on_screen
@@ -108,7 +108,7 @@ class TestComparison < Minitest::Test
     assert_equal turned_on, result.frames, "and it stopped there"
   end
 
-  # THE MOMENT BEFORE A DRIFT IS THE LAST ONE NAMED BEFORE THAT FRAME WAS PLAYED. A moment
+  # The moment before a drift is the last one named before that frame was played. A moment
   # names the frame just played, so one that names the very frame the two drift on was said
   # after it, and is not the one before.
   def test_a_moment_naming_the_frame_of_the_drift_is_not_the_moment_before_it
@@ -139,7 +139,7 @@ class TestComparison < Minitest::Test
     assert_nil result.drift.moment
   end
 
-  # THE SAME COLOURS ARE THE SAME PICTURE, whatever the console built them from. The emulator
+  # The same colours are the same picture, whatever the console built them from. The emulator
   # keeps a note beside each pixel of which part of the display drew it, and that note is not
   # something anybody sees: a rebuilt game that reaches the original's picture by a
   # different route has not drifted from it.
@@ -160,7 +160,7 @@ class TestComparison < Minitest::Test
     [].tap { |seen| each_frame_of(cartridge, tape) { |game, _frame| seen << game.pixel(x, y) } }.last
   end
 
-  # THE SAME COLOURS ARE THE SAME PICTURE, whatever the emulator holds below the five bits of
+  # The same colours are the same picture, whatever the emulator holds below the five bits of
   # each channel a console shows. It keeps eight, and what it holds below the five is its own
   # working: a colour read out of the colour table and the same five-bit colour reached by
   # the display brightening a darker one are different numbers to it. A comparison that went
@@ -198,7 +198,7 @@ class TestComparison < Minitest::Test
 
   # --- how alike two pictures have to be ---
 
-  # A FEW PIXELS OUT IS DRIFT UNLESS THAT SHARE OF THE SCREEN MAY DIFFER. One of these two
+  # A few pixels out is drift unless that share of the screen may differ. One of these two
   # draws three pixels the other does not, from a frame asked of it on its own. With nothing
   # said that is drift; so it is while fewer than three may differ; and once three may, the
   # two are alike for the whole script.
@@ -215,7 +215,7 @@ class TestComparison < Minitest::Test
     refute waiting.compare(plain, specked, share_may_differ: 0.01).drift?
   end
 
-  # A SHARE WRITTEN AS A DECIMAL MEANS THE PIXELS IT WAS WORKED OUT FROM. Fifty-five pixels
+  # A share written as a decimal means the pixels it was worked out from. Fifty-five pixels
   # of the screen, written `55.0 / 38_400`, is a number that multiplied back up comes out a
   # hair under fifty-five — so it is the shares that are compared, never a count worked back.
   def test_a_share_written_as_a_decimal_allows_the_pixels_it_was_worked_out_from
@@ -228,7 +228,7 @@ class TestComparison < Minitest::Test
     assert waiting.compare(plain, specked, share_may_differ: 54.0 / PIXELS).drift?
   end
 
-  # THE TWO SETTINGS TOGETHER: a frame has to be over the share, for that many frames running.
+  # The two settings together: a frame has to be over the share, for that many frames running.
   def test_the_share_and_the_frames_in_a_row_are_asked_together
     waiting = VBlank.playthrough("wait") { wait frames: 50 }
     plain = walker
@@ -242,7 +242,7 @@ class TestComparison < Minitest::Test
     refute tape.compare(plain, specked, share_may_differ: Rational(3, PIXELS), frames_in_a_row: 4).drift?
   end
 
-  # A DIFFERENCE HAS TO LAST AS MANY FRAMES IN A ROW AS WAS ASKED FOR. One of these two turns
+  # A difference has to last as many frames in a row as was asked for. One of these two turns
   # its ground red for three frames and then back. Asked for three in a row that is drift,
   # reported on the first of the three and found on the last; asked for four it is not.
   def test_a_difference_is_drift_once_it_lasts_the_frames_in_a_row_asked_for
@@ -264,7 +264,7 @@ class TestComparison < Minitest::Test
     refute waiting.compare(plain, flashing, frames_in_a_row: 4).drift?
   end
 
-  # THE MOMENT REPORTED IS THE ONE BEFORE THE STRETCH BEGAN, not the last one named by the
+  # The moment reported is the one before the stretch began, not the last one named by the
   # time the stretch had lasted long enough. This script names a moment on the second of
   # the three red frames, so the stretch runs across it and across two of the script's steps.
   def test_a_moment_named_inside_a_stretch_is_not_the_moment_before_it
@@ -286,7 +286,7 @@ class TestComparison < Minitest::Test
     assert_equal :settled, drift.moment
   end
 
-  # A STRETCH THAT ENDS IS FORGOTTEN: the frames of one do not count toward the next. This
+  # A stretch that ends is forgotten: the frames of one do not count toward the next. This
   # cartridge's ground is red for three frames, the two are alike again, and then it draws
   # its specks for good. Asked for four in a row, the drift is where the specks begin.
   def test_a_stretch_that_ended_does_not_count_toward_the_next
@@ -311,7 +311,7 @@ class TestComparison < Minitest::Test
     refute waiting.compare(plain, turning, frames_in_a_row: 100).drift?
   end
 
-  # A PART OF THE SCREEN CAN BE LEFT OUT OF THE COUNT. The quicker of these two boxes pulls
+  # A part of the screen can be left out of the count. The quicker of these two boxes pulls
   # ahead along one strip of the screen: rows 60 to 67, and never past column 87. With that
   # strip left out the two are alike; in two pieces, the same. Left out only as far as
   # column 49, they drift on the first frame the quicker box shows past it.
@@ -327,7 +327,7 @@ class TestComparison < Minitest::Test
     assert_operator past_column_49_on, :>, walk_right.compare(slow, fast).drift.frame, "later than with nothing left out"
   end
 
-  # THE SHARE IS A SHARE OF THE PIXELS LOOKED AT. With the top half of the screen left out
+  # The share is a share of the pixels looked at. With the top half of the screen left out
   # there are 19,200 left, and three pixels out among them is three in 19,200: a share
   # worked out against the whole screen would be half as strict as it says.
   def test_the_share_is_of_the_pixels_that_are_looked_at
@@ -400,7 +400,7 @@ class TestComparison < Minitest::Test
     assert_equal 60, walk_right.compare(walker, walker, ignoring_rectangles: [[0, 0, 240, 160]]).frames
   end
 
-  # A TAPE IS COMPARED IN PLACE OF A SCRIPT, here one read back from the text of a file: the
+  # A tape is compared in place of a script, here one read back from the text of a file: the
   # box of the quicker cartridge has gone further on the first frame it moves.
   def test_a_tape_is_compared_in_place_of_a_script
     slow = walker(speed: 2)
@@ -416,7 +416,7 @@ class TestComparison < Minitest::Test
     refute tape.compare(slow, slow).drift?
   end
 
-  # THE SECOND CARTRIDGE IS FED WHAT THE FIRST ONE DID. A script that walks until the game
+  # The second cartridge is fed what the first one did. A script that walks until the game
   # has counted twenty paces watches the first cartridge to know when to stop, and the
   # second is handed that walk frame for frame. These two show the same picture for the same
   # presses and count their paces differently — so had each been left to watch itself, one

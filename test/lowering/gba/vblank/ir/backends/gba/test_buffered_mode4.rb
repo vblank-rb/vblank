@@ -5,11 +5,11 @@ require "test_helper"
 # Double-buffered (Mode 4) bitmap display: the tear-proof screen. Drawing goes to
 # a hidden page shown all at once, and the framework builds a color palette from
 # the names used so the developer never touches "indexed color". The observable
-# promise is: the SAME draw code renders the SAME picture as direct-color mode —
+# promise is: the same draw code renders the same picture as direct-color mode —
 # only tearing is gone.
 #
 # The reference interpreter is the oracle (double buffering is invisible to it — it
-# reads the settled frame). Every render case runs on BOTH backends and asserts
+# reads the settled frame). Every render case runs on both backends and asserts
 # the same visible pixels, so the console's Mode 4 output (indices resolved
 # through the auto-built palette, presented after a page flip) has to match.
 # Programs are built straight from IR::Build so the lowering is what's under test.
@@ -24,8 +24,8 @@ class TestBufferedMode4 < Minitest::Test
     program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(0, 0, 8, 8, :red),      # top-left
-      dma_fill_rect(232, 8, 8, 8, :green),  # top-right area
+      fill_rect(0, 0, 8, 8, :red),      # top-left
+      fill_rect(232, 8, 8, 8, :green),  # top-right area
       draw_rect_at(100, 80, 8, 8, :white),  # a run-time-positioned square, center-ish
       wait_vblank,                          # flip: show the page we just drew
       halt,
@@ -62,13 +62,13 @@ class TestBufferedMode4 < Minitest::Test
     end
   end
 
-  # The page actually flips: two frames drawing different colors show the LATEST,
+  # The page actually flips: two frames drawing different colors show the latest,
   # not a stale page. A loop that fills the whole screen red on even frames and
   # green on odd frames must, after several frames, show one solid color (never a
   # half-and-half mix), and it must be the color drawn on the frame that was
   # presented last.
   # A program may bring its own table of colors, for art made somewhere else whose pixels are
-  # numbers picking out of THAT table. The order is the whole point, so the order below is one
+  # numbers picking out of that table. The order is the whole point, so the order below is one
   # the framework would never choose — reverse of first use, and with black nowhere in it, where
   # the derived path always reserves black at slot 0. A lowering that quietly built its own
   # table would put a different color in every square.
@@ -78,9 +78,9 @@ class TestBufferedMode4 < Minitest::Test
       program(
         screen(:bitmap, buffered: true, colors: given.map { |c| VBlank::Graphics::Color.resolve(c) }),
         clear_screen(:green),
-        dma_fill_rect(0, 0, 40, 40, :yellow),
-        dma_fill_rect(40, 0, 40, 40, :cyan),
-        dma_fill_rect(80, 0, 40, 40, :magenta),
+        fill_rect(0, 0, 40, 40, :yellow),
+        fill_rect(40, 0, 40, 40, :cyan),
+        fill_rect(80, 0, 40, 40, :magenta),
         wait_vblank,
         halt
       ), name: "PAL4"
@@ -105,7 +105,7 @@ class TestBufferedMode4 < Minitest::Test
 
     rom = assemble_rom(prog, name: "FLIP")
     v = assert_emulator_loads_rom(rom, frames: 8)
-    # Whatever's shown, it's ONE solid color across the screen — no torn/mixed page.
+    # Whatever's shown, it's one solid color across the screen — no torn/mixed page.
     corner = v.pixel_gba(4, 4)
     assert_includes [Color.resolve(:red), Color.resolve(:green)], corner,
                     "expected a solid red or green screen, got 0x#{format('%04X', corner)}"
@@ -115,7 +115,7 @@ class TestBufferedMode4 < Minitest::Test
   # --- the palette limit surfaces as a friendly build error, not a black screen ---
 
   def test_too_many_colors_in_a_buffered_program_is_a_friendly_build_error
-    many = (1..300).map { |c| dma_fill_rect(0, 0, 2, 2, c) } # 300 distinct raw colors
+    many = (1..300).map { |c| fill_rect(0, 0, 2, 2, c) } # 300 distinct raw colors
     prog = program(screen(:bitmap, buffered: true), *many, halt)
     err = assert_raises(VBlank::IR::Palette::Overflow) { GBA.new.lower(prog) }
     assert_match(/300/, err.message)
@@ -197,7 +197,7 @@ class TestBufferedMode4 < Minitest::Test
     assert drew_digits, "a numeric score should render in white in buffered mode"
   end
 
-  # A whole PICTURE draws here too — it is shipped a second time as one number a pixel
+  # A whole picture draws here too — it is shipped a second time as one number a pixel
   # and copied in a row at a time. What that costs, where it clips, and the two things it
   # still refuses (an odd column, a see-through picture) all live in test_buffered_blit.rb,
   # which is the file that owns the subject.
@@ -206,13 +206,13 @@ class TestBufferedMode4 < Minitest::Test
 
   # A fill moves two side-by-side pixels at once here, so an odd start column is
   # the hard case: the rect's first and last pixel each share a two-pixel unit with
-  # a pixel outside the rect, which has to survive. dma_fill_rect(3, ...) must span
+  # a pixel outside the rect, which has to survive. fill_rect(3, ...) must span
   # 3..10 exactly, leaving 2 and 11 as they were.
   def test_a_fill_at_an_odd_start_column_lands_on_that_column
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(3, 0, 8, 8, :red),
+      fill_rect(3, 0, 8, 8, :red),
       wait_vblank, # present the drawn page
       halt,
     )
@@ -230,7 +230,7 @@ class TestBufferedMode4 < Minitest::Test
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(5, 0, 2, 4, :red),
+      fill_rect(5, 0, 2, 4, :red),
       wait_vblank,
       halt,
     )
@@ -251,7 +251,7 @@ class TestBufferedMode4 < Minitest::Test
     prog = program(
       screen(:bitmap, buffered: true),
       clear_screen(:blue),
-      dma_fill_rect(0, 40, 240, 40, :red),
+      fill_rect(0, 40, 240, 40, :red),
       wait_vblank,
       halt,
     )
@@ -269,8 +269,8 @@ class TestBufferedMode4 < Minitest::Test
   def test_two_full_width_bands_meet_without_overlapping
     prog = program(
       screen(:bitmap, buffered: true),
-      dma_fill_rect(0, 0, 240, 80, :blue),
-      dma_fill_rect(0, 80, 240, 80, :red),
+      fill_rect(0, 0, 240, 80, :blue),
+      fill_rect(0, 80, 240, 80, :red),
       wait_vblank,
       halt,
     )
@@ -284,14 +284,14 @@ class TestBufferedMode4 < Minitest::Test
   # --- a column the game works out, whose parity the build can still prove ---
 
   # A rectangle's rows are built differently at an odd column from an even one, so when the
-  # column is a number the game works out the backend normally emits BOTH shapes and picks
+  # column is a number the game works out the backend normally emits both shapes and picks
   # at run time. It does not have to when the parity is provable: a game on a grid writes
   # `cell * 8`, and eight times anything is even (IR::Parity).
   #
   # These two are the proof that the shortcut is honest, because a wrong proof shows up as
   # wrong PIXELS: emit the even shape for an odd column and the rectangle's two end pixels
   # are written into the wrong halves of their pairs, painting a neighbour and missing an
-  # end. So each asserts the pixel just outside the rectangle at BOTH ends, which is where
+  # end. So each asserts the pixel just outside the rectangle at both ends, which is where
   # that damage lands.
   def test_a_column_proved_even_draws_exactly_its_own_pixels
     prog = program(

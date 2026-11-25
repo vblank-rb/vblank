@@ -40,7 +40,7 @@ module MusicKeepsTimeGames
   end
 end
 
-# A TUNE KEEPS ITS OWN TIME, whatever the game does, and so does a recording the game plays —
+# A tune keeps its own time, whatever the game does, and so does a recording the game plays —
 # the same promise the mixer makes
 # (test_mixer_keeps_time.rb), for the same reason. A tempo is a fact about the clock on the
 # wall, not about how long the game took to think, so a game too heavy for a frame still plays
@@ -108,7 +108,7 @@ class TestMusicKeepsTime < Minitest::Test
     heard = notes(game_player.run(two_tunes_game, frames: 30))
 
     # C4 and E4 (the first tune reaches its second note), A4 (the second), then the first tune
-    # again FROM ITS DOWNBEAT — not from wherever it had got to when it was left.
+    # again from its downbeat — not from wherever it had got to when it was left.
     assert_equal [C4, E4, VBlank::Audio::Music::NOTE_FREQUENCIES[:A4], C4], heard
   end
 

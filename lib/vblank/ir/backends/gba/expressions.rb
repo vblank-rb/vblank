@@ -9,7 +9,7 @@ module VBlank
           # The values this part works out (Lowering#values_written_by), each by its own method.
           VALUE_KINDS = %i[
             int var_ref neg binop bit_not absolute clamped mul_fix div_fix shift_right chance
-            players_connected local_player data_byte table_get read_scanline held pressed
+            players_connected local_player data_byte table_get read_scanline held pressed pulled
           ].freeze
 
           def emit_value(node)
@@ -32,6 +32,7 @@ module VBlank
             when :read_scanline then eval_read_scanline(node)
             when :held then eval_held_node(node)
             when :pressed then eval_pressed_node(node)
+            when :pulled then emit_value(Build.pulled_as_held(node))
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end
@@ -152,6 +153,9 @@ module VBlank
           # which makes no difference to an operation that gives the same answer either way
           # round; what must have them in order goes through #emit_sides_in_order.
           def eval_binop(node)
+            held = @primitives.held_product_register(node)
+            return @emitter.emit(ASM.mov_reg(ACC, held)) if held
+
             node = constant_on_right(node)
             return if emit_constant_binop(node)
 
@@ -191,11 +195,26 @@ module VBlank
           end
 
           def emit_subtract(node)
+            return if emit_subtract_from_constant(node)
+
             left, right = emit_sides(node)
             @emitter.emit(ASM.sub_reg(ACC, left, right))
           end
 
-          # WHAT A SIDE COSTS IS MOSTLY WHERE THE OTHER ONE WAITS. A side that is a variable or a
+          # n - x for a small n: one reverse subtract, the number riding inside the instruction
+          # (GBATEK, "ARM Opcodes: Data Processing", RSB), where `100 - i` would otherwise load
+          # the 100 into a register of its own. What a counted loop's stepping number comes to when
+          # it falls by one a round (PlainRuby::Counts::KnownRounds).
+          def emit_subtract_from_constant(node)
+            value = @primitives.const_int(node.lhs)
+            return false unless value && SMALL_NUMBERS.cover?(value)
+
+            source = emit_operand(node.rhs)
+            @lowering.measure_value(node.lhs) { @emitter.emit(ASM.rsb_imm(ACC, source, value)) }
+            true
+          end
+
+          # What a side costs is mostly where the other one waits. A side that is a variable or a
           # number is one load, which touches nothing but the register it loads, so the other side
           # can stay in r0 while it happens. Only two sides that each have to be worked out need
           # the stack, since working one out can use every scratch register. The stack keeps
@@ -210,14 +229,19 @@ module VBlank
             lhs = node.lhs
             rhs = node.rhs
             if one_load?(rhs)
+              # Left worked out into r0, then the right loaded straight into r1: r0 is untouched.
               @lowering.value(lhs)
               emit_one_load(TMP, rhs)
               [ACC, TMP]
             elsif one_load?(lhs) && Expressions.changes_nothing?(rhs)
+              # Right worked out into r0, then the left loaded into r1, which is why the right
+              # must change nothing: the game wrote the left first.
               @lowering.value(rhs)
               emit_one_load(TMP, lhs)
               [TMP, ACC]
             else
+              # Both need working out. The left waits on the stack, since working out the right
+              # may use any scratch register, and comes back into r1.
               @lowering.value(lhs)
               @emitter.emit(ASM.push(ACC))
               @lowering.value(rhs)
@@ -235,26 +259,38 @@ module VBlank
             emit_one_load(ACC, node.rhs)
           end
 
-          def one_load?(node) = node.kind == :var_ref || !@primitives.const_int(node).nil?
+          # Lists, which knows where each list's slots are (Lists#fixed_slot_read?).
+          attr_writer :lists
+
+          # A variable, a number, or a list's slot written in the program, each one load.
+          def one_load?(node)
+            node.kind == :var_ref || !@primitives.const_int(node).nil? || @lists&.fixed_slot_read?(node) || false
+          end
 
           def emit_one_load(reg, node)
             @lowering.measure_value(node) do
               fixed = @primitives.const_int(node)
-              fixed ? @emitter.emit_number(reg, fixed) : @primitives.load_var(reg, node.name)
+              if fixed
+                @emitter.emit_number(reg, fixed)
+              elsif node.kind == :list_get
+                @lists.emit_fixed_slot_load(reg, node)
+              else
+                @primitives.load_var(reg, node.name)
+              end
             end
           end
 
           # A value that can be left unread, or read later, with no difference to the game.
           def self.changes_nothing?(node) = IR::Unchanging.value?(node) { |part| Primitives.const_int(part) }
 
-          # BRANCH TO +label+ WHEN +cond+ COMES OUT AS +holds+, with no 0 or 1 made on the way. A
+          # Branch to +label+ when +cond+ comes out as +holds+, with no 0 or 1 made on the way. A
           # compare leaves its answer in the chip's flags, and a branch reads them, so working the
           # answer into a register to test it again costs five instructions and tells the branch
           # nothing it did not know.
           #
-          # A TEST TURNED ROUND is the same test branching the other way.
+          # A test turned round is the same test branching the other way.
           #
-          # A JOIN OF TWO TESTS IS TWO TESTS, when the second can go unread. One side alone settles
+          # A join of two tests is two tests, when the second can go unread. One side alone settles
           # a join: a false one settles `and`, a true one `or`. If that is the answer branched on,
           # either side may take the branch. If not, the first side settling it jumps past the
           # second, and only the second can take the branch.
@@ -414,15 +450,35 @@ module VBlank
             end
           end
 
-          # x + n and x - n for a small n, which rides inside the instruction.
+          # x + n and x - n for a small n, which rides inside the instruction; x + 0 and x - 0 are x,
+          # and cost nothing more (a box's bottom with no distance to it, a key with nothing added).
           def emit_small_add_or_subtract(node, value)
             return false unless SMALL_NUMBERS.cover?(value)
 
-            @lowering.value(node.lhs)
+            if value.zero?
+              @lowering.value(node.lhs)
+              return true
+            end
+
+            source = emit_operand(node.lhs)
             @lowering.measure_value(node.rhs) do
-              @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, ACC, value) : ASM.sub_imm(ACC, ACC, value))
+              @emitter.emit(node.op == :+ ? ASM.add_imm(ACC, source, value) : ASM.sub_imm(ACC, source, value))
             end
             true
+          end
+
+          # The register +lhs+ is read from by the one instruction that works on it: the register a
+          # variable is held in for the moment (Primitives#held_register, a loop's count), read
+          # straight into that instruction, or else ACC with +lhs+ worked out into it. The held
+          # register is only read, so the variable's register is never changed. A loop's count
+          # times a number it keeps stepped in a register of its own
+          # (Primitives#held_product_register) is read from that register the same way.
+          def emit_operand(lhs)
+            held = lhs.kind == :var_ref ? @primitives.held_register(lhs.name) : @primitives.held_product_register(lhs)
+            return held if held
+
+            @lowering.value(lhs)
+            ACC
           end
 
           # `&`, `|` and `^` give the same answer whichever way round they are written,
@@ -449,25 +505,25 @@ module VBlank
           # loaded into a register first when it is not: one instruction or two, against
           # the five the general path spends putting both sides through the stack.
           def emit_constant_bitwise(lhs, value, op)
-            @lowering.value(lhs)
+            source = emit_operand(lhs)
             if SMALL_NUMBERS.cover?(value)
               @emitter.emit(case op
-                            when :& then ASM.and_imm(ACC, ACC, value)
-                            when :| then ASM.orr_imm(ACC, ACC, value)
-                            else ASM.eor_imm(ACC, ACC, value)
+                            when :& then ASM.and_imm(ACC, source, value)
+                            when :| then ASM.orr_imm(ACC, source, value)
+                            else ASM.eor_imm(ACC, source, value)
                             end)
             else
               @emitter.emit_number(TMP, value)
               @emitter.emit(case op
-                            when :& then ASM.and_reg(ACC, ACC, TMP)
-                            when :| then ASM.orr_reg(ACC, ACC, TMP)
-                            else ASM.eor_reg(ACC, ACC, TMP)
+                            when :& then ASM.and_reg(ACC, source, TMP)
+                            when :| then ASM.orr_reg(ACC, source, TMP)
+                            else ASM.eor_reg(ACC, source, TMP)
                             end)
             end
             true
           end
 
-          # x << n for an n written into the program: ONE instruction, and none at all
+          # x << n for an n written into the program: one instruction, and none at all
           # for a shift of nothing. A count that empties the number is settled here
           # rather than emitted — going up there is nothing left, so nothing is what
           # gets loaded.
@@ -521,14 +577,41 @@ module VBlank
 
           # x * d — a power of two is a shift, and anything else is already a single
           # multiply instruction, so there is nothing to improve on.
-          def emit_constant_multiply(lhs, factor)
-            bits = power_of_two_bits(factor)
-            return false unless bits
-
-            emit_multiply_by_power_of_two(lhs, bits)
+          # Whether a multiply by +factor+ is one instruction: a shift, or the number shifted and
+          # added to or taken from itself (#emit_multiply_by_shifted_sum). Any other factor is
+          # loaded into a register and multiplied by, two instructions and a slower one.
+          def self.one_instruction_factor?(factor)
+            above = ConstantDivisor.power_of_two_bits(factor - 1)
+            below = ConstantDivisor.power_of_two_bits(factor + 1)
+            !ConstantDivisor.power_of_two_bits(factor).nil? || factor == -1 || above&.positive? || (below && below >= 2) || false
           end
 
-          # x / 2**bits, TRUNCATING TOWARD ZERO — the meaning `/` has everywhere else
+          def emit_constant_multiply(lhs, factor)
+            bits = power_of_two_bits(factor)
+            return emit_multiply_by_power_of_two(lhs, bits) if bits
+
+            emit_multiply_by_shifted_sum(lhs, factor)
+          end
+
+          # x * -1, x * (2**k + 1) and x * (2**k - 1) in one instruction, the barrel shifter adding
+          # or taking the number shifted up from itself (GBATEK, "ARM Opcodes: Data Processing"):
+          # what `i * 3` and `100 - i` come to where a counted loop works a number out from its count
+          # (PlainRuby::Counts::KnownRounds). A MUL by a number in a register is two instructions,
+          # the number loaded first, and a cycle or more of its own. Any other factor is not handled.
+          def emit_multiply_by_shifted_sum(lhs, factor)
+            above = power_of_two_bits(factor - 1)
+            below = power_of_two_bits(factor + 1)
+            return false unless factor == -1 || above&.positive? || (below && below >= 2)
+
+            source = emit_operand(lhs)
+            @emitter.emit(if factor == -1 then ASM.rsb_imm(ACC, source, 0)
+                          elsif above&.positive? then ASM.add_reg_lsl(ACC, source, source, above)
+                          else ASM.rsb_reg_lsl(ACC, source, source, below)
+                          end)
+            true
+          end
+
+          # x / 2**bits, truncating toward zero — the meaning `/` has everywhere else
           # here, and what the console's BIOS divide would have given.
           #
           # A plain arithmetic shift is not that. It rounds toward minus infinity, so
@@ -584,7 +667,7 @@ module VBlank
           end
 
           # x % 2**bits, with Ruby's meaning. Keeping the low bits of a two's-complement
-          # number IS that answer for a positive power of two, sign and all: -1 keeps all
+          # number is that answer for a positive power of two, sign and all: -1 keeps all
           # its low bits and comes out as the range's top value.
           def emit_wrap_to_power_of_two(lhs, bits)
             @lowering.value(lhs)
@@ -596,7 +679,7 @@ module VBlank
           #
           # There is no leftover to collect here — the reciprocal divide never computes
           # one — so it is worked back out: the quotient times the size, taken off the
-          # numerator that r2 still holds. That answer carries the sign of the NUMERATOR
+          # numerator that r2 still holds. That answer carries the sign of the numerator
           # and Ruby's carries the sign of the divisor, so one size is added back when the
           # numerator was negative. The number's own top bit shows whether it was, which
           # makes the correction three instructions and no branch.
@@ -625,8 +708,8 @@ module VBlank
           # x * 2**bits — one instruction, and exact: the low 32 bits of the product are
           # what a multiply would have left anyway.
           def emit_multiply_by_power_of_two(lhs, bits)
-            @lowering.value(lhs)
-            @emitter.emit(ASM.lsl_imm(ACC, ACC, bits))
+            source = emit_operand(lhs)
+            @emitter.emit(ASM.lsl_imm(ACC, source, bits))
             true
           end
 
@@ -701,7 +784,7 @@ module VBlank
           # This is where that operation earns its own node. The chip has no divide
           # instruction at all — an ordinary `/` traps into a BIOS routine — but
           # dropping the low bits of a register is a shift, and ARM does a shift as part
-          # of moving the register. So the whole thing is ONE instruction, against a
+          # of moving the register. So the whole thing is one instruction, against a
           # call for the division that would otherwise be written here.
           def eval_shift_right(node)
             return if emit_divide_fix_made_whole(node)
@@ -771,10 +854,10 @@ module VBlank
           #
           # The routine hands the leftover back in r1 alongside the quotient, so the
           # division itself costs nothing extra here. But it gives that leftover the sign
-          # of the NUMERATOR, and Ruby's answer takes the sign of the divisor (see
+          # of the numerator, and Ruby's answer takes the sign of the divisor (see
           # IR::Int32.mod). When the two disagree — and only then — one divisor has to be
           # added back. Nothing here knows which sign the divisor has, so the two are
-          # compared; where the size IS written into the program that is settled at build
+          # compared; where the size is written into the program that is settled at build
           # time instead. The divisor waits on the stack, since the routine is free to
           # use every scratch register.
           def emit_modulo
@@ -837,7 +920,7 @@ module VBlank
             emit_one_unless_zero
           end
 
-          # ANY BUTTON HELD: one test against all ten, not ten tests. The key register reads 0
+          # Any button held: one test against all ten, not ten tests. The key register reads 0
           # for a button that is down, so it is turned over first, and the shift then throws
           # away everything but the ten button bits (the register's other bits turn into ones
           # when it is turned over). Whatever is left is a button that is down.
@@ -849,7 +932,7 @@ module VBlank
             emit_one_unless_zero
           end
 
-          # ANY BUTTON PRESSED: the collected presses are kept the right way up and hold only
+          # Any button pressed: the collected presses are kept the right way up and hold only
           # button bits, so any bit at all is a button that went down since the last pass.
           def eval_any_pressed
             @primitives.load_var(ACC, KEYS_PRESSED)
@@ -875,13 +958,13 @@ module VBlank
             @primitives.store_var(ACC, KEYS_PRESSED)
           end
 
-          # WHERE THE GAME LOOP BEGINS: forget whatever was collected while the game set up. The
+          # Where the game loop begins: forget whatever was collected while the game set up. The
           # screen was off then, so nothing a player did had anything to answer. What was down
           # is forgotten as well, so a button held since the power came on is still one press,
           # on the first frame of the loop — the same as a game with nothing to set up.
           #
           # The screen's interrupt can arrive between these writes, and the order makes that
-          # harmless: what has been seen is forgotten LAST, so whatever the interrupt does in
+          # harmless: what has been seen is forgotten last, so whatever the interrupt does in
           # between, the next frame finds every button that is down as newly down.
           def emit_forget_presses
             @emitter.emit_number(ACC, 0)
@@ -890,7 +973,7 @@ module VBlank
             @primitives.store_var(ACC, KEYS_SEEN)
           end
 
-          # IN THE SCREEN'S INTERRUPT, ON EVERY FRAME IT SHOWS: read the pad and add any button
+          # In the screen's interrupt, on every frame it shows: read the pad and add any button
           # that went down since the last frame to the collection. The interrupt keeps real
           # time whatever the game is doing, so a game that takes two frames a pass still has
           # the pad read sixty times a second, and a press made between two of its passes is
@@ -900,22 +983,32 @@ module VBlank
           # It uses r0 and r1 for the numbers and r12 for where the variables are. The console's
           # own interrupt code saves all three before it gets here and puts them back after, so
           # the game it interrupted finds its registers as it left them.
+          #
+          # ## The three words it keeps
+          #
+          #   pad register (active-low) --invert, keep ten bits--> down now
+          #   down now & ~(down last frame)  = went down this frame
+          #   collected |= went down this frame
+          #
+          # KEYS_SEEN is what was down at the last frame, KEYS_COLLECTED the presses waiting for
+          # the game's next pass (#emit_latch_presses hands them over). A button held for many
+          # frames is down in KEYS_SEEN every time, so it is collected once.
           def emit_collect_presses
-            @emitter.emit_number(TMP, REG_KEYINPUT)
-            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_KEYINPUT)         # r1 = the pad register's address
+            @emitter.emit(ASM.load_halfword(ACC, TMP))      # r0 = the pad: a 0 bit is a button down
             @emitter.emit(ASM.mvn_reg(ACC, ACC))            # invert: 1 bit now means "down"
             @emitter.emit(ASM.lsl_imm(ACC, ACC, 22))        # drop everything above the
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 22))        # ten button bits
-            @primitives.load_var(TMP, KEYS_SEEN)
+            @primitives.load_var(TMP, KEYS_SEEN)            # r1 = what was down last frame
             @primitives.store_var(ACC, KEYS_SEEN)           # what is down now, for next frame
-            @emitter.emit(ASM.mvn_reg(TMP, TMP))
+            @emitter.emit(ASM.mvn_reg(TMP, TMP))            # r1 = the buttons that were up last frame
             @emitter.emit(ASM.and_reg(ACC, ACC, TMP))       # down now and not last frame
-            @primitives.load_var(TMP, KEYS_COLLECTED)
-            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))
+            @primitives.load_var(TMP, KEYS_COLLECTED)       # r1 = presses already waiting
+            @emitter.emit(ASM.orr_reg(ACC, ACC, TMP))       # keep those too
             @primitives.store_var(ACC, KEYS_COLLECTED)
           end
 
-          # AT THE TOP OF EACH PASS: take what was collected as this pass's presses, and start
+          # At the top of each pass: take what was collected as this pass's presses, and start
           # collecting again.
           #
           # This runs straight after the wait for the screen, which is to say straight after the

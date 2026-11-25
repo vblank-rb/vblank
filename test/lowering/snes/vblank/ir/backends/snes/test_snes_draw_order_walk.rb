@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A DRAW ORDER WHOSE LIST SOMETHING TAKES ITEMS FROM THE FRONT OF, on the Super Nintendo: its slots
+# A draw order whose list something takes items from the front of, on the Super Nintendo: its slots
 # move round, so its entries are read as the interpreter reads the list (DrawOrderWalk) rather than a
 # slot an entry, through the table of placings the slot-by-slot read uses. A run of 128 sprites, as
 # many as the console keeps places for, fits a bank so.

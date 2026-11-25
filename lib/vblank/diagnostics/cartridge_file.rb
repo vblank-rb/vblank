@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A CARTRIDGE THAT IS ONLY ITS FILE: the bytes of a .gba or a .gbc, and nothing the build
+    # A cartridge that is only its file: the bytes of a .gba or a .gbc, and nothing the build
     # worked out about them. A cartridge somebody else made is one, and so is one this framework
     # built once it has been written to a file — what the build knew is in the program that
     # built it and never in the file.
@@ -21,14 +21,25 @@ module VBlank
 
       attr_reader :path, :buffer
 
-      def initialize(path)
+      # +multitap+ plays the cartridge with the console's adapter for more controllers in its
+      # second port (Console::Kit#multitap_name): a Super Multitap on the Super Nintendo, a Team
+      # Player on the Genesis, a Multitap on the PlayStation. The third and fourth players' buttons
+      # then reach its plugs. A file has no program to ask whether the game reads one, so the
+      # caller says so. Without it the second port has a plain controller, and a console with no
+      # such adapter refuses it.
+      def initialize(path, multitap: false)
         raise ArgumentError, "There is no cartridge file at #{path}. Give the path of a cartridge file." unless File.file?(path)
 
         @path = path.to_s
         @buffer = File.binread(path).freeze
         @kind = self.class.kinds.find { |kind| kind.header?(@buffer) }
         refuse_non_cartridge!
+        Console.for(console).refuse_missing_multitap! if multitap
+        @multitap = multitap == true
       end
+
+      # Whether it plays with the adapter for more controllers in (+multitap+ above).
+      def multitap? = @multitap
 
       # Nothing built this, so there is no record of how.
       def built = nil
@@ -40,9 +51,8 @@ module VBlank
       def console = @kind.console
       def header_title = @kind.title_field_of(@buffer)
 
-      # Write the cartridge's bytes to +path+, the way a built cartridge writes its own (see
-      # Cartridge::ROM.write_bytes for why it is not an ordinary write).
-      def write(path) = Cartridge::ROM.write_bytes(path, @buffer)
+      # Write the cartridge's bytes to +path+.
+      def write(path) = File.binwrite(path, @buffer)
 
       private
 

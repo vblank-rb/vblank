@@ -55,7 +55,7 @@ module RandomGames
   end
 end
 
-# These assert BEHAVIOR: build a tiny program through the DSL, run it on every run's
+# These assert behavior: build a tiny program through the DSL, run it on every run's
 # player, and read the numbers it drew — never the tree it built. The emulator tests in
 # test/lowering/gba/vblank/builder/test_random_cartridge.rb confirm the same draws land on
 # the Advance's cartridge, which (running the same IR) also proves the two backends produce

@@ -2,23 +2,23 @@
 
 require "test_helper"
 
-# HOW MANY FRAMES A PASS OF THE GAME LOOP REALLY TOOK.
+# How many frames a pass of the game loop really took.
 #
 # A game that fits in a frame answers one every time, and that is nearly every game — so most of
 # what is pinned here is that nothing changed for them. The answer that matters is the other one:
 # a game whose pass overruns has to say so, and only the console can be asked, because the
 # interpreter has no clock and is never late by construction.
 #
-# The number is read off the SCREEN rather than out of memory, as a bar so many pixels wide, so
+# The number is read off the screen rather than out of memory, as a bar so many pixels wide, so
 # that what is tested is what a game would actually get.
 class TestFrameStep < Minitest::Test
   Frames = VBlank::IR::Backends::GBA::Frames
   WIDE = 8 # pixels of bar per frame counted, so the reading is legible and hard to misread
 
-  # A game loop that shows the count as a bar and THEN burns +busy+ passes of an empty loop.
+  # A game loop that shows the count as a bar and then burns +busy+ passes of an empty loop.
   # Enough burning and the pass cannot finish inside one frame.
   #
-  # The bar is drawn FIRST and only its own rows are cleared, which matters on this screen: it is
+  # The bar is drawn first and only its own rows are cleared, which matters on this screen: it is
   # drawn straight into the one being shown, so a test that cleared the screen and burned before
   # drawing would be read black nearly every time. This way the answer is on screen for all but a
   # sliver of each pass.
@@ -29,7 +29,7 @@ class TestFrameStep < Minitest::Test
       step = VBlank::DSL::Value.new(self, VBlank::IR::Build.var_ref(Frames::STEP))
       spin = 0
       game_loop do
-        dma_fill_rect 0, 0, 240, 8, :black
+        fill_rect 0, 0, 240, 8, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
       end
@@ -58,7 +58,7 @@ class TestFrameStep < Minitest::Test
     assert_equal 1, reading(->(x, y) { gba.pixel_gba(x, y) })
   end
 
-  # THE ONE THAT MATTERS. Burn past a frame's worth of work, and the pass has to answer for more
+  # The one that matters. Burn past a frame's worth of work, and the pass has to answer for more
   # than one frame. Measured while writing this: burning nothing reads 1, this reads 2, four
   # times as much reads 7 — so it counts rather than merely noticing.
   def test_a_pass_that_overruns_a_frame_says_so_on_the_console
@@ -74,7 +74,7 @@ class TestFrameStep < Minitest::Test
 
   # A `once_a_frame` body is run once for each frame that really passed, which is the whole of
   # the promise its name makes. Both numbers are drawn — how many frames the pass took, and how
-  # many times the body ran — so the test says they AGREE rather than merely that the body ran
+  # many times the body ran — so the test says they agree rather than merely that the body ran
   # more than once.
   private def counting_program(busy)
     b = VBlank::Builder.new
@@ -88,7 +88,7 @@ class TestFrameStep < Minitest::Test
       once_a_frame { ticks += 1 }
       game_loop do
         loops += 1 # ...which the loop body does once a PASS, however many frames that took
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         draw_rect_at 0, 12, (ticks - last) * WIDE, 8, :white
         last = ticks
@@ -120,7 +120,7 @@ class TestFrameStep < Minitest::Test
 
   # --- and what the oracle can be TOLD ---------------------------------------------
 
-  # THE INTERPRETER HAS NO CLOCK, so a test says how late a pass ran instead of it finding out.
+  # The interpreter has no clock, so a test says how late a pass ran instead of it finding out.
   # That is what makes everything a program does about being late checkable in-process, where
   # before it could only be seen by burning a console past a frame and reading the screen.
   def test_the_interpreter_answers_what_a_test_says_a_pass_was_worth
@@ -150,10 +150,10 @@ class TestFrameStep < Minitest::Test
     assert_equal 4, run[:loops], "...over four passes of the loop"
   end
 
-  # THE WHOLE THESIS IN TWO NUMBERS. The same movement, written the two ways round, on a game
-  # whose every pass takes three frames: written in the game loop it moves once a PASS, so the
+  # The whole thesis in two numbers. The same movement, written the two ways round, on a game
+  # whose every pass takes three frames: written in the game loop it moves once a pass, so the
   # world runs at a third speed and the game is in slow motion; written in `once_a_frame` it
-  # moves once a FRAME, so it keeps real time and what a slow game costs is a jerkier picture.
+  # moves once a frame, so it keeps real time and what a slow game costs is a jerkier picture.
   # Neither is a bug — the choice is the author's — but they are different games.
   private def slow_motion_or_choppy
     b = VBlank::Builder.new
@@ -175,12 +175,12 @@ class TestFrameStep < Minitest::Test
     assert_equal 15, run[:by_clock], "fifteen frames really went by, and it moved on every one"
   end
 
-  # A BEAT GIVEN IN FRAMES IS FRAMES, not passes of the game loop. This is the one that used to
+  # A beat given in frames is frames, not passes of the game loop. This is the one that used to
   # be wrong, and the one an author would never have found: they wrote `every(4)`, the game got
   # heavy, and the beat quietly slowed down with it.
   #
   # A game burning past a frame is run long enough for several beats, and the test asks whether
-  # the number of beats matches the number of FRAMES rather than the number of passes.
+  # the number of beats matches the number of frames rather than the number of passes.
   private def beating_program(busy, period)
     b = VBlank::Builder.new
     b.instance_eval do
@@ -190,7 +190,7 @@ class TestFrameStep < Minitest::Test
       spin = 0
       game_loop do
         every(period) { beats += 1 }
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 0, step * WIDE, 8, :white
         draw_rect_at 0, 12, beats * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
@@ -201,7 +201,7 @@ class TestFrameStep < Minitest::Test
   end
 
   # Six frames a pass and a beat every four frames: after four passes that is 24 frames, so six
-  # beats. Counted per PASS it would be one. The exact numbers are read off the screen rather
+  # beats. Counted per pass it would be one. The exact numbers are read off the screen rather
   # than assumed, since how late a pass runs is the console's business.
   def test_a_beat_in_frames_keeps_time_when_the_game_does_not
     rom = ROM.assemble(GBA.new.lower(beating_program(90_000, 4)), title: "BEAT", code: "ABEA", maker: "01")
@@ -215,7 +215,7 @@ class TestFrameStep < Minitest::Test
     assert_operator beats, :>, 1, "counted per pass it would still be on its first beat"
   end
 
-  # A ONE-SHOT MUST STILL GO OFF WHEN THE PASS STEPS OVER ITS FRAME. Counting one a pass, the
+  # A one-shot must still go off when the pass steps over its frame. Counting one a pass, the
   # counter landed on the target exactly and firing on equality was safe. Counting frames, a pass
   # worth six can take a counter from nought straight past five — so a one-shot that waited for
   # equality would wait for ever, which is the worst way for this to fail: silently, and only on
@@ -228,7 +228,7 @@ class TestFrameStep < Minitest::Test
       spin = 0
       game_loop do
         after(wait) { fired = 1 }
-        dma_fill_rect 0, 0, 240, 24, :black
+        fill_rect 0, 0, 240, 24, :black
         draw_rect_at 0, 12, fired * WIDE, 8, :white
         repeat(busy) { spin += 1 } if busy.positive?
       end

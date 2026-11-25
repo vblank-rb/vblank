@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# MORE THAN ONE MACHINE PLAYING ONE MATCH. Every machine runs the whole game; only each player's
+# More than one machine playing one match. Every machine runs the whole game; only each player's
 # buttons for each pass travel between them (see Network::Lockstep for why that is enough). This
 # module is what two machines say to each other and how they keep in step: the messages, the
 # fingerprint that tells one build of a game from another, the session each machine runs, and a

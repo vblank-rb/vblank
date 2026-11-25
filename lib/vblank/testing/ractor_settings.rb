@@ -4,7 +4,7 @@ require "etc"
 
 module VBlank
   module Testing
-    # A GAME'S SUITE PLAYED IN RACTORS, set up from its Rakefile in one line, before its test tasks:
+    # A game's suite played in ractors, set up from its Rakefile in one line, before its test tasks:
     #
     #   require "vblank/testing/ractor_settings"
     #   VBlank::Testing::RactorSettings.apply(ENV, roomy_heap: true)
@@ -14,14 +14,13 @@ module VBlank
     # tolerated. The game's test helper does its half (Testing::InRactors). This is the Rakefile's:
     #
     # --ractor GOES INTO TESTOPTS rather than a task's own options, because rake reads TESTOPTS IN
-    # PLACE OF those options when it is set: `TESTOPTS="--name=/x/"` would play that one test without
+    # place of those options when it is set: `TESTOPTS="--name=/x/"` would play that one test without
     # Ractors, and a test could pass alone that the suite would refuse. Options that already name
     # --ractor or --no-ractor (for chasing one failure the plain way) are left as they are, matched as
-    # whole words, so a pattern that happens to contain "ractor" is not taken for the flag. The native
-    # and other checked runs take it out again themselves (TestTask), since they cannot play in
-    # Ractors.
+    # whole words, so a pattern that happens to contain "ractor" is not taken for the flag. A run whose
+    # record plays it in processes takes it out again itself (TestTask, Lowering::Run#ractors).
     #
-    # HALF THE MACHINE'S CORES, unless MT_RACTOR_WORKERS asks otherwise. A run on every core holds the
+    # Half the machine's cores, unless MT_RACTOR_WORKERS asks otherwise. A run on every core holds the
     # whole machine for its length, and is not much quicker: so much of a test run waits on things
     # other than arithmetic that half the workers finish in about the time all of them do.
     #

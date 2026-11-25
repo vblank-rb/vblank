@@ -4,7 +4,29 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME BUILT FOR A BROWSER TOO, told which of its lines keep it on the console.
+        # An error, when a game is built for the web, about a line that only the console itself
+        # can run:
+        #
+        # > This line uses <what>. A browser does not have that processor or that screen, so a game
+        # > with this line cannot be built for the web. <what to write instead> A game built only
+        # > for the console can keep this line.
+        #
+        # Where that line is in a routine nothing calls, the web build leaves it out, and this is a
+        # warning instead:
+        #
+        # > This line uses <what>. Nothing in the game calls the routine it is in, so the web build
+        # > leaves it out. If the game calls that routine, the web build will stop here. <what to
+        # > write instead>
+        #
+        # The lines named are raw instructions for the console's processor (`entry`) and a reading
+        # of which line the console's screen is drawing (`read_scanline`). A browser has neither
+        # that processor nor that screen. Do the same with the framework's own words, such as
+        # `pixel` and `held`, which every build understands, or work the screen's line out from the
+        # frame count. A game built only for the console never sees this, and a game meant for
+        # both can turn the check on for its cartridge builds too, where it is a warning.
+        #
+        #--
+        # A game built for a browser too, told which of its lines keep it on the console.
         #
         # Nearly everything a game writes — move, draw, play a note — means the same on the
         # console, on a desktop and in a browser, and the JavaScript lowering plays it the same.
@@ -22,6 +44,7 @@ module VBlank
         # cartridge itself is fine:
         #
         #   VBlank::IR::Guardrails.register(VBlank::IR::Guardrails::Checks::WebPortability.new)
+        #++
         class WebPortability
           NAME = :web_portability
           PLAIN_NAME = "a step a browser cannot run"

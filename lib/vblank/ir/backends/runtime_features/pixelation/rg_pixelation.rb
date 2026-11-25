@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE PICTURE IN FLAT BLOCKS (Reference @block, Reference::SpriteBlocks): `pixelate`, joined into the
+# The picture in flat blocks (Reference @block, Reference::SpriteBlocks): `pixelate`, joined into the
 # runtime's class after rg_screen.rb for a game that pixelates. rg_pixelation.c says how, rule for
 # rule; this is that file written again, method for method.
 

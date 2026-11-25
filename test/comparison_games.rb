@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# THE SMALL GAME THE COMPARISON'S TESTS COMPARE, and the long way round to what they expect.
+# The small game the comparison's tests compare, and the long way round to what they expect.
 #
 # A comparison is tested on two cartridges that differ in one thing put there on purpose, so
 # the tests need a game that can be built with a difference of a known kind — a few pixels, a
@@ -69,7 +69,7 @@ module ComparisonGames
     end
   end
 
-  # A GREY SCREEN THE EMULATOR HOLDS AS ONE OF TWO NUMBERS, for the same colour at the five
+  # A grey screen the emulator holds as one of two numbers, for the same colour at the five
   # bits of each channel a console shows.
   #
   # The emulator keeps eight bits a channel. A grey of level 17 read straight out of the
@@ -78,7 +78,7 @@ module ComparisonGames
   # are dropped, so the two screens are different bytes and one picture.
   #
   # +specks+ white pixels in a row are drawn on it too, far from any edge: a difference of a
-  # known size that IS one at five bits.
+  # known size that is one at five bits.
   def grey_screen(brightened:, specks: 0)
     VBlank.build("GREY", console: :gba, out: StringIO.new, err: StringIO.new) do
       screen :bitmap
@@ -111,7 +111,7 @@ module ComparisonGames
     end
   end
 
-  # A CARTRIDGE PLAYED ON ITS OWN, a frame at a time, with the buttons a tape says — the long
+  # A cartridge played on its own, a frame at a time, with the buttons a tape says — the long
   # way round, with no comparison in it. The block is handed the running cartridge after
   # each frame and the number of that frame, counted from 1.
   def each_frame_of(cartridge, tape)

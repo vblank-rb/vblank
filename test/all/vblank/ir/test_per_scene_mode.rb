@@ -30,14 +30,11 @@ module PerSceneModeGames
       scene :play do
         screen :bitmap, tear_free: true # this scene is double-buffered
         clear_screen :blue
-        dma_fill_rect 100, 76, 8, 8, :green
+        fill_rect 100, 76, 8, 8, :green
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -65,10 +62,10 @@ class TestPerSceneMode < Minitest::Test
   # `camera_follows`/`fade_out`/`fade_in`) compiles to a plain func called directly
   # from the main loop body, every real frame, regardless of which scene (if any)
   # is active. It must never be treated as an entry point that "owns" a display
-  # mode the way a case_var scene does — if it were, its own mode-switch preamble
+  # mode the way a scene the dispatch picks does — if it were, its own mode-switch preamble
   # would fight whatever scene is actually live, forcing the hardware back to its
   # mode every frame. Concretely: in a program that also switches screen modes per
-  # scene, that fight makes the active scene re-run ITS OWN mode-entry preamble
+  # scene, that fight makes the active scene re-run its own mode-entry preamble
   # every frame too — which, for a tiled/affine scene, means the OAM sprite table
   # gets cleared again right after this frame's sprites were written, so nothing
   # composited ever reaches the screen. See IR::Modes#scene_targets /
@@ -82,7 +79,7 @@ class TestPerSceneMode < Minitest::Test
       var :state, 0
       once_a_frame(:tick) { }
       scene(:a) { }
-      game_loop { wait_vblank; case_var(:state) { when_val 0, :a } }
+      game_loop { wait_vblank; call({ 0 => :a }, number: :state) }
     end
     b.finalize_program
     modes = VBlank::IR::Modes.resolve(b.program)
@@ -90,6 +87,6 @@ class TestPerSceneMode < Minitest::Test
     refute_includes modes.scene_funcs, :tick,
                      "a per-frame routine must not be treated as a mode-owning scene"
     assert_includes modes.scene_funcs.map { |n| VBlank::IR::Modes.strip_scene_prefix(n) }, "a",
-                     "a real case_var scene must still be tracked"
+                     "a scene the dispatch picks must still be tracked"
   end
 end

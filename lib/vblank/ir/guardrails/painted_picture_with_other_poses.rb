@@ -4,7 +4,19 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A PICTURE THE GAME PAINTS FROM A LIST IS THE WHOLE OF THE SPRITE THAT SHOWS IT.
+        # An error for a sprite that shows a picture the game paints from a list, beside other
+        # pictures:
+        #
+        # > The sprite :<sprite> shows the picture :<picture>, which the game paints from a list.
+        # > It also shows other pictures. A painted picture must be the only picture of its sprite.
+        #
+        # The console keeps a painted picture in a place of its own, which the list is copied into
+        # whenever the game marks it changed, and it has no room for that place among a sprite's
+        # other poses. To fix this, show the painted picture on a sprite of its own. Then show one
+        # of the two sprites at a time.
+        #
+        #--
+        # A picture the game paints from a list is the whole of the sprite that shows it.
         #
         # The console keeps such a picture in one room of sprite memory, which the game's list
         # is copied into whenever the game marks it `changed`, and the sprite points at that room. A
@@ -21,6 +33,7 @@ module VBlank
         # without its refusal they pass for a game no console's build makes. Each asks this rule
         # before PosesWithDifferentColors: a painted picture beside a pose of another list breaks
         # both, and this is what is really wrong.
+        #++
         class PaintedPictureWithOtherPoses
           NAME = :painted_picture_with_other_poses
           PLAIN_NAME = "a painted picture beside other poses"

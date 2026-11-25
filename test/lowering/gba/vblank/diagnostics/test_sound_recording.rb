@@ -95,4 +95,53 @@ class TestSoundRecording < Minitest::Test
       assert_equal RATE, SoundRecording.read_wav(path, frame_seconds: 1r / 60).rate
     end
   end
+
+  # A .wav of two speakers is heard as one, each moment the two halved; eight bits are widened to
+  # sixteen; a chunk of words about the file before the sound is passed over.
+  def test_a_wav_of_two_speakers_or_eight_bits_is_read_as_one_speaker
+    Dir.mktmpdir do |dir|
+      stereo = write_raw_wav(File.join(dir, "two.wav"), [100, 300, -200, 0].pack("s<*"), channels: 2, bits: 16, notes: true)
+      eight = write_raw_wav(File.join(dir, "eight.wav"), [128, 255, 0].pack("C*"), channels: 1, bits: 8)
+
+      assert_equal [200, -100], SoundRecording.read_wav(stereo, frame_seconds: 1r / 60).samples
+      assert_equal [0, 127 << 8, -128 << 8], SoundRecording.read_wav(eight, frame_seconds: 1r / 60).samples
+    end
+  end
+
+  def test_a_file_that_is_not_a_wav_is_refused
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "song.mp3")
+      File.binwrite(path, "ID3 not a wave")
+
+      assert_match "not a .wav file", assert_raises(ArgumentError) { SoundRecording.read_wav(path, frame_seconds: 1r / 60) }.message
+    end
+  end
+
+  # Two recordings in one file for a person: one after the other with a moment's quiet between, or
+  # the first on the left speaker and the second on the right, the one at the lower rate read at the
+  # higher.
+  def test_two_recordings_are_written_in_turn_or_side_by_side
+    first = SoundRecording.new(samples: [1000, 2000], rate: 4, frame_seconds: 1r / 60)
+    second = SoundRecording.new(samples: [-500], rate: 2, frame_seconds: 1r / 60)
+    Dir.mktmpdir do |dir|
+      in_turn = SoundRecording.write_pair(File.join(dir, "turn.wav"), first, second, layout: :in_turn)
+      side = SoundRecording.write_pair(File.join(dir, "side.wav"), first, second, layout: :side_by_side)
+
+      gap = [0] * (SoundRecording::PAIR_GAP_SECONDS * 4).round
+      assert_equal [1000, 2000, *gap, -500, -500], SoundRecording.read_wav(in_turn, frame_seconds: 1r / 60).samples
+      assert_equal [(1000 - 500) / 2, (2000 - 500) / 2], SoundRecording.read_wav(side, frame_seconds: 1r / 60).samples
+      assert_equal 4, SoundRecording.read_wav(side, frame_seconds: 1r / 60).rate
+      error = assert_raises(ArgumentError) { SoundRecording.write_pair(File.join(dir, "x.wav"), first, second, layout: :mixed) }
+      assert_match "in_turn", error.message
+    end
+  end
+
+  # A .wav of +data+ as another program writes it, with a chunk of words before the sound where +notes+.
+  private def write_raw_wav(path, data, channels:, bits:, notes: false)
+    format_chunk = ["fmt ", 16, 1, channels, RATE, RATE * channels * bits / 8, channels * bits / 8, bits].pack("a4VvvVVvv")
+    list = notes ? ["LIST", 4, "INFO"].pack("a4Va4") : "".b
+    body = "WAVE".b + format_chunk + list + ["data", data.bytesize].pack("a4V") + data
+    File.binwrite(path, ["RIFF", body.bytesize].pack("a4V") + body)
+    path
+  end
 end

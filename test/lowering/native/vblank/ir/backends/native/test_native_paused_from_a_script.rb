@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# A GAME PAUSED FROM A SCRIPT is held a frame at a time. Played by a person a pause sleeps until the
+# A game paused from a script is held a frame at a time. Played by a person a pause sleeps until the
 # window has an event (runtime/rg_pause.h, tested as arithmetic in test_native_pause.rb); a script has
 # no events to wake it, and each time round the pause reads the next line of it, so the wait must stay
 # a frame long or a run of a given number of lines stops taking the time it did. The game does not move

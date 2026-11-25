@@ -3,14 +3,14 @@
 require "test_helper"
 require "differential"
 
-# A PICTURE WHOSE PIXELS ARE PLACES IN ITS OWN LIST OF COLOURS.
+# A picture whose pixels are places in its own list of colours.
 #
 # Art made anywhere else on this console arrives as numbers picking out of a table, and every
 # picture the framework keeps holds a whole colour per pixel instead. Those are the same
 # picture right up until the table holds one colour twice — and a palette lifted out of a real
 # cartridge nearly always does, two blacks or two whites — because a colour then no longer says
 # which place it came from. That matters because a sprite drawn with another list swaps colours
-# BY PLACE: the two places are one colour in the art and two different colours in the list it is
+# by place: the two places are one colour in the art and two different colours in the list it is
 # drawn with, so the picture has to remember which of them each pixel meant.
 class TestPicturePlaces < Minitest::Test
   include Differential

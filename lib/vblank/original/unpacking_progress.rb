@@ -2,12 +2,12 @@
 
 module VBlank
   module Original
-    # THE PROGRESS BAR A SHELL SHOWS WHILE IT UNPACKS: a routine of the unpacking's
+    # The progress bar a shell shows while it unpacks: a routine of the unpacking's
     # (Unpacking::PROGRESS), called before every wait for the next frame (CopyReader), drawing a bar
     # as far along as +done+ (Builder's UnpackingBytes or UnpackingWork) says, and the whole bar once
     # +finished+ is 1. Game code, so every runtime draws it, and the interpreter is its answer key.
     #
-    # THE SCREEN IS PAINTED ONLY WHEN THE BAR'S WIDTH CHANGES. The routine waits every few hundred
+    # The screen is painted only when the bar's width changes. The routine waits every few hundred
     # bytes, hundreds of thousands of times for a port's music, and the bar moves a pixel only every
     # few thousand of them; clearing the screen and painting the words and the bar again at each wait
     # was a large share of a fast runtime's unpacking. The screen is a plain one (`screen :bitmap`),

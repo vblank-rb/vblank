@@ -4,7 +4,7 @@ require "minitest/ractor"
 
 module VBlank
   module Testing
-    # A GAME'S TESTS PLAYED IN RACTORS, set up from its test helper in one line:
+    # A game's tests played in ractors, set up from its test helper in one line:
     #
     #   require "vblank/testing/in_ractors"
     #   class Minitest::Test
@@ -21,14 +21,17 @@ module VBlank
     #   cannot be frozen or must stay with the core that made it (a file handle, a booted console).
     #
     # A file whose tests change the whole process on purpose (registering something, declaring a
-    # class) or start a child process, which hangs inside a Ractor, writes minitest-ractor's own
-    # `runs_on_the_main_ractor!` at the top, with a line saying why.
+    # class) writes minitest-ractor's own `runs_on_the_main_ractor!` at the top, with a line saying
+    # why. Starting a child process is not such a change: a test in a Ractor can start one, with
+    # standard output unbuffered (Testing sets it). What it cannot do is ask Ruby things only the
+    # main Ractor may read, such as RbConfig.ruby for the path of Ruby itself: read that once at
+    # load, into a constant.
     #
     # minitest-ractor makes most of minitest's own state shareable (Minitest::Ractor::
     # ShareableConstants), but not the diff program minitest shows a failing comparison with: see
     # .share_diff_command.
     module InRactors
-      # MINITEST'S DIFF PROGRAM, FOUND ONCE HERE ON THE MAIN RACTOR. A failing assert_equal of two
+      # Minitest's diff program, found once here on the main Ractor. A failing assert_equal of two
       # long strings (a cartridge's bytes, say) is shown as the output of `diff -u`, and minitest
       # looks for that program the first time a failure needs it: it reads RbConfig::CONFIG to ask
       # whether this is Windows, and keeps the answer on Minitest::Assertions. A test in a Ractor
@@ -42,15 +45,58 @@ module VBlank
 
       share_diff_command
 
+      # Whether this process plays its tests in Ractors, read as it loads, since methods are made as
+      # the test files load and minitest-ractor reads its flag only once the run starts: --ractor
+      # among the test options, or MT_RACTOR set, and no --no-ractor.
+      RACTOR_RUN = (ARGV.include?("--ractor") || Minitest::Ractor::Plugin.opted_in?) && !ARGV.include?("--no-ractor")
 
       def self.included(test_class)
         super
         test_class.extend(FrozenConstants)
+        test_class.extend(ShareableMethods)
         test_class.extend(ReadOnce)
         test_class.parallelize_me!
       end
 
-      # EVERY FIXTURE A TEST CLASS PARKS IN A CONSTANT IS FROZEN, ALL THE WAY DOWN, the moment it
+      # Every method a test class makes from a block, tests written in a loop above all
+      # (`BOUNDS.each { |shape, bound| define_method(:"test_#{shape}") { ... } }`), made from a
+      # shareable copy of the block on a run in Ractors (RACTOR_RUN), so a test in any Ractor can
+      # call it. A run that plays no test in a Ractor keeps the block as it is. A module of tests
+      # several files share has it too, where share_constants_declared_in reaches the module.
+      #
+      # A method made from a plain block can be called only on the Ractor that made it, the main
+      # one, as the file loaded: anywhere else Ruby refuses it as "defined with an un-shareable
+      # Proc in a different Ractor". The copy (Ractor.shareable_proc) is the block with the values
+      # it reads from around it fixed as they were, which a loop's variables are. A block that
+      # reads a value that can change, or a variable set again later, cannot be copied and is
+      # left as it was: the Ractor run names the test that calls it. A class that says
+      # `runs_on_the_main_ractor!` first keeps its blocks as they are.
+      #
+      # Every block inside the copy is cut loose from its surroundings too, so a game's block in
+      # such a test cannot read the loop's variables as game code: VBlank reads game code by
+      # evaluating its source beside the block's variables, and Ruby refuses that ("can not access
+      # variable from isolated Proc"). A test like that names the loop's value in a method of its
+      # own, written out for each value, or reads it outside the game's block.
+      module ShareableMethods
+        def define_method(name, body = nil, &block)
+          return super(name, body) if body
+          return super(name, &block) unless RACTOR_RUN
+          return super(name, &block) if respond_to?(:runs_on_the_main_ractor?) && runs_on_the_main_ractor?
+
+          super(name, &InRactors.shareable_block(block))
+        end
+      end
+
+      # +block+ as a shareable copy (ShareableMethods), or as it was where it cannot be copied.
+      def self.shareable_block(block)
+        return block if block.nil? || Ractor.shareable?(block)
+
+        Ractor.shareable_proc(&block)
+      rescue Ractor::Error
+        block
+      end
+
+      # Every fixture a test class parks in a constant is frozen, all the way down, the moment it
       # is declared. Ruby tells a class when a constant is added to it, so there is nothing to
       # remember and nothing to repeat.
       #
@@ -58,8 +104,8 @@ module VBlank
       # of them and read changed by the next, a real bug that is invisible until the day test order
       # moves. And a test in a Ractor may read a constant only when nothing in it can change.
       #
-      # TWO THINGS ARE LEFT ALONE. A nested module or class, because that is code rather than a
-      # fixture. And a STREAM (a file, a socket, $stdout), because freezing one works and then
+      # Two things are left alone. A nested module or class, because that is code rather than a
+      # fixture. And a stream (a file, a socket, $stdout), because freezing one works and then
       # nothing can write to it again: a test that parked $stdout in a constant would take the whole
       # run down, with an error pointing somewhere else entirely.
       #
@@ -78,10 +124,10 @@ module VBlank
         end
       end
 
-      # A FIXTURE AS EVERY RACTOR MAY READ IT: +value+ frozen all the way down, and a String
+      # A fixture as every Ractor may read it: +value+ frozen all the way down, and a String
       # interned besides (`-value`), which is what keeps its bytes when a test writes it out.
       #
-      # RUBY'S IO WRITES A FROZEN STRING OF A FEW HUNDRED BYTES BY MOVING ITS BYTES. The first time
+      # Ruby's IO writes a frozen string of a few hundred bytes by moving its bytes. The first time
       # such a String is written (File.binwrite, IO#write), Ruby (4.0) hands a hidden String its
       # bytes and points the String itself at the hidden one: ObjectSpace.dump calls it "shared"
       # afterwards. That changes the fixture, which every Ractor shares, from whichever Ractor
@@ -152,22 +198,87 @@ module VBlank
         fixtures.constants(false).each { |name| share_constant(fixtures, name) }
       end
 
-      # Constant +name+ of +holder+ made shareable (.shareable), put back where that made it a new
-      # object.
+      # Every constant a file in +folder+ declares from now on, made shareable the moment it is
+      # declared, as a test class's are. A test helper calls it once with its own folder:
+      #
+      #   VBlank::Testing::InRactors.share_constants_declared_in(__dir__)
+      #
+      # Including InRactors reaches the constants of test classes alone, since only a class Ruby
+      # can tell about its constants is one that has the hook. A module of fixtures several test
+      # files share (`module PaletteWalkTests; PART_OF_THE_SCREEN = [...]`), a class of helpers,
+      # or a constant at the top of a test file is in no test class, and a test that reads one in
+      # a Ractor is refused. This puts the hook on every module (Module#const_added), and shares
+      # what a file in +folder+ declared, found by where Ruby says each was declared, so nothing
+      # the library or a gem declares is touched.
+      def self.share_constants_declared_in(folder)
+        prefix = Ractor.make_shareable(File.join(File.expand_path(folder), ""))
+        hook = Module.new
+        hook.define_method(:const_added, &Ractor.shareable_proc do |name|
+          super(name)
+          InRactors.share_constant_declared_in(self, name, prefix)
+        end)
+        Module.prepend(hook)
+      end
+
+      # Constant +name+ of +holder+ made shareable when a file in +folder+ declared it. A test
+      # class has shared it already (FrozenConstants), and an autoload is left to load when used.
+      # A module of tests declared there makes its loop-made tests as a test class does
+      # (ShareableMethods).
+      def self.share_constant_declared_in(holder, name, folder)
+        return if holder.autoload?(name, false)
+        # Expanded, since a test file given to ruby by a relative path declares its constants there.
+        file = holder.const_source_location(name, false)&.first
+        return unless file && File.expand_path(file).start_with?(folder)
+
+        value = holder.const_get(name, false)
+        value.extend(ShareableMethods) if value.instance_of?(Module) && named_here?(value, holder, name)
+        share_constant(holder, name) unless holder.is_a?(FrozenConstants)
+      end
+
+      # Whether module +value+ is the one constant +name+ of +holder+ declares, not another module
+      # given a short name there (`B = VBlank::IR::Build`).
+      def self.named_here?(value, holder, name)
+        value.name == (holder.equal?(Object) ? name.to_s : "#{holder.name}::#{name}")
+      end
+
+      private_class_method :named_here?
+
+      # Constant +name+ of +holder+ made shareable (.shareable). It is frozen in place where it can
+      # be, so the constant stays the object it was and where Ruby says it was declared. Where its
+      # Strings must be interned it is a new object, set again at the file and line that declared
+      # it (Original::RoutineFiles reads that place). A value that cannot be shared (one holding a
+      # Mutex, a block reading a variable around it) is left as it was: a test that reads it in a
+      # Ractor is refused, naming the constant.
       def self.share_constant(holder, name)
         value = holder.const_get(name, false)
         return if value.is_a?(Module) || value.is_a?(IO)
 
-        shareable = shareable(value)
-        return if shareable.equal?(value)
-
-        holder.module_exec(name) { |named| remove_const(named) }
-        holder.const_set(name, shareable)
-      rescue Ractor::IsolationError
+        if holds_string_to_intern?(value)
+          reset_constant(holder, name, shareable(value))
+        else
+          Ractor.make_shareable(value)
+        end
+        nil
+      rescue Ractor::Error
         nil
       end
 
-      # A FIXTURE MADE ONCE IN EACH RACTOR, kept under the class's name and +name+, for what cannot
+      # Constant +name+ of +holder+ set to +value+ again, declared at the place the first one was:
+      # a string evaluated with a file and line is the only way Ruby records a constant's place.
+      def self.reset_constant(holder, name, value)
+        file, line = holder.const_source_location(name, false)
+        holder.module_exec(name) { |named| remove_const(named) }
+        return holder.const_set(name, value) unless file
+
+        ::Ractor.current[:vblank_constant_reset] = value
+        holder.module_eval("#{name} = ::Ractor.current[:vblank_constant_reset]", file, line)
+      ensure
+        ::Ractor.current[:vblank_constant_reset] = nil
+      end
+
+      private_class_method :reset_constant
+
+      # A fixture made once in each Ractor, kept under the class's name and +name+, for what cannot
       # be frozen. It is made as many times as there are workers, so it is for what is cheap or
       # cannot be shared; anything dear that can be frozen belongs in a constant.
       module ReadOnce

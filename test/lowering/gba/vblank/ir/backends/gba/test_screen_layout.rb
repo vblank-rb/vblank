@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE EVERYTHING THE CONSOLE DRAWS FOR YOU GOES, asked of the plan itself.
+# Where everything the console draws for you goes, asked of the plan itself.
 #
 # The console holds four background layers and a table of 128 sprites, and which of them
 # each thing in a game gets is decided before any code exists. These ask that plan
@@ -57,7 +57,7 @@ class TestScreenLayout < Minitest::Test
       scene(:first) { 4.times { |i| background :"a#{i}", tiles: :set, map: map } }
       scene(:second) { 4.times { |i| background :"b#{i}", tiles: :set, map: map } }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :first; when_val 1, :second } }
+      game_loop { call({ 0 => :first, 1 => :second }, number: :state) }
     end
 
     first = (0...4).map { |i| layout.hardware_layers.fetch(:"a#{i}") }
@@ -74,7 +74,7 @@ class TestScreenLayout < Minitest::Test
       scene(:first) { background :hall, tiles: :set, map: map }
       scene(:second) { background :cave, tiles: :set, map: map }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :first; when_val 1, :second } }
+      game_loop { call({ 0 => :first, 1 => :second }, number: :state) }
     end
 
     sky = layout.hardware_layers.fetch(:sky)
@@ -160,7 +160,7 @@ class TestScreenLayout < Minitest::Test
     assert_equal 1, sprite(layout, :coin).pieces
   end
 
-  # WHERE EACH PIECE STANDS is the thing that can go wrong without looking wrong: a piece
+  # Where each piece stands is the thing that can go wrong without looking wrong: a piece
   # one cell out still draws a plausible picture. Between them the pieces have to cover
   # every part of the picture, and each has to start inside it. (A piece may hang past the
   # far edge — the console has no 48-tall size, so a 64-tall one stands there — and what

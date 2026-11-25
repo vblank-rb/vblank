@@ -32,6 +32,7 @@ require_relative "genesis/lowering/products"
 require_relative "genesis/lowering/tile_runs"
 require_relative "genesis/lowering/pose_rooms"
 require_relative "genesis/lowering/shown_sort"
+require_relative "genesis/lowering/bends"
 require_relative "genesis/lowering"
 require_relative "genesis/headless_run"
 require_relative "genesis/checked_run"
@@ -42,14 +43,14 @@ module VBlank
       # The game as a SEGA GENESIS cartridge: the same program every other backend runs, lowered to
       # the 68000, the console's processor, and laid out flat in a cartridge of up to four megabytes.
       #
-      # HOW IT IS MADE. Genesis::Lowering walks the IR and emits 68000 machine code through the Ruby
+      # How it is made. Genesis::Lowering walks the IR and emits 68000 machine code through the Ruby
       # assembler (Genesis::M68000), as the Super Nintendo's lowering emits 65816, and shares with
       # that lowering what both work out before writing an instruction (LoweringPlan, RoutineCuts,
       # Sections). The runtime the code calls is written in 68000 here, in Ruby. The cartridge is
       # checked in Genesis Plus GX through ruby-genesis-emulator, which `rake compile_genesis_core`
       # builds.
       class Genesis
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its address, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built from,
@@ -63,9 +64,13 @@ module VBlank
         # +video_tiles+ is how many tiles the game's pictures put in video memory (VideoTiles), or nil
         # for a game that draws from none.
         # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
-        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list. +routines+ is where each of the
+        # game's routines went (GameRoutine), for the sizes a profile tells.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :sprite_picture_names, :bytes,
-                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places) do
+                             :sound_entries, :sound_voicing, :recording_names, :video_tiles, :slot_places, :routines) do
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -85,7 +90,7 @@ module VBlank
           end
         end
 
-        # HOW MANY 8×8 TILES THE GAME'S PICTURES PUT IN VIDEO MEMORY, which the build knows and a
+        # How many 8×8 tiles the game's pictures put in video memory, which the build knows and a
         # running cartridge does not show: +room+ is how many fit, +every_screen+ how many the
         # pictures every screen shows take, and +by_scene+ how many are there while each scene is up,
         # its own and those, for a game whose scenes bring their own tiles in (empty for any other).
@@ -97,6 +102,9 @@ module VBlank
 
           def to_h = { room: room, every_screen: every_screen, by_scene: by_scene.transform_keys(&:to_s) }
         end
+
+        # One of the game's routines and the addresses of the code it was built to.
+        GameRoutine = Data.define(:addresses, :routine)
 
         # What the build found to say about what it decided (Cartridge::LoweredBuild).
         def findings = (@findings ||= [])
@@ -125,8 +133,13 @@ module VBlank
         # Those palettes are written through the game's own colours in work RAM (Runtime::Tint), so such
         # a game carries that part of the runtime even if it never fades.
         #
+        # A game whose lists of colours a sprite is drawn with still do not fit a palette each is built
+        # again with each such sprite drawn from copies of its poses in each list's colours
+        # (+remapped_lists+, Lowering::Picture#remapped?), all in one palette where their colours fit
+        # one, and the steps of +scene_colors+ are tried again from the first with those copies.
+        #
         # A game whose tiles still do not fit once its scenes take turns, or that has no scenes to take
-        # turns, is built again with the sprite whose poses give back the most kept to ONE POSE in video
+        # turns, is built again with the sprite whose poses give back the most kept to one pose in video
         # memory at a time, the pose it shows copied in from the cartridge as it changes to it (+streamed+,
         # Lowering::PoseRooms), and again with another such sprite, until the tiles fit or no sprite
         # would give any back. A game that fits without it builds as it did.
@@ -147,10 +160,10 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+ and +streamed+, each
-        # the Lowering's setting of the same name.
-        Tried = Data.define(:scene_tiles, :scene_colors, :streamed) do
-          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze)
+        # The settings of one try (#build, BuildTries): +scene_tiles+, +scene_colors+, +streamed+ and
+        # +remapped_lists+, each the Lowering's setting of the same name.
+        Tried = Data.define(:scene_tiles, :scene_colors, :streamed, :remapped_lists) do
+          def self.first = new(scene_tiles: false, scene_colors: false, streamed: [].freeze, remapped_lists: false)
         end
 
         private
@@ -168,7 +181,9 @@ module VBlank
             settings.with(streamed: streamed) if streamed
           when Art::TooManyColors
             later = try.made.scene_colors_after(settings.scene_colors)
-            settings.with(scene_colors: later) if later
+            return settings.with(scene_colors: later) if later
+
+            settings.with(remapped_lists: true, scene_colors: false) if try.made.remap_helps?
           end
         end
 
@@ -184,19 +199,25 @@ module VBlank
           songs = Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          clock_step = (IR::Tunes.effect_clock_step(program, program.described_console) if effects.positive?)
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
           counted = IR::Frames.counts_from_power_on?(program)
+          bends = picture == :tiled && !cache.plan.row_bends.empty?
           Runtime.reserve(memory, picture: picture, colors: colors, sprites_over_picture: over, sound: sound, songs: songs, counted: counted,
                                   music_follows_level: follows_level,
                                   effects: effects, holds_music: Lowering::Sound.holds_music?(program),
                                   wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                   swells: Music.swells_under_level?(program), slides: Music.slides?(program),
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
-                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program))
+                                  glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
+                                  second_pad: Runtime::Frame.reads_second_pad?(program),
+                                  team_player: Runtime::Frame.reads_team_player?(program), bends: bends,
+                                  effect_clock_step: clock_step)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                                      streamed: try.settings.streamed, cache: cache)
+                                                      streamed: try.settings.streamed,
+                                                      remapped_lists: try.settings.remapped_lists, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, registers: lowering.register_count,
                                              frame_begins: lowering.frame_begins, picture: picture,
@@ -204,14 +225,14 @@ module VBlank
                                              camera: lowering.camera?, colors: colors, sound: sound,
                                              music: (lowering.music_section if songs),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
-                                             effects: effects,
+                                             effects: effects, effect_clock_step: clock_step,
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
                                              poses: lowering.streams_poses?,
-                                             blocks: picture == :tiled && lowering.writes_cell_blocks?,
+                                             blocks: picture == :tiled && lowering.writes_cell_blocks?, bends: bends,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
@@ -219,8 +240,16 @@ module VBlank
                              source_program: program, code: linked.places, sprite_picture_names: picture == :tiled || over ? lowering.sprite_picture_names : {},
                              bytes: byte_counts(linked), sound_entries: lowering.sound_entries,
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
-                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places)
+                             video_tiles: lowering.video_tiles, slot_places: lowering.slot_places,
+                             routines: game_routines(lowering, linked))
           Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
+        end
+
+        def game_routines(lowering, linked)
+          lowering.section_routines.map do |label, routine|
+            placed = linked.sections.fetch(label)
+            GameRoutine.new(addresses: placed.address...(placed.address + placed.section.size), routine: routine)
+          end
         end
 
         # How many bytes of the cartridge are code and how many are data: the sections that hold the
@@ -231,12 +260,14 @@ module VBlank
         end
 
         # Where each vector points: reset starts the game, the vertical blank counts the frame and
-        # reads the pad, the horizontal blank does nothing, and every way the processor can fault
+        # reads the pad, the line interrupt strikes sound effects in a game that strikes them inside the
+        # frame (Runtime::Strikes) and does nothing in any other, and every way the processor can fault
         # stops the game saying so. A vector not named points where reset does.
         def vectors(linked)
           faults = %i[bus_error address_error illegal zero_divide chk trapv privilege trace line_a line_f]
+          line = linked.places.key?("rt_strikes_line") ? "rt_strikes_line" : "rt_unused_interrupt"
           { reset: linked.address_of("rt_reset"), vertical_interrupt: linked.address_of("rt_vblank_interrupt"),
-            horizontal_interrupt: linked.address_of("rt_unused_interrupt") }
+            horizontal_interrupt: linked.address_of(line) }
             .merge(faults.to_h { |fault| [fault, linked.address_of("rt_exception")] })
         end
       end

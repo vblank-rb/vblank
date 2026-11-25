@@ -102,10 +102,17 @@ writing an instruction is shared, because two copies of a decision drift apart:
 
 - `Backends::LoweringPlan` — what a run reaches, the numbers timers and scenes are known by, how
   each table is kept, constant folding, the game loop in the console's order and which of its writes
-  are placed at the end of a pass (`placed_at_pass_end?`), and the refusals
+  are placed at the end of a pass (`placed_at_pass_end?`), which lists are made before anything can
+  read or write them (`lists_made_before_use`, the only lists whose index test a lowering may leave
+  out or hold to the capacity), and the refusals
   every console makes alike, in one order (`refuse_unbuildable!`: a start file, a step only the
   Advance has, what the lowering does not make yet, what the console's answers refuse, a routine
   that calls itself), which a lowering calls first and then adds its own refusals after.
+- `Backends::ListPackBlocks` — a list's items copied into a list of bytes as one run (IR `list_pack`,
+  what a save's snapshot is made of), taken only where the run is seen to fit as the game runs and
+  the loop it stands for otherwise; the lowering gives the copy and says when its slots are a copy's.
+  A lowering with no copy mixes in `IR::ListPacking::Loops`; `ListPackBlocks::OWN_WAYS` names the
+  ones with their own way, the Advance's too, and `test_list_pack_blocks.rb` holds the list.
 - `Backends::MeasuredOnCopies` — `bytes_of`, a run of statements measured on copies of the
   lowering's state (`LoweringState#on_copies`), for `RoutineCuts`; the lowering gives its
   `measuring_assembler`. The Color measures its own way, listed with its reason in
@@ -122,6 +129,14 @@ writing an instruction is shared, because two copies of a decision drift apart:
   nothing else in the loop writing `i`: `LoopForm#counted_while`), which `ControlFlow#emit_counted_while`
   lowers as a counted loop held as a repeat's count is, and `ControlFlow#index_below` what a loop's variable is known to stay under while its
   body is written, so a read of a table or a list there needs no check of the index.
+- `Backends::RowBends` (`LoweringPlan#row_bends`) and `Backends::BendSchedule` — a background bent row
+  by row (`scroll_each_row`): which bends a game has (the last of each declared background, in the
+  order first bent), where a block's answer can only change (`bands`), and whether a block can be
+  left out while its scene is away (`observable_while_away?`); and the order every lowering works the
+  rows out in at each frame boundary (`emit_bends_worked_out`: row 0 of every bend, then the rest of
+  each), mixed in beside `ControlFlow` with hooks for the rows, the bands and the row variable. The
+  feed to the display stays each console's. `BendSchedule::OWN_WAYS` names the lowerings with their
+  own way, and `test/all/vblank/ir/backends/test_bend_schedule.rb` holds the list.
 - `Backends::NumberRanges` (`LoweringPlan#number_ranges`) — what range a value stays in, each
   variable's and list's real range worked out together, which variables are proven to stay in a byte
   or two, and which lists (a pool's fields among them) hold only numbers narrower than their slots
@@ -374,7 +389,7 @@ game's own suite uses:
   the checked player on the native, JavaScript, Ruby and Game Boy Color ones. A checked player raises
   `IR::Backends::RunComparison::Disagreement` when it disagrees with the interpreter, which the
   testing kit turns into a failed test.
-- `Testing::TestTask` says how a run is started (every checked one in several processes, never in Ractors, since they start programs); `Testing::RakeTasks` makes `rake test:all` and a
+- `Testing::TestTask` says how a run is started (in Ractors or in several processes, as the record's `ractors` says; a new run starts in processes and moves once its tests pass in Ractors and it is measured there); `Testing::RakeTasks` makes `rake test:all` and a
   `test:lowering:<name>` task for each.
 - `TestSuites::LOWERING_FOLDERS` (test/support/suites.rb) names the folders only one lowering's
   run loads: put the new backend's own tests in `test/lowering/<name>/`. `TestSuites::CONSOLE_FOLDERS`

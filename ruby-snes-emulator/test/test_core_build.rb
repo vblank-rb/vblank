@@ -64,6 +64,23 @@ class TestCoreBuild < Minitest::Test
     end
   end
 
+  # On Windows the Makefile writes a .dll.
+  def test_a_library_built_on_windows_is_moved_too
+    Dir.mktmpdir do |dir|
+      target = File.join(dir, "build", "core.so")
+      compile = lambda do |*step|
+        next unless step.first == "make"
+
+        out = File.join(step[2], "out")
+        FileUtils.mkdir_p(out)
+        File.write(File.join(out, "bsnes_libretro.dll"), "a library")
+      end
+
+      CoreBuild.make(target, on_path: ->(_) { true }, run: compile, download: ->(_) {})
+      assert_equal "a library", File.read(target)
+    end
+  end
+
   def test_a_core_that_was_not_built_at_install_says_why
     said = RubySNESEmulator::CoreLibrary.missing_message(nil, not_built: "a C++ compiler (g++) is not installed")
 

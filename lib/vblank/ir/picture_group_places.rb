@@ -2,17 +2,17 @@
 
 module VBlank
   module IR
-    # WHERE A SET OF PICTURE GROUPS' PICTURES GO IN SPRITE MEMORY (see Builder::PictureGroups),
+    # Where a set of picture groups' pictures go in sprite memory (see Builder::PictureGroups),
     # for a machine that keeps only the groups up in the memory it draws sprites from.
     #
     # A scene of many rooms shows one room's things at a time, two while the screen slides,
     # so its things need not all be in sprite memory at once: a room's pictures are copied in
-    # as the game puts the room up. Each picture is given ONE place for as long as its
+    # as the game puts the room up. Each picture is given one place for as long as its
     # scene is up, and is copied there every time one of its groups comes up. Then a picture
     # never moves while it is shown, and the table each sprite reads to find its pictures is
     # written once, when the cartridge is built.
     #
-    # TWO PICTURES CAN SHARE A PLACE when no group of the one can ever be up with a group of
+    # Two pictures can share a place when no group of the one can ever be up with a group of
     # the other: when it comes up, the other has gone. A picture in two groups is up while
     # either is, so it keeps clear of both. Which groups can be up at once is what
     # up_together: declares; a group is always up with itself.
@@ -45,7 +45,7 @@ module VBlank
       # The room all of them need, in units.
       def units = @placed.map { |picture, at| at + picture.units }.max || 0
 
-      # THE WORST SET OF GROUPS UP AT ONCE, and what their pictures come to together, in units:
+      # The worst set of groups up at once, and what their pictures come to together, in units:
       # the least room there could be. The room the places take is never less, and is more where
       # the pictures could not be fitted round each other any tighter.
       def worst_units = worst_set_and_units.last

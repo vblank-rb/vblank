@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A `sprite` on a bitmap screen DECLARED INSIDE A SCENE: it is painted while its scene is the
+# A `sprite` on a bitmap screen declared inside a scene: it is painted while its scene is the
 # one running, leaves no trail as it moves, and comes off the picture when another scene
 # takes over — the promises a sprite declared above the game loop already keeps.
 #
@@ -25,7 +25,7 @@ module SceneSpriteGames
 
   FLOOR = Ractor.make_shareable([("#." * 15)] * 20)
 
-  # The same two scenes with the red sprite declared ABOVE the loop, so it belongs to every
+  # The same two scenes with the red sprite declared above the loop, so it belongs to every
   # scene. It is a painted-screen sprite all the same, and the tiled scene has no picture for
   # it to be painted into. The block runs at the end of every pass, handed the sprite.
   private def shared_sprite_program(shown: true, &each_pass)
@@ -57,10 +57,7 @@ module SceneSpriteGames
       end
       game_loop do
         state = REST if step == 3
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         instance_exec(shared, step, &each_pass) if each_pass
         step += 1
       end
@@ -91,10 +88,7 @@ class TestSceneSprite < Minitest::Test
       instance_exec(state, step, &scenes)
       game_loop do
         instance_exec(state, step, &first) if first
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end
@@ -224,7 +218,7 @@ class TestSceneSprite < Minitest::Test
       scene(:play) { sprite(:block, at: START).move :right, by: 3 }
       game_loop do
         shared.move :down, by: 3
-        case_var(:state) { when_val PLAY, :play }
+        call({ PLAY => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -329,10 +323,7 @@ class TestSceneSprite < Minitest::Test
       end
       game_loop do
         state = REST if step == 3
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end

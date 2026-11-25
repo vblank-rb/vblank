@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE BACKGROUNDS IN BLOCKS AND THE SPRITES AS DRAWN (`pixelate size, sprites: false`), on every
+# The backgrounds in blocks and the sprites as drawn (`pixelate size, sprites: false`), on every
 # console whose display can show it: the Advance, which keeps "in blocks" as a switch on each
 # background and each sprite, and the Super Nintendo, whose mosaic reaches the backgrounds and never
 # the sprites. Each console's folder has a test file that includes these, so they are written once

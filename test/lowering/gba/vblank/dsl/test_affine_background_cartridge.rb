@@ -4,17 +4,17 @@ require "test_helper"
 require "tmpdir"
 require "all/vblank/dsl/test_affine_background"
 
-# A TURNING BACKGROUND ON THE ADVANCE'S CARTRIDGE, read in the emulator: the size of its squares,
+# A turning background on the Advance's cartridge, read in the emulator: the size of its squares,
 # the point it turns around, and how often the display is told the turn. What a game is told when
 # it asks for a turn it cannot have is in test/all/vblank/dsl/test_affine_background.rb.
 class TestAffineBackgroundCartridge < Minitest::Test
   include AffineBackgroundGames
 
-  # --- the zoom is a SIZE change, not just a different picture ---
+  # --- the zoom is a size change, not just a different picture ---
   #
   # "The pixels changed from one frame to the next" is not evidence of a zoom: a
   # matrix that is merely wrong changes them too. What a zoom means is that the
-  # squares of a checkerboard get BIGGER, so these measure the squares.
+  # squares of a checkerboard get bigger, so these measure the squares.
 
   # A checkerboard of two colours, as a whole program, for the test below.
   private def board_program(scale: nil)
@@ -55,7 +55,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
                  "and they are white and blue, the colours it was drawn from"
   end
 
-  # --- WHICH POINT THE PICTURE TURNS AROUND ---
+  # --- which point the picture turns around ---
   #
   # A turning background pivots on the middle of the screen unless the game says
   # otherwise, and the middle of the screen is one game's answer rather than a general
@@ -118,7 +118,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
     assert_equal Color.resolve(:red), v.pixel_gba(92, 40)
   end
 
-  # --- THE TURN IS WRITTEN ONLY ON A FRAME WHERE IT CHANGED ---
+  # --- the turn is written only on a frame where it changed ---
   #
   # A picture that has stopped moving is told to hold still by being told nothing, and
   # the console holds it: the six numbers that say how a layer is turned and where it is
@@ -191,9 +191,9 @@ class TestAffineBackgroundCartridge < Minitest::Test
                  "frame: #{each_frame.inspect}"
   end
 
-  # ...and the other half of it: a picture that IS moving is written on every frame it
+  # ...and the other half of it: a picture that is moving is written on every frame it
   # moves. Zoomed out a whole step a frame from four times the size, it takes three steps
-  # to arrive — and the display is told the size the pass BEFORE settled on, which is what
+  # to arrive — and the display is told the size the pass before settled on, which is what
   # every picture the framework draws for you does, so telling it takes one frame longer
   # than moving it does. Five frames of writes, then nothing.
   private def a_board_that_zooms_out_and_stops
@@ -222,7 +222,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
 
   # A scene that turns a background, a scene that does not, and a game that goes back and
   # forth between them. Leaving the turning one puts the display back to no-turn-no-zoom,
-  # because whatever comes next must not keep showing this scene's zoom — so coming back
+  # because whatever comes next must not go on showing this scene's zoom — so coming back
   # has to say the zoom again, though the program has not mentioned it since the line that
   # declared it. Zoomed 2x the sampled point shows the red mark at column 20; left as
   # drawn it shows the white one at column 25, so the two tell each other apart.
@@ -251,7 +251,7 @@ class TestAffineBackgroundCartridge < Minitest::Test
         state = 0 if waiting == 0
       end
 
-      game_loop { case_var(:state) { when_val 0, :zoomed; when_val 1, :away } }
+      game_loop { call({ 0 => :zoomed, 1 => :away }, number: :state) }
     end
     builder.finalize_program
     builder.program

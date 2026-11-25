@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SUPER NINTENDO'S OWN LAYOUT, read by IR::FormatReading, held to what its lowering writes.
+# The Super Nintendo's own layout, read by IR::FormatReading, held to what its lowering writes.
 class TestSNESFormatReading < Minitest::Test
   SNES = VBlank::IR::Backends::SNES
   Reading = VBlank::IR::FormatReading

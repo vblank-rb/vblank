@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # A POOL'S POSES GO INTO SPRITE MEMORY ONE AT A TIME, the first time one of its things
+        # A pool's poses go into sprite memory one at a time, the first time one of its things
         # shows each, rather than all together as its scene takes over.
         #
         # A scene's sprite pictures are copied in when it arrives, and the processor waits for
@@ -24,7 +24,7 @@ module VBlank
         # and the row pointing at it arrive together. Every byte goes back to nought when the
         # scene takes over again, since another scene's pictures went into the same memory.
         #
-        # ONE TILE IS PUT IN AS THE SCENE ARRIVES ALL THE SAME. A pose cut into fewer of the
+        # One tile is put in as the scene arrives all the same. A pose cut into fewer of the
         # console's pieces than the pool's biggest is filled out with blank pieces (every thing of
         # a pool takes the same number of places in the sprite table), and those all draw one
         # blank tile kept after the last pose. No pose's own run of tiles reaches it, so it is
@@ -33,7 +33,7 @@ module VBlank
         # What it costs is a load and a compare for each live thing on each frame, and the copy
         # once per pose per visit, a pose's worth rather than the pool's.
         #
-        # WHICH POOLS: one declared in a scene, whose pictures are its own. A pool showing the
+        # Which pools: one declared in a scene, whose pictures are its own. A pool showing the
         # same pictures as some other sprite shares them with it, and that sprite may be on screen
         # the moment the scene arrives, so those pictures still go in then; and a pool kept to one
         # frame at a time already copies only what it shows.

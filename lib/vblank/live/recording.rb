@@ -4,7 +4,7 @@ require "delegate"
 
 module VBlank
   module Live
-    # A LIVE PLAY RECORDED: a device wrapped so that everything still goes to it, while every frame's
+    # A live play recorded: a device wrapped so that everything still goes to it, while every frame's
     # sound handed to its speaker is kept, with how much was already waiting there as it came. The
     # sound is to listen to afterwards (#sound, a Diagnostics::SoundRecording, which writes a .wav);
     # the log is how a speaker that ran dry is found.

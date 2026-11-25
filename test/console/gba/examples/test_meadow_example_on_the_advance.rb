@@ -4,10 +4,10 @@ require "test_helper"
 require "differential"
 
 require "stringio"
-require VBlank.root.join("examples/meadow").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/meadow").to_s)
 require "all/examples/test_meadow_example"
 
-# THE MEADOW EXAMPLE ON THE ADVANCE'S CARTRIDGE (examples/meadow.rb), read in the emulator: it builds, and the
+# The Meadow example on the Advance's cartridge (examples/meadow.rb), read in the emulator: it builds, and the
 # cartridge draws what the interpreter draws on the way out of the door. What the walk does on every console the
 # game is written for is in test/all/examples/test_meadow_example.rb, whose walk (MeadowWalk) these share.
 class TestMeadowExampleOnTheAdvance < Minitest::Test

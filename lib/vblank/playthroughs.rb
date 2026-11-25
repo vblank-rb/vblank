@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# PLAYING A FINISHED CARTRIDGE WITH NOBODY AT THE CONTROLS: from a script that sets out what to
+# Playing a finished cartridge with nobody at the controls: from a script that sets out what to
 # press or a tape of the presses that were made, and two cartridges side by side to find the
 # frame where they stop matching.
 #
@@ -15,6 +15,7 @@ require_relative "playthroughs/pass_stepper"                  # A game stepped i
 require_relative "playthroughs/tape"                          # The presses a playthrough made, written down to play again
 require_relative "playthroughs/tape_export"                   # A tape written out for another emulator
 require_relative "playthroughs/playthrough_picture_folder"    # The folder a playthrough's pictures go in
+require_relative "playthroughs/snapshot_cache"                # Consoles part way through a tape, kept on disk
 require_relative "playthroughs/comparison"                    # Two cartridges played side by side on the same presses
 require_relative "playthroughs/comparison_likeness"           # How alike two pictures have to be
 require_relative "playthroughs/comparison_looked_at"          # Which screen pixels a comparison looks at, frame by frame
@@ -35,5 +36,6 @@ require_relative "playthroughs/comparison_drift_report"       # A drift on a fra
 require_relative "playthroughs/comparison_moment_report"      # A drift at a moment, on the same script
 require_relative "playthroughs/heard_sound"                   # How loud one cartridge was on each frame of a playing
 require_relative "playthroughs/heard_comparison"              # Two cartridges' heard sound on the same presses
+require_relative "playthroughs/heard_report"                  # The words of a heard comparison that found two unlike
 require_relative "playthroughs/command_line"                 # What `vblank run` with a script or tape, and `vblank compare`, do
 require_relative "playthroughs/probe"                         # A cartridge driven a frame at a time by hand, read by memory label

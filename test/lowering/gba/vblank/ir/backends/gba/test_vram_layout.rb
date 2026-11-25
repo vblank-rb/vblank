@@ -4,8 +4,8 @@ require "test_helper"
 
 # Where tiled backgrounds live in video memory, and why they cannot collide.
 #
-# A tiled background is two separate things in memory: the tile PICTURES (a
-# character block) and the MAP that says which picture goes in which cell (a
+# A tiled background is two separate things in memory: the tile pictures (a
+# character block) and the map that says which picture goes in which cell (a
 # screen block). Both live in the same video memory, one after the other, and the
 # hardware is told where each begins. Point them at overlapping addresses and each
 # writes over the other — the maps get drawn as if they were pictures and the
@@ -56,7 +56,7 @@ class TestVramLayout < Minitest::Test
 
   # --- The two limits that keep the layout true ---
 
-  # What limits a tileset now is not the memory but how far a MAP CELL CAN POINT: it
+  # What limits a tileset now is not the memory but how far a map cell can point: it
   # holds a tile number in ten bits, counted in that layer's own tile size. So a
   # layer stored two pixels to a byte can name anything in the first 32K — four times
   # what the old fixed cap allowed — and past that the build says so.
@@ -76,7 +76,7 @@ class TestVramLayout < Minitest::Test
     assert_equal 1000 * GBA::SMALL_TILE_BYTES, layout.bg_shared.tile_bytes - GBA::BIG_TILE_BYTES
   end
 
-  # EACH LAYER COUNTS ITS TILE NUMBERS FROM ITS OWN STARTING POINT, which is what makes
+  # Each layer counts its tile numbers from its own starting point, which is what makes
   # the ten-bit reach a per-layer limit rather than a whole game's. One layer counting
   # from the bottom names the first 32K; a second told to count from halfway names the
   # rest. So a game can hold more distinct tiles than either layer could name alone —
@@ -114,7 +114,7 @@ class TestVramLayout < Minitest::Test
     layout = GBA::ScreenLayout.plan(repeated_tiles_program)
 
     # The blank tile every empty cell points at (stored the big way so either kind of
-    # layer can read it), plus the ONE picture the four tilesets all drew.
+    # layer can read it), plus the one picture the four tilesets all drew.
     assert_equal GBA::BIG_TILE_BYTES + GBA::SMALL_TILE_BYTES, layout.bg_shared.tile_bytes
   end
 
@@ -166,7 +166,7 @@ class TestVramLayout < Minitest::Test
     assert_match(/background/i, error.message)
   end
 
-  # A SCENE IS MEASURED ON ITS OWN, because scenes take turns with the memory — so a scene
+  # A scene is measured on its own, because scenes take turns with the memory — so a scene
   # that runs out is named. "The scenery does not fit" would send the author adding up every
   # scene in the game, when only this one is too big. The small scene beside it is fine.
   def test_a_scene_whose_scenery_does_not_fit_is_named
@@ -187,7 +187,7 @@ class TestVramLayout < Minitest::Test
     assert_match(/fewer/i, error.message, "and says what to do about it")
   end
 
-  # A BACKGROUND WALKING BETWEEN AREAS ON EVERY SCREEN lays its areas' colours out in the table
+  # A background walking between areas on every screen lays its areas' colours out in the table
   # every scene shows, and one walking in a scene lays its own in the same place after it, so
   # the two cannot both be. Walking backgrounds of two scenes each have a table of their own
   # (test/all/vblank/builder/test_background_tile_sets.rb); this one has nowhere, and says what to do.
@@ -207,7 +207,7 @@ class TestVramLayout < Minitest::Test
                           map: { dry: { tunnel: grid }, wet: { pool: grid } }
       end
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :cave } }
+      game_loop { call({ 0 => :cave }, number: :state) }
     end
     builder.finalize_program
 
@@ -238,7 +238,7 @@ class TestVramLayout < Minitest::Test
     end
   end
 
-  # A LAYER COUNTING FROM SOMEWHERE ELSE STILL DRAWS ITS OWN TILES, on the console.
+  # A layer counting from somewhere else still draws its own tiles, on the console.
   # This is the one that can catch every way the feature goes wrong at once: the first
   # layer fills the whole run its map can reach, so the second is given a starting point
   # of its own. If that starting point never reached the hardware, the second layer's

@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # ONE PROGRAM, LOWERED STRAIGHT TO SM83 MACHINE CODE: the Color's peer of the GBA lowering,
+        # One program, lowered straight to SM83 machine code: the Color's peer of the GBA lowering,
         # which does the same in ARM. It walks the IR with a table naming the method for each kind of
         # statement and each kind of value (the interpreter's own shape, Reference), and emits the
         # instructions through the encoder (SM83), calling the runtime (GBC::Runtime) for what the
         # runtime does: the 32-bit arithmetic, the frame, the buttons.
         #
-        # HOW A NUMBER IS WORKED OUT. Every value leaves its answer in the four registers B C D E, B
+        # How a number is worked out. Every value leaves its answer in the four registers B C D E, B
         # the top byte, which is where every runtime routine takes and gives a number. A sum of two
         # works out the right-hand side first and pushes it on the stack — which then holds it lowest
         # byte first, as a number sits in memory — works out the left-hand side, and hands the
@@ -18,7 +18,7 @@ module VBlank
         # pushed, the first deepest (Runtime::Calls). Nothing is kept in a register from one
         # statement to the next, so a statement never has to know what came before it.
         #
-        # WHERE THINGS LIVE. The game's variables, and each routine's own numbers — a loop's count, a
+        # Where things live. The game's variables, and each routine's own numbers — a loop's count, a
         # `case`'s reading — are places in work memory (Memory), fixed while the program is built, so
         # a routine cannot call itself, and a program in which one can is refused. Tables go in the
         # part of the cartridge always in view; routines go in the banks, and one in another bank is
@@ -36,17 +36,19 @@ module VBlank
           end
 
           include ControlFlow
+          include BendSchedule
+          include ListPackBlocks
           include DrawOrderWalk
           include SceneryWrites
 
-          # EVERY KIND THIS LOWERING WRITES: its own, each by a method called by name in
+          # Every kind this lowering writes: its own, each by a method called by name in
           # #emit_statement and #value_of_kind, and each part's (Picture, Sound and the rest, and the
           # loops and tests every cartridge lowering shares, ControlFlow), which each part writes in a
           # case of its own. A declaration writes nothing where it is. Read by
           # test_gbc_kind_coverage.rb.
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
-            halt wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort
+            halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
             on_timer show_light_now show_held_tiles
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS +
@@ -68,6 +70,7 @@ module VBlank
             when :call then emit_call(node)
             when :call_one_of then emit_call_one_of(node)
             when :halt then emit_halt(node)
+            when :stop_full then emit_stop_full(node)
             when :wait_vblank then emit_wait_vblank(node)
             when :list_new then emit_list_new(node)
             when :list_push then emit_list_push(node)
@@ -76,6 +79,7 @@ module VBlank
             when :list_fill then emit_list_fill(node)
             when :list_copy then emit_list_copy(node)
             when :list_sort then emit_list_sort(node)
+            when :list_pack then emit_list_pack(node)
             when :save_init then emit_save_init(node)
             when :save_store then emit_save_store(node)
             when :save_write then emit_save_write(node)
@@ -108,7 +112,7 @@ module VBlank
           end
 
           VALUE_KINDS = (%i[
-            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed list_get
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed pulled list_get
             list_len table_get save_read save_sum timer_ticks chance data_byte players_connected local_player
           ] + Picture::VALUE_KINDS + Clock::VALUE_KINDS).freeze
 
@@ -126,6 +130,7 @@ module VBlank
             when :shift_right then value_of_shift_right(node)
             when :held then value_of_held(node)
             when :pressed then value_of_pressed(node)
+            when :pulled then value(Build.pulled_as_held(node))
             when :list_get then value_of_list_get(node)
             when :list_len then value_of_list_len(node)
             when :table_get then value_of_table_get(node)
@@ -155,7 +160,7 @@ module VBlank
           include KeyedSort
           include ShownSort
 
-          # EVERY KIND THIS LOWERING CANNOT MAKE YET, by what it is part of. A kind leaves the list the
+          # Every kind this lowering cannot make yet, by what it is part of. A kind leaves the list the
           # day the Color does it; test_gbc_kind_coverage.rb holds the list and the kind lists above to
           # every kind there is.
           NOT_LOWERED_YET = Ractor.make_shareable({})
@@ -314,8 +319,9 @@ module VBlank
 
               width = LoweringPlan::SLOT_BYTES.fetch(list_width(node))
               # Named as the game names it, since running out of room says which list asked.
-              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (node.capacity * width))
-              @lists[node.name] = [place, node.capacity, width, node.name.to_s]
+              capacity = @plan.most_list_capacity(node.name)
+              place = @memory.reserve("the list #{node.name.inspect}", Runtime::Lists::HEADER + (capacity * width))
+              @lists[node.name] = [place, capacity, width, node.name.to_s]
             end
             place_pools
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
@@ -351,7 +357,7 @@ module VBlank
           # (#banked_tables).
           def tables_copied_to_lists = @reachable.filter_map { |node| node.table if node.kind == :list_copy }
 
-          # DOES THE GAME COUNT THE FRAMES ITS SCREEN IS OFF FOR, from power-on to its first frame
+          # Does the game count the frames its screen is off for, from power-on to its first frame
           # (Runtime::Frame#emit_dark_start)? A game that reads `frames_since_power_on` and waits for
           # the screen does, so that setting up counts as it does on the Advance. The timer counts
           # them, and in a game that plays a recording the timer is the recording's, so such a game
@@ -376,12 +382,17 @@ module VBlank
           # game's routines are made.
           def reads_far_words? = @reads_far_words || false
 
-          # Does the game declare a list of bytes full, or fill one? Then its runtime carries the
-          # quick way to do it, and a game that does neither builds without it.
-          def fills_byte_lists?
-            lists = lists_kept_as(:byte)
-            names = lists.map(&:name)
-            lists.any?(&:full_of) || @program.walk.any? { |node| node.kind == :list_fill && names.include?(node.name) }
+          # Does the game call rt_list_fill: a `fill`, or a list declared full that is not made full
+          # in line (#emit_list_new)? Then its runtime carries the routine, and a game that does
+          # neither builds without it.
+          def fills_lists?
+            @program.walk.any? do |node|
+              next true if node.kind == :list_fill
+              next false unless node.kind == :list_new && node.full_of && @lists.key?(node.name)
+              next false if held_run_on_list(node.name)
+
+              !@pool_areas.key?(slot_place(node.name).area) && !filled_in_line?(node)
+            end
           end
 
           # Whether the game pushes bytes or takes from a list's front, so wants the routines that do
@@ -396,6 +407,10 @@ module VBlank
           # Whether the game moves a whole list to or from save memory, so wants the routines that do
           # it as a block (Runtime::Lists#emit_save_moves).
           def moves_lists_to_save? = SaveListMoves.moved_in?(@program)
+
+          # Whether the game copies a list's items into a list of bytes as one run, so wants the
+          # routine that does it (Runtime::Lists#emit_list_pack).
+          def packs_lists? = @reachable.any? { |node| node.kind == :list_pack && list_pack_block?(node) }
 
           # Whether the game pushes onto a list of halves or takes from one's front, so wants the
           # routines that push and read such a list quickly (Runtime::Lists#emit_queue_routines).
@@ -497,7 +512,7 @@ module VBlank
           def table_parts_label(name) = "table #{name} parts"
           def table_part_label(name, part) = "table #{name} part #{part}"
 
-          # THE TABLES KEPT OUT OF THE PART ALWAYS IN VIEW. That part is 16 kilobytes and holds the
+          # The tables kept out of the part always in view. That part is 16 kilobytes and holds the
           # runtime and everything read without switching a bank in, so a big table there — the
           # walls of a hundred-cell-square room are ten thousand bytes — leaves no room for the
           # rest. A table at least this big is kept in banks instead, cut into parts so that one
@@ -507,7 +522,7 @@ module VBlank
           # in view, since the list's copy reads it in a loop of its own.
           BANKED_TABLE_BYTES = 1024
 
-          # MANY SMALLER TABLES CAN COME TO THE SAME. A game they do not fit in view for is built
+          # Many smaller tables can come to the same. A game they do not fit in view for is built
           # again with tables of each of these sizes going to banks too, the bigger first, so its
           # short tables are the last to pay for a read. Below the last, a table's place in the
           # list of parts would take nearly what the table does.
@@ -563,7 +578,7 @@ module VBlank
 
           def little_endian(value, size) = Array.new(size) { |i| (value >> (8 * i)) & 0xFF }
 
-          # A NUMBER THAT LIVES FOR ONE STEP AND NO LONGER, by +what+, kept once a routine however
+          # A number that lives for one step and no longer, by +what+, kept once a routine however
           # many of its steps keep one (#keep_local): a step stores it and reads it back before the
           # step ends, and nothing it runs between can reach another step of the routine, so every
           # step of the routine can use the one place. A routine cut into parts (RoutineCuts) keeps
@@ -599,7 +614,7 @@ module VBlank
             @asm.section
           end
 
-          # DATA KEPT BESIDE THE CODE THAT READS IT, in a game whose indexes are in banks
+          # Data kept beside the code that reads it, in a game whose indexes are in banks
           # (GBC#roomier_view): a list of routines a call picks from, a scene's record
           # of its own sprite lists. The routine's code runs in its own bank, which is in view while
           # it runs and while the runtime routines it calls read what it hands them, so data in the
@@ -687,7 +702,7 @@ module VBlank
           # RET, which ends every routine section: a byte.
           RETURN_BYTES = 1
 
-          # WHAT THE LOWERING HOLDS WHILE IT MAKES A ROUTINE (LoweringState), which RoutineCuts puts
+          # What the lowering holds while it makes a routine (LoweringState), which RoutineCuts puts
           # back when a routine comes out too big for a bank. The Color measures a statement on the
           # lowering itself rather than on copies (#bytes_of), so this is used only for that.
           # Copied: the work memory, whose places a routine's own numbers take; and the lowering's
@@ -705,7 +720,7 @@ module VBlank
           # The console this lowers for (BuildCache).
           CONSOLE = Console::COLOR
 
-          # WHAT THE COLOR'S LOWERING ALONE WORKS OUT FROM THE PROGRAM, once a build for all its tries
+          # What the color's lowering alone works out from the program, once a build for all its tries
           # (BuildCache#facts): what each tile's picture gives (Art#tile_fact), the tiles each
           # background shows and its `set_tile`s put in it, the screens' modes, each tile's colours
           # with each of its background's lists, a background's lists at each step, its recolour
@@ -750,9 +765,20 @@ module VBlank
             # those every number written to is proven to fit (NumberRanges#list_widths). The proof
             # reads every variable's range, kept narrow or not, so a variable handed over changes
             # nothing here.
-            def list_widths = @list_widths ||= @cache.plan.number_ranges.list_widths
+            #
+            # And the lists of whole words proven to hold 0..65535 (NumberRanges#unsigned_half_lists),
+            # kept in two bytes read back with no sign (Lowering#unsigned_list?).
+            def list_widths
+              @list_widths ||= begin
+                ranges = @cache.plan.number_ranges
+                ranges.list_widths.merge(ranges.unsigned_half_lists.to_h { |name| [name, :half] })
+              end
+            end
 
-            # THE VARIABLES WHOSE PLACE THE LOWERING HANDS OVER (Lowering#place_of): to a runtime
+            # The lists kept in two bytes read back with no sign.
+            def unsigned_lists = @unsigned_lists ||= @cache.plan.number_ranges.unsigned_half_lists.to_set
+
+            # The variables whose place the lowering hands over (Lowering#place_of): to a runtime
             # routine that reads or writes them where they are kept, or to code reading all four
             # bytes. Each is kept whole on every try after the one that found it, declared narrow
             # or not.
@@ -774,7 +800,7 @@ module VBlank
             def screen_modes = @screen_modes ||= Modes.resolve(@cache.program)
           end
 
-          # WHERE VARIABLE +name+ IS KEPT, for code that reads or writes all four of its bytes there,
+          # Where variable +name+ is kept, for code that reads or writes all four of its bytes there,
           # or hands the place to a runtime routine that does (rt_music_level reads the music's
           # level so). A variable kept narrower (KeptVariables) has other variables straight after
           # it, so it cannot be asked for here: it is kept whole from the next try on, and this
@@ -807,7 +833,7 @@ module VBlank
           # and routine data it reads, each of which it would keep a copy of on its own.
           MeasuredStatement = Data.define(:from, :constants, :data)
 
-          # A STATEMENT MADE WHILE A RUN OF THEM IS MEASURED (#bytes_of), its size noted for cutting
+          # A statement made while a run of them is measured (#bytes_of), its size noted for cutting
           # (RoutineCuts#note_size): the bytes it would come to measured on its own. That is its code,
           # which is the same wherever it stands, and the numbers and routine data it reads, which a
           # routine keeps once however many of its statements read them (#constant_label,
@@ -884,10 +910,22 @@ module VBlank
           def emit_set(node)
             return if node.value.is_a?(Node) && node.value.kind == :var_ref && node.value.name == node.var
             return emit_set_kept(node) if kept_bytes(node.var)
+            return emit_sum_in_place(node.var, node.value.op, node.value.rhs) if worked_in_place?(node)
 
             value(node.value)
             store(node.var)
           end
+
+          # Whether a `set` is the variable it sets, worked with a number the game works out by an
+          # operation #emit_sum_in_place does where the variable is kept: `i ^= k + 7`.
+          def worked_in_place?(node)
+            sum = node.value
+            sum.is_a?(Node) && sum.kind == :binop && IN_PLACE_OPS.include?(sum.op) && sum.lhs.kind == :var_ref &&
+              sum.lhs.name == node.var && !folded(sum.rhs) && sprites_placed_from(node.var).empty?
+          end
+
+          # The operations #emit_sum_in_place does where a variable is kept.
+          IN_PLACE_OPS = %i[+ - ^ | &].freeze
 
           def emit_add(node) = emit_sum(node.var, :+, node.operand)
           def emit_sub(node) = emit_sum(node.var, :-, node.operand)
@@ -906,9 +944,59 @@ module VBlank
               low_value(Build.binop(op, Build.var_ref(name), operand), kept)
               return store(name)
             end
+            return emit_sum_in_place(name, op, operand) if sprites_placed_from(name).empty?
 
             sum_of_two(Build.var_ref(name), operand, SUMS.fetch(op))
             store(name)
+          end
+
+          # A variable worked with a number worked out as the game runs (+, -, ^, | or &,
+          # IN_PLACE_OPS), its four bytes worked where they are kept, lowest first, the carry
+          # going up for a sum: the number worked out in BCDE and HL walking the variable, where the
+          # runtime's routine (rt_add32, rt_xor32) is the number kept on the stack, the variable
+          # loaded, a call, and the answer stored back.
+          def emit_sum_in_place(name, op, operand)
+            return emit_byte_in_place(name, op, operand) if proven_within?(operand, 0..0xFF)
+
+            value(operand)
+            @asm.load(:hl, place_of(name))
+            BCDE_LOW_FIRST.each_with_index do |register, i|
+              @asm.load(:a, [:hl])
+              emit_byte_operation(op, register, carried: i.positive?)
+              @asm.load(i == 3 ? [:hl] : [:hli], :a)
+            end
+          end
+
+          # ...and for a number proven to stay from 0 to 255, worked out in its one byte: the lowest
+          # byte of the variable worked with it, and the bytes above with nought, which a sum needs
+          # for its carry, an AND clears, and an OR or XOR leaves as they are.
+          def emit_byte_in_place(name, op, operand)
+            emit_low_byte_in_a(operand)
+            @asm.load(:e, :a)
+            @asm.load(:hl, place_of(name))
+            @asm.load(:a, [:hl])
+            emit_byte_operation(op, :e, carried: false)
+            return @asm.load([:hl], :a) if %i[^ |].include?(op)
+
+            @asm.load([:hli], :a)
+            @asm.load(:e, 0)
+            3.times do |i|
+              @asm.load(:a, [:hl]) unless op == :&
+              op == :& ? @asm.xor_a(:a) : emit_byte_operation(op, :e, carried: true)
+              @asm.load(i == 2 ? [:hl] : [:hli], :a)
+            end
+          end
+
+          # A = A +op+ +register+, one byte of a four-byte operation: +carried+ for a byte above the
+          # lowest, where a sum takes the carry from the byte below.
+          def emit_byte_operation(op, register, carried:)
+            case op
+            when :+ then carried ? @asm.adc_a(register) : @asm.add_a(register)
+            when :- then carried ? @asm.sbc_a(register) : @asm.sub_a(register)
+            when :^ then @asm.xor_a(register)
+            when :| then @asm.or_a(register)
+            else @asm.and_a(register)
+            end
           end
 
           def add_in_place(address, amount, bytes = 4)
@@ -1074,6 +1162,20 @@ module VBlank
             @asm.call("rt_halt")
           end
 
+          # A full pool told to stop (Reference#exec_stop_full): no list, then its capacity and its
+          # name's number, low byte first, into FAULT for the reader to word as the interpreter does
+          # (CartridgeFaults::STOP_FULL).
+          def emit_stop_full(node)
+            @asm.load(:hl, @memory[Runtime::Frame::FAULT] + 1)
+            [0, 0, *[node.capacity, @plan.stop_full_number(node)].flat_map { |number| [number].pack("V").bytes }]
+              .each do |byte|
+              @asm.load(:a, byte)
+              @asm.load([:hli], :a)
+            end
+            @asm.load(:a, Runtime::Frame::STOP_FULL)
+            @asm.jump("rt_fault")
+          end
+
           # The runtime ends the frame (shows it, reads the buttons, keeps time), and the frame
           # counters the program can read move on, where the interpreter moves them
           # (Reference#store_frame_counters): the frames shown by every frame the pass took, and what
@@ -1115,12 +1217,64 @@ module VBlank
 
             shown = @shown_sorts&.fetch(node.name, nil)
             emit_shown_start(shown, node.capacity) if shown
+            emit_capacity_into_header(node) if @plan.list_capacity_varies?(node.name)
             return list_call("rt_list_empty", node) unless node.full_of
 
             list_call("rt_list_at_capacity", node)
             return emit_pool_area_filled(node) if @pool_areas.key?(slot_place(node.name).area)
+            return emit_list_filled(node) if filled_in_line?(node)
 
             list_call("rt_list_fill", node, Build.int(0), Build.int(node.capacity), Build.int(node.full_of))
+          end
+
+          # A list declared with several capacities (LoweringPlan#list_capacities) takes this
+          # declaration's into its header, where the runtime reads it: what rt_list_at_capacity makes
+          # the length, and what a push is held to. The start wrote the most of them there, which its
+          # place has room for.
+          def emit_capacity_into_header(node)
+            place, = list_placed(node)
+            [node.capacity & 0xFF, node.capacity >> 8].each_with_index do |byte, i|
+              @asm.load(:a, byte)
+              @asm.load([place + Runtime::Lists::CAPACITY + i], :a)
+            end
+          end
+
+          # Whether list_new +node+ is made full in line (#emit_list_filled): a whole number, into
+          # slots one after another as wide as the list keeps them, as every list but a pool's is.
+          def filled_in_line?(node)
+            slot = slot_place(node.name)
+            node.full_of.is_a?(Integer) && slot.scale == 1 && slot.stride == slot.width
+          end
+
+          # A list made full of its number in line, a store a byte from its first slot, rather
+          # than through rt_list_fill, which first takes its four numbers and checks the run it is
+          # asked for against the list. The run here is the whole list, which needs no checking,
+          # and the bytes are known as the game is built. Every save record's lists of what each copy holds are made this way at power-on,
+          # and the table of where each record lives. A number whose bytes are all the same, as
+          # nought is, is put in A once.
+          def emit_list_filled(node)
+            base, = list_slots(node.name)
+            bytes = (0...slot_place(node.name).width).map { |i| (node.full_of >> (8 * i)) & 0xFF }
+            same = bytes.uniq.length == 1
+            wide = node.capacity > 0x100
+            again = fresh("list_fill")
+            @asm.load(:hl, base)
+            wide ? @asm.load(:bc, node.capacity) : @asm.load(:c, node.capacity & 0xFF)
+            @asm.load(:a, bytes.first) if same
+            @asm.label(again)
+            bytes.each do |byte|
+              @asm.load(:a, byte) unless same
+              @asm.load([:hli], :a)
+            end
+            if wide
+              @asm.dec(:bc)
+              @asm.load(:a, :b)
+              @asm.or_a(:c)
+              @asm.load(:a, bytes.first) if same
+            else
+              @asm.dec(:c)
+            end
+            @asm.jump_relative(:nz, again)
           end
 
           # A pool's list kept in an area of the pool's page made full of its number, a slot at a time
@@ -1168,6 +1322,25 @@ module VBlank
 
           def emit_list_fill(node) = list_call("rt_list_fill", node, node.from, node.count, node.value)
 
+          # A list_pack's run copied by the runtime (ListPackBlocks, Runtime::Lists#emit_list_pack):
+          # the list read, the list written into, and the slot the run starts on.
+          def emit_list_pack_block(node)
+            list_call("rt_list_pack", node, Build.int(@lists.fetch(node.into).first), node.at)
+          end
+
+          # Whether the slots of a list_pack's two lists are a copy's (ListPackBlocks): the list read
+          # kept at the width it declares and the one written into kept in bytes, neither a pool's
+          # field, and the one written into never taken from its front, so its slot nought is the
+          # first after its header.
+          def list_pack_block?(node)
+            [node.name, node.into].none? { |name| @slot_places.key?(name) } &&
+              slot_bytes(node.name) == ListPacking::WIDTH_BYTES.fetch(node.width) && slot_bytes(node.into) == 1 &&
+              !front_dropped_lists.include?(node.into)
+          end
+
+          # How many bytes a slot of list +name+ is kept in.
+          def slot_bytes(name) = list_placed(Build.list_len(name))[2]
+
           # A run of a table's entries copied into a list: the table's place and how it keeps its
           # entries, so the runtime reads them as a run does.
           def emit_list_copy(node)
@@ -1195,6 +1368,8 @@ module VBlank
           # is smaller as whole unsigned numbers. Two numbers of different signs are the other way
           # round as signed ones, so the borrow is turned over when their top bits differ.
           def emit_list_sort(node)
+            return node.children.each { |child| statement(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
             refuse_sorting_front_dropped!(node)
             shown = @shown_sorts&.fetch(node.name, nil)
             return emit_shown_keyed_sort(node, shown) if shown
@@ -1371,16 +1546,24 @@ module VBlank
           # for it to copy off the stack: a pool's every field is a list, read several times a thing
           # a pass, and the copy was a large part of each read.
           #
-          # A LIST NOTHING TAKES FROM THE FRONT keeps its first item in its first slot for good, so
+          # A list nothing takes from the front keeps its first item in its first slot for good, so
           # an item's slot is its index: such a list's item is read straight from its place, once
           # the index is held to the length the header holds — every field of a pool is such a list.
           # An index out of range goes the whole way round, so the game stops as the interpreter's.
           def value_of_list_get(node)
             value_of_slot(node)
             emit_slot_unscaled(node) if scaled_list?(node.name)
+            # A list kept in two bytes read back with no sign: the two above them nought, not the sign.
+            @asm.load(:bc, 0) if unsigned_list?(node.name)
           end
 
-          # A LINK KEPT AS THE SLOT TIMES THE STRIDE (PoolLayout.strided_place), two bytes with NONE
+          # Whether list +name+ is kept in two bytes read back with no sign (BuildFacts#unsigned_lists).
+          def unsigned_list?(name) = @cache.facts.unsigned_lists.include?(name)
+
+          # The lists kept in two bytes read back with no sign, for reading them back (Places).
+          public def unsigned_lists = @cache.facts.unsigned_lists.to_a
+
+          # A link kept as the slot times the stride (PoolLayout.strided_place), two bytes with NONE
           # as $FFFF, read back into BCDE as the tree holds it: its sign is spread already, so NONE
           # is -1, and an arithmetic shift right of the low two bytes brings any other back to the
           # slot and leaves -1 as it is.
@@ -1579,7 +1762,7 @@ module VBlank
             @asm.call("rt_list_set_taken")
           end
 
-          # A LIST ALWAYS AS LONG AS IT CAN BE — declared full, and named by no step but a read, a
+          # A list always as long as it can be — declared full, and named by no step but a read, a
           # write or its length — has every slot in range for good, so a read at an index written in
           # the program is a read of one place in memory, with nothing to check: where the slot is,
           # or nil for any other read. A pool's copy of its things in order is such a list, read by
@@ -1593,13 +1776,19 @@ module VBlank
             base + (index * stride) if index.between?(0, capacity - 1)
           end
 
-          # The names of the lists #fixed_slot reads straight from.
+          # The names of the lists #fixed_slot reads straight from: only one made before anything can
+          # read or write it (LoweringPlan#lists_made_before_use), since until it is made it holds
+          # nothing, and a read there stops the game.
           def fixed_length_lists
             @fixed_length_lists ||= begin
-              full = @program.walk.filter_map { |node| node.name if node.kind == :list_new && !node.full_of.nil? }
+              first = @plan.lists_made_before_use
+              full = @program.walk.filter_map do |node|
+                node.name if node.kind == :list_new && !node.full_of.nil? && first.include?(node.name)
+              end
               others = @program.walk.reject { |node| FIXED_LENGTH_STEPS.include?(node.kind) }
               named = others.flat_map { |node| node.attrs.values.flat_map { |value| Array(value) } }.grep(Symbol)
-              full - named
+              # A list declared with several capacities is as long as the declaration run last made it.
+              full - named - full.select { |name| @plan.list_capacity_varies?(name) }
             end
           end
 
@@ -1658,7 +1847,7 @@ module VBlank
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES: where slot s of each of its lists is, in
+          # A pool is kept in the layout its placement gives: where slot s of each of its lists is, in
           # bytes from the start of the list's area (PoolLayout::SlotPlace), how wide its value is, and
           # the number it is kept multiplied by. Every read and write of a slot asks for that through
           # #list_placed, and the headless run reads a pool's lists back through the same
@@ -1667,7 +1856,7 @@ module VBlank
           # list in (#list_width, NumberRanges#list_widths), which can be narrower than the game declared, so
           # the pool is placed with those widths.
           #
-          # WHAT THE LISTS COST ON THIS PROCESSOR. The SM83 has no indexed addressing, and HL is the
+          # What the lists cost on this processor. The SM83 has no indexed addressing, and HL is the
           # register pair that reaches memory cheaply: a byte through it is one instruction, ADD [HL] or
           # INC [HL] (https://gbdev.io/pandocs/CPU_Instruction_Set.html). A pool kept as lists cannot
           # use that: each field read or write checks the index, multiplies it by the slot's width and
@@ -1700,7 +1889,7 @@ module VBlank
             end
           end
 
-          # A WALK OF A POOL STEPPED THE PROCESSOR'S WAY. The tree's walk keeps the thing it goes to
+          # A walk of a pool stepped the processor's way. The tree's walk keeps the thing it goes to
           # next and the last it visits as whole numbers, tests the next against NONE, copies it into
           # the thing it is on, compares that with the last and reads the link out of a list at an
           # index checked and scaled each time; and every field the body reads or writes checks and
@@ -1877,7 +2066,7 @@ module VBlank
             @asm.load(:h, address >> 8)
           end
 
-          # A FIELD OF THE HELD THING MOVED ON BY A NUMBER WRITTEN IN THE PROGRAM, `t.x += 2`: each of
+          # A field of the held thing moved on by a number written in the program, `t.x += 2`: each of
           # its bytes added where it is, lowest first, the carry taken up, as the slot keeps the low
           # bytes of the sum the interpreter works out in 32 bits. True where it was made so.
           def emit_held_field_stepped(node)
@@ -2021,7 +2210,7 @@ module VBlank
             emit_entry_read(bytes, signed)
           end
 
-          # A TABLE PAST 64 KILOBYTES, read at the index in BCDE, which is already held inside it.
+          # A table past 64 KILOBYTES, read at the index in BCDE, which is already held inside it.
           # The entry's offset (the index × the entry's size) is more than two bytes can hold, so it
           # is kept in three, CDE, and the part it is in is found here rather than by
           # rt_far_read_parts: the offset's bits from the part's size up are the part's number, and
@@ -2210,7 +2399,7 @@ module VBlank
           # Reference#timer_ticks: nought for a timer never started, which is what its count starts at.
           def value_of_timer_ticks(node) = value(timer_number(node.name, :ticks))
 
-          # THE ROUTINES THE RUNTIME RUNS AT EACH FRAME BOUNDARY: one that moves every running timer
+          # The routines the runtime runs at each frame boundary: one that moves every running timer
           # on, in the order the timers were first started — the k-th started is looked for k-th —
           # and one for each timer, which moves it on and runs its handler, so each handler is made
           # once however many timers there are. None for a game with no timers.
@@ -2290,11 +2479,24 @@ module VBlank
             return if known&.zero?
             return @asm.jump(label) if known
 
+            if (test = button_test(condition))
+              emit_button_bits(test.read)
+              return @asm.jump(test.holds, label)
+            end
             if (equal = equality_of_kept(condition))
               compare_kept_with_number(*equal)
               return @asm.jump(condition.op == :== ? :z : :nz, label)
             end
             return jump_unless(condition.lhs, label) if turned_round?(condition)
+
+            # A number against one written in the program, as a loop's turn ends (`k < 64`), is a
+            # carry: one jump on it, where jumping over a jump is two.
+            ordered = ordering_with_number(condition)
+            if ordered && ordered[1]
+              other, number, below = ordered
+              emit_carry_when_below(other, number)
+              return @asm.jump(below ? :c : :nc, label)
+            end
 
             go_on = fresh("holds_not")
             jump_unless(condition, go_on)
@@ -2310,6 +2512,9 @@ module VBlank
 
             if turned_round?(condition)
               jump_if(condition.lhs, label)
+            elsif (test = button_test(condition))
+              emit_button_bits(test.read)
+              @asm.jump(opposite_flag(test.holds), label)
             elsif (equal = equality_with_number(condition))
               compare_with_number(*equal)
               @asm.jump(condition.op == :== ? :nz : :z, label)
@@ -2628,7 +2833,7 @@ module VBlank
               _, holds_when = COMPARISONS.fetch(node.op)
               return @asm.call(holds_when == :z ? "rt_bool_of_z" : "rt_bool_of_nz")
             end
-            return if node.op == :* && (emit_product_by_power_of_two(node) || emit_product_by_byte(node) ||
+            return if node.op == :* && (emit_small_product(node) || emit_product_by_power_of_two(node) || emit_product_by_byte(node) ||
                                         emit_product_by_byte_value(node))
             return if %i[+ -].include?(node.op) && emit_sum_with_constant(node)
             return if node.op == :& && emit_and_with_byte(node)
@@ -2687,7 +2892,23 @@ module VBlank
               end
               return true
             end
-            false
+            emit_constant_less_value(node)
+          end
+
+          # A number written in the program less one worked out, `100 - k`: each byte of the number
+          # less the same byte of the other with the borrow, a dozen instructions where rt_sub32 is
+          # the other kept on the stack and a call. True when it was done so.
+          def emit_constant_less_value(node)
+            number = node.op == :- && folded(node.lhs)
+            return false unless number
+
+            value(node.rhs)
+            BCDE_LOW_FIRST.each_with_index do |register, i|
+              @asm.load(:a, (number >> (8 * i)) & 0xFF)
+              i.zero? ? @asm.sub_a(register) : @asm.sbc_a(register)
+              @asm.load(register, :a)
+            end
+            true
           end
 
           def value_of_neg(node) = sum_of_one(node.operand, "rt_neg32")
@@ -2786,8 +3007,43 @@ module VBlank
             value(Entry.new(drawing_table("data #{node.name}", 1, bytes), 1, false, Build.int(node.index)))
           end
 
-          def value_of_held(node) = runtime_call("rt_held", [Build.int(button_number(node.button))])
-          def value_of_pressed(node) = runtime_call("rt_pressed", [Build.int(button_number(node.button))])
+          # A button read is a bit of a BYTE, read where the game asks, as the console's own games
+          # test their joypad byte (Pan Docs, "Joypad Input"): the buttons are read once a frame into
+          # bytes of a bit each (Runtime::Frame, rt_pad_read, rt_read_buttons), the held ones and
+          # those pressed during the pass. The one controller is read whatever player is named, as
+          # the Color's answers allow only one.
+          def value_of_held(node) = value_of_button_read(node)
+          def value_of_pressed(node) = value_of_button_read(node)
+
+          def value_of_button_read(node)
+            emit_button_bits(node)
+            @asm.call("rt_bool_of_nz")
+          end
+
+          # Zero clear when +node+'s button (or any, for Buttons::ANY) is down or went down.
+          def emit_button_bits(node)
+            @asm.load(:a, [@memory[node.kind == :held ? Runtime::Frame::HELD : Runtime::Frame::PRESSED]])
+            number = button_number(node.button)
+            number.negative? ? @asm.and_a(:a) : @asm.and_a(1 << number)
+          end
+
+          # A button read tested as a condition: the read, and the flag that holds when the test does.
+          ButtonTest = Data.define(:read, :holds)
+
+          # The ButtonTest of +condition+ when it is a button read itself, or one compared with 0 or 1,
+          # the only numbers a read gives; else nil.
+          def button_test(condition)
+            return ButtonTest.new(read: condition, holds: :nz) if button_read?(condition)
+            return nil unless binop?(condition, :==) || binop?(condition, :!=)
+            return nil unless button_read?(condition.lhs) && [0, 1].include?(folded(condition.rhs))
+
+            down = (folded(condition.rhs) == 1) == (condition.op == :==)
+            ButtonTest.new(read: condition.lhs, holds: down ? :nz : :z)
+          end
+
+          def button_read?(node) = node.is_a?(Node) && %i[held pressed].include?(node.kind)
+
+          def opposite_flag(flag) = flag == :z ? :nz : :z
 
           # How many bits of a number hold its fraction: the runtime's sums are written for 0 to 32,
           # every scale the framework uses.

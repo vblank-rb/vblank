@@ -17,7 +17,7 @@ module VBlank
       class << self
         # Add (or replace) a font every program in this process can draw with. Returns it.
         #
-        # THIS IS NOT WHERE A GAME'S OWN FONT GOES. A font a program declares with the
+        # This is not where a game's own font goes. A font a program declares with the
         # `font` verb belongs to that program and rides on it — see Nodes::Program. What is
         # in here is the two the framework ships, and anything a plugin pack adds as it
         # loads: fonts that are genuinely everybody's.
@@ -33,7 +33,7 @@ module VBlank
 
         # One of the fonts that ship, by name, or nil.
         #
-        # A GAME'S OWN FONT IS NOT IN HERE and is not found by either of these. A font a
+        # A game's own font is not in here and is not found by either of these. A font a
         # program declares belongs to that program and rides in its tree, so the thing that
         # knows about both kinds is {IR::FontTable}, and that is what everything drawing
         # text goes through. These two are about the fonts that ship.

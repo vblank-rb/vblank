@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TILES A GAME PAINTS IN THE COLOR'S OWN FORM (`console_format: true`). The list holds what picture
+# Tiles a game paints in the color's own form (`console_format: true`). The list holds what picture
 # memory holds, sixteen bytes a tile, so nothing is converted as the game runs: two bytes a row, the
 # low bit of each pixel in the first and the high bit in the second, the leftmost pixel in bit 7.
 class TestConsoleFormatTilesOnTheColor < Minitest::Test

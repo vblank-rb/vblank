@@ -259,13 +259,6 @@ module VBlank
                                 **%i[left top right bottom].zip(edges).to_h { |side, edge| [side, to_value_node(edge)] })
       end
 
-      # Fill a rectangle at a fixed position and size — same picture as
-      # +fill_rect+, but a backend is free to blast it in with a block transfer.
-      # Everything (+x+/+y+/+w+/+h+) is a compile-time constant.
-      def dma_fill_rect(x, y, w, h, color)
-        Nodes.build(:dma_fill_rect, x: x, y: y, w: w, h: h, color: color)
-      end
-
       # --- audio ---
       #
       # +define_sound+ and +song+ are definitions: they name a sound effect or a
@@ -339,8 +332,12 @@ module VBlank
       #
       # +length_from_file:+ is where the song's length is in the file the program is handed as it
       # starts (a StartFile::SongLength); +total_frames+ is then the most it can last.
+      #
+      # +timer_rate:+ means a sound effect counts its ticks on a timer of that rate: its
+      # events and +total_frames+ are then in the timer's ticks (IR::Tunes.effect_clock_step).
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
-               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil)
+               group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil,
+               timer_rate: nil)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -349,6 +346,7 @@ module VBlank
         said[:plays_once] = true if plays_once
         said[:keeps_voices] = true if keeps_voices
         said[:length_from_file] = length_from_file if length_from_file
+        said[:timer_rate] = timer_rate if timer_rate
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 
@@ -474,6 +472,12 @@ module VBlank
                              stop_when: to_value_node(stop_when || 0))
       end
 
+      # Ruby's `break` in the innermost +repeat+ around it: the loop ends now (Nodes::BreakRepeat).
+      def break_repeat = Nodes.build(:break_repeat)
+
+      # Ruby's `next` there: the loop goes on to its next turn now (Nodes::NextRepeat).
+      def next_repeat = Nodes.build(:next_repeat)
+
       # A repeating timer: run +body+ once every +period+ frames. +counter+ names
       # the hidden frame counter (cleared once at boot) that a backend ticks each
       # frame and resets when it reaches the period. The whole point of it being a
@@ -491,7 +495,7 @@ module VBlank
         Nodes.build(:after, children: body, counter: counter, frames: frames)
       end
 
-      # A named routine. +fast+ is a HINT about where the routine should live, for a
+      # A named routine. +fast+ is a hint about where the routine should live, for a
       # target that has more than one kind of memory to run code from and a real
       # difference in speed between them:
       #
@@ -586,6 +590,12 @@ module VBlank
         Nodes.build(:halt)
       end
 
+      # The game stops: +name+, holding +capacity+, is full, +in_walk+ only of things a walk
+      # removed (Nodes::StopFull).
+      def stop_full(name, capacity, in_walk: false)
+        Nodes.build(:stop_full, name: name, capacity: capacity, in_walk: in_walk)
+      end
+
       def hide_sprites
         Nodes.build(:hide_sprites)
       end
@@ -629,17 +639,18 @@ module VBlank
       # table lays that table out, which is what keeps imported art lining up.
       # +places+, where the art was given as numbers into that table rather than as colors,
       # is one byte a pixel saying which place it came from. It is what tells two places
-      # holding the SAME color apart, which the pixels themselves cannot.
+      # holding the same color apart, which the pixels themselves cannot.
       # +colors_name+ names the list of colours +colors+ is, where the game declared it with `colors`
       # (see Assets::Image#colors_name).
       # +pieces+ is a picture made of 8x8 pieces, front-most first (Assets::Image#pieces), or nil.
       # +piece_groups+ is how many of them each bigger piece was cut into (Assets::Image#piece_groups), or nil.
+      # +bank_places+ is, for a pose of several banks' lists, how many places one bank is (Nodes::Bitmap), or nil.
       def bitmap(name, width:, height:, pixels:, transparent: nil, colors: nil, places: nil, colors_name: nil, pieces: nil,
-                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil)
+                 shading: nil, shading_places: nil, places_from_pack: false, piece_groups: nil, bank_places: nil)
         Nodes.build(:bitmap, name: name, width: width, height: height,
                           pixels: pixels, transparent: transparent, colors: colors, places: places, colors_name: colors_name,
                           pieces: pieces, piece_groups: piece_groups, shading: shading, shading_places: shading_places,
-                          places_from_pack: places_from_pack)
+                          places_from_pack: places_from_pack, bank_places: bank_places)
       end
 
       # Draw a defined bitmap with its top-left at (x, y). x/y may be constants or
@@ -851,14 +862,14 @@ module VBlank
 
       # Show the named background only inside the box at (+x+, +y+), +width+ by +height+
       # pixels, while +held+ is not 0; with +held+ 0 it shows everywhere (see
-      # Nodes::BoxBackground).
-      def box_background(name, x:, y:, width:, height:, held:)
+      # Nodes::BoxBackground). +whole+ is a box only ever all or nothing (`hide`, `show`).
+      def box_background(name, x:, y:, width:, height:, held:, whole: nil)
         Nodes.build(:box_background, name: name, x: to_value_node(x), y: to_value_node(y),
                                      width: to_value_node(width), height: to_value_node(height),
-                                     held: to_value_node(held))
+                                     held: to_value_node(held), whole: whole)
       end
 
-      # Give every ROW of the picture its own sideways offset on top of the named
+      # Give every row of the picture its own sideways offset on top of the named
       # background's scroll. +row+ names the variable the row number is put in (0 at the
       # top of the picture, counting down), and +offset+ is the expression worked out from
       # it — so a program sets "row R sits this many pixels across" and the whole picture
@@ -893,7 +904,7 @@ module VBlank
       # sits over the drawn image, in pixels, as run-time values — so (0, 0) shows the
       # picture as drawn, and a small changing offset jitters it (a screen shake).
       #
-      # Unlike scroll_background, which re-windows ONE map, this offsets everything the
+      # Unlike scroll_background, which re-windows one map, this offsets everything the
       # display shows, and it needs no redrawing: the picture is not moved, only the
       # window onto it. Where the window falls outside the drawn image there is nothing
       # to show, so the backdrop appears along that edge.
@@ -907,7 +918,7 @@ module VBlank
       # walked from 0 to 100 over some frames is a fade, and one snapped to 100 and
       # back is a flash.
       #
-      # Like camera, this describes what the DISPLAY shows and needs no redrawing:
+      # Like camera, this describes what the display shows and needs no redrawing:
       # nothing that was drawn is changed, so the cost is the same whatever is on
       # screen. One backend leans on blend hardware, another blends as it reads.
       #
@@ -931,7 +942,7 @@ module VBlank
       #
       # This is fade's sibling and not a generalization of it: moving a picture toward
       # black or white is a brightness change, which a display can do to a finished
-      # picture, while moving it toward an arbitrary color means mixing that color IN.
+      # picture, while moving it toward an arbitrary color means mixing that color in.
       # The two therefore reach the screen by different means and round differently, so
       # they stay separate rather than one growing a color argument.
       def tint(color:, amount:, fraction_bits: nil)
@@ -943,10 +954,10 @@ module VBlank
       # coarser picture. A size below 1 is the picture as drawn, and one past the biggest
       # block a display has is that biggest block.
       #
-      # Like fade, this describes what the DISPLAY shows: nothing that was drawn is
+      # Like fade, this describes what the display shows: nothing that was drawn is
       # changed, and the picture is all there again when the size goes back to 1.
       #
-      # THE BLOCKS ARE FIXED TO THE DISPLAY, not to anything in the picture. A block
+      # The blocks are fixed to the display, not to anything in the picture. A block
       # starts at every column and every row that is a multiple of the size, and shows
       # the colour its top left pixel would have had. So a picture that moves slides
       # under a grid that stays still. It is done to each part of the picture by itself,
@@ -954,8 +965,8 @@ module VBlank
       # see-through shows what is behind it all the way across.
       #
       # +under+ places the effect in the stack as it does for a fade: the layer it names
-      # and everything in front of it are left as drawn. Unlike a fade's, it is ONE PLACE
-      # FOR THE WHOLE PROGRAM: every pixelate statement in a program names the same layer,
+      # and everything in front of it are left as drawn. Unlike a fade's, it is one place
+      # for the whole program: every pixelate statement in a program names the same layer,
       # or none does, and a program with two is one no backend runs (see Backends::Blocks).
       #
       # +keeps_sprites+ leaves every sprite as drawn and puts only the backgrounds in blocks,
@@ -1099,7 +1110,7 @@ module VBlank
         Nodes.build(:backing_buffer, name: name, width: width, height: height)
       end
 
-      # Copy the buffer-sized patch of the screen at (x, y) INTO the named backing
+      # Copy the buffer-sized patch of the screen at (x, y) into the named backing
       # buffer — remember what's there before something is drawn over it. x/y may be
       # constants or variables; a part off a screen edge is skipped (nothing to
       # remember out there).
@@ -1144,9 +1155,9 @@ module VBlank
         end
         unless ELEMENT_BYTES.key?(width)
           raise ArgumentError,
-                "a list's width must be :byte, :half or :word, got #{width.inspect}"
+                "a list's width must be :byte, :half, :unsigned_half or :word, got #{width.inspect}"
         end
-        # A LIST HOLDS WHAT IT WAS ASKED FOR, which is the only answer that can be explained.
+        # A list holds what it was asked for, which is the only answer that can be explained.
         # It used to hold the next power of two up, because the storage was a ring whose index
         # was wrapped with a mask — so `capacity: 340` quietly held 512, and the memory for
         # those 172 slots nobody planned for came out of the console's 32K. How that storage
@@ -1188,12 +1199,21 @@ module VBlank
         Nodes.build(:list_copy, name: name, table: table, at: to_value_node(at), count: count)
       end
 
+      # Write every item of the list, lowest byte first, into the byte list +into+ from slot +at+
+      # (a value operand) on. +width+ is the list's slot width; +index+ is a variable the builder
+      # declared for the loops a backend may write the step out as (see Nodes::ListPack).
+      def list_pack(name, into:, at:, width:, index:)
+        Nodes.build(:list_pack, name: name, into: into, at: to_value_node(at), width: width, index: index)
+      end
+
       # Put every item of the list in order by the number list +by+ holds at it, the smallest
       # first, or the biggest with +descending+; level items keep their order (see ListSort).
       # +shown+, a value for each place of +by+, puts the items whose value is not 1 behind the rest.
-      def list_sort(name, by:, descending: false, shown: nil)
+      # With no +by+ the items are their own numbers, and +body+ is the insertion sort that means it.
+      def list_sort(name, by: nil, descending: false, shown: nil, body: [])
         given = shown ? { shown: shown.map { |value| to_value_node(value) } } : {}
-        Nodes.build(:list_sort, name: name, by: by, descending: descending ? true : false, **given)
+        given[:by] = by if by
+        Nodes.build(:list_sort, name: name, descending: descending ? true : false, children: body, **given)
       end
 
       # Overwrite the item at `index` with a new value (the slot must already hold
@@ -1318,6 +1338,15 @@ module VBlank
         Nodes.build(:held, button: button, player: player)
       end
 
+      # How far a button is pulled, in percent (see Nodes::Pulled).
+      def pulled(button, player: 1)
+        Nodes.build(:pulled, button: button, player: player)
+      end
+
+      # A pulled node as a pad whose buttons are only up or down answers it: FULL_PULL while the
+      # button is held, 0 when not. What every cartridge lowers it as.
+      def pulled_as_held(node) = binop(:*, held(node.button, player: node.player), int(Buttons::FULL_PULL))
+
       # Which player this machine's person is, from 1 (see Nodes::LocalPlayer).
       def local_player
         Nodes.build(:local_player)
@@ -1396,17 +1425,17 @@ module VBlank
         layers.empty? ? {} : { layers: layers, layer_pick: pick }
       end
 
-      # The same idea for an effect, which names the layer it sits UNDER rather than the
+      # The same idea for an effect, which names the layer it sits under rather than the
       # one it belongs to.
       def under_field(name)
         name ? { under: name } : {}
       end
 
-      # HOW BIG ONE ELEMENT IS, in bytes, for each width a table or a list can be given. The
+      # How big one element is, in bytes, for each width a table or a list can be given. The
       # same three names mean the same three sizes wherever they are written.
       ELEMENT_BYTES = { byte: 1, half: 2, word: 4 }.freeze
 
-      # ELEMENTS KEPT AS BYTES, as a data pack keeps a slot of numbers and as a table read from a
+      # Elements kept as bytes, as a data pack keeps a slot of numbers and as a table read from a
       # file is read (IR::StartFile): +bytes+ read as elements of +width+, below zero only when
       # +signed+, low byte first unless +high_byte_first+.
       ELEMENT_READS = Ractor.make_shareable({ [:byte, false] => "C*", [:byte, true] => "c*", [:half, false] => "v*",
@@ -1421,10 +1450,10 @@ module VBlank
 
       # ...and the smallest and largest number one element of that width can hold.
       #
-      # A NARROW ELEMENT ALWAYS GOES BELOW NOTHING, and there is deliberately no way to ask for
+      # A narrow element always goes below nothing, and there is deliberately no way to ask for
       # the other half of the range. A `table` can be asked, because every value in one is
       # known while the cartridge is built and the answer can be read off them; a list's values
-      # are written while the game RUNS, so nothing at build time can tell. And the case that
+      # are written while the game runs, so nothing at build time can tell. And the case that
       # decides it is invisible either way: a countdown written `wait -= 7` and then tested
       # `wait <= 0` really does hold -4 for the length of that test, and in a slot that could
       # not go below nothing -4 reads back as 252 and the test never fires. That is a game that
@@ -1437,7 +1466,7 @@ module VBlank
       end
 
       # The next power of two at or above a number (4 stays 4, 5 becomes 8, 100 becomes 128).
-      # A list HOLDS what it was asked for, so this no longer decides that; what it decides is
+      # A list holds what it was asked for, so this no longer decides that; what it decides is
       # how much room a backend has to set aside for one it wraps an index into — see the GBA
       # backend's Lists, where a list that is shifted keeps a ring and pays for the rounding
       # and one that is only indexed does not.

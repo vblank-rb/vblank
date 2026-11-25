@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# SPRITES OF SCENES NEVER UP TOGETHER TAKE TURNS AT THE CONSOLE'S ROWS. The console draws its
+# Sprites of scenes never up together take turns at the console's rows. The console draws its
 # sprites from a table of 128 rows, and a row is handed to a sprite while the cartridge is
 # built. A title screen's lettering and the room the game is played in are never on screen
 # together, so they can be given the same rows — and then a change of scene has to leave
@@ -44,17 +44,14 @@ class TestSceneSpriteRows < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program
     builder.program
   end
 
-  # EVERY FRAME SHOWS ONE SCREEN'S SPRITES AND NOTHING OF THE OTHER'S, through both changes.
+  # Every frame shows one screen's sprites and nothing of the other's, through both changes.
   def test_each_frame_shows_one_scenes_sprites_and_none_of_the_others
     v = assert_emulator_loads_rom(assemble_rom(two_screens, name: "ROWS"), frames: 2)
     20.times do |frame|
@@ -94,10 +91,7 @@ class TestSceneSpriteRows < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     builder.finalize_program

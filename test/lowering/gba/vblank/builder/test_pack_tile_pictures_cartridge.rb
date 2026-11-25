@@ -4,8 +4,8 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_pack_tile_pictures"
 
-# A TILE OF A BACKGROUND FROM THE DATA PACK TAKING TURNS THROUGH PICTURES, ON THE ADVANCE'S
-# CARTRIDGE, read in the emulator and held to the interpreter frame for frame. What such a tile
+# A tile of a background from the data pack taking turns through pictures, on the Advance's
+# cartridge, read in the emulator and held to the interpreter frame for frame. What such a tile
 # shows on every run is in test/all/vblank/builder/test_pack_tile_pictures.rb.
 class TestPackTilePicturesCartridge < Minitest::Test
   include PackTilePictureGames

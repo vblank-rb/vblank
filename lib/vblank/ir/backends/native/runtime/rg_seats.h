@@ -1,5 +1,5 @@
 /*
- * WHICH PLAYER EACH GAMEPAD AND KEY IS, in the desktop window (rg_sdl.c). A game for more than
+ * Which player each gamepad and key is, in the desktop window (rg_sdl.c). A game for more than
  * one player reads player 2, 3 and 4's buttons (`held(:left, player: 2)`), so the window gives
  * those players something to press. Only a game whose `players:` seats two or more is played this
  * way (rg_seats_several_players); any other plays as it always did, every gamepad and key player 1's,
@@ -36,9 +36,9 @@
 /* As many gamepads as have a player at once. */
 #define RG_SEATS_MOST 8
 
-/* Whether a game whose build seats +most_players+ (rg_game_seats, 0 for none named) gives each
+/* Whether a game whose build seats +max_players+ (rg_game_seats, 0 for none named) gives each
  * gamepad a player of its own and player 2 keys. */
-static inline int rg_seats_several_players(int32_t most_players) { return most_players > 1; }
+static inline int rg_seats_several_players(int32_t max_players) { return max_players > 1; }
 
 /* The gamepads plugged in and each one's player: +ids+ is the window's number for the gamepad,
  * and +players+ its player from 1, 0 where the place is empty. Starts zeroed. */
@@ -82,8 +82,9 @@ static inline void rg_seats_leave(rg_seats *seats, uint32_t id) {
 }
 
 /* Player 2's keys: the console button (in rg_runtime.h's order: a, b, select, start, right, left,
- * up, down, r, l, x, y, c) each key presses, by scancode. H, Y and B are X, Y and C: the window
- * reads them only on a console that has the button (rg_window_console_has). */
+ * up, down, r, l, x, y, c, l2, r2) each key presses, by scancode. H, Y and B are X, Y and C, and 6
+ * and minus L2 and R2: the window reads them only on a console that has the button
+ * (rg_window_console_has). */
 static inline int rg_seats_second_player_button(int key) {
   switch (key) {
   case 18: return 0; /* O: A */
@@ -99,6 +100,8 @@ static inline int rg_seats_second_player_button(int key) {
   case 11: return 10; /* H: X */
   case 28: return 11; /* Y: Y */
   case 5: return 12;  /* B: C */
+  case 35: return 13; /* 6: L2 */
+  case 45: return 14; /* minus: R2 */
   default: return -1;
   }
 }

@@ -18,7 +18,7 @@ module VBlank
 
           private
 
-          # THE SOUND LOG AND THE CHIPS THEMSELVES, past the moments: every entry of the log, and the first time
+          # The sound log and the chips themselves, past the moments: every entry of the log, and the first time
           # the game was found waiting with a chip's register holding something other than what the
           # interpreter's log says it must, as far as the entries the cartridge had logged then
           # (ChipWrites.after). The log agreeing is not enough: a write dropped on the way or sent to the

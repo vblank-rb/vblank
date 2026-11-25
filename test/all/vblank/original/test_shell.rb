@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "shell_tests"
 
-# BUILDING A SHELL (Original::Shell.build): what a port must be for its shell to be made at all.
+# Building a shell (Original::Shell.build): what a port must be for its shell to be made at all.
 # How each runtime plays a shell is tested in that runtime's folder (test_shell.rb under
 # test/lowering/ruby/vblank/live/, and the web page's and the desktop program's).
 class TestOriginalShell < Minitest::Test
@@ -19,6 +19,25 @@ class TestOriginalShell < Minitest::Test
 
       assert_equal [:game], kept
       assert_operator shell.parts.size, :>, 1
+    end
+  end
+
+  # A shell's menu and unpacking show in the game's window, so a game that asks a screen of its own
+  # (`screen :bitmap, size:`) has every part at that size, or the window is handed a picture of
+  # another.
+  def test_every_part_of_a_shell_has_the_screen_its_game_asks_for
+    Dir.mktmpdir do |folder|
+      from = original_nowhere(folder)
+      game = VBlank.game("SIZED SHELL", consoles: %i[gba]) do
+        screen :bitmap, size: [320, 200]
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: PALETTE_AT, count: 16 }
+        game_loop { wait_vblank }
+      end
+      shell = VBlank::Original::Shell.build(game, err: nil)
+
+      assert_equal({ [320, 200] => shell.parts.map(&:role).uniq },
+                   shell.parts.group_by { |part| part.program.described_console.screen_size }
+                        .transform_values { |parts| parts.map(&:role).uniq })
     end
   end
 

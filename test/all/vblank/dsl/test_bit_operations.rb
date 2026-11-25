@@ -249,7 +249,7 @@ end
 
 # Reading and writing the bits of a number: `& | ^ ~ << >>` on a Value.
 #
-# What these are FOR is packed data — a background map cell, a row of a collision
+# What these are for is packed data — a background map cell, a row of a collision
 # shape, a word of state flags — so the tests are written as that: a real packed
 # format taken apart and put back together, checked against a plain-Ruby model of
 # the same thing. A test that restated the operator ("x & 3 is x & 3") would pass
@@ -265,7 +265,7 @@ class TestBitOperations < Minitest::Test
   include BitOperationsCases
 
   # ---------------------------------------------------------------------------
-  # what a program COMPUTES (the programs are in BitOperationsCases, above)
+  # what a program computes (the programs are in BitOperationsCases, above)
   # ---------------------------------------------------------------------------
 
   def test_reading_one_bit_per_pixel_out_of_a_collision_shape

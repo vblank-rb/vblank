@@ -75,6 +75,24 @@ class TestPlainRuby < Minitest::Test
     assert_equal [7, 9], [player[:a], player[:b]]
   end
 
+  # A ternary on a game test read inside a sum, or handed to a verb, gives Ruby's number.
+  def test_a_ternary_inside_a_sum_or_an_argument_gives_rubys_number
+    player = played(frames: 5) do
+      a = 0
+      bits = 0
+      at = 0
+      game_loop do
+        a += 1
+        bits = (bits * 2) + (a > 3 ? 1 : 0)
+        at = 100 + (a.odd? ? 10 : 20)
+        draw_rect_at 0, (a > 2 ? 10 : 20), 4, 4, :red
+      end
+    end
+
+    # a runs 1 to 5: bits 0, 0, 0, 1, 1 is 0b00011; a is odd last.
+    assert_equal [3, 110], [player[:bits], player[:at]]
+  end
+
   def test_unless_and_trailing_unless_run_when_the_test_fails
     player = played(frames: 2) do
       n = 1
@@ -2445,6 +2463,39 @@ class TestPlainRuby < Minitest::Test
     assert_equal [0, 1], [player[:left], player[:after]]
   end
 
+  # A loop written on one line whose body gives its own test's name a new number, a name that
+  # first held a working-out (`line = read_scanline` then `line = read_scanline while ...`). The
+  # test is written after the body but asked before it, each round, so the body's number is the
+  # one the next round asks about, as in the same loop written as a block. Each name is read
+  # nowhere after its loop, which is what left it a plain Ruby name.
+  def test_a_one_line_while_that_sets_its_own_tests_name_asks_the_new_number
+    player = played(frames: 2) do
+      marks = list :marks, capacity: 8, width: :byte, full_of: 0
+      one_line = var(:one_line, 0)
+      one_line_until = var(:one_line_until, 0)
+      as_block = var(:as_block, 0)
+      game_loop do
+        marks[4] = 9
+        at = 0
+        seen = marks[at]
+        seen = marks[at += 1] while seen != 9
+        one_line.store!(at)
+        at = 0
+        found = marks[at]
+        found = marks[at += 1] until found == 9
+        one_line_until.store!(at)
+        at = 0
+        mark = marks[at]
+        while mark != 9
+          mark = marks[at += 1]
+        end
+        as_block.store!(at)
+      end
+    end
+
+    assert_equal [4, 4, 4], [player[:one_line], player[:one_line_until], player[:as_block]]
+  end
+
   def test_until_stops_once_the_test_holds
     player = played(frames: 2) do
       n = 0
@@ -3419,18 +3470,37 @@ class TestPlainRuby < Minitest::Test
     assert_match(/game_variables\(\{ saved: :points \}\)/, error.message)
   end
 
-  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      played do
-        @score = 0
-        seen = var :seen, 0
-        game_loop do
-          @score += 1
-          seen.store!(@score)
-        end
+  # Game code counts it from what it holds, so it is the game's, with no game_variables line.
+  def test_the_games_own_unnamed_instance_variable_counted_then_read_is_a_game_number
+    player = played do
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
       end
     end
 
-    assert_match(/game_variables :score` to the game block/, error.message)
+    assert_equal [3, 3], [player[:seen], player[:score]]
+  end
+
+  # Game code reads the builder of the game being built on its own thread. A game built on another
+  # thread in between, as a test run in threads does, must not take its place.
+  def test_a_game_built_on_another_thread_leaves_this_threads_game_code_its_own_builder
+    builder = Builder.new
+    Thread.new { Builder.new }.join
+    game = VBlank::DSL::PlainRuby.rewrite(proc do
+      @score = 0
+      seen = var :seen, 0
+      game_loop do
+        @score += 1
+        seen.store!(@score)
+      end
+    end)
+
+    builder.instance_eval(&game)
+    builder.finalize_program
+
+    assert_equal 3, game_player.run(builder.program, frames: 3)[:score]
   end
 end

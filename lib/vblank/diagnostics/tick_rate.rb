@@ -2,31 +2,31 @@
 
 module VBlank
   module Diagnostics
-    # WHAT RATE IS THIS TIMER REALLY DELIVERING? Counted, on a real run.
+    # What rate is this timer really delivering? Counted, on a real run.
     #
-    # THE FOOTGUN THIS IS ABOUT. `timer :beat, per_second: N` raises an interrupt N times a
-    # second and `on_tick` is what it runs. There is NO QUEUE: a tick that arrives while the
+    # The footgun this is about. `timer :beat, per_second: N` raises an interrupt N times a
+    # second and `on_tick` is what it runs. There is no queue: a tick that arrives while the
     # last one is still being answered is dropped. So a game can quietly run at a fraction of
     # the rate it asked for, and nothing on screen shows it — the sound is just slower, or the
     # reading just coarser, than it should be. This puts the number in front of somebody.
     #
-    # HOW IT IS COUNTED, and it is a count rather than an estimate. The profiling loop steps
+    # How it is counted, and it is a count rather than an estimate. The profiling loop steps
     # one instruction at a time and records the program counter each time, so the histogram is
     # exact. A handler's first instruction runs exactly once per tick ANSWERED — the dispatcher
     # has already branched past it when that timer did not fire — so the hits on that one
     # address are the ticks that arrived.
     #
-    # WHAT IT IS HELD AGAINST is real time, and this is the part that has to be right: elapsed
-    # time is HARDWARE frames over sixty, never passes of the game loop. A timer ticks in real
+    # What it is held against is real time, and this is the part that has to be right: elapsed
+    # time is hardware frames over sixty, never passes of the game loop. A timer ticks in real
     # time whatever the game does, and interrupts preempt the main loop — so a game running at
     # thirty frames a second with a handler that keeps up delivers its full rate. Measuring
     # against passes would make every frame-dropping game look broken.
     #
-    # == WHY THIS REPORTS A NUMBER AND DOES NOT WARN ==
+    # ### Why this reports a number and does not warn
     #
     # The obvious next step is to warn when the rate delivered falls short of the rate asked
     # for, and to blame the handler. Measured, that does not work, because a handler is not the
-    # main thing that costs ticks. DRAWING IS. A transfer stalls the console and holds
+    # main thing that costs ticks. Drawing is. A transfer stalls the console and holds
     # interrupts off while it runs, so a full-screen clear — the most ordinary thing a game
     # does — swallows ticks all on its own. With a handler that does one addition:
     #
@@ -42,7 +42,7 @@ module VBlank
     # slow when their `clear_screen` did it would send them to rewrite the wrong code — worse
     # than saying nothing, because it looks like an answer.
     module TickRate
-      # WHAT A RUN SAW, for one timer. +asked+ is the rate the program wanted and +got+ the
+      # What a run saw, for one timer. +asked+ is the rate the program wanted and +got+ the
       # rate that arrived. A reading that could not be taken shows it with #measured? false, so
       # "we could not tell" never reads as "nothing was wrong".
       Reading = Data.define(:name, :asked, :got) do

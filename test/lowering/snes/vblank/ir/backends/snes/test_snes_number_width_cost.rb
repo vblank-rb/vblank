@@ -3,7 +3,7 @@
 require "test_helper"
 require "number_width_cost_games"
 
-# A TEST OF NUMBERS PROVEN SMALL ON THE SUPER NINTENDO, measured in the emulator: two sides that stay
+# A test of numbers proven small on the Super Nintendo, measured in the emulator: two sides that stay
 # in 16 bits (Backends::NumberRanges) compared with one CMP, or a subtract whose sign is turned back
 # where it overflowed, of their low halves alone (SNES::Lowering#compare_within_halves); a slot of
 # bytes read with its sign carried into the high byte, a size or a shift down worked in the 16-bit

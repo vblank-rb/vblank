@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# CELLS OF A BACKGROUND FROM THE DATA PACK DRAWN IN FRONT OF THE SPRITES (`cells_in_front: true`,
+# Cells of a background from the data pack drawn in front of the sprites (`cells_in_front: true`,
 # Builder::PackBackgrounds#mark_tiles_in_front). A Genesis original marks a cell of its map for in
 # front with the cell's top bit, its priority, and a sprite passing under such a cell is hidden by
 # the cell's drawn pixels and shows through its see-through ones, as the console draws it. A port
@@ -21,7 +21,7 @@ module PackCellsInFrontGames
   GENESIS_FRONT_CELL = ->(tile, front) { tile | (front ? 1 << 15 : 0) }
 
   # Two rows of four cells, each [tile, in front]. Tile 0 draws nothing, and tiles 1 to 3 have
-  # see-through places among their drawn ones (PLACES).
+  # see-through places among their drawn ones (places).
   CELLS = [[1, true], [1, false], [3, true], [2, false],
            [0, true], [2, true], [1, false], [3, false]].freeze
   ACROSS = 4
@@ -40,19 +40,72 @@ module PackCellsInFrontGames
   SPRITE_AT = [4, 4].freeze
   SPRITE_SIDE = 8
 
-  # A SPRITE IN FRONT (`in_front: true`), declared before the walker so only its mark puts it in
+  # A sprite in front (`in_front: true`), declared before the walker so only its mark puts it in
   # front: a checkerboard of its own colour and see-through places, over the same cells as the walker.
   POINTER_COLOR = MadeUpOriginalLayouts::PALETTE[12]
   POINTER_PLACES = Array.new(SPRITE_SIDE * SPRITE_SIDE) { |at| ((at % 8) + (at / 8)).even? }.freeze
 
-  # A SECOND SPRITE IN FRONT, of one colour all over, over the same cells: the pointer and it take
+  # A second sprite in front, of one colour all over, over the same cells: the pointer and it take
   # turns in front of each other a frame each (`draw_in_order ..., take_turns: true`), and whichever
   # is in front is over the cells in front as well.
   HAND_COLOR = MadeUpOriginalLayouts::PALETTE[14]
 
+  # A second area, for a background walking between areas: the same cells, each mark the other way.
+  FAR_CELLS = CELLS.map { |tile, front| [tile, !front] }.freeze
+  # The passes the walking game (#front_areas_game_and_file) writes WRITTEN in the first area on,
+  # walks to the second on, and writes WRITTEN there on.
+  NEAR_WRITTEN_PASS = 4
+  FAR_WALK_PASS = 7
+  FAR_WRITTEN_PASS = 10
+
   VBlank::Testing::InRactors.share_constants(self)
 
-  # THE GAME OF TWO SPRITES IN FRONT TAKING TURNS: the pointer and the hand, each of one colour all
+  # The game walking between two areas (`map:` a Hash by area) marking cells in front: :near is
+  # CELLS and :far FAR_CELLS, each a slot of map cells the unpacking writes, both over the one slot
+  # of tiles, or with +own_tiles+ each area over a slot of its own holding the same tiles. Told
+  # WRITTEN by a slot of one place (`set_cells: pack[:changes]`), it writes it at WRITTEN_AT in each
+  # area, on NEAR_WRITTEN_PASS and FAR_WRITTEN_PASS, and walks to :far on FAR_WALK_PASS. The walker
+  # is under the cells, at SPRITE_AT. Hands back the program and the pack file the build made.
+  private def front_areas_game_and_file(folder, own_tiles: false, options: VBlank::Cartridge::Options.new)
+    from = front_original(folder)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :video, at: TILES_AT, count: PLACES.length, colors: 16
+        slots.tiles :far_video, at: TILES_AT, count: PLACES.length, colors: 16 if own_tiles
+        slots.colors :palette, at: COLORS_AT, count: 32
+        slots.map_cells :near_map, count: CELLS.length
+        slots.map_cells :far_map, count: CELLS.length
+        slots.map_cells :changes, count: 1
+        slots.fill_from_copy do |_copy, filled|
+          { near_map: CELLS, far_map: FAR_CELLS, changes: [WRITTEN] }.each do |slot, cells|
+            cells.each_with_index { |(tile, front), at| filled[slot].write_cell(at, tile: tile, in_front: front) }
+          end
+        end
+      end
+      machine = background :machine, tiles: { near: pack[:video], far: pack[own_tiles ? :far_video : :video] },
+                                     map: { near: pack[:near_map], far: pack[:far_map] }, colors: pack[:palette],
+                                     across: ACROSS, cells_in_front: true, set_cells: pack[:changes]
+      image :walker, width: SPRITE_SIDE, height: SPRITE_SIDE, data: Array.new(SPRITE_SIDE * SPRITE_SIDE, SPRITE_COLOR)
+      sprite :walker, at: SPRITE_AT
+      passes = var :passes, 0
+      game_loop do
+        passes.store!(passes + 1)
+        machine.set_cell WRITTEN_AT % ACROSS, WRITTEN_AT / ACROSS, 0 if passes == NEAR_WRITTEN_PASS
+        machine.show_map :far if passes == FAR_WALK_PASS
+        machine.set_cell WRITTEN_AT % ACROSS, WRITTEN_AT / ACROSS, 0 if passes == FAR_WRITTEN_PASS
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # +cells+ with WRITTEN at WRITTEN_AT.
+  private def with_written(cells) = cells.dup.tap { |written| written[WRITTEN_AT] = WRITTEN }
+
+  # The game of two sprites in front taking turns: the pointer and the hand, each of one colour all
   # over and both in front, at SPRITE_AT over the original's map with its cells in front, put in
   # order with `take_turns:` given +take_turns+.
   private def turns_game(folder, take_turns: true)
@@ -102,7 +155,7 @@ module PackCellsInFrontGames
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # THE GAME: the original's map as a background that reads its cells' marks, and the sprite over
+  # The game: the original's map as a background that reads its cells' marks, and the sprite over
   # it. +map+ is :console for the Genesis's own cells, or :map_cells for map cells the unpacking
   # writes. +cells_in_front+ is what the background is given. With +written+, the background is
   # told WRITTEN and writes it at WRITTEN_AT on pass WRITTEN_PASS. With +pointer+ a sprite in front
@@ -154,7 +207,7 @@ module PackCellsInFrontGames
 
   private def front_game(folder, **) = front_game_and_file(folder, **).first
 
-  # THE ANSWER KEY for the pixel at (+x+, +y+), inside the first two rows of cells: a cell's drawn
+  # The answer key for the pixel at (+x+, +y+), inside the first two rows of cells: a cell's drawn
   # place in bank 0's colour where the cell is in front or no sprite is over it, the sprite's colour
   # where it is over a see-through place or a cell behind it, and nil (whatever is behind) where
   # neither draws.
@@ -244,6 +297,26 @@ module PackCellsInFrontTests
       shown.each { |colors| assert_equal 1, colors.length, "one sprite covers every pixel under it: #{colors.inspect}" }
       assert_includes [[POINTER_COLOR, HAND_COLOR], [HAND_COLOR, POINTER_COLOR]], shown.first(2).flatten
       assert_equal shown.first(2) * 2, shown, "the two take turns in front a frame each"
+    end
+  end
+
+  # A background walking between areas marks each area's cells in front, and a cell a slot told it,
+  # written in each area, brings its mark: over one slot of tiles, or a slot an area.
+  def test_cells_in_front_follow_the_area_showing_and_the_cells_written_there
+    Dir.mktmpdir do |folder|
+      [false, true].each do |own_tiles|
+        program, = front_areas_game_and_file(folder, own_tiles: own_tiles)
+        tiles = own_tiles ? "a slot of tiles an area" : "one slot of tiles"
+        { NEAR_WRITTEN_PASS - 1 => [CELLS, "the first area"],
+          NEAR_WRITTEN_PASS + 2 => [with_written(CELLS), "the first area, a cell written"],
+          FAR_WALK_PASS + 2 => [FAR_CELLS, "the second area"],
+          FAR_WRITTEN_PASS + 2 => [with_written(FAR_CELLS), "the second area, a cell written"] }.each do |frames, (cells, what)|
+          screen = game_player.run(program, frames: frames).screen
+          wanted = wanted_pixels(cells: cells)
+
+          assert_equal wanted, shown_pixels(screen, wanted), "#{what}, over #{tiles}"
+        end
+      end
     end
   end
 

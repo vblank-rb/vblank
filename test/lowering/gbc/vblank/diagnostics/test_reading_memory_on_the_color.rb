@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# WHAT A READER OF A RUNNING COLOR CARTRIDGE READS IS WHAT MEMORY HOLDS, whatever the console is
+# What a reader of a running color cartridge reads is what memory holds, whatever the console is
 # doing as the frame ends. While the console copies a sprite table (OAM DMA) the processor reading
 # work memory gets 0xFF, as the copy has the bus; a reader is not the processor, and a variable read
 # then must not read -1. The cartridge here does nothing else: with the screen off it writes 0x5A

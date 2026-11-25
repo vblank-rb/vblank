@@ -12,7 +12,7 @@ module ManyTiles
   # An 8×8 tile drawn in all four places of its list: a quarter of the tile each.
   QUARTERS = Array.new(64) { |i| 1 + ((i % 8) / 4) + (2 * ((i / 8) / 4)) }.freeze
 
-  # THE CORNER THAT TELLS A TILE FROM ANOTHER ONE TURNED ROUND: three pixels at the bottom left,
+  # The corner that tells a tile from another one turned round: three pixels at the bottom left,
   # [column, row] each, drawn in every tile. A console that turns a tile as it draws it keeps one
   # tile for two that are each other mirrored or upside down, and a number in binary read backwards
   # is another number. With this corner, a tile turned any way has it in another corner, where no

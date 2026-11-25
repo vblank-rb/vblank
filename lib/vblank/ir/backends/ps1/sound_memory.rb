@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHAT A GAME'S SOUND MEMORY HOLDS: the loops its voices play, each made while building, encoded
+        # What a game's sound memory holds: the loops its voices play, each made while building, encoded
         # (ADPCM), placed from the first free byte of the chip's sound memory, and copied there as the
         # program starts (Runtime::Sound#emit_upload).
         #
@@ -12,10 +12,10 @@ module VBlank
         # pitch: its 24 voices each read a sound out of sound memory. So every sound VBlank names is a
         # short recording looped for ever, and the voice's pitch register sets how fast it is read:
         #
-        # - A SQUARE is one wave of 56 samples, high for so many eighths of it (7 samples an eighth) and
+        # - A square is one wave of 56 samples, high for so many eighths of it (7 samples an eighth) and
         #   low for the rest, one loop for each width (`duty:`). Read at 56 samples a wave, a voice plays
         #   it at the note's pitch.
-        # - A WAVEFORM is its 32 steps, seven times over: 224 samples, a whole number of blocks of 28.
+        # - A waveform is its 32 steps, seven times over: 224 samples, a whole number of blocks of 28.
         # - NOISE is the Advance's noise voice's row of bits, one sample a step, recorded: its 15-bit hiss
         #   (the 32760 steps that fill whole blocks, of its 32767 before it comes round) and its 7-bit
         #   rattle (127 steps, 28 times over). The chip does have a noise of its own (NON, 1F801D94h), but
@@ -25,7 +25,7 @@ module VBlank
         #
         # Every sample of those is a four-bit level at shift 0, so each comes back exactly (ADPCM).
         #
-        # - A RECORDING the game plays (`sample`, `play_sample`) is its own samples, encoded as near as the
+        # - A recording the game plays (`sample`, `play_sample`) is its own samples, encoded as near as the
         #   chip's filters bring them, once for each way it is played: once through, or round from where it
         #   holds (#recording_samples).
         class SoundMemory
@@ -68,7 +68,7 @@ module VBlank
             waves_from_file.times do |number|
               keep(self.class.wave_from_file(number), ADPCM.encode(self.class.wave_samples(StartFile.wave_stand_in), loop: true))
             end
-            # RECORDINGS ALIKE ARE KEPT ONCE. What sound memory keeps of a recording is its samples and where
+            # Recordings alike are kept once. What sound memory keeps of a recording is its samples and where
             # it reads back to; the rate it was made at, the note it plays and its shape are the voice's pitch
             # and loudness, set for each play (Runtime::Recordings' row). So recordings declared under several
             # names with the same samples, as one instrument's recording shaped several ways is, read one
@@ -85,7 +85,7 @@ module VBlank
             laid_out.each_value { |node| keep_laid_out(node, ways) }
           end
 
-          # A RECORDING LAID OUT AS THE GAME STARTS (a desktop, web or Ruby build's): one whose samples,
+          # A recording laid out as the game starts (a desktop, web or Ruby build's): one whose samples,
           # hold or length are read from the start file. Its samples, or how far back it reads, or both,
           # are not known while building, so neither is what its loops hold. It is given loops of its
           # own, never shared with a recording alike, and the runtime lays it out and encodes it there
@@ -131,7 +131,7 @@ module VBlank
           # The name of recording +name+ played going +back+ samples at its end (nought for once through).
           def self.recording(name, back) = [:recording, name, back]
 
-          # A LOOP MUST START ON A BLOCK, and a recording holds from wherever it was told to, so the part it
+          # A loop must start on a block, and a recording holds from wherever it was told to, so the part it
           # holds over is laid out again from the next block on: the samples up to that block go on as the
           # recording does, and the part held over follows, turned to start where they leave off, and
           # written as many times over as makes a whole number of blocks — at most 28, past a size it is
@@ -176,7 +176,7 @@ module VBlank
           # The name of the square loop of +duty+ (Audio::Sound::SQUARE_HIGH_EIGHTHS's names).
           def self.square(duty) = [:square, Audio::Sound::SQUARE_HIGH_EIGHTHS.fetch(duty)]
 
-          # WHERE THE SQUARE OF +duty+ STARTS, in 8-byte steps: every game's sound memory starts with the
+          # Where the square of +duty+ STARTS, in 8-byte steps: every game's sound memory starts with the
           # squares, in SQUARE_EIGHTHS's order, each the same size, so it is the same in every game.
           def self.square_start(duty)
             bytes = (SQUARE_SAMPLES / ADPCM::SAMPLES_A_BLOCK) * ADPCM::BLOCK_BYTES
@@ -197,7 +197,7 @@ module VBlank
           # A waveform's 32 steps of 0 to 15, seven times over, each as its four bits (step - 8).
           def self.wave_samples(steps) = (steps.map { |step| (step - 8) << 12 } * (WAVE_SAMPLES / steps.size))
 
-          # THE ADVANCE'S NOISE VOICE, a step at a time: a row of 15 bits (7 for a rattle), all ones at the
+          # The Advance's noise voice, a step at a time: a row of 15 bits (7 for a rattle), all ones at the
           # start; each step the lowest two are told apart, the row moves down one, and the answer goes in
           # at the top (at bit 6 too for a rattle). The voice is high while the bit falling off is nought
           # (GBATEK, "Sound Channel 4 - Noise").

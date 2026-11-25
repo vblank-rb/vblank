@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # HOW FAR A RUN HAS GOT, as a line of its own every hundred tests, for a log nobody watches
+    # How far a run has got, as a line of its own every hundred tests, for a log nobody watches
     # in a terminal.
     #
     # Minitest prints a dot for each test played, all on one line. A terminal shows the dots as

@@ -2,9 +2,31 @@
 
 module VBlank
   class Builder
-    # The input verbs: turn a button into a {Condition} — held / pressed — to branch
-    # with `if` and join with `&&` / `||`. Button names are validated against the shared
-    # IR vocabulary. A concern of {Builder}, mixed in so these stay flat DSL verbs.
+    # Buttons and players
+    #
+    # `held(:left)` and `pressed(:start)` ask about a button. Each answers a yes or no that you
+    # use with `if`, and join with `&&` and `||`. The buttons are `a`, `b`, `select`, `start`,
+    # `right`, `left`, `up`, `down`, `r` and `l`, with `x` and `y` on the Super Nintendo and the
+    # PlayStation, `c` on the Genesis, and `l2` and `r2` on the PlayStation. A button the console does
+    # not have is an error when the game is built. A PlayStation's buttons can also be named as its pad
+    # names them: `:cross` is `:a`, `:circle` `:b`, `:triangle` `:x`, `:square` `:y`, `:l1` `:l` and
+    # `:r1` `:r`.
+    #
+    # ```ruby
+    # game_loop do
+    #   x -= 2 if held(:left)
+    #   x += 2 if held(:right)
+    #   score += 1 if pressed(:a)
+    # end
+    # ```
+    #
+    # A game for more than one player asks about another controller with `player:`, and
+    # `players_connected` says how many people are playing. On a computer, `computer_keys` and
+    # `computer_gamepad` add keys and gamepad buttons to the ones VBlank gives.
+    #--
+    # Button names are validated against the shared IR vocabulary. A concern of Builder, mixed in
+    # so these stay flat DSL verbs.
+    #++
     module Input
       # The words a game once gated a block on a button with, kept private so that the refusal
       # reaches a line in a game block, where it needs no receiver, and names the `if` to write.
@@ -17,97 +39,187 @@ module VBlank
         REFUSAL
       end
 
-      # A {Condition} that holds while a button is down — branch on it with
-      # `if held(:up)`, or `if held(:up, player: 2)` for the second controller.
+      # Asks whether a button is down right now. It holds for as long as the button is held.
       #
-      # @param button [Symbol] button name
-      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
-      def held(button, player: 1)
+      # ```ruby
+      # y -= 1 if held(:up)
+      # y += 1 if held(:down, player: 2)   # the second controller
+      # leave_title if held(:any)          # any button at all
+      # ```
+      #
+      # * `button` - the button's name, as a symbol, or `:any` for any button.
+      # * `player:` - whose controller: a number from 1, or `:any` for every connected player.
+      def held(button, player: 1, &)
         reject_block!(:held, button) if block_given?
         check_button!(button)
         check_player!(player)
-        DSL::Condition.new(self, Build.held(button, player: player))
+        DSL::Condition.new(self, Build.held(IR::Buttons.named(button), player: player))
       end
 
-      # A {Condition} true on the frame a button is first pressed (edge-detected).
+      # Asks whether a button went down on this frame.
       #
-      # @param button [Symbol] button name
-      # @param player [Integer, Symbol] whose controller: 1, 2, or :any for either
-      def pressed(button, player: 1)
+      # It holds once for each press, on the frame the button goes down, and not again until the
+      # button is let go and pressed again. Use it for a jump or a menu choice, where holding the
+      # button must not count twice. Use `held` for movement.
+      #
+      # ```ruby
+      # fire if pressed(:a)
+      # mode = :playing if pressed(:start, player: :any)
+      # ```
+      #
+      # * `button` - the button's name, as a symbol, or `:any` for any button.
+      # * `player:` - whose controller: a number from 1, or `:any` for every connected player.
+      def pressed(button, player: 1, &)
         reject_block!(:pressed, button) if block_given?
         check_button!(button)
         check_player!(player)
-        DSL::Condition.new(self, Build.pressed(button, player: player))
+        DSL::Condition.new(self, Build.pressed(IR::Buttons.named(button), player: player))
       end
 
-      # HOW MANY PLAYERS ARE CONNECTED NOW, as a {DSL::Value}: at least 1. A player counts from
-      # the first time one of their buttons is down, and stays counted. Ask it before reading a
-      # player's buttons, so a game never waits on a player who is not there:
+      # Reads how far a button is pulled, as a number from 0 (let go) to 100 (all the way).
       #
-      #   draw_text "PLAYER 3 PRESS START", 40, 80, :white if players_connected >= 3
+      # It is for a trigger that can be pulled part of the way, as a gamepad's L2 and R2 can be on a
+      # computer: a pedal, a throttle, a bow drawn back. Every other button is all or nothing, so it
+      # reads 100 while the button is held and 0 when it is not. A PlayStation's own pad has L2 and
+      # R2 that are all or nothing too.
+      #
+      # ```ruby
+      # speed = pulled(:r2) / 25         # 0 to 4
+      # brake = pulled(:l2, player: 2)
+      # ```
+      #
+      # `held(:l2)` stays a plain yes or no: a trigger counts as held from a small pull.
+      #
+      # * `button` - the button's name, as a symbol.
+      # * `player:` - whose controller: a number from 1.
+      #--
+      # A cartridge answers it as `held` times 100 (IR::Build.pulled_as_held); only a build for a
+      # computer reads a trigger part pulled (IR::Buttons::PULLED_BUTTONS).
+      #++
+      def pulled(button, player: 1, &)
+        reject_block!(:pulled, button) if block_given?
+        refuse_pull_of_any!(button, player)
+        check_button!(button)
+        check_player!(player)
+        DSL::Value.new(self, Build.pulled(IR::Buttons.named(button), player: player))
+      end
+
+      # Reads how many players are connected now, as a number that is at least 1.
+      #
+      # A player counts from the first time one of their buttons is down, and stays counted.
+      # Letting go of every button is not unplugging. Ask before reading a player's buttons, so
+      # that the game never waits on a player who is not there.
+      #
+      # ```ruby
+      # draw_text "PLAYER 3 PRESS START", 40, 80, :white if players_connected >= 3
+      # ```
       #
       # A console that reads one controller answers 1.
       def players_connected
         DSL::Value.new(self, Build.players_connected)
       end
 
-      # THE MOST PLAYERS THIS BUILD SEATS, a Ruby number while the game is built, as `screen_width`
-      # is: the top of what `players:` sets for this build. A game names its players once, and lays
-      # out its seats from this, so the two cannot drift apart.
+      # Gives the most players this build seats, as a plain Ruby number while the game is built.
       #
-      #   VBlank.game "PARTY", consoles: %i[gba], players: { computer: 1..4, else: 1 } do
-      #     walkers = (1..most_players).map { |player| sprite :walker, at: [20 * player, 80] }
+      # It is the top of what `players:` sets for this build. A game names its players once and
+      # lays out its seats from this number, so that the two cannot drift apart.
       #
-      # A game that sets no `players:` has no number to give, so this is a friendly error: a build
-      # seats what the console reads, and a computer build up to sixteen, which a game never means.
-      def most_players
-        @program.most_players or raise ArgumentError,
-                                       "`most_players` needs `players:` on `VBlank.game`, and this game does not say it. " \
-                                       "To fix this, say how many players the game takes, for example `players: 4`."
+      # ```ruby
+      # VBlank.game "PARTY", consoles: %i[gba],
+      #             players: { computer: 1..4,
+      #                        else: 1 } do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image(:walker, "#" => :yellow) do
+      #     "################\n" * 16
+      #   end
+      #   (1..max_players).each do |player|
+      #     x = 84 + 28 * player
+      #     sprite :walker, at: [x, 72]
+      #   end
+      #   game_loop {}
+      # end
+      # ```
+      #
+      # A game that sets no `players:` has no number to give, and `max_players` raises an error
+      # that says so.
+      #--
+      # A build seats what the console reads, and a computer build up to sixteen, which a game
+      # never means.
+      #++
+      def max_players
+        @program.max_players or raise ArgumentError,
+                                      "`max_players` needs `players:` on `VBlank.game`, and this game does not say it. " \
+                                      "To fix this, say how many players the game takes, for example `players: 4`."
       end
 
-      # SHAKE THE PLAYER'S HANDS for +frames+ frames, as a ball hitting a bumper does. +pattern+
-      # sets on which frames the motor runs, eight of them at a time and round again: a String of
-      # eight, "#" for on and "." for off, read from the left. Steady by default; "#.#.#.#." is a
-      # light buzz. A number is eight bits read as the Color's own games read theirs, so a pattern
+      #--
+      # The verb's old name, kept only to say the new one. Private, so it is no verb of the DSL's:
+      # a game's block still reaches it, since it runs as the builder.
+      #++
+      private def most_players
+        raise ArgumentError, "`most_players` is now `max_players`. To fix this, write `max_players`."
+      end
+
+      # Shakes the player's hands for a number of frames, as a ball hitting a bumper does.
+      #
+      # A rumble started while one runs takes its place, and `frames: 0` stops it. It is felt only
+      # on a console whose cartridge carries a motor, which is the Game Boy Color. On any other
+      # console it does nothing, and the game plays the same.
+      #
+      # ```ruby
+      # rumble frames: 12
+      # rumble frames: 30, pattern: "##..##.."
+      # ```
+      #
+      # * `frames:` - how many frames it lasts, from 0 to 65535.
+      # * `pattern:` - on which frames the motor runs, eight at a time and round again. Write a
+      #   string of eight, `"#"` for on and `"."` for off, read from the left. It is steady by
+      #   default, and `"#.#.#.#."` is a light buzz.
+      #--
+      # A number pattern is eight bits read as the Color's own games read theirs, so a pattern
       # taken from one of them plays the same (IR::Rumble).
-      #
-      #   rumble frames: 12
-      #   rumble frames: 30, pattern: "##..##.."
-      #
-      # A rumble started while one runs takes its place, and `frames: 0` stops it. A rumble is
-      # felt only on a console whose cartridge carries a motor (the Game Boy Color's); on any
-      # other it does nothing, and the game plays the same.
-      #
-      # @param frames [Integer, DSL::Value] how many frames it lasts, 0 to 65535
-      # @param pattern [String, Integer, DSL::Value] which of each eight frames the motor runs on
+      #++
       def rumble(frames:, pattern: STEADY_RUMBLE)
         refuse_bad_rumble_frames!(frames)
         record(Build.rumble(frames: frames, pattern: rumble_bits!(pattern)))
       end
 
       # The motor on for every frame.
-      STEADY_RUMBLE = 0xFF
+      STEADY_RUMBLE = 0xFF  # :nodoc:
 
-      # MORE KEYS FOR A BUTTON ON A COMPUTER: the desktop window, `vblank run` and the web page
-      # start with VBlank's keys (the arrows, X for A, Z for B, Return for Start) and these besides.
-      # Nothing is taken away, and a console's cartridge is built as it would be without it.
+      # Adds keys for a button on a computer.
       #
-      #   computer_keys a: :d                  # D presses A, and X still does
-      #   computer_keys a: :d, left: :space
+      # The desktop window, `vblank run` and the web page start with VBlank's keys (the arrows,
+      # X for A, Z for B, Return for Start) and use these besides. Nothing is taken away, and a
+      # console's cartridge is built as it would be without them.
       #
-      # A key presses one button, so a key VBlank already gives a button, or keeps for the window
-      # (P, N, M, F, Tab, Escape, the key above Tab), is a friendly error, and so is one of player 2's
-      # keys (I J K L, O, U, 7 to 0) in a game for more than one player. A player can still change
-      # every key in Controls, and Reset puts the game's layout back.
+      # ```ruby
+      # computer_keys a: :d                  # D presses A, and X still does
+      # computer_keys a: :d, left: :space
+      # ```
+      #
+      # A key presses one button. A key that VBlank already gives a button, or keeps for the
+      # window (P, N, M, F, Tab, Escape and the key above Tab), is an error, and so is one of
+      # player 2's keys (I, J, K, L, O, U and 6 to 0) in a game for more than one player. A
+      # player can still change every key in the Controls screen, and Reset puts the game's
+      # layout back. A game names its keys once, in one line.
+      #
+      # * Each keyword is a button, and its value is the key that presses it.
       def computer_keys(**keys)
-        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, console: console, most_players: @program.most_players))
+        add_computer_controls!(:key, IR::ComputerControls.keys_entries!(keys, console: console, max_players: @program.max_players))
       end
 
-      # MORE GAMEPAD BUTTONS FOR A BUTTON ON A COMPUTER, as `computer_keys` adds keys: the free ones
-      # are :west, :north, :left_stick and :right_stick, but for those a console's X, Y or C start on.
+      # Adds gamepad buttons for a button on a computer, as `computer_keys` adds keys.
       #
-      #   computer_gamepad a: :west
+      # The free ones are `:west`, `:north`, `:left_stick` and `:right_stick`. A console's X, Y or
+      # C button starts on `:west`, `:north` and the sticks, so those are free only for the other
+      # buttons.
+      #
+      # ```ruby
+      # computer_gamepad a: :west
+      # ```
+      #
+      # * Each keyword is a button, and its value is the gamepad button that presses it.
       def computer_gamepad(**buttons)
         add_computer_controls!(:pad, IR::ComputerControls.pads_entries!(buttons, console: console))
       end
@@ -155,7 +267,20 @@ module VBlank
       def check_button!(button)
         return if IR::Buttons.readable?(button)
 
-        raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l."
+        raise ArgumentError, "#{button} is not a known button. Use one of these: :a :b :select :start :right :left :up :down :r :l, " \
+                             "or :x :y :c :l2 :r2 on a console that has them."
+      end
+
+      # `pulled` reads one button of one player: how far "any" button is pulled has no answer.
+      def refuse_pull_of_any!(button, player)
+        if button == IR::Buttons::ANY
+          raise ArgumentError, "`pulled(:any)` does not name a button. `pulled` reads how far one button is pulled. " \
+                               "To fix this, name the button, for example `pulled(:r2)`."
+        end
+        return unless player == IR::Buttons::ANY
+
+        raise ArgumentError, "`pulled(#{button.inspect}, player: :any)` does not name a player. `pulled` reads the " \
+                             "controller of one player. To fix this, give a number, for example `player: 2`."
       end
 
       def check_player!(player)
@@ -163,7 +288,7 @@ module VBlank
           raise ArgumentError, "`player: #{player.inspect}` is not a player. Use a number from 1 to " \
                                "#{IR::Buttons::MOST_PLAYERS}, or :any for every player."
         end
-        most = @program.most_players
+        most = @program.max_players
         return if most.nil? || player == IR::Buttons::ANY || player <= most
 
         raise ArgumentError, "This line reads player #{player}, and the game takes at most #{most} " \

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE LIGHT'S ROWS ARE WORKED OUT AT THE END OF A PASS, not in the gap between frames (see
+# The light's rows are worked out at the end of a pass, not in the gap between frames (see
 # GBA::Raster#emit_stage_light_rows). A light that changes every frame and whose rows take longer
 # than the gap to work out used to be worked out in the gap ahead of the sprites, so the sprites
 # were written while the top of the screen was already being drawn from them. Two overlapping

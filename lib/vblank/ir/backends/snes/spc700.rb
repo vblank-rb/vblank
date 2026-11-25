@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE SOUND PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the SPC700, the 8-bit
+        # The sound processor, one instruction at a time: an assembler for the SPC700, the 8-bit
         # processor inside the Super Nintendo's sound unit. The sound unit is a small computer of its
         # own beside the console:
         #
@@ -33,7 +33,7 @@ module VBlank
         #   spc.bra "wait"
         #
         # Operands are written in the order the native syntax writes them, the destination first
-        # (mov direct(0x10), :a is MOV $10,A). The bytes after the opcode are NOT always in that order:
+        # (mov direct(0x10), :a is MOV $10,A). The bytes after the opcode are not always in that order:
         # where both operands have bytes, the source's come first (MOV $F3,#$40 is 8F 40 F3).
         #
         # Opcodes: fullsnes, "SNES APU SPC700 CPU Load/Store Commands", "ALU Commands" and
@@ -65,9 +65,9 @@ module VBlank
           })
 
           # MOVW: YA to and from a word in the direct page.
-          WORD_MOVES = { %i[ya direct] => 0xBA, %i[direct ya] => 0xDA }.freeze
+          WORD_MOVES = Ractor.make_shareable({ %i[ya direct] => 0xBA, %i[direct ya] => 0xDA })
 
-          # OR, AND, EOR, CMP, ADC and SBC: each a row of the table, its forms the row's columns.
+          # Or, and, EOR, CMP, ADC and SBC: each a row of the table, its forms the row's columns.
           SUMS = { or_: 0x00, and_: 0x20, eor: 0x40, cmp: 0x60, adc: 0x80, sbc: 0xA0 }.freeze
           SUM_FORMS = Ractor.make_shareable({
             %i[a imm] => 0x08, %i[a x_ind] => 0x06, %i[a direct] => 0x04, %i[a direct_x] => 0x14, %i[a abs] => 0x05,
@@ -82,7 +82,7 @@ module VBlank
           STEPS = { asl: 0x00, rol: 0x20, lsr: 0x40, ror: 0x60, dec: 0x80, inc: 0xA0 }.freeze
           STEP_FORMS = { a: 0x1C, direct: 0x0B, direct_x: 0x1B, abs: 0x0C }.freeze
           # Only DEC and INC have X and Y.
-          COUNTS = { %i[dec x] => 0x1D, %i[inc x] => 0x3D, %i[dec y] => 0xDC, %i[inc y] => 0xFC }.freeze
+          COUNTS = Ractor.make_shareable({ %i[dec x] => 0x1D, %i[inc x] => 0x3D, %i[dec y] => 0xDC, %i[inc y] => 0xFC })
 
           # The 16-bit sums on YA and a word in the direct page, and those on the word alone.
           WORD_SUMS = { addw: 0x7A, subw: 0x9A, cmpw: 0x5A }.freeze
@@ -90,7 +90,7 @@ module VBlank
 
           # The one-bit sums with the carry, on a bit of the first 8K (mem_bit): opcode, and the
           # opcode of the form that takes the bit turned round (not_bit), where there is one.
-          CARRY_BITS = { or1: [0x0A, 0x2A], and1: [0x4A, 0x6A], eor1: [0x8A, nil] }.freeze
+          CARRY_BITS = Ractor.make_shareable({ or1: [0x0A, 0x2A], and1: [0x4A, 0x6A], eor1: [0x8A, nil] })
 
           # A bit of the direct page set or cleared, and the branches on one: the opcode of bit 0;
           # each bit after it is $20 on.
@@ -102,7 +102,7 @@ module VBlank
                       ei: 0xA0, di: 0xC0, clrv: 0xE0, notc: 0xED, sleep: 0xEF, stop: 0xFF }.freeze
 
           # The instructions on one register alone, which the native syntax names (MUL YA, DAA A).
-          ON_A_REGISTER = { mul: [0xCF, :ya], daa: [0xDF, :a], das: [0xBE, :a], xcn: [0x9F, :a] }.freeze
+          ON_A_REGISTER = Ractor.make_shareable({ mul: [0xCF, :ya], daa: [0xDF, :a], das: [0xBE, :a], xcn: [0x9F, :a] })
 
           BRANCHES = { bpl: 0x10, bra: 0x2F, bmi: 0x30, bvc: 0x50, bvs: 0x70, bcc: 0x90, bcs: 0xB0, bne: 0xD0,
                        beq: 0xF0 }.freeze
@@ -205,30 +205,31 @@ module VBlank
             RUBY
           end
 
+          # The rest made from a table are made from shareable blocks, which another Ractor may call.
           STEPS.each do |name, row|
-            define_method(name) do |operand|
+            define_method(name, &Ractor.shareable_proc { |operand|
               kind = mode_of(operand)
               opcode = COUNTS[[name, kind]] || (STEP_FORMS[kind] && (row + STEP_FORMS[kind]))
               raise Error, "#{name} has no form #{kind.inspect}" unless opcode
 
               emit_operands(opcode, operand)
-            end
+            })
           end
 
           WORD_SUMS.each do |name, opcode|
-            define_method(name) do |register, word|
+            define_method(name, &Ractor.shareable_proc { |register, word|
               raise Error, "#{name} sums YA with a word of the direct page" unless register == :ya && mode_of(word) == :direct
 
               emit_operands(opcode, word)
-            end
+            })
           end
 
           WORD_STEPS.each do |name, opcode|
-            define_method(name) do |word|
+            define_method(name, &Ractor.shareable_proc { |word|
               raise Error, "#{name} counts a word of the direct page" unless mode_of(word) == :direct
 
               emit_operands(opcode, word)
-            end
+            })
           end
 
           # A = YA / X, Y = what is left over.
@@ -239,14 +240,14 @@ module VBlank
           end
 
           CARRY_BITS.each do |name, (opcode, turned)|
-            define_method(name) do |carry, bit|
+            define_method(name, &Ractor.shareable_proc { |carry, bit|
               raise Error, "#{name} sums the carry with a bit" unless carry == :c
 
               chosen = { mem_bit: opcode, not_bit: turned }[mode_of(bit)]
               raise Error, "#{name} has no form #{mode_of(bit).inspect}" unless chosen
 
               emit_operands(chosen, bit)
-            end
+            })
           end
 
           # MOV1: the carry into a bit of the first 8K, or the bit into the carry.
@@ -264,28 +265,28 @@ module VBlank
           def tset1(place) = emit_operands(0x0E, refuse_mode_other_than!(place, :abs, :tset1))
 
           BIT_WRITES.each do |name, opcode|
-            define_method(name) do |bit|
+            define_method(name, &Ractor.shareable_proc { |bit|
               refuse_mode_other_than!(bit, :direct_bit, name)
               emit(opcode + (bit.bit * 0x20), byte!(bit.value))
-            end
+            })
           end
 
           BIT_BRANCHES.each do |name, opcode|
-            define_method(name) do |bit, target|
+            define_method(name, &Ractor.shareable_proc { |bit, target|
               refuse_mode_other_than!(bit, :direct_bit, name)
               emit(opcode + (bit.bit * 0x20), byte!(bit.value))
               emit_relative(target)
-            end
+            })
           end
 
-          SINGLES.each { |name, opcode| define_method(name) { emit(opcode) } }
+          SINGLES.each { |name, opcode| define_method(name, &Ractor.shareable_proc { emit(opcode) }) }
 
           ON_A_REGISTER.each do |name, (opcode, register)|
-            define_method(name) do |named|
+            define_method(name, &Ractor.shareable_proc { |named|
               raise Error, "#{name} works on #{register.upcase}, not #{named.inspect}" unless named == register
 
               emit(opcode)
-            end
+            })
           end
 
           # As source, for the same reason as SUMS's.

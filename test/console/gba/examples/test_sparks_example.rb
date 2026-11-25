@@ -3,10 +3,10 @@
 require "test_helper"
 require "stringio"
 
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # The sparks example: a pool of particles walked every frame on a bitmap screen — the one
-# example whose frame IS a pool walk, so the corpus tools (rake cost:check, cost:ranking,
+# example whose frame is a pool walk, so the corpus tools (rake cost:check, cost:ranking,
 # cost:regimes) reach the walk's own regimes. These assert BEHAVIOUR: sparks appear and
 # fall. The shower on the Advance's cartridge, read in the emulator, is in
 # test/lowering/gba/examples/test_sparks_example_cartridge.rb.

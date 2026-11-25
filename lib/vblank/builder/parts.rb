@@ -2,82 +2,93 @@
 
 module VBlank
   class Builder
-    # A NEW GAME. A game that ends and starts again needs its play back as it was declared —
-    # the score at nought, three lives, the board empty — while what it keeps between games
-    # (a high score, the random numbers, the options) stays as it is. Without help that is a
-    # line for every variable the play has, which in a big game is hundreds, and the one
-    # forgotten is a second game that starts with the last game's score.
+    # Starting a new game
     #
-    #   best = save_var :best, 0
-    #   part :play                 # what is declared from here on is the play
-    #   score = var :score, 0
-    #   lives = var :lives, 3
-    #   ...
-    #   if lives == 0
-    #     best = score if score > best
-    #     start_over :play         # everything in the part back as declared, on this pass
-    #   end
+    # A game that ends and starts again needs its play back as it was declared, with the score at
+    # 0, three lives and the board empty, while what it keeps between games (a high score, the
+    # random numbers, the options) stays as it is. Without help that is a line for every variable
+    # the play has, and the one that is forgotten gives a second game that starts with the last
+    # game's score. `part` groups what the play declares, and `start_over` puts the group back.
     #
-    # `part :play` works like Ruby's `private`: alone, it holds from its line to the next
-    # `part` (or the end of the game); given a block, it holds inside the block. The block form
-    # cannot hand back the locals made inside it, which is why the plain form is there — a game
-    # that builds its play as a row of objects, each declaring its own state, writes `part :play`
-    # once above the row. A scene names a part too: what its body declares.
+    # ```ruby
+    # best = save_var :best, 0
+    # part :play                 # what is declared from here on is the play
+    # score = var :score, 0
+    # lives = var :lives, 3
+    # if lives == 0
+    #   best = score if score > best
+    #   start_over :play         # everything in the part back as declared, on this pass
+    # end
+    # ```
     #
-    # A ROUTINE BELONGS WHERE IT IS WRITTEN. A `func`, a scene, a pool's `func` and an
+    # `part :play` works like Ruby's `private`. Alone, it holds from its line to the next `part`
+    # or the end of the game. Given a block, it holds inside the block. A scene names a part too,
+    # which is what its body declares.
+    #
+    # What goes back:
+    #
+    # * A variable is set to its starting value. A start that the game works out is worked out
+    #   again, so `var :x, rand(1..6)` rolls again.
+    # * A list is made again as declared.
+    # * A pool is emptied, every slot free.
+    # * An `every` or `after` counts from 0 again, so an `after` fires again.
+    # * An `each_pass` job is stopped.
+    # * A sprite goes back to its `at:`, its first pose and its first frame, shown or hidden as it
+    #   was declared.
+    #
+    # A `save_var`, the random numbers and the game's own `_` scratch names are left out. So is the
+    # framework's own state other than the above, which keeps going across a new game: a menu's
+    # cursor, a `pulse` under way, a sprite's turn, size, colours and layer, and a hardware
+    # `timer`, which starts again when its line runs.
+    #
+    # A game that never calls `start_over` builds the same cartridge it always did.
+    #--
+    # A routine belongs where it is written. A `func`, a scene, a pool's `func` and an
     # `each_pass` job have their bodies built at the end, when every `part` line has long been
     # read, so what a body declares belongs to the parts and the scene in force on the line the
-    # routine was written — kept for it then and handed to its body when the body is built.
+    # routine was written, kept for it then and handed to its body when the body is built.
     #
-    # WHAT GOES BACK, and how: each is put back the way power-on set it up, in the order the
-    # game declared it, so a start worked out from a variable declared before it reads that
-    # variable's start, as it did at power-on.
-    #   - a variable is set to its start (a fraction, a narrow one and one holding a name alike:
-    #     the start is the number power-on stored). A start worked out as the game runs is worked
-    #     out again, now: from a variable outside the part it takes that variable as it is, and
-    #     `var :x, rand(1..6)` rolls again.
-    #   - a list is made again as declared: empty, or full of its `full_of:` value.
-    #   - a pool is emptied the way power-on leaves it, every slot free.
-    #   - an `every` or `after` counts from nought again, so an `after` fires again.
-    #   - an `each_pass` job is stopped.
-    #   - a sprite goes back to its `at:`, its first pose and its first frame, shown or hidden
-    #     as it was declared. A sprite painted into the picture (a bitmap screen) is moved there
-    #     the way `move_to` moves it: the next repaint puts back what it covered where it stood.
-    # A `save_var`, the random numbers and the author's `_` scratch names are left out. So is
-    # the framework's own state other than the above, which keeps going across a new game: a
-    # menu's cursor, a `pulse` under way, what a `keep_showing` picture has still to paint, a
-    # sprite's turn, size, colours and layer, and a hardware `timer` (which starts again when
-    # its line runs).
+    # Each member is put back the way power-on set it up, in the order the game declared it, so a
+    # start worked out from a variable declared before it reads that variable's start. A list is
+    # made again as declared: empty, or full of its `full_of:` value, or holding the items a build
+    # started in a chosen state gave it (Game#starting_with). A sprite painted into the picture (a
+    # bitmap screen) is moved there the way `move_to` moves it: the next repaint puts back what it
+    # covered where it stood.
     #
-    # WHAT IT COSTS. The putting back is one routine of the game's, built once the whole game is
+    # What it costs. The putting back is one routine of the game's, built once the whole game is
     # read, and `start_over` is a call to it: it all happens on the pass that calls it, however
     # many things the part has. On the console each variable is a store of a number the code
     # carries, a couple of instructions; a list is its length set again (and a full one filled
-    # by the copying engine); a pool is its free slots pushed back, one short loop. A game that
-    # never calls `start_over` has no such routine, and builds the same cartridge it always did.
+    # by the copying engine); a pool is its free slots pushed back, one short loop.
     #
     # Why not one block copy of the starts from the cartridge into memory? That wants the part's
     # variables side by side in memory, and where each variable lives is each console's own
     # choice (on the Advance by its distance from the start of the quick memory, on the Color
     # packed a byte or two wide). The stores ask nothing of any console, so every lowering
     # plays them as it plays any other line of the game.
+    #++
     module Parts
       # One thing a part puts back: +kind+ is :var (a variable's name), :list (a list's name),
       # :pool (the pool) or :shown (a SpriteShown). +framework+ is true for state the framework made
       # and named for itself (a timer's count, a sprite's place), and +saved+ false for state a
       # save_data record keeping the part leaves out (SaveRecords#expand_kept_parts!).
-      Member = Data.define(:kind, :thing, :framework, :saved) do
+      Member = Data.define(:kind, :thing, :framework, :saved) do  # :nodoc:
         def initialize(kind:, thing:, framework: false, saved: true) = super
       end
 
       # A sprite painted into the picture, and whether it was declared shown: put back with its
       # own `show` or `hide`, which paint it or take it off the picture as well as set the flag.
-      SpriteShown = Data.define(:sprite, :shown)
+      SpriteShown = Data.define(:sprite, :shown)  # :nodoc:
 
-      # Set which part what the game declares belongs to: from this line on, or, given a block,
-      # inside the block.
+      # Sets which part the things the game declares belong to: from this line on, or, given a
+      # block, inside the block.
       #
-      # @param name [Symbol] the part's name, which `start_over` takes
+      # ```ruby
+      # part :play
+      # score = var :score, 0
+      # ```
+      #
+      # * `name` - the part's name, as a symbol. `start_over` takes the same name.
       def part(name)
         refuse_bad_part_name!(name)
         part_names << name
@@ -93,10 +104,14 @@ module VBlank
         nil
       end
 
-      # Put every variable, list and pool of the parts or scenes named back as declared, on this
+      # Puts every variable, list and pool of the parts or scenes named back as declared, on this
       # pass. What is not in them is left as it is.
       #
-      # @param names [Array<Symbol>] parts declared with `part`, or scenes
+      # ```ruby
+      # start_over :play
+      # ```
+      #
+      # * `names` - parts declared with `part`, or scenes, as symbols.
       def start_over(*names)
         refuse_unnamed_start_over!(names)
         at = Messages::AuthorSource.at_author_line
@@ -114,7 +129,8 @@ module VBlank
       # The Members of the part or scene +name+, in the order declared, or nil when no part or scene
       # has that name. Asked by Saves when a save_data record keeps a whole part (`keep part: :play`),
       # once every routine is built and so every member known.
-      def members_of_part(name)
+      # Asked by a `save_data` record that keeps a part; documented on `keep part:` of `save_data`.
+      def members_of_part(name)  # :nodoc:
         return nil unless part_names.include?(name) || scene_names.include?(name)
 
         part_members.fetch(name, [])
@@ -122,7 +138,8 @@ module VBlank
 
       # The parts and scenes the game has, as a sentence for a refusal naming one it does not.
       # Asked by start_over's refusal and by Saves for `keep part:`.
-      def known_parts_sentence
+      # Asked by a `save_data` record that keeps a part; documented on `keep part:` of `save_data`.
+      def known_parts_sentence  # :nodoc:
         known = part_names.map { |part| "part :#{part}" } + scene_names.map { |scene| "scene :#{scene}" }
         known.empty? ? "The game has no parts or scenes." : "The game has #{known.join(', ')}."
       end
@@ -190,11 +207,20 @@ module VBlank
         part_members.fetch(name, []).each do |member|
           case member.kind
           when :var then emit_variable_start(member.thing)
-          when :list then record(Build.list_new_like(declared_list_node(member.thing)))
+          when :list then emit_list_start(member.thing)
           when :pool then pool_refill_nodes(member.thing).each { |node| record(node) }
           when :shown then member.thing.shown ? member.thing.sprite.show : member.thing.sprite.hide
           end
         end
+      end
+
+      # The list made again as power-on made it: as declared, or holding the items a build started in
+      # a chosen state gave it (ChosenStarts).
+      def emit_list_start(name)
+        made = declared_list_node(name)
+        return emit_chosen_list_start(name, made) if chosen_list_start?(name)
+
+        record(Build.list_new_like(made))
       end
 
       # The variable set to what power-on set it to. The start is the node power-on stored,
@@ -204,7 +230,7 @@ module VBlank
         record(Build.set(name, start ? start.copy : Build.int(0)))
       end
 
-      # A PART IS NAMED LIKE A SAVE RECORD — letters and digits, with one underscore between
+      # A part is named like a save record — letters and digits, with one underscore between
       # words — because its routine is named after it the same way (Messages::MadeNames).
       def refuse_bad_part_name!(name)
         return if name.is_a?(Symbol) && Messages::MadeNames::RECORD_NAME.match?(name)

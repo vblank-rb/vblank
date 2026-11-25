@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A SOUND THE GAME ASKED FOR AND DID NOT GET.
+# A sound the game asked for and did not get.
 #
 # `play` on a sample fills one of the mixer's voices. With every voice busy the play is
 # dropped — deliberately, since the alternative is cutting off a sound already sounding — and
@@ -34,7 +34,7 @@ class TestDroppedSounds < Minitest::Test
     b.program
   end
 
-  # LOSING A SOUND EVERY FRAME, which is what a run has to be doing for a profile to see it:
+  # Losing a sound every frame, which is what a run has to be doing for a profile to see it:
   # the mixer is filled at boot with loops that never retire, and the game then asks for one
   # more effect on every pass. Every one of those finds no room.
   private def losing_every_frame
@@ -55,7 +55,7 @@ class TestDroppedSounds < Minitest::Test
     b.program
   end
 
-  # A SONG PLAYING UNDERNEATH, so a drop finds voices in both hands. Its recorded parts take
+  # A song playing underneath, so a drop finds voices in both hands. Its recorded parts take
   # voices of their own while their notes sound, and the game fills the rest and then asks for
   # one more every frame. Over-subscribing at boot alone would not do: every one of those is
   # dropped before the song has played a note, and the split would read as all the game's.
@@ -118,13 +118,13 @@ class TestDroppedSounds < Minitest::Test
     assert_equal 0, v.sound_drops.dropped
   end
 
-  # THE COUNTERS START AT NOTHING, and boot has to MAKE them — which is not the same as
+  # The counters start at nothing, and boot has to make them — which is not the same as
   # finding them at nothing, and needs an awkward test to tell the two apart.
   #
   # A counter left unwritten reads back as whatever the memory held, and a game that dropped
   # nothing would then report rubbish. The emulator hands out a cleared memory at reset, so
   # simply running a quiet game and finding 0 proves nothing at all — it passes just as well
-  # with the boot store deleted. So this puts a number there FIRST, in the gap between loading
+  # with the boot store deleted. So this puts a number there first, in the gap between loading
   # the cartridge and running its first frame, and then asks what boot made of it.
   def test_boot_puts_the_counters_back_to_nothing_whatever_was_in_the_memory
     require_emulator!
@@ -184,8 +184,8 @@ class TestDroppedSounds < Minitest::Test
 
   # --- the split ---
 
-  # WITH NO SONG PLAYING every voice a drop found busy was the game's own, so the split says
-  # so. The count of voices SOUNDING is not measured and never will be: a drop means all of
+  # With no song playing every voice a drop found busy was the game's own, so the split says
+  # so. The count of voices sounding is not measured and never will be: a drop means all of
   # them were, every time.
   def test_with_no_song_the_games_own_sounds_held_every_voice
     v = assert_emulator_loads_rom(assemble_rom(over_subscribed(2)), frames: 6)
@@ -222,7 +222,7 @@ class TestDroppedSounds < Minitest::Test
     assert_match(/every one of the #{VOICES} mixer voices was busy/, printed)
   end
 
-  # WITH NO SONG the split says nothing, because it would be saying "a song held 0" — a
+  # With no song the split says nothing, because it would be saying "a song held 0" — a
   # sentence about nothing, under a line that has already said every voice was busy.
   def test_a_game_with_no_song_is_not_told_what_the_song_held
     _result, printed = profiled(losing_every_frame)
@@ -240,7 +240,7 @@ class TestDroppedSounds < Minitest::Test
     assert_match(/A recorded part of a song or a sound effect keeps a voice while its note sounds/, printed)
   end
 
-  # A run that lost nothing says NOTHING — not "0 dropped". A report that mentions every
+  # A run that lost nothing says nothing — not "0 dropped". A report that mentions every
   # reading whether or not it found anything is a report nobody reads.
   def test_a_run_that_lost_nothing_says_nothing_about_it
     _result, printed = profiled(within_budget)
@@ -277,7 +277,7 @@ class TestDroppedSounds < Minitest::Test
     assert_nil JSON.parse(out.string)["sound_drops"]
   end
 
-  # THE COUNT IS ABOUT THE FRAMES MEASURED, not about every frame since the cartridge booted.
+  # The count is about the frames measured, not about every frame since the cartridge booted.
   # The profile settles the game first, and those frames are not the frames being reported on —
   # every other number in the report is about the measured window and this one has to be too.
   # The sounds here are all played at boot, so they are all lost during the settling: what the

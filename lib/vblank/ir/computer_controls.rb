@@ -2,13 +2,13 @@
 
 module VBlank
   module IR
-    # THE KEYS AND GAMEPAD BUTTONS A GAME ADDS FOR A COMPUTER (Builder::Input#computer_keys and
+    # The keys and gamepad buttons a game adds for a computer (Builder::Input#computer_keys and
     # #computer_gamepad). A build that plays on a computer (the desktop window, `vblank run`, the
     # web page) starts with VBlank's own layout — the arrows, X for A, Z for B, and the rest — and
     # these are added to it: more keys for a button, never a key moved. So a pinball game can have
     # D press A as well as X, while the right arrow stays Right for its menus.
     #
-    # NO KEY PRESSES TWO BUTTONS. A key the layout already gives a button, or that the window keeps
+    # No key presses two buttons. A key the layout already gives a button, or that the window keeps
     # for itself (pause, the menu, fast forward), is refused when the game is built, in plain words.
     # A key pressing two buttons would make a game's menus misread it, and a player who changes one
     # of the two in Controls could not tell which one they changed.
@@ -43,10 +43,11 @@ module VBlank
       KEYS = LETTER_KEYS.merge(DIGIT_KEYS).merge(OTHER_KEYS).freeze
 
       # VBlank's own layout: the keys each button starts on (the window's, rg_window.c's
-      # button_kinds; the page's, rg_page.js's PAGE_KEYS). X, Y and C have theirs only in a window
-      # for a console that has them.
+      # button_kinds; the page's, rg_page.js's PAGE_KEYS). X, Y, C, L2 and R2 have theirs only in a
+      # window for a console that has them: L2 and R2 are E and R, on the top row beside Q and W.
       LAYOUT_KEYS = Ractor.make_shareable({ a: %i[x], b: %i[z], select: %i[backspace right_shift], start: %i[enter], right: %i[right],
-                      left: %i[left], up: %i[up], down: %i[down], r: %i[s], l: %i[a], x: %i[w], y: %i[q], c: %i[c] })
+                      left: %i[left], up: %i[up], down: %i[down], r: %i[s], l: %i[a], x: %i[w], y: %i[q], c: %i[c],
+                      l2: %i[e], r2: %i[r] })
 
       # Player 2's keys, on the keyboard's right hand, for a game two people play at one keyboard:
       # I J K L the pad, O for A and U for B (A on the right, as the console has it), 7 and 9 the
@@ -58,9 +59,11 @@ module VBlank
       #
       # On a console that has them, Y is Y and H is X, left of U and J as a Super Nintendo's Y is
       # left of its B, and B is C, below them; each window reads only the buttons its console has,
-      # so on the Advance these three are nobody's.
+      # so on the Advance these three are nobody's. L2 and R2 are 6 and the minus key, either side of
+      # 7 to 0.
       SECOND_PLAYER_KEYS = Ractor.make_shareable({ o: :a, u: :b, 8 => :select, 0 => :start, l: :right, j: :left,
-                                                   i: :up, k: :down, 9 => :r, 7 => :l, h: :x, y: :y, b: :c })
+                                                   i: :up, k: :down, 9 => :r, 7 => :l, h: :x, y: :y, b: :c,
+                                                   6 => :l2, minus: :r2 })
 
       # The keys the window keeps for itself, and what for: no button can have one. The desktop
       # window's hotkeys, the web page's (F for fullscreen), Escape, which stops choosing a key, and
@@ -68,9 +71,13 @@ module VBlank
       WINDOW_KEYS = Ractor.make_shareable({ p: "Pause", n: "Step one frame", m: "Mute", f: "Fullscreen on a web page", tab: "Fast forward",
                       escape: "giving up choosing a key", backquote: "the menu" })
 
-      # A gamepad's buttons, by SDL's number for each.
+      # A gamepad's buttons, by SDL's number for each, and its two triggers after them. A trigger is
+      # an axis to SDL and the Gamepad API, not a button, so it has a number of the windows' own
+      # (rg_window.h's RG_PAD_LEFT_TRIGGER): a window reads it as down from Buttons::HELD_FROM, and
+      # L2 and R2 read how far it is pulled.
       PADS = { south: 0, east: 1, west: 2, north: 3, back: 4, guide: 5, start: 6, left_stick: 7, right_stick: 8,
-               left_shoulder: 9, right_shoulder: 10, dpad_up: 11, dpad_down: 12, dpad_left: 13, dpad_right: 14 }.freeze
+               left_shoulder: 9, right_shoulder: 10, dpad_up: 11, dpad_down: 12, dpad_left: 13, dpad_right: 14,
+               left_trigger: 15, right_trigger: 16 }.freeze
 
       # The gamepad buttons none of the Advance's buttons has in VBlank's layout, on the desktop or
       # on a web page (whose face buttons are the other way round), and which open no menu.
@@ -78,7 +85,7 @@ module VBlank
 
       # The gamepad buttons X, Y and C start on, in a window for a console that has them, which are
       # then not free there.
-      MORE_LAYOUT_PADS = Ractor.make_shareable({ x: :north, y: :west, c: :west })
+      MORE_LAYOUT_PADS = Ractor.make_shareable({ x: :north, y: :west, c: :west, l2: :left_trigger, r2: :right_trigger })
 
       # The gamepad buttons free in a window for a console of +buttons+.
       def self.free_pads(buttons) = FREE_PADS - MORE_LAYOUT_PADS.slice(*buttons).values
@@ -87,14 +94,14 @@ module VBlank
       LAYOUT_PADS = 1
 
       # The entries for +given+ (button => key name, or a list of them), as [button, :key, name]
-      # triples, or a friendly error naming what cannot be. +most_players+ is the most players the
+      # triples, or a friendly error naming what cannot be. +max_players+ is the most players the
       # build seats: a game for two or more keeps player 2's keys free. +console+ is the build's
       # (a Console::Description): only its buttons can be named, and only their keys are taken.
-      def self.keys_entries!(given, console:, most_players: nil)
+      def self.keys_entries!(given, console:, max_players: nil)
         entries = entries_of(given, :computer_keys, console)
         refuse_same_twice!(entries, :computer_keys)
         entries.each { |button, name| refuse_key!(button, name, console.buttons) }
-        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if most_players && most_players > 1
+        entries.each { |button, name| refuse_second_player_key!(button, name, console.buttons) } if max_players && max_players > 1
         refuse_crowded!(entries, :computer_keys, "keys", most: MOST_KEYS) { |button| LAYOUT_KEYS.fetch(button).length }
         entries.map { |button, name| [button, :key, name] }
       end

@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_pack_background_areas"
 
-# A BACKGROUND FROM THE DATA PACK WALKING BETWEEN AREAS, on the Advance's cartridge, read in the
+# A background from the data pack walking between areas, on the Advance's cartridge, read in the
 # emulator. What it shows on every run is in test/all/vblank/builder/test_pack_background_areas.rb.
 class TestPackBackgroundAreasCartridge < Minitest::Test
   include PackBackgroundAreaGames
@@ -32,6 +32,18 @@ class TestPackBackgroundAreasCartridge < Minitest::Test
       routines = assemble_rom(one_slot_walk(folder)).built.routines.keys.map { |name| VBlank::Messages::MadeNames.words_for_made_name(name) }
 
       refute_includes routines, "bringing background :world another set of tiles"
+    end
+  end
+
+  # Maps of two widths over one slot of tiles: the cartridge streams each map at its own size and
+  # shows what the interpreter shows on every frame of the walk.
+  def test_areas_of_two_widths_over_one_tile_slot_show_each_map_as_the_interpreter_does
+    Dir.mktmpdir do |folder|
+      program, = areas_game_and_file(areas_original(folder), one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+      end
+
+      assert_backends_agree(program, frames: (WALKS_ON - 1)..(WALKS_ON + 3))
     end
   end
 

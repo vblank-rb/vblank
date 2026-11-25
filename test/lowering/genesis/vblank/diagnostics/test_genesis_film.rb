@@ -6,8 +6,9 @@ require "open3"
 require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
+require "heard_film"
 
-# A GENESIS CARTRIDGE THROUGH THE ONE READER: it names its sprites as the interpreter does, and it is
+# A Genesis cartridge through the one reader: it names its sprites as the interpreter does, and it is
 # filmed as any console's cartridge is, a built one beside its file, at the Genesis's 320 x 224. The
 # game is a small one of this repository's own: a white box that walks right while right is down, and
 # a red mark that stays where it is, on a blue field.
@@ -15,6 +16,7 @@ class TestGenesisFilm < Minitest::Test
   # A film is made by ImageMagick and ffmpeg and read back by ffprobe: child processes, which hang
   # inside a Ractor. And the task is defined in a rake application of the test's own.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   FilmCartridge = VBlank::Diagnostics::FilmCartridge
   Verifier = VBlank::Diagnostics::Verifier
@@ -57,6 +59,17 @@ class TestGenesisFilm < Minitest::Test
     assert_equal built, picture_after(FilmCartridge.open(path), 12, "file")
   end
 
+  # A side opened from a cartridge file VBlank only reads takes Film's button mask as the pad's: right
+  # held walks the box, as it does on the built cartridge, and the picture is not the one with nothing down.
+  def test_a_side_from_the_file_reads_the_film_buttons_as_the_pads
+    path = File.join(scratch, "walk.md")
+    game.write(path)
+    walked = picture_after(FilmCartridge.open(path), 12, "walked", keys: RIGHT)
+
+    assert_equal picture_after(FilmCartridge.open(game), 12, "built", keys: RIGHT), walked
+    refute_equal picture_after(FilmCartridge.open(path), 12, "still"), walked
+  end
+
   # `rake film` with two Genesis sides, the built cartridge and a cartridge file VBlank only reads: an
   # MP4 twice the Genesis's screen on each side.
   def test_rake_film_films_a_built_genesis_cartridge_beside_a_cartridge_file
@@ -76,7 +89,33 @@ class TestGenesisFilm < Minitest::Test
     assert_equal [2 * 2 * 320, (2 * 224) + STRIP], video_size(film)
   end
 
+  # A Genesis cartridge heard in a film: its tone is on the film frames that show the frames it put the
+  # tone out on, as the reader hears them.
+  def test_a_genesis_side_is_heard_on_the_frames_that_show_its_sound
+    rom = beeping_game
+    film = VBlank::Diagnostics::Film.make(File.join(scratch, "heard.mp4"), sides: { "ours" => -> { FilmCartridge.open(rom) } },
+                                                                          parts: [1..30], sound: "ours")
+    reader = Verifier.new(rom, frames: 0).step(30)
+    left, = film_sound(film)
+
+    assert_in_delta onset(reader.audio_energy_by_frame), onset(left), 1
+  ensure
+    reader&.close
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("genesis-film-test")
+
+  # A tone that does not fade, from the twelfth pass, over the blue field.
+  private def beeping_game
+    VBlank.build("HEARD", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      screen :tiled
+      enable_sound
+      image(:sea, "." => :blue) { "........\n" * 8 }
+      tiles :set, "." => :sea
+      background :field, tiles: :set, map: Array.new(32) { "." * 40 }
+      game_loop { after(12) { beep 440, decay: :none } }
+    end
+  end
 
   private def game
     @game ||= VBlank.build("FILMED", console: :genesis, out: StringIO.new, err: StringIO.new) do
@@ -96,9 +135,9 @@ class TestGenesisFilm < Minitest::Test
     end
   end
 
-  # The PNG's bytes after +frames+ frames with nothing down.
-  private def picture_after(side, frames, name)
-    side.step(frames)
+  # The PNG's bytes after +frames+ frames with +keys+ (a button mask) down.
+  private def picture_after(side, frames, name, keys: 0)
+    side.step(frames, keys: keys)
     File.binread(side.screenshot(File.join(scratch, "#{name}.png")))
   ensure
     side.close

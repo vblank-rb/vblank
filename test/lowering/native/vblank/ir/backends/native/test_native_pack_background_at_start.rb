@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_background_tests"
 
-# A BACKGROUND FROM THE PACK, ITS PACK LEFT OUT, played as C and checked against the interpreter on
+# A background from the pack, its pack left out, played as C and checked against the interpreter on
 # every frame (PackBackgroundAtStartTests in test/pack_background_tests.rb, which says why these
 # are not in test/all/). The C runtime reads the map from the file it is handed and fills a tile
 # for each cell before the game's first statement.

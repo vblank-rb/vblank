@@ -5,7 +5,7 @@ require "zlib"
 module VBlank
   module IR
     module Backends
-      # WHAT TELLS A LOWERED GAME FROM THE SAME GAME ON THE INTERPRETER, the one comparison every
+      # What tells a lowered game from the same game on the interpreter, the one comparison every
       # checked run makes: the game as C (Native::CheckedRun), as JavaScript (JS::CheckedRun) and as
       # a Game Boy Color cartridge (GBC::CheckedRun) each play their game, play the same buttons on
       # the interpreter, and hand the two runs' Moments to #first_difference. The rest compare the
@@ -30,7 +30,7 @@ module VBlank
           def read_with(program) = RecordedFrame.new(variables: variables, program: program)
         end
 
-        # A RECORDED FRAME, READ BY THE GAME'S NAMES, as every reader of a running game answers
+        # A recorded frame, read by the game's names, as every reader of a running game answers
         # them (IR::ReadingByName): a variable in the game's units, a sprite, a background, the
         # music's loudness. What a checked run records of a frame (a Moment, or the native run's
         # Differences::Snapshot) keeps only its +variables+, the stored numbers by name, so it is
@@ -49,6 +49,11 @@ module VBlank
         # Raised for something a test asks of the interpreter that a lowered run cannot answer yet:
         # the lowering has a gap to fill, or that one test wants its lowering's skip.
         class CannotAnswer < StandardError; end
+
+        # Raised when a cartridge does not end a pass in the frames any pass may take: the console
+        # is stuck in it, where the interpreter ends every pass. That is a fault of the lowering,
+        # never a part it does not make yet, so a test fails on it rather than skipping.
+        class StuckPass < StandardError; end
 
         # Raised for a question only the interpreter has an answer to, now and later: its step
         # budget, its count of steps, a pass told to take several frames. No lowered run keeps
@@ -82,16 +87,32 @@ module VBlank
           (0...height).flat_map { |y| (0...width).map { |x| screen.pixel(x, y) || 0 } }
         end
 
+        # The variables of +program+ no checked run compares: each pool walk's own (IR::WalkShape#own_variables)
+        # and the count of its turns, the index of the repeat the walk is. The builder makes them for the
+        # walk, no game can name them, and every walk writes each before it reads it, so what one holds
+        # between walks is nothing the game can see. A lowering that steps a walk its own way
+        # (SNES::Lowering#emit_stepped_walk) keeps those numbers in registers and memory of its own, and
+        # writes back only what the walk reads.
+        def self.uncompared_variables(program)
+          program.walk.each_with_object(Set.new) do |node, names|
+            next unless node.kind == :repeat && node.pool_walk
+
+            names.merge(node.pool_walk.own_variables)
+            names << node.index if node.index
+          end
+        end
+
         # The first moment +got+ (the lowered side) disagrees with +want+ (the interpreter) on, said
-        # as the frame and everything that differs there; nil when they agree throughout.
-        def first_difference(want, got)
+        # as the frame and everything that differs there; nil when they agree throughout. The
+        # variables named in +uncompared+ (.uncompared_variables) are left out.
+        def first_difference(want, got, uncompared: Set.new)
           if want.map(&:frame) != got.map(&:frame)
             return "how far the run went: the interpreter stopped after frame #{last_frame(want)}, " \
                    "the #{lowered_side} after frame #{last_frame(got)}"
           end
 
           want.zip(got).each do |reference, lowered|
-            differences = variable_differences(reference.variables, lowered.variables)
+            differences = variable_differences(variables_compared(reference.variables, uncompared), variables_compared(lowered.variables, uncompared))
             differences << "the picture differs" if reference.picture != lowered.picture
             if reference.sounds != lowered.sounds
               differences << "the sound log holds #{lowered.sounds} entries in the #{lowered_side} and " \
@@ -184,6 +205,8 @@ module VBlank
         def last_frame(moments) = moments.map(&:frame).grep(Integer).max || 0
 
         private
+
+        def variables_compared(variables, uncompared) = uncompared.empty? ? variables : variables.except(*uncompared)
 
         def sprite_in_words(row) = row ? "#{row.name.inspect} at (#{row.x}, #{row.y}) showing #{row.picture.inspect}" : "none"
 

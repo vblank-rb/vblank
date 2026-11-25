@@ -4,7 +4,7 @@ require "test_helper"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# A STATUS BAR FROM THE DATA PACK OF FOUR-COLOUR TILES, WALKED UP FROM BLACK BANK BY BANK, above a
+# A status bar from the data pack of four-colour tiles, walked up from black bank by bank, above a
 # row of a stage whose arena takes five of the console's eight sets of background colours and whose
 # sprites fill the sprites' tile room only with each picture's copies sharing tiles. The made-up
 # original keeps the bar's four banks of four colours in sixteen colours of colour memory; a list the
@@ -123,7 +123,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
       end
       game_loop do
         walk += 1
-        case_var(:state) { when_val 0, :stage }
+        call({ 0 => :stage }, number: :state)
       end
     end
     b.finalize_program
@@ -188,7 +188,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  # A BAR SHOWN ALONE ABOVE ITS ROW (`alone: true`), as a Super Nintendo game shows its bar on the
+  # A bar shown alone above its row (`alone: true`), as a Super Nintendo game shows its bar on the
   # rows above its split: over an arena scrolled a pixel each pass, its see-through pixels show the
   # backdrop in every bank, never the arena, and the arena still shows from the row down.
   def test_a_bar_shown_alone_shows_the_backdrop_through_its_see_through_pixels
@@ -225,7 +225,7 @@ class TestPackBarBesideSpritesOnTheSuperNintendo < Minitest::Test
     place.zero? ? nil : BAR_COLORS.fetch((((word >> 10) & 7) * 4) + place)
   end
 
-  # A BAR SHOWN ALONE WITHOUT SPRITES (`alone: :without_sprites`), as a Super Nintendo game shows its
+  # A bar shown alone without sprites (`alone: :without_sprites`), as a Super Nintendo game shows its
   # bar with only that layer on the lines above its split: a sprite climbing across the row is hidden
   # above it, the bar's own pixels and the backdrop showing there, and shown from the row down.
   def test_a_bar_shown_alone_without_sprites_hides_a_sprite_above_its_row

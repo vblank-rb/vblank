@@ -204,7 +204,7 @@ class TestSNESCheckedRun < Minitest::Test
     assert_equal 0, run[:n]
   end
 
-  # A STAND-IN FOR A RUNTIME THAT LETS THE SCREEN COME ON WHILE IT SETS UP: bsnes is made to show red
+  # A stand-in for a runtime that lets the screen come on while it sets up: bsnes is made to show red
   # where the real cartridge still has its screen switched off (all colour 0). The run reports the
   # red the console shows, not the interpreter's switched-off white, so a check against the
   # interpreter would fail.
@@ -235,10 +235,7 @@ class TestSNESCheckedRun < Minitest::Test
       scene(:title) { ticks += 1; state = 1 if ticks > 3 }
       scene(:play) { ticks += 10; if ticks > 50 then state = 0; ticks = 0 end }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
 
@@ -355,6 +352,43 @@ class TestSNESCheckedRun < Minitest::Test
     error = assert_raises(SNES::LoweringError) { SNES.new.build(program) }
 
     assert_match(/can call itself again/, error.message)
+  end
+
+  # Builds a game's cartridge as the lowering does, then writes a branch to itself (BRA -2) over the
+  # first instruction the processor runs at power-on, so the cartridge never reaches the end of a
+  # pass: a lowering fault that hangs the console, made on purpose.
+  class ResetSpins
+    BRA_TO_ITSELF = [0x80, 0xFE].freeze
+
+    def build(program, title:)
+      rom = SNES.new.build(program, title: title)
+      reset = rom.built.code.fetch("rt_reset")
+      bytes = rom.bytes.b
+      at = (((reset >> 16) - SNES::Linker::FIRST_BANK) * SNES::Linker::BANK_SIZE) + (reset & 0x7FFF)
+      BRA_TO_ITSELF.each_with_index { |byte, i| bytes.setbyte(at + i, byte) }
+      banks = bytes.bytes.each_slice(SNES::Linker::BANK_SIZE).map { |bank| bank.pack("C*") }
+      VBlank::Cartridge::SNESROM.new(banks, title: title, vectors: { reset: reset & 0xFFFF }, built: rom.built)
+    end
+  end
+
+  # The Super Nintendo run's player (game_player there), playing ResetSpins's cartridges.
+  class StuckPlayer < VBlank::Testing::CartridgeCheckedPlayer.for(:snes)
+    self.console = :snes
+
+    private def cartridge_builder = ResetSpins.new
+  end
+
+  # A cartridge that never ends a pass fails the test through game_player's player, naming the
+  # console and the pass: the interpreter ends that pass, so this is a fault of the lowering, never
+  # a part the build does not make yet.
+  def test_a_cartridge_stuck_in_a_pass_fails_naming_the_pass
+    program = program_of { game_loop { wait_vblank } }
+
+    error = assert_raises(Minitest::Assertion) { StuckPlayer.new.run(program, frames: 3) }
+
+    refute_kind_of Minitest::Skip, error, "a stuck cartridge is not a missing feature"
+    assert_match(/Super Nintendo/, error.message)
+    assert_match(/pass 1\b/, error.message)
   end
 
   private

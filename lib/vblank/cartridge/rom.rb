@@ -23,7 +23,7 @@ module VBlank
 
       attr_reader :buffer, :code_offset
 
-      # WHAT EVERY ADVANCE CARTRIDGE'S HEADER HOLDS, whoever made the cartridge — asked of a
+      # What every Advance cartridge's header holds, whoever made the cartridge — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
       #
       # The console a cartridge of this kind is for; whether +bytes+ are one (every Advance
@@ -36,17 +36,13 @@ module VBlank
       def console = self.class.console
       def header_title = self.class.title_field_of(@buffer)
 
-      # WHAT THE BUILD WORKED OUT about this cartridge, or nil when nothing did (see
+      # What the build worked out about this cartridge, or nil when nothing did (see
       # {BuildRecord}). It arrives whole, at construction, so a ROM is either a cartridge
       # that can report on itself or a cartridge that cannot — never half of each. Nil is
       # what "assembled straight from machine code" looks like.
       attr_reader :built
 
-      # The variables the build added that the author never declared (see
-      # Diagnostics::HiddenVariables). They are the builder's to know, not a console's.
-      attr_writer :hidden_variables
-
-      def hidden_variables = @hidden_variables || []
+      include ProfileNotes
 
       # The things the record holds, read straight off it. Each is nil without a record,
       # and each is documented on {BuildRecord}: the IR program this cartridge was built from,
@@ -143,29 +139,29 @@ module VBlank
         end
       end
 
-      # WHAT THE BUILD MADE OF THIS GAME, AND WHAT IT COST WHEN IT RAN.
+      # What the build made of this game, and what it cost when it ran.
       #
-      # TWO HALVES, AND NEITHER ANSWERS THE QUESTION ALONE. First {BuildReport}: what the build
+      # Two halves, and neither answers the question alone. First {BuildReport}: what the build
       # made — how big each routine came out, which fit in the console's quick memory and which
       # missed. Then the measurement: which routines the console really spent its frames in, the
       # rate it produced, and how much of each frame was left over. The run says a routine is
       # most of the frame; the build says that routine missed the quick memory by four tenths of
       # a kilobyte. A reader given only the first goes and rewrites the routine.
       #
-      # NOTHING HERE IS PREDICTED. This framework used to carry an estimate — a frame priced in
+      # Nothing here is predicted. This framework used to carry an estimate — a frame priced in
       # scanlines against a budget, with a verdict of fits or tears — and it was a second
       # statement of what the hardware costs, kept in step with the backend by hand, so every
       # mispricing was a bug. Both halves here are facts: one read off the build, one counted off
       # a real run.
       #
       # +scene+ names which screen to measure, and it is usually the thing you want: a game boots
-      # to its title, and holding a button will not get past one — a menu reads the press EDGE, so
+      # to its title, and holding a button will not get past one — a menu reads the press edge, so
       # a held button is one press however long it is held. Naming a scene holds the game there
       # and measures that, with nobody having to play it (see {Profiler.profile_holding_words}).
       #
       # +from+ names a saved moment instead — an emulator save state, made by playing to the
       # moment once. It is the general answer, and the one for a moment a scene cannot give: a
-      # scene booted into gives the routines that scene RUNS, where a saved moment also gives the
+      # scene booted into gives the routines that scene runs, where a saved moment also gives the
       # STATE that makes it expensive. The boss scene with nothing spawned is not the boss fight.
       # A state from a different build of the game is refused, because its addresses have all
       # moved and reading it would measure the wrong code while still looking like numbers.
@@ -175,23 +171,30 @@ module VBlank
       # +settle+ runs that many frames first, and +frames+ is how many to measure over. +press+ are
       # buttons that go down as those frames begin, for one a game reads the moment it goes down.
       #
+      # +lines+ asks which lines of a routine its time went to: a routine's name or a list of them
+      # (a `func`'s, a scene's, or :game_loop), or true for the busiest routines measured (see
+      # Diagnostics::RoutineLines).
+      #
       # +format+ is :human to print it or :json for the same numbers as data.
       #
       # Needs the emulator and a cartridge that knows how it was built — the
       # addresses each routine runs at cannot be recovered from the bytes, because a routine kept
       # in the console's quick memory was copied there at boot.
       def profile(format: :human, out: $stdout, frames: Diagnostics::Profiler::FRAMES,
-                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil)
+                  settle: Diagnostics::Profiler::SETTLE, keys: [], scene: nil, from: nil, press: [], tape: nil,
+                  lines: nil)
         Diagnostics::TapeProfile.refuse_tape!(tape, "Game Boy Advance")
         require_build_record! # a cartridge with no record cannot name its own routines
         result = Diagnostics::Profiler.run(self, frames: frames, settle: settle, keys: keys, scene: scene,
-                              from: from, press: press)
+                              from: from, press: press, lines: lines)
         case format
         when :human then Diagnostics::Profiler.render(result, out: out, rom: self)
         when :json
           out.puts(JSON.generate(result.to_h
                                        .merge(Diagnostics::BuildReport.as_json(self))
                                        .merge(Diagnostics::HiddenVariables.as_json(self))
+                                       .merge(Diagnostics::CountedLoops.as_json(self))
+                                       .merge(Diagnostics::InstanceVariableNumbers.as_json(self))
                                        .merge(findings: findings_json)))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
@@ -207,27 +210,7 @@ module VBlank
       end
 
       # Write the ROM to a file.
-      #
-      # With syswrite, not File.binwrite, because a cartridge can be shared between Ractors and
-      # written by several at the same moment. Ruby 4.0's ordinary write, the first time it is
-      # handed a frozen string that owns its memory, gives that memory to a temporary string and
-      # re-points the original at it. Two Ractors doing that at once leave two temporaries owning
-      # the same memory; collecting the one the string no longer points at frees the cartridge's
-      # bytes while everyone still holds it, and freeing the other later aborts Ruby. syswrite
-      # only reads the string.
-      #
-      # Ruby's bug: https://bugs.ruby-lang.org/issues/22382. Once a release with the fix is the
-      # oldest Ruby this supports, File.binwrite is safe again.
-      def write(path) = self.class.write_bytes(path, @buffer)
-
-      # Write +bytes+ to a file that way: for a cartridge's own bytes, and for anything else
-      # that is a frozen string several Ractors may write at once.
-      def self.write_bytes(path, bytes)
-        File.open(path, "wb") do |file|
-          written = file.syswrite(bytes)
-          written += file.syswrite(bytes.byteslice(written..)) while written < bytes.bytesize
-        end
-      end
+      def write(path) = File.binwrite(path, @buffer)
 
       # ROM size in bytes.
       def size

@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # `dump_func` ON THE GAME BOY COLOR: the code a routine was made into, read back out of the
+    # `dump_func` on the Game Boy Color: the code a routine was made into, read back out of the
     # finished cartridge in the words of the Color's processor (the SM83), one instruction a line.
     # It is how a slow routine is read rather than guessed at: a variable kept in four bytes is four
     # reads, there on the page.

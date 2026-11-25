@@ -2,27 +2,60 @@
 
 module VBlank
   class Builder
-    # A LIST OF SPRITE COLOURS THAT HOLDS OTHER COLOURS WHILE THE GAME RUNS. A concern of
-    # {Builder}, mixed in so `recolor` stays a flat DSL verb.
+    # Changing sprite colours while the game runs
     #
-    # WHY IT EXISTS. A sprite's pixels are places in a list of sixteen colours, and the
-    # console has sixteen such lists for all its sprites at once. `draw_with` picks which
-    # list a sprite reads — and every list it could pick is in the console the whole time,
-    # so a game whose things between them wear twenty different sets of colours does not
-    # fit, though no two rooms of it show more than a handful. The console's own games get
-    # round that by treating a list as a slot: the things in the room draw with a few
-    # lists, and walking into the next room puts that room's colours in them.
+    # A sprite's pixels are places in a list of sixteen colours, and the console has sixteen such
+    # lists for all its sprites at once. A game whose things between them wear twenty different
+    # sets of colours does not fit, though no two rooms of it show more than a handful. The
+    # console's own games get round that by treating a list as a slot: the things in the room draw
+    # with a few lists, and walking into the next room puts that room's colours in them.
+    # `recolor` does that, `colors_in_use` says which lists a room needs, and `color_walk` makes
+    # the steps of a fade.
+    #
+    # ```ruby picture=once frames=90
+    # VBlank.game "RECOLOR", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ruby, %i[transparent red white]
+    #   colors :slot, %i[transparent red white]
+    #   colors :ice, %i[transparent cyan white]
+    #   image :gem, "." => :transparent,
+    #               "#" => :red, "o" => :white,
+    #               colors: :ruby do
+    #     "....########....\n" * 4 +
+    #     "..oo##########..\n" * 4 +
+    #     "################\n" * 4 +
+    #     "....########....\n" * 4
+    #   end
+    #   # in the gem's own list
+    #   sprite :gem, at: [84, 72]
+    #   # two drawn with a list that changes
+    #   [112, 140].each do |x|
+    #     gem = sprite :gem, at: [x, 72]
+    #     gem.draw_with :slot
+    #   end
+    #   frames = 0
+    #   game_loop do
+    #     frames += 1
+    #     # every gem drawn with :slot turns icy
+    #     recolor :slot, :ice if frames == 60
+    #   end
+    # end
+    # ```
+    #--
+    # A concern of Builder, mixed in so `recolor` stays a flat DSL verb. `draw_with` picks which
+    # list a sprite reads, and every list it could pick is in the console the whole time.
+    #++
     module ColorLists
       # What the build keeps about one list told to hold other colours: the statement that
       # declares it to the backends, the sets it can hold (a {DSL::Recolors}, the list
       # playing the part a sprite plays there), and the writes recorded where the game called
       # `recolor`, which are moved to the gap between frames once the program is whole.
-      ChangingList = Struct.new(:node, :recolors, :shown, :live, :writes, keyword_init: true)
+      ChangingList = Struct.new(:node, :recolors, :shown, :live, :writes, keyword_init: true)  # :nodoc:
 
       # One set of lists `colors_in_use` named, the line that first named it, and which of
       # that line's sets it is, counting from 0 the way showing: does (nil for a line that
       # named one set).
-      ListsInUse = Data.define(:names, :source, :place) do
+      ListsInUse = Data.define(:names, :source, :place) do  # :nodoc:
         # The set in the author's words, for an error about it.
         def described
           names_said = names.map { |name| ":#{name}" }.join(", ")
@@ -33,29 +66,30 @@ module VBlank
 
       # The variable holding which set of lists is in use: a number counting through every
       # set named, in the order the game named them. A number naming none is the first set.
-      LISTS_IN_USE = :__colors_in_use
+      LISTS_IN_USE = :__colors_in_use  # :nodoc:
 
-      # SET WHICH LISTS OF SPRITE COLOURS ARE IN USE NOW, as the game enters a room.
+      # Sets which lists of sprite colours are in use now, as the game enters a room.
       #
-      #   colors_in_use [:door, :zelda]                                    # these, from now on
-      #   colors_in_use [[:door, :zelda], [:octorok, :bush]], showing: room  # one of several sets
+      # Every list a sprite can `draw_with` takes one of the console's groups of sprite colours for
+      # as long as its scene is up, so a scene whose things between them wear more lists than there
+      # are groups does not fit, though no one room of it shows more than a few. Named here, the
+      # lists of one set are the only ones that have to be in the console at once. Lists never in
+      # use together take turns in one group, and the colours of the set in use are copied in
+      # between frames, on the frame it changes. So it is the biggest set that has to fit, not the
+      # scene.
       #
-      # Every list a sprite can `draw_with` takes one of the console's groups of sprite
-      # colours for as long as its scene is up, so a scene whose things between them wear
-      # more lists than there are groups does not fit, though no one room of it shows more
-      # than a few. Named here, the lists of one set are the only ones that have to be in the
-      # console at once: lists never in use together take turns in one group, and the
-      # colours of the set in use are copied in between frames on the frame it changes. So it
-      # is the biggest set that has to fit, not the scene.
+      # A sprite drawn with a list that is not in use shows whatever its group holds now, which is
+      # the colours of another list. So a room's things are the ones to take away as the room is
+      # left. Until the game first names one, the first set named is in use, and so it is for a
+      # number naming no set.
       #
-      # A sprite drawn with a list that is not in use shows whatever its group holds now:
-      # the colours of another list. So a room's things are the ones to take away as the
-      # room is left. Until the game first names one, the first set named is in use, and so it is
-      # for a number naming no set.
+      # ```ruby
+      # colors_in_use [:door, :zelda]                                      # these, from now on
+      # colors_in_use [[:door, :zelda], [:octorok, :bush]], showing: room  # one of several sets
+      # ```
       #
-      # @param which [Array<Symbol>, Array<Array<Symbol>>] the lists in use, or several sets
-      # @param showing [Value, Symbol, Integer, nil] which of several sets, counting from 0
-      # @return [nil]
+      # * `which` - the lists in use, or a list of several sets.
+      # * `showing:` - which of several sets, counting from 0.
       def colors_in_use(which, showing: nil)
         sets = requested_lists_in_use!(which, showing)
         start = register_lists_in_use(sets, picked: !showing.nil?)
@@ -70,26 +104,31 @@ module VBlank
         nil
       end
 
-      # SET WHICH COLOURS A LIST HOLDS NOW. Every sprite and every pool instance drawn with
-      # the list shows them, from the frame its position and pose next change.
+      # Sets which colours a list holds now. Every sprite and every pool instance drawn with the
+      # list shows them, from the frame its position and pose next change.
       #
-      #   colors :slot, [:transparent, :gray, :white, :black]     # what it holds at power-on
-      #   guards.each { |g| g.draw_with :slot }
-      #   recolor :slot, :goblin                                  # one other set
-      #   recolor :slot, [:goblin, :bat, :crow], showing: room    # one of several, by a number
-      #   recolor :slot, :own                                     # the colours it was declared with
+      # The sets are lists declared with `colors`, each with a colour for every place the list
+      # itself has. A number outside the set gives the colours the list was declared with. It sets
+      # which colours the list holds the way `show_map` sets which map is showing, so it can be
+      # called once, or every frame, from a branch or a scene. The colours change on the frame the
+      # answer changed and no other.
       #
-      # The sets are lists declared with `colors`, each with a colour for every place the
-      # list itself has. A number outside the set is the colours it was declared with.
+      # ```ruby
+      # colors :slot, [:transparent, :gray, :white, :black]     # what it holds at power-on
+      # guards.each { |g| g.draw_with :slot }
+      # recolor :slot, :goblin                                  # one other set
+      # recolor :slot, [:goblin, :bat, :crow], showing: room    # one of several, by a number
+      # recolor :slot, :own                                     # the colours it was declared with
+      # ```
       #
-      # It sets which colours the list holds, the way `show_map` sets which map is showing:
-      # so it can be called once, or every frame, from a branch or a scene, and the colours
-      # are copied in the gap between frames on the frame the answer changed and no other.
+      # * `name` - a list declared with `colors`.
+      # * `which` - the list to hold, several to pick from, or `:own`.
+      # * `showing:` - which of several, counting from 0.
       #
-      # @param name [Symbol] a list declared with `colors`
-      # @param which [Symbol, Array<Symbol>] the list to hold, several to pick from, or :own
-      # @param showing [Value, Symbol, Integer, nil] which of several, counting from 0
-      # @return [Symbol] the list's name
+      # Returns the list's name.
+      #--
+      # The colours are copied in the gap between frames.
+      #++
       def recolor(name, which, showing: nil)
         list = changing_color_list!(name)
         choice = DSL::Value.new(self, Build.var_ref(list.shown), name: list.shown)
@@ -98,11 +137,8 @@ module VBlank
         name
       end
 
-      # THE STEPS OF A COLOUR WALK, each a list, for `draw_with` or `recolor` to show one at a time.
-      #
-      #   walk = color_walk :city, from: :black      # 32 lists, black first, :city's own last
-      #   world.draw_with walk, showing: step
-      #   recolor :letters, color_walk(:letters, from: :white), showing: step
+      # Makes the steps of a colour walk, each a list of colours, for `draw_with` or `recolor` to
+      # show one at a time.
       #
       # A fade mixes every colour toward another by a share of the way, so the dark colours of a
       # picture show almost at once. The console's own games walk instead, and this is that walk:
@@ -110,31 +146,40 @@ module VBlank
       # at the far colour. So a bright channel starts first, a dim colour stays at the far end for
       # most of the walk, and every channel arrives on the last step together.
       #
-      # It is lists and nothing more. The colours are worked out as the cartridge is built, so a
-      # game pays for the lists and for naming which one shows, and only the lists it names move.
-      # How fast it goes is how fast the game moves the number it hands to `showing:`.
+      # The colours are worked out as the game is built, so a game pays for the lists and for
+      # naming which one shows, and only the lists it names move. How fast it goes is how fast the
+      # game moves the number it gives to `showing:`. A list read from the data pack as the game
+      # starts is walked too.
       #
-      # A LIST READ FROM THE DATA PACK AS THE GAME STARTS is walked too. The build does not hold
-      # its colours, so each step's colours are made as the game starts, from the file's, by the
-      # same sum (Graphics::Color.walked_toward; #walked_color).
+      # ```ruby
+      # walk = color_walk :city, from: :black      # 32 lists, black first, :city's own last
+      # world.draw_with walk, showing: step
+      # recolor :letters, color_walk(:letters, from: :white), showing: step
+      # ```
       #
-      # A WALK THAT WAITS FOR A FALLING COUNT (`count:`, with `step:`) is the other rule a console's
-      # own fade routine takes:
+      # A walk that waits for a falling count, with `count:` and `step:`, is the other rule a
+      # console's own fade routine takes. A count starts at `count` and falls by `step` each step.
+      # A channel waits until what it has to go is at least the count, then moves by `step`, and
+      # one that passes its height comes back on the next step. So every channel of any height
+      # arrives on the last step together, in `count` / `step` + 1 steps.
       #
-      #   walk = color_walk :bar, from: :black, step: 2, count: 32   # 18 lists, black first
+      # ```ruby
+      # walk = color_walk :bar, from: :black, step: 2, count: 32   # 18 lists, black first
+      # ```
       #
-      # A count starts at +count+ and falls by +step+ each step. A channel waits until what it has to
-      # go is at least the count, then moves by +step+, and one that passes its height comes back on
-      # the next step. So every channel of any height arrives on the last step together, in
-      # +count+ / +step+ + 1 steps (Graphics::Color.counted_walk states the rule exactly). `steps:`
-      # sets another number of steps.
+      # * `name` - a list declared with `colors`.
+      # * `from:` - the colour the walk starts at.
+      # * `steps:` - how many steps from there to the list itself.
+      # * `step:` - how far a channel moves on a step of a walk with `count:`.
+      # * `count:` - where the falling count starts, for a walk that waits for it.
       #
-      # @param name [Symbol] a list declared with `colors`
-      # @param from [Symbol, String, Integer] the colour the walk starts at
-      # @param steps [Integer, nil] how many steps from there to the list itself
-      # @param step [Integer, nil] how far a channel moves on a step of a walk with +count+
-      # @param count [Integer, nil] where the falling count starts, for a walk that waits for it
-      # @return [Array<Symbol>] the lists' names, the walk's start first and +name+'s colours last
+      # Returns the lists' names, the walk's start first and the colours of `name` last.
+      #--
+      # The rule is stated exactly by Graphics::Color.counted_walk. A list read from the data
+      # pack as the game starts is not held by the build, so each step's colours are made as the
+      # game starts, from the file's, by the same sum (Graphics::Color.walked_toward;
+      # #walked_color).
+      #++
       def color_walk(name, from:, steps: nil, step: nil, count: nil)
         own = @color_lists.fetch(name) do
           raise ArgumentError, "color_walk :#{name} walks a list of colors, and no list has that name. " \
@@ -204,18 +249,18 @@ module VBlank
         start_file_color_marker(made)
       end
 
-      # THE LIST THE GAME'S BACKDROP FOLLOWS: its name, the place of it the backdrop shows, the
+      # The list the game's backdrop follows: its name, the place of it the backdrop shows, the
       # colour at that place as declared (what the backdrop is at power-on), and the `screen`
       # that named it.
-      BackdropList = Data.define(:name, :place, :color, :screen)
+      BackdropList = Data.define(:name, :place, :color, :screen)  # :nodoc:
 
-      # A BACKDROP THAT FADES WITH THE PICTURE. `screen :tiled, backdrop: :screen_colors` names a
+      # A backdrop that fades with the picture. `screen :tiled, backdrop: :screen_colors` names a
       # `colors` list where a colour would go, the way `image ..., colors: :sea` and `draw_with :hurt`
       # name one, and the backdrop is then the list's colour at one place, whatever the list holds:
       # `recolor` it and the backdrop changes on the same frame as every sprite and background
       # drawn with it, through the same tint.
       #
-      # WHY THE FIRST PLACE BY DEFAULT. A list's first place is the one a picture drawn from it does
+      # Why the first place by default. A list's first place is the one a picture drawn from it does
       # not draw — its see-through place — and what shows through a see-through pixel is the
       # backdrop. So a list made for a screen's colours already has a natural home for the colour
       # behind them, and the console games that fade their backdrop keep it just there (a Genesis
@@ -254,20 +299,22 @@ module VBlank
       # Keep track of a sprite's or a pool's other colours, so the lists that change can
       # find who is drawn with them once the whole program is declared. Called by
       # {DSL::Recolors} as one is made.
-      def remember_sprite_recolors(recolors)
+      # Hook behind `recolor`: a sprite or a pool says which lists it draws with, so a list that changes can find it. Documented on `recolor`.
+      def remember_sprite_recolors(recolors)  # :nodoc:
         @sprite_recolors << recolors
       end
 
       # Keep track of a list a background is drawn with, so a background drawn with a list
       # that changes can be told to follow it. Called by {DSL::Background} as it takes the
       # list's colours.
-      def remember_background_draws_with(name, background)
+      # Hook behind `recolor`: a background says which lists it draws with, so a list that changes can find it. Documented on `recolor`.
+      def remember_background_draws_with(name, background)  # :nodoc:
         (@lists_backgrounds_draw_with[name] ||= []) << background unless @lists_backgrounds_draw_with[name]&.include?(background)
       end
 
       private
 
-      # A BACKGROUND DRAWN WITH A LIST THE GAME CHANGES SHOWS WHAT THE LIST HOLDS, as a sprite
+      # A background drawn with a list the game changes shows what the list holds, as a sprite
       # drawn with it does. The background is told the sets the list can hold, counted as the
       # list counts them, and reads the list's own number for which one it shows (see
       # DSL::Background#follow_changing_list!). So the console writes the background's colours
@@ -281,7 +328,7 @@ module VBlank
       # A background with tiles drawn from a changing list that was never told to draw with it
       # would show the list's power-on colours whatever it holds, so it is refused, naming the list.
       #
-      # A BACKGROUND DRAWN WITH SEVERAL CHANGING LISTS is told all of them at once and keeps no sets:
+      # A background drawn with several changing lists is told all of them at once and keeps no sets:
       # each list's own write changes its tiles (DSL::Background#follow_changing_lists!).
       def link_backgrounds_to_changing_lists
         followers = @changing_color_lists.keys.to_h { |name| [name, @lists_backgrounds_draw_with.fetch(name, [])] }
@@ -310,7 +357,7 @@ module VBlank
         end
       end
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: tell the list the backdrop follows that it does, so each
+      # Once the whole program is declared: tell the list the backdrop follows that it does, so each
       # backend shows its colour at that place wherever the list is told to hold another set. That
       # write is the list's own, in the gap between frames on the frame the answer changed, so the
       # backdrop changes with the sprites and backgrounds drawn with the list and never apart from
@@ -468,7 +515,7 @@ module VBlank
         end
       end
 
-      # ONCE THE WHOLE PROGRAM IS DECLARED: tell every sprite drawn with a changing list to
+      # Once the whole program is declared: tell every sprite drawn with a changing list to
       # hold the list's name rather than its colours, declare each such list to the
       # backends, and move the writes to the gap between frames.
       #
@@ -498,7 +545,7 @@ module VBlank
         write_changed_colors_between_frames(@changing_color_lists.merge(shared))
       end
 
-      # THE LISTS A SPRITE OF SEVERAL LISTS FOLLOWS (Images#follow_pose_lists), kept on each such
+      # The lists a sprite of several lists follows (Images#follow_pose_lists), kept on each such
       # object only where the game changes the list: a list never told `recolor` holds the colours it
       # was declared with for good, which are the colours its poses were drawn in, so following it
       # is drawing them as drawn and the object names nothing. Those it names apart
@@ -513,7 +560,7 @@ module VBlank
         end.uniq
       end
 
-      # THE LISTS THAT LISTS NEVER IN USE TOGETHER TAKE TURNS IN, from +places+ (see
+      # The lists that lists never in use together take turns in, from +places+ (see
       # #places_for_lists_in_use): shared name -> a ChangingList whose sets are, set by set,
       # the list it holds while that set is in use. Empty for a game that never calls
       # `colors_in_use`.
@@ -555,7 +602,7 @@ module VBlank
         colors + ([0x0000] * (Images::PICTURE_COLORS - colors.length))
       end
 
-      # WHICH SHARED LIST EACH LIST IN A SET IS DRAWN THROUGH: list name -> the shared list's
+      # Which shared list each list in a set is drawn through: list name -> the shared list's
       # name. Empty for a game that never calls `colors_in_use`.
       #
       # The lists are placed scene by scene: the lists only one scene's sprites draw with take
@@ -662,7 +709,7 @@ module VBlank
         end
       end
 
-      # COPY A LIST'S COLOURS IN THE GAP BETWEEN FRAMES, and only on a frame where the answer
+      # Copy a list's colours in the gap between frames, and only on a frame where the answer
       # changed — the same bargain, held in the same two variables, as a background's (see
       # Builder#finalize_background_colors). The gap is what makes the colours change on the
       # frame the sprites' positions and poses do: both are written there.

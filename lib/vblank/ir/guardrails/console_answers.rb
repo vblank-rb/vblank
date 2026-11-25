@@ -4,7 +4,32 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME TOLD AT EACH LINE THAT ASKS FOR SOMETHING ITS CONSOLE CANNOT DO, in the words that
+        # An error at each line of a game that asks for something the console it is built for
+        # cannot do. The message names what the line asks for and the console, then why:
+        #
+        # > <what the line asks for>, and a <console> cannot: <why>
+        #
+        # The part after `cannot:` is that console's own answer for the verb, and it names the
+        # part of the hardware the console lacks (each console's page lists every verb's answer).
+        # A game built for more than one console hears, on each build, only what that console
+        # cannot do. The Game Boy Advance does every verb, so a game for it alone never sees this.
+        #
+        # To fix it, take the line out of the build for that console (ask `built_for?` around
+        # it), do the same thing another way the console can, or build the game for other
+        # consoles only.
+        #
+        # One warning here is about sprites, not a verb. A console that draws only so many sprites
+        # on one row of the screen leaves the rest of that row out:
+        #
+        # > <count> pieces of sprites stand on row <row> of the screen at once. A <console> draws
+        # > <most> on any one row and leaves the rest out of it. To fix this, move some of them to
+        # > another row, or use fewer letters there.
+        #
+        # It is given for sprites that never move, such as a line of tiled text, since those are
+        # the ones the build can count.
+        #
+        #--
+        # A game told at each line that asks for something its console cannot do, in the words that
         # console's answers have for the verb: an error, before anything is made. What a console
         # cannot do is the answers' to say (Console::Answers#refusals), and this only reports it.
         # Nothing is shown differently on any console, so nothing is only warned of but a crowded
@@ -17,6 +42,7 @@ module VBlank
         # One thing is not a verb's: a console that draws only so many sprites on one row of the
         # screen leaves the rest out of that row. Where sprites that never move — a line of tiled
         # text, say — put more than that on a row, that row is named.
+        #++
         class ConsoleAnswers
           NAME = :console_answers
           PLAIN_NAME = "something the console cannot do"

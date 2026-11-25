@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/font_styles").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/font_styles").to_s)
 
 # The font-styles example: the same word in three fonts, two defined inline with
 # `font :name do glyph … end`. Asserts each renders in its own colour, that the two

@@ -14,7 +14,7 @@ class TestConsoleAnswers < Minitest::Test
     image(:dark, "#" => :black) { "########\n" * 8 }
     tiles :floor, "#" => :dark
     board = background :board, tiles: :floor, map: ["#" * 4] * 4
-    game_loop { board.rotate 30 }
+    game_loop { board.rotate! 30 }
   end
 
   # A sprite turned by a little more each pass: its angle is worked out as the game runs.
@@ -33,6 +33,12 @@ class TestConsoleAnswers < Minitest::Test
   X_BUTTON = VBlank.game("XBUTTON", consoles: %i[gba gbc snes]) do
     count = var :count, 0
     game_loop { count += 1 if held(:x) }
+  end
+
+  # How far L2 is pulled asks for L2, which only a PlayStation has.
+  PULLED_L2 = VBlank.game("PULLEDL2", consoles: %i[gba ps1]) do
+    total = var :total, 0
+    game_loop { total += pulled(:l2) }
   end
 
   # Any button at all is not a button a console can lack.
@@ -278,6 +284,14 @@ class TestConsoleAnswers < Minitest::Test
       assert_match(/no X or Y button/, found.first.message)
     end
     assert_empty findings(X_BUTTON, :snes)
+  end
+
+  def test_how_far_a_button_the_console_lacks_is_pulled_is_refused
+    found = findings(PULLED_L2, :gba)
+
+    assert_equal [:error], found.map(&:severity)
+    assert_match(/:l2 button/, found.first.message)
+    assert_empty findings(PULLED_L2, :ps1)
   end
 
   def test_any_button_is_not_refused

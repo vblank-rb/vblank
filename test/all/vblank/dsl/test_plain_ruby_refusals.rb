@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "open3"
 require "stringio"
 require "test_helper"
 require "fixtures/game_with_plain_helper/game"
@@ -11,6 +12,9 @@ class TestPlainRubyRefusals < Minitest::Test
   OWN_NUMBER = 7
 
   Refused = VBlank::DSL::PlainRuby::Refused
+
+  # The Ruby running the suite, read once: a test in a Ractor cannot ask for it.
+  RUBY = RbConfig.ruby
 
   # Read from each test's Ractor, as an example's game is.
   SHARED_GAME = VBlank.game("SHARED", consoles: %i[gba]) do
@@ -120,31 +124,6 @@ class TestPlainRubyRefusals < Minitest::Test
     end
   end
 
-  def test_for_up_to_a_number_the_game_keeps_is_refused
-    assert_refused("`while`") do
-      n = 3
-      total = 0
-      game_loop do
-        for each_number in 0...n
-          total += each_number
-        end
-        n += 1
-      end
-    end
-  end
-
-  def test_for_from_a_number_the_game_keeps_is_refused
-    assert_refused("`while`") do
-      n = 0
-      game_loop do
-        for each_number in n..3
-          wait_vblank
-        end
-        n += 1
-      end
-    end
-  end
-
   def test_for_over_a_list_the_game_keeps_is_refused
     assert_refused("`.each`") do
       things = list(:things, capacity: 4)
@@ -222,6 +201,15 @@ class TestPlainRubyRefusals < Minitest::Test
     assert_kind_of Builder, builder
   end
 
+  # Only a constant given a Struct of the game's is the game's own: `Dir = Dir` is still Ruby's.
+  def test_a_constant_the_block_gives_an_outside_constant_is_refused
+    game = File.join(__dir__, "../../../fixtures/own_constant_game/game.rb")
+    _out, err, status = Open3.capture3(RUBY, game)
+
+    refute_predicate status, :success?
+    assert_includes err, "`Dir` is not part of your game"
+  end
+
   def test_a_gem_nobody_has_heard_of_is_refused_the_same_way
     assert_refused("`SomeGemNobodyListed`") { SomeGemNobodyListed.go }
   end
@@ -292,7 +280,7 @@ class TestPlainRubyRefusals < Minitest::Test
   def test_jumping_out_of_game_code_is_refused
     assert_refused("`break`") do
       n = 0
-      game_loop { n += 1; while n > 0; break if n == 3; n -= 1; end }
+      game_loop { break if n == 3; n += 1 }
     end
     assert_refused("`next`") do
       n = 0
@@ -396,20 +384,6 @@ class TestPlainRubyRefusals < Minitest::Test
         hp -= 1
       end
     end
-  end
-
-  def test_an_old_way_of_changing_a_variable_is_refused
-    assert_refused("A game does not need `set!`") { game_loop { hp = var(:hp, 0); hp.set! 1 } }
-    assert_refused("A game does not need `add!`") { game_loop { add! :hp, 1 } }
-    assert_refused("A game does not need `copy!`") { game_loop { copy! :a, :b } }
-  end
-
-  def test_an_old_way_of_changing_a_variable_is_refused_in_a_part_too
-    builder = Builder.new
-    hp = builder.var(:hp, 5)
-
-    error = assert_raises(Refused) { hp.sub!(1) }
-    assert_includes error.message, "A game does not need `sub!`"
   end
 
   def test_the_librarys_own_branch_is_refused_in_a_game

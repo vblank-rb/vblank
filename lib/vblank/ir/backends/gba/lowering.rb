@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # Lowers a node by its kind: two kind-keyed tables (values, statements) of the PART that
+        # Lowers a node by its kind: two kind-keyed tables (values, statements) of the part that
         # writes each kind — Expressions, Drawing, Audio and the rest. Each part names the kinds it
         # owns (its STATEMENT_KINDS and VALUE_KINDS) and answers #emit_statement or #emit_value
         # with a `case` over them, so a kind's writer is a call written out, found by its name. The
@@ -42,7 +42,7 @@ module VBlank
           def statements_written_by(owner, kinds) = claim!(@statements, owner, kinds)
           def values_written_by(owner, kinds) = claim!(@values, owner, kinds)
 
-          # THE KINDS THAT EMIT NOTHING WHERE THEY ARE WRITTEN: collected during the definitions
+          # The kinds that emit nothing where they are written: collected during the definitions
           # pass, or armed from it. A real owner, not a hole a missing kind would also leave, so
           # the coverage lock can't mistake one for the other.
           module NothingEmitted
@@ -58,7 +58,7 @@ module VBlank
           def measure_value(node, &) = @attribution.measure_node(node, &)
 
           # Every statement in the program is lowered through here, nested ones included, so
-          # this is where the pass says it is still going. One report per STATEMENT, not per
+          # this is where the pass says it is still going. One report per statement, not per
           # instruction: an instruction is what a statement turns into, and a build that
           # reported on each would spend more time saying so than emitting.
           def statement(node)

@@ -5166,7 +5166,7 @@
       "type": "file",
       "name": "effects.rb",
       "filePath": "lib/vblank/effects.rb",
-      "summary": "The effect registry: how a verb pack is added to the DSL. It holds the DEFAULT_PACKS that ship on (shake, fade, follow camera, pulse, menu, keep_showing), defines each pack's verbs onto the Builder, and enforces the rule that a pack may only compose public DSL verbs — new capability is kernel, new convenience is a pack.",
+      "summary": "The effect registry: how a verb pack is added to the DSL. It holds the DEFAULT_PACKS that ship on (shake, fade, follow camera, pulse, menu, redraw_on_change), defines each pack's verbs onto the Builder, and enforces the rule that a pack may only compose public DSL verbs — new capability is kernel, new convenience is a pack.",
       "tags": [
         "registry",
         "plugin-system",
@@ -5277,11 +5277,11 @@
       "complexity": "moderate"
     },
     {
-      "id": "file:lib/vblank/effects/packs/keep_showing.rb",
+      "id": "file:lib/vblank/effects/packs/redraw_on_change.rb",
       "type": "file",
-      "name": "keep_showing.rb",
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
-      "summary": "Effect pack for `keep_showing`: a picture painted when it changes and then left alone. It repaints once per page the screen keeps, so a tear-free (double-buffered) screen cannot flicker between the new value and the old.",
+      "name": "redraw_on_change.rb",
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
+      "summary": "Effect pack for `redraw_on_change`: a picture painted when it changes and then left alone. It repaints once per page the screen keeps, so a tear-free (double-buffered) screen cannot flicker between the new value and the old.",
       "tags": [
         "effect-pack",
         "dsl-verb",
@@ -5291,15 +5291,15 @@
       "complexity": "moderate"
     },
     {
-      "id": "class:lib/vblank/effects/packs/keep_showing.rb:KeepShowing",
+      "id": "class:lib/vblank/effects/packs/redraw_on_change.rb:RedrawOnChange",
       "type": "class",
-      "name": "KeepShowing",
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
+      "name": "RedrawOnChange",
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
       "lineRange": [
         37,
         185
       ],
-      "summary": "The pack module: the `keep_showing` verb, the per-builder table of declared pictures, the Shown handle, and the guardrail for one that is never drawn.",
+      "summary": "The pack module: the `redraw_on_change` verb, the per-builder table of declared pictures, the Shown handle, and the guardrail for one that is never drawn.",
       "tags": [
         "effect-pack",
         "dsl-verb",
@@ -5308,10 +5308,10 @@
       "complexity": "moderate"
     },
     {
-      "id": "function:lib/vblank/effects/packs/keep_showing.rb:keep_showing",
+      "id": "function:lib/vblank/effects/packs/redraw_on_change.rb:redraw_on_change",
       "type": "function",
-      "name": "keep_showing",
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
+      "name": "redraw_on_change",
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
       "lineRange": [
         48,
         66
@@ -5325,10 +5325,10 @@
       "complexity": "moderate"
     },
     {
-      "id": "class:lib/vblank/effects/packs/keep_showing.rb:Shown",
+      "id": "class:lib/vblank/effects/packs/redraw_on_change.rb:Shown",
       "type": "class",
       "name": "Shown",
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
       "lineRange": [
         79,
         131
@@ -5342,15 +5342,15 @@
       "complexity": "moderate"
     },
     {
-      "id": "class:lib/vblank/effects/packs/keep_showing.rb:NeverDrawn",
+      "id": "class:lib/vblank/effects/packs/redraw_on_change.rb:NeverDrawn",
       "type": "class",
       "name": "NeverDrawn",
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
       "lineRange": [
         149,
         184
       ],
-      "summary": "Guardrail check: reports a keep_showing picture that is declared but whose routine is never called, so the picture never appears at all.",
+      "summary": "Guardrail check: reports a redraw_on_change picture that is declared but whose routine is never called, so the picture never appears at all.",
       "tags": [
         "guardrail",
         "validation",
@@ -22121,7 +22121,7 @@
     },
     {
       "source": "file:lib/vblank/effects.rb",
-      "target": "file:lib/vblank/effects/packs/keep_showing.rb",
+      "target": "file:lib/vblank/effects/packs/redraw_on_change.rb",
       "type": "depends_on",
       "direction": "forward",
       "weight": 0.6
@@ -22162,57 +22162,57 @@
       "weight": 0.8
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:KeepShowing",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:RedrawOnChange",
       "type": "contains",
       "direction": "forward",
       "weight": 1.0
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "function:lib/vblank/effects/packs/keep_showing.rb:keep_showing",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "function:lib/vblank/effects/packs/redraw_on_change.rb:redraw_on_change",
       "type": "contains",
       "direction": "forward",
       "weight": 1.0
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:Shown",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:Shown",
       "type": "contains",
       "direction": "forward",
       "weight": 1.0
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:NeverDrawn",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:NeverDrawn",
       "type": "contains",
       "direction": "forward",
       "weight": 1.0
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:KeepShowing",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:RedrawOnChange",
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "function:lib/vblank/effects/packs/keep_showing.rb:keep_showing",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "function:lib/vblank/effects/packs/redraw_on_change.rb:redraw_on_change",
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
     },
     {
-      "source": "file:lib/vblank/effects/packs/keep_showing.rb",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:Shown",
+      "source": "file:lib/vblank/effects/packs/redraw_on_change.rb",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:Shown",
       "type": "exports",
       "direction": "forward",
       "weight": 0.8
     },
     {
-      "source": "function:lib/vblank/effects/packs/keep_showing.rb:keep_showing",
-      "target": "class:lib/vblank/effects/packs/keep_showing.rb:Shown",
+      "source": "function:lib/vblank/effects/packs/redraw_on_change.rb:redraw_on_change",
+      "target": "class:lib/vblank/effects/packs/redraw_on_change.rb:Shown",
       "type": "calls",
       "direction": "forward",
       "weight": 0.8
@@ -31102,7 +31102,7 @@
         "file:lib/vblank/builder/variables.rb",
         "file:lib/vblank/effects.rb",
         "file:lib/vblank/effects/packs/follow_camera.rb",
-        "file:lib/vblank/effects/packs/keep_showing.rb",
+        "file:lib/vblank/effects/packs/redraw_on_change.rb",
         "file:lib/vblank/effects/packs/menu.rb",
         "file:lib/vblank/effects/packs/pulse.rb",
         "file:lib/vblank/effects/packs/screen_fade.rb",

@@ -8,7 +8,7 @@ module BackgroundLayersGames
   include SharedConstants
   include VBlank::Console::Hardware
 
-  # A FAR layer (backmost): a blue field with a GREEN landmark tile at cell (5,5) ->
+  # A far layer (backmost): a blue field with a green landmark tile at cell (5,5) ->
   # px (40,40). A NEAR layer (front): transparent everywhere (spaces) except a RED
   # landmark tile at cell (10,5) -> px (80,40). Where near is transparent, far shows.
   # Each layer is scrolled to its own offset, so they can move at different speeds.
@@ -83,7 +83,7 @@ module BackgroundLayersGames
       image :black, width: 8, height: 8, places: [2] * 64, colors: :inks
       tiles :blacks, "b" => :black
       angle = var :angle, 0
-      background(:front, tiles: :blacks, map: Array.new(16) { "b" * 16 }).rotate(angle)
+      background(:front, tiles: :blacks, map: Array.new(16) { "b" * 16 }).rotate!(angle)
     end
   end
 

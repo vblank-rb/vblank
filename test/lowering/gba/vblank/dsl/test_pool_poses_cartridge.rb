@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_pool_poses"
 
-# A POOLED THING'S POSES ON THE ADVANCE'S CARTRIDGE, read in the emulator. Each instance facing
+# A pooled thing's poses on the Advance's cartridge, read in the emulator. Each instance facing
 # and animating on its own, on every run, is in test/all/vblank/dsl/test_pool_poses.rb.
 class TestPoolPosesCartridge < Minitest::Test
   include PoolPosesGames

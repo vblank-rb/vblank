@@ -171,17 +171,9 @@ module PongGame
       ball_x += ball_dx
       ball_y += ball_dy
 
-      # Bounce off top wall
-      if ball_y <= 0
-        ball_dy.abs!
-        beep :wall_bounce
-      end
-
-      # Bounce off bottom wall
-      if ball_y >= SCREEN_H - BALL_SIZE
-        ball_dy.negate_abs!
-        beep :wall_bounce
-      end
+      # Bounce off the top and bottom walls: at the top the ball is sent down, at the bottom
+      # up, with a beep each time.
+      ball_y.bounce!(ball_dy, 0..SCREEN_H - BALL_SIZE) { beep :wall_bounce }
 
       # Paddle collisions. The ball bounces only when its rectangle truly overlaps a
       # paddle's — the horizontal band AND the vertical span. The vertical test is
@@ -232,7 +224,7 @@ module PongGame
     func :draw_field do
       # Dashed center line
       8.times do |i|
-        dma_fill_rect 119, i * 20 + 2, 2, 12, :gray
+        fill_rect 119, i * 20 + 2, 2, 12, :gray
       end
     end
 
@@ -365,12 +357,12 @@ module PongGame
 
     # --- Main loop ---
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :player_wins
-        when_val 3, :cpu_wins
-        when_val 4, :difficulty
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :player_wins
+      when 3 then call :cpu_wins
+      when 4 then call :difficulty
       end
     end
   end

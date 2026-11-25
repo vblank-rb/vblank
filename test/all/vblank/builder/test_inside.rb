@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A PART OF THE SCREEN THAT DRAWING STAYS INSIDE.
+# A part of the screen that drawing stays inside.
 #
 # What makes it worth having is not that the picture comes out right — a game could paint a
 # panel over the top afterwards and get the same picture. It is that the pixels outside are
@@ -75,7 +75,7 @@ class TestInside < Minitest::Test
     run = game_player.run(program do
       game_loop do
         clear_screen :black
-        inside(*AREA) { dma_fill_rect 0, 0, 240, 160, :red }
+        inside(*AREA) { fill_rect 0, 0, 240, 160, :red }
       end
     end, frames: 2)
 
@@ -90,8 +90,8 @@ class TestInside < Minitest::Test
     run = game_player.run(program do
       game_loop do
         clear_screen :black
-        inside(*AREA) { dma_fill_rect 0, 0, 240, 160, :red }
-        dma_fill_rect 0, 120, 240, 20, :blue
+        inside(*AREA) { fill_rect 0, 0, 240, 160, :red }
+        fill_rect 0, 120, 240, 20, :blue
       end
     end, frames: 2)
 
@@ -105,12 +105,12 @@ class TestInside < Minitest::Test
   # two at odds on exactly the pattern the guardrail steers people toward.
   def test_a_routines_own_area_gives_the_callers_back_when_it_returns
     run = game_player.run(program do
-      func(:paint) { inside(0, 0, 60, 60) { dma_fill_rect 0, 0, 240, 160, :green } }
+      func(:paint) { inside(0, 0, 60, 60) { fill_rect 0, 0, 240, 160, :green } }
       game_loop do
         clear_screen :black
         inside(*AREA) do
           call :paint
-          dma_fill_rect 0, 0, 240, 160, :red
+          fill_rect 0, 0, 240, 160, :red
         end
       end
     end, frames: 2)
@@ -121,7 +121,7 @@ class TestInside < Minitest::Test
                  "and the caller's edges are back in force for the fill that followed the call"
   end
 
-  # AN AREA HOLDS DRAWING, NOT THE DISPLAY. A game whose frames end while an area is open shows
+  # An area holds drawing, not the display. A game whose frames end while an area is open shows
   # the whole picture all the same — the area only says where drawing may land — and a window
   # moved over the picture moves over all of it. The picture is read at a frame boundary, while
   # the area is still open: outside the area it shows the red square moved by the window. The

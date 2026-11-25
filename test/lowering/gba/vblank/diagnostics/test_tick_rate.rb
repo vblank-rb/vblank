@@ -35,7 +35,7 @@ class TestTickRateRule < Minitest::Test
     refute_predicate read(asked: 4000, ticks: 4001), :short?
   end
 
-  # THE NOISE CASE, and it has nothing to do with the frame rate: a slow timer over a
+  # The noise case, and it has nothing to do with the frame rate: a slow timer over a
   # short window has too few ticks for a ratio to mean anything. Four a second over a
   # second is four ticks, where one either way is a quarter of the answer.
   def test_a_timer_too_slow_to_judge_says_nothing
@@ -45,7 +45,7 @@ class TestTickRateRule < Minitest::Test
     refute_predicate reading, :short?, "an unmeasured reading is never reported"
   end
 
-  # ...and the same slow timer over a long enough run IS read.
+  # ...and the same slow timer over a long enough run is read.
   def test_the_same_slow_timer_over_a_long_run_is_read
     reading = read(asked: 4, ticks: 20, seconds: 10.0)
 
@@ -67,7 +67,7 @@ class TestTickRateRule < Minitest::Test
     assert_in_delta 0.0, reading.share
   end
 
-  # THE DENOMINATOR IS REAL TIME, NOT FRAMES OF THE GAME. Sixty hardware frames is one
+  # The denominator is real time, not frames of the game. Sixty hardware frames is one
   # second whether the game finished sixty passes in them or thirty, so the same ticks
   # over the same window read the same. This is the false alarm the design has to avoid:
   # measuring against passes would report every frame-dropping game as losing ticks.

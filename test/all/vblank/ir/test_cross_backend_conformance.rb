@@ -4,11 +4,11 @@ require "test_helper"
 
 require "conformance_fixture"
 
-# The coverage guard: run ONE kitchen-sink IR program through every
+# The coverage guard: run one kitchen-sink IR program through every
 # backend. If a backend doesn't implement a feature the fixture uses, it hits its
 # "unsupported" branch and this test fails — so a backend can't silently lag
 # behind another. Complementary to the differential test, which checks
-# the backends AGREE on output; this one checks they all COVER every feature.
+# the backends agree on output; this one checks they all cover every feature.
 #
 # This file holds the fixture to covering everything. The fixture played on the lowering under
 # test is in test/console/gba/vblank/ir/test_cross_backend_conformance_on_the_advance.rb (it plays

@@ -2,10 +2,23 @@
 
 module VBlank
   module DSL
-    # A GROUP OF TILES TAKING TURNS THROUGH PICTURES HELD IN THE CARTRIDGE, handed back by
-    # `tile_pictures`. A map or a tileset names one of its tiles by `group[:key]`, and `show` sets
+    # Tiles taking turns through pictures
+    #
+    # `tile_pictures` hands one back: a group of tiles that take turns through pictures held in
+    # the cartridge. A map or a tileset names one of its tiles by `group[:key]`, and #show sets
     # which picture the whole group shows.
+    #
+    # ```ruby
+    # field = tile_pictures :field, colors: :meadow, tiles: { flower: %i[upright left upright right] }
+    # tiles :meadow_tiles, "f" => field[:flower], "." => :grass
+    #
+    # game_loop do
+    #   passes += 1
+    #   field.show((passes / 15) % 4)   # a new picture every quarter second
+    # end
+    # ```
     class TilePictureGroup
+      # The name the group was declared with.
       attr_reader :name
 
       def initialize(builder, name:, keys:, pictures:, list:, held:, run:, shown:, bytes_shown:)
@@ -20,7 +33,9 @@ module VBlank
         @shown = shown
       end
 
-      # The name of the tile +key+, as a tileset takes a picture's name.
+      # The name of the group's tile `key`, to put in a tileset as a picture's name is put.
+      #
+      # A key the group does not have is refused, naming the keys it has.
       def [](key)
         at = @keys.index(key)
         unless at
@@ -31,9 +46,11 @@ module VBlank
         Messages::MadeNames.make(:tile_run_tile, run: @name, number: at + 1)
       end
 
-      # The picture numbered +which+, counting from 0, shows on the next frame, on every tile of
-      # the group. A number naming no picture leaves them as they are, and so does the number
-      # showing already, for one compare.
+      # Shows the picture numbered `which`, counting from 0, on every tile of the group, from the
+      # next frame on.
+      #
+      # `which` may be a number the game works out. A number naming no picture leaves the tiles as
+      # they are, and so does the number showing already, for the cost of one comparison.
       def show(which)
         wanted = Value.node_for(which)
         real = Build.binop(:and, Build.binop(:>=, wanted, Build.int(0)), Build.binop(:<, wanted, Build.int(@pictures)))

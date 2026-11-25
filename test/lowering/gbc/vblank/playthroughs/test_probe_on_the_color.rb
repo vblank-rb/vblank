@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "probe_by_name_tests"
 
-# THE COLOR'S PROCESSOR READS A WORD AT ANY ADDRESS, a byte at a time and low byte first, so a game
+# The color's processor reads a word at any address, a byte at a time and low byte first, so a game
 # for it keeps words at odd addresses and a port's probe reads and writes them there.
 #
 # The cartridge is a small game built here, written to a file: a list of five bytes, 0x11 to 0x55,
@@ -59,7 +59,7 @@ class TestProbeOnTheColor < Minitest::Test
     end
   end
 
-  # A NOTE'S START reads back the same whether or not one started, so only the writes say when a
+  # A note's start reads back the same whether or not one started, so only the writes say when a
   # note did: a voice starts when bit 7 of its last register (NR24, NR34) is written. The game starts
   # a beep and the wave voice in one pass; its first passes take more than a frame each as it sets
   # up, so the notes start some frames after that pass. (The Advance's is TestProbe's.)

@@ -12,7 +12,7 @@ require_relative "test_task"
 
 module VBlank
   module Testing
-    # A GAME'S RAKE TASKS FOR ITS OWN TESTS, one run for each lowering. In the game's Rakefile:
+    # A game's rake tasks for its own tests, one run for each lowering. In the game's Rakefile:
     #
     #   require "vblank/testing/rake_tasks"
     #
@@ -44,16 +44,16 @@ module VBlank
     # it is told the same list the games are, and it takes and refuses exactly what `consoles:` does,
     # a Rakefile that names none included.
     #
-    # A GAME FOR SEVERAL CONSOLES IS PLAYED AS EACH OF THEM on the native, JavaScript and Ruby
+    # A game for several consoles is played as each of them on the native, JavaScript and Ruby
     # lowerings, whose builds are told the console when they are made: `rake test:lowering:native`
     # then plays the suite once per console, one after the other, and each is a task of its own
     # too (`rake test:lowering:native:gbc`). CONSOLE=gbc, before any of these or `rake test:all`,
     # plays only the runs that play games as that console, for a quicker look at one.
     #
-    # The GBA lowering's run is a plain test run, so a suite that puts its tests in Ractors
-    # (RactorSettings in the Rakefile, InRactors in the test helper) keeps doing so there. The native lowering's run cannot, and spreads
-    # its tests over several processes instead (TestTask says how). The runs go one after the
-    # other so they never compete for a core.
+    # A suite that puts its tests in Ractors (RactorSettings in the Rakefile, InRactors in the test
+    # helper) keeps doing so on each run whose record says so (Lowering::Run#ractors), the GBA
+    # lowering's among them. The others spread their tests over several processes instead
+    # (TestTask says how). The runs go one after the other so they never compete for a core.
     #
     # A test about one lowering's own output — the C the game is built as, say — goes in a folder
     # that lowering owns, and the other lowerings' runs never load it:
@@ -61,18 +61,18 @@ module VBlank
     # hardware can do goes in a folder that console owns, and only the runs playing games as that
     # console load it: `t.console_folders = { gbc: ["test/gbc"] }`. Every other test plays on all.
     #
-    # THE GOLDEN PATH, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
+    # The golden path, `rake test:golden`, is the files a list names (t.golden_list, test/golden.txt
     # unless set; a test file a line, from the folder t.golden_from names, the one rake runs in
     # unless set), and a share of the other test files drawn at random on each run (t.golden_sample,
     # GoldenSample::SHARE unless set), on every lowering that plays each. A game that keeps no such
     # file has no such task.
     #
-    # A RUN'S HEADING names what the run plays, and its task's line in `rake -T` shows the same. A game
+    # A run's heading names what the run plays, and its task's line in `rake -T` shows the same. A game
     # whose run holds its cartridge to something other than the interpreter (a port, to its retail
     # original) names that run's own, by lowering:
     # `t.headings = { genesis: "the game built as a Sega Genesis cartridge, checked against the original" }`.
     #
-    # A TASK FOR EACH FOLDER OF TESTS, with `t.groups = "test"`: `rake test:group:enemies` plays every
+    # A task for each folder of tests, with `t.groups = "test"`: `rake test:group:enemies` plays every
     # test beneath test/enemies/ on every lowering that plays each, and `rake test:group:enemies:bat`
     # those beneath test/enemies/bat/ (SuiteGroups). `t.broad_groups = { "doors" => %w[rooms
     # enemies/test_door*.rb] }` adds a group of tests from several folders.

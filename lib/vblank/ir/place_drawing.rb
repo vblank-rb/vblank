@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW A PLACE MADE OF FLAT FACES IS DRAWN, written once as statements every target runs
+    # How a place made of flat faces is drawn, written once as statements every target runs
     # (see Nodes::DrawPlace). A place is points in space and faces that join three or four of
     # them, and drawing it as a viewer sees it is, for each face:
     #
@@ -16,7 +16,7 @@ module VBlank
     #   - PROJECT each corner onto the screen. A point twice as far ahead looks half as far from
     #     the middle of the view, so how far right it lands is how far right it is divided by how
     #     far ahead it is, made bigger by how wide an angle the view shows.
-    #   - PASS OVER the face when the corners it was cut to lie wholly past one edge of its window
+    #   - Pass over the face when the corners it was cut to lie wholly past one edge of its window
     #     (see OUTCODE_EDGES).
     #   - SKIP the face when it is seen from behind (unless the place is drawn from both sides):
     #     its corners then go round the other way on the screen.
@@ -27,13 +27,13 @@ module VBlank
     # and asks where a doorway's corners land through the spot routine: the same turn and the same
     # projection as a corner's, so the window it builds fits the faces drawn to the pixel.
     #
-    # WHY THESE ARE STATEMENTS AND NOT A ROUTINE OF EACH TARGET'S OWN. Every target that works
+    # Why these are statements and not a routine of each target's own. Every target that works
     # the sums out itself runs these same statements, so every one of them turns, cuts and
     # projects each point to the same bits, and only the fill is written again for each. Every
     # number is a fraction with sixteen bits, as a game's fractions are, and every product and
     # quotient goes through Int32.mul_fix and Int32.div_fix, where the rounding is settled.
     #
-    # WHY NOTHING OVERFLOWS. A point and the viewer each stay within FURTHEST of the middle of
+    # Why nothing overflows. A point and the viewer each stay within FURTHEST of the middle of
     # the place, so a point is at most twice that from the viewer along each of the three
     # arrows, and how far it is along any one arrow is never more than its whole distance,
     # under the most a fraction holds. A corner can still land far off the screen, so where one
@@ -55,7 +55,7 @@ module VBlank
       POINT_STRIDE = 3
 
       # How far a point or the viewer may be from the middle of the place, either way, along
-      # each of the three arrows (see WHY NOTHING OVERFLOWS).
+      # each of the three arrows (see why nothing overflows).
       FURTHEST = 8_191
 
       # How much finer than a pixel a corner's place on the screen is kept: sixteenths.
@@ -72,7 +72,7 @@ module VBlank
       # The edges a face is held to, in the order a window gives them.
       CLIP_EDGES = %i[left top right bottom].freeze
 
-      # WHAT THE ROUTINE IS TOLD ABOUT THE VIEW: its edges in whole pixels, its middle in
+      # What the routine is told about the view: its edges in whole pixels, its middle in
       # sixteenths of one, how far a point one whole to the side at one whole ahead lands from the
       # middle (+focal+, sixteenths), the near limit (a fraction with sixteen bits), 1 when a face
       # is drawn from behind as well, how far apart a row's pictures are put in perspective
@@ -104,7 +104,7 @@ module VBlank
       # its corners are handed on (#whole_face_statements): true where the fill draws a row only where
       # an edge crosses its middle, as the interpreter's does.
       #
-      # A PLACE READ FROM A FILE AS THE GAME STARTS (Builder::PackPlaces): +faces+ and +points+ are
+      # A place read from a file as the game starts (Builder::PackPlaces): +faces+ and +points+ are
       # then the most it can have, and +faces_used+ names the table whose one entry is how many of
       # its faces are drawn, held to 0 to +faces+ as each drawing starts. Its numbers are the
       # player's, so +numbers_held+ holds each point number and picture slot a face names to those the
@@ -138,7 +138,7 @@ module VBlank
       def seen_list = name(:seen)
       def codes_list = name(:codes)
 
-      # WHAT A DRAWING KEEPS OF EACH POINT IT HAS MET, so that the faces sharing a point turn it
+      # What a drawing keeps of each point it has met, so that the faces sharing a point turn it
       # once between them, not once each. A point of a closed shape is a corner of three faces or
       # more, and turning it is most of what a face costs before it is filled.
       #
@@ -151,7 +151,7 @@ module VBlank
       # works it out then (#nearness_filled); written out four times, whether the drawing is in
       # perspective is one of TURN_PARTS instead, which costs no test a corner. The codes list keeps, for
       # each point, the number of the drawing that last turned it, its stamp, above the point's code
-      # (STAMP_SHIFT; see POINT CODES): a drawing counts one on (the drawing variable) when it sees the
+      # (STAMP_SHIFT; see point codes): a drawing counts one on (the drawing variable) when it sees the
       # place differently from the last (see TURN_PARTS), so a point whose stamp is not the count is
       # turned afresh. One list for both, so a face reads one number a corner to learn both.
       # Both start full of nought and the count starts at one, so nothing is read before it is
@@ -170,7 +170,7 @@ module VBlank
         Build.binop(:!=, Build.shift_right(Build.list_get(codes_list, number), STAMP_SHIFT), var(:drawing))
       end
 
-      # WHAT A POINT'S TURN IS WORKED OUT FROM: the viewer, and the parts of the view the point routine
+      # What a point's turn is worked out from: the viewer, and the parts of the view the point routine
       # reads (the near limit, the view's middle and how wide it is). A drawing that sees the place from
       # the same viewer through the same view as the last one to move the count on turns every point
       # the same, so it does not move the count on, and the points that one turned are read again rather
@@ -179,14 +179,14 @@ module VBlank
       # most points are turned once a frame, not once for each room and once more for the asking.
       # The window is not among them: it holds where faces are filled, not where points land.
       #
-      # THE NEAR LIMIT NEED NOT MATCH. Where a point lands does not depend on it; only whether the point
+      # The near limit need not match. Where a point lands does not depend on it; only whether the point
       # routine writes that down does (a point in front of the limit). So points turned with a nearer
       # limit than a drawing's hold everything that drawing reads, and only a drawing whose limit is
       # nearer than the one the points were turned with moves the count on for it. A game that asks
       # where points land with a limit of its own, nearer than its drawings', still turns each once.
       #
       # The view's edges are among them because each point's code is worked out against them (see
-      # POINT CODES).
+      # point codes).
       TURN_VIEW_PARTS = %i[near middle_x middle_y focal left top right bottom].freeze
       TURN_PARTS = [*VIEWER_PARTS, *TURN_VIEW_PARTS, :in_perspective].freeze
 
@@ -206,7 +206,7 @@ module VBlank
       # The variable the routine reads the viewer's +part+ from.
       def viewer_var(part) = name(:"viewer_#{part}")
 
-      # A SHAPE DRAWN WHERE THE GAME PUTS IT, facing the way the game asks (`draw_place ...,
+      # A shape drawn where the game puts it, facing the way the game asks (`draw_place ...,
       # at:, facing:`): one shape, a robot, drawn several times a pass, each where it is now. The
       # stance is a spot and three arrows, kept as a viewer's are (VIEWER_PARTS), the shape's own
       # right, up and ahead as they lie in the place.
@@ -228,7 +228,7 @@ module VBlank
       AXES = %i[x y z].freeze
       ARROWS = %i[right up ahead].freeze
 
-      # WHERE A SHAPE STANDS AND WHICH WAY IT FACES, as the game gave them: +spot+ three fraction
+      # Where a shape stands and which way it faces, as the game gave them: +spot+ three fraction
       # nodes (x, y, z), and +arrows+ three of three (right, up, ahead), or nil for a shape that faces
       # as the place was declared.
       Stance = Data.define(:spot, :arrows) do
@@ -252,7 +252,7 @@ module VBlank
 
       def stance_routine = name(:stance)
 
-      # A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE. A game draws its robots round the player,
+      # A shape wholly out of view is passed over whole. A game draws its robots round the player,
       # and at any moment most of them are behind the viewer or beside the view, where every one of
       # their points would be turned and every face found out of view, one by one, to draw nothing.
       # So a shape drawn at a spot is first tested as a ball holding all its points (Reach): its
@@ -262,9 +262,9 @@ module VBlank
       # makes either (a corner the cut makes lies between two points, so inside the ball). The old
       # first-person games did the same before turning a model's points.
       #
-      # THE TEST ONLY EVER LETS A SHAPE THROUGH WHEN IN DOUBT. A plane's test is the ball's middle
+      # The test only ever lets a shape through when in doubt. A plane's test is the ball's middle
       # measured from the plane, against the radius measured the same way. The viewer's arrows are
-      # taken as given (A SHAPE DRAWN WHERE THE GAME PUTS IT), and may not be of length one, so the
+      # taken as given (a shape drawn where the game puts it), and may not be of length one, so the
       # radius is stretched by each arrow's length, read as its three parts added without their
       # signs, which is never shorter. The planes stand REACH_MARGIN sixteenths of a pixel outside
       # the lines a face is told past by (OUTCODE_EDGES), for the rounding of a point's landing.
@@ -296,7 +296,7 @@ module VBlank
       # radius stretched by each of the viewer's arrows.
       def in_view_variables = [in_view_var, *ARROWS.map { |arrow| name(:"reach_#{arrow}") }]
 
-      # The reach test (A SHAPE WHOLLY OUT OF VIEW IS PASSED OVER WHOLE): the in-view variable set
+      # The reach test (a shape wholly out of view is passed over whole): the in-view variable set
       # to 1 when the ball +reach+ may show any of the shape, from the viewer the stance left in the
       # viewer variables and the view handed over.
       def in_view_statements(reach)
@@ -368,7 +368,7 @@ module VBlank
       # facing as the place does, move the viewer by the spot alone, three subtractions.
       #
       # The viewer is moved after it is handed over, so the count compares it with the one the points were
-      # last turned for (HANDED OVER UNCHANGED).
+      # last turned for (handed over unchanged).
       def stance_handover_statements(stance)
         moved = if stance.turned?
                   stance.parts.map { |part, node| Build.set(stance_var(part), node) } + [Build.call(stance_routine)]
@@ -380,7 +380,7 @@ module VBlank
         [*moved, handover_changed_statement]
       end
 
-      # HANDED OVER UNCHANGED. Every drawing and every `screen_spot` hands the routines the viewer and the
+      # Handed over unchanged. Every drawing and every `screen_spot` hands the routines the viewer and the
       # view, and the count then compares what it was handed with what the points were last turned for
       # (TURN_PARTS). A game of rooms asks where many corners land, and draws many rooms, all seen by one
       # viewer through one view between its moves, so most of those comparisons find nothing changed.
@@ -399,11 +399,11 @@ module VBlank
       # The statement saying the handover changed something, so the count is to run.
       def handover_changed_statement = Build.set(handover_changed_var, 1)
 
-      # The count, called after a handover only when the handover changed something (HANDED OVER UNCHANGED).
+      # The count, called after a handover only when the handover changed something (handed over unchanged).
       def count_statement = Build.if_(Build.var_ref(handover_changed_var), Build.call(count_routine))
 
       # The viewer whose variables are +sources+ (in VIEWER_PARTS' order) handed over, each part written
-      # only where it differs from what the routines hold (HANDED OVER UNCHANGED).
+      # only where it differs from what the routines hold (handed over unchanged).
       def viewer_handover_statements(sources)
         VIEWER_PARTS.zip(sources).map do |part, source|
           Build.if_(Build.binop(:!=, Build.var_ref(viewer_var(part)), Build.var_ref(source)),
@@ -426,7 +426,7 @@ module VBlank
       # bottom. The view's own edges, unless the game gave a window.
       def clip_var(edge) = name(:"clip_#{edge}")
 
-      # A FACE WHOLLY PAST ONE EDGE OF ITS WINDOW draws nothing, so it is passed over before it is
+      # A face wholly past one edge of its window draws nothing, so it is passed over before it is
       # tested for which way it faces or filled: a face beside the view, or behind a doorway's window,
       # is most of the faces of a place seen from inside, and a game of rooms draws each room through
       # the window its doorway makes. Every corner gets an outcode, a bit for each edge it is past
@@ -504,9 +504,9 @@ module VBlank
         end
       end
 
-      # POINT CODES: A FACE WHOLLY OUT OF VIEW IS PASSED OVER BEFORE ANY OF ITS CORNERS IS READ. The
+      # Point codes: a face wholly out of view is passed over before any of its corners is read. The
       # point routine gives each point it turns a code, kept in the codes list: a bit of OUTCODE_EDGES
-      # for each edge of the VIEW its place on the screen is past (the same lines, from the view's own
+      # for each edge of the view its place on the screen is past (the same lines, from the view's own
       # edges rather than a window's), or BEHIND_BIT alone for a point nearer than the near limit it
       # was turned with, which is put on no screen. A face reads its corners' codes before anything
       # else, and a bit all four share means the face draws nothing: all its corners behind the
@@ -518,11 +518,11 @@ module VBlank
       # put on the screen as it is, and the face goes to the fill as its four corners
       # (#whole_face_statements), with none of the cut's tests.
       #
-      # BOTH ANSWERS ARE EXACT, so the picture is the one the cut and the later test make. A face
+      # Both answers are exact, so the picture is the one the cut and the later test make. A face
       # passed over for edge bits has every corner in front, so it is not cut, and its corners are
       # the points the later test (OUTCODE_EDGES, or the Advance's fill) would find past that edge
       # of the window. But a point's BEHIND_BIT is from the near limit it was turned with, which can
-      # be nearer than the drawing's (THE NEAR LIMIT NEED NOT MATCH): then a point without the bit can
+      # be nearer than the drawing's (the near limit need not match): then a point without the bit can
       # still be behind the drawing's limit and be cut. So the count routine sets, for each drawing,
       # which bits pass a face over (rejecting codes) and which send it to the cut (cutting codes):
       # with the limits the same, every bit and BEHIND_BIT; with them different, BEHIND_BIT, and
@@ -534,7 +534,7 @@ module VBlank
       def code_line_var(side) = name(:"code_line_#{side}")
 
       # Each view edge's line for the points' codes, worked out by the count when the view was handed over
-      # changed (see POINT CODES).
+      # changed (see point codes).
       def code_line_statements
         OUTCODE_EDGES.map do |edge|
           Build.set(code_line_var(edge.side),
@@ -543,7 +543,7 @@ module VBlank
       end
 
       # The bits that pass a face over and that send it to the cut, worked out as each drawing starts,
-      # after the count (see POINT CODES).
+      # after the count (see point codes).
       def code_mask_statements
         same_near = Build.if_(Build.binop(:==, Build.var_ref(view_var(:near)), Build.var_ref(turn_var(:near))),
                               Build.set(name(:rejecting_codes), ALL_OUTCODE_BITS | BEHIND_BIT),
@@ -606,7 +606,7 @@ module VBlank
       # TURN_PARTS); each part that differs is kept for the next. The count routine's statements, which
       # every drawing of the place, and every `screen_spot`, calls where its handover changed something
       # (#count_statement). The near limit kept is the one the points were turned with, which the point
-      # routine reads (see THE NEAR LIMIT NEED NOT MATCH). Whether the points were turned in perspective,
+      # routine reads (see the near limit need not match). Whether the points were turned in perspective,
       # where it is kept, is the same: points turned with their nearness serve a drawing that reads none.
       def drawing_count_statements
         changed = name(:turn_changed)
@@ -669,7 +669,7 @@ module VBlank
       # One face's statements, the face whose number is in the face variable: turned, cut,
       # projected, tested and filled.
       #
-      # ONE TEST FOR ALL FOUR STAMPS. Each corner's point and code are read first, and the four
+      # One test for all four stamps. Each corner's point and code are read first, and the four
       # codes put together with AND, which is what tells a face out of view anyway. Every stamp is
       # a count no later than the drawing's own, so the stamps put together are the drawing's only
       # where every one of them is: then no corner is turned afresh, which is most faces, as a
@@ -705,7 +705,7 @@ module VBlank
          Build.set(name(:picture), Build.binop(:+, var(:slot), Build.list_get(slots_list, var(:slot))))]
       end
 
-      # A FACE WITH EVERY CORNER IN FRONT, drawn whole (see POINT CODES): each corner is its point as
+      # A face with every corner in front, drawn whole (see point codes): each corner is its point as
       # put on the screen, so it goes in the corner list where the cut would put it, and the face has
       # four corners. The test for which way it faces is the cut face's, written out for four corners:
       # the two parts of the cut face's sum that are measured from the first corner to itself are
@@ -788,7 +788,7 @@ module VBlank
          Build.set(turned_var(:code, k), Build.list_get(codes_list, number))]
       end
 
-      # THE SAME FACE WITH ITS CORNERS IN A LOOP, for a console whose processor runs its code from a
+      # The same face with its corners in a loop, for a console whose processor runs its code from a
       # small cache (Console::Description#code_cache_bytes). Written out four times over, the corners'
       # work is most of a face's code, and a face's code bigger than the cache is fetched from memory
       # again for every face; once, in a loop, it stays in the cache from one face to the next. Each
@@ -798,7 +798,7 @@ module VBlank
       # corners' codes are gathered as they are turned, both the bits all four share and the bits any
       # has: a face they mark as drawing nothing is passed over before its picture is read, and one with no
       # corner behind is drawn whole, in a loop of its own (#looped_whole_face), with none of the cut's
-      # tests (see POINT CODES).
+      # tests (see point codes).
       def face_loop_statements
         cut = cut_and_fill(Build.repeat(CORNERS, name(:corner), *looped_cut_edge))
         whole_or_cut = Build.if_(Build.binop(:==, Build.binop(:&, var(:face_reach), var(:cutting_codes)), 0), *looped_whole_face)
@@ -824,7 +824,7 @@ module VBlank
                    whole_or_cut)]
       end
 
-      # THE LOOP'S FACE DRAWN WHOLE, every corner in front (see POINT CODES): each corner its point as put
+      # The loop's face drawn whole, every corner in front (see point codes): each corner its point as put
       # on the screen, put in the corner list where the cut would put it, so the fill is handed the same
       # four corners. Which way it faces is summed as the corners go in, from where they land: each corner
       # from the third on adds the part of #front_test's sum for the edge from the corner before it,
@@ -994,7 +994,7 @@ module VBlank
       end
 
       # The bits of OUTCODE_EDGES the point just put on the screen, at land_x, land_y, is past, against
-      # the view's own edges (see POINT CODES).
+      # the view's own edges (see point codes).
       def point_code_bits = outcode_bits(var(:land_x), var(:land_y), ->(side) { Build.var_ref(code_line_var(side)) })
 
       # The nearness of the point just turned into the seen list at +place+: where the corners are worked

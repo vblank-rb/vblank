@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE FRAME A SONG STARTS ON SHOWS ITS COLOURS WHOLE. A song's first frame of music is the long one:
+# The frame a song starts on shows its colours whole. A song's first frame of music is the long one:
 # every part's first note is read, and a part on the wave voice writes its waveform. The colours a
 # pass changes are copied to the console in the blank after it, and the music's frame used to be
 # played first there, so on a song's first frame the colours went out part way down the screen and

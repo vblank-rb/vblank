@@ -4,7 +4,7 @@ require "test_helper"
 require "vblank/live"
 require "tmpdir"
 
-# SAVE STATES IN A GAME PLAYED LIVE (Session, and the window's menu and keys that ask for them): a
+# Save states in a game played live (Session, and the window's menu and keys that ask for them): a
 # device asks to save the game's state or load one, and the game does it between two frames and
 # plays on from there. The device here stands in for the window.
 class TestSessionStates < Minitest::Test

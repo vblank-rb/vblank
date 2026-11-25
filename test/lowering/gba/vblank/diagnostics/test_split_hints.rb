@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE THE TIME GOES INSIDE A ROUTINE TOO BIG FOR THE QUICK MEMORY.
+# Where the time goes inside a routine too big for the quick memory.
 #
 # A routine is kept in the console's quick memory whole or not at all, and one that grows past
 # the room runs entirely from the cartridge — though most of its time is usually spent in a
@@ -20,7 +20,7 @@ class TestSplitHints < Minitest::Test
       y = 0
       game_loop do
         if x == 99_999
-          2400.times { x += 1 }
+          2400.times { |n| x += 1 + (n.even? ? 5 : -5) }
         end
         busy = __LINE__ + 1
         repeat(300) { y += 1 }
@@ -60,7 +60,7 @@ class TestSplitHints < Minitest::Test
     builder = Builder.new
     builder.instance_eval do
       x = var :x, 0
-      game_loop { 2400.times { x += 1 } if x == 99_999 }
+      game_loop { 2400.times { |n| x += 1 + (n.even? ? 5 : -5) } if x == 99_999 }
     end
     builder.finalize_program
     result = VBlank::Diagnostics::Profiler.run(assemble_rom(builder.program, name: "IDLE"), frames: 10, picture: false)
@@ -68,7 +68,7 @@ class TestSplitHints < Minitest::Test
     assert_empty result.split_hints
   end
 
-  # A PART IS PICKED BY THE ROOM IT WOULD HAVE ITSELF. The room a `func` gets includes the
+  # A part is picked by the room it would have itself. The room a `func` gets includes the
   # routines kept that the run spent less time in, so a quieter part has less room than a busier
   # one: here the busy part A (5K) and the quieter part B (3K) both outgrow what each would get,
   # and the hint names A, saying it does not fit — not B, picked by A's room and then said not to.
@@ -88,7 +88,7 @@ class TestSplitHints < Minitest::Test
     assert(hints.all? { |hint| hint.fits == (hint.bytes <= hint.room) })
   end
 
-  # HOW LONG THE CONSOLE SPENT IN A SPAN is the time at every address the span covers. A span
+  # How long the console spent in a span is the time at every address the span covers. A span
   # written with two dots covers its end and one with three leaves it out; an address exactly on
   # the first edge is in; and a span with nothing in it is no time at all.
   def test_time_in_a_span_counts_the_addresses_it_covers
@@ -113,7 +113,7 @@ class TestSplitHints < Minitest::Test
     assert_equal 51, cycles.time_in(0...1000)
   end
 
-  # THE BUILD'S OWN RUN OF EACH SCENE only wants the routines' work, and nothing it warns from
+  # The build's own run of each scene only wants the routines' work, and nothing it warns from
   # reads a split hint; only the printed report says them. Working them out is a walk of every
   # address the run touched, so a scene played to measure it comes back without them.
   def test_a_scene_played_to_measure_it_comes_back_without_split_hints

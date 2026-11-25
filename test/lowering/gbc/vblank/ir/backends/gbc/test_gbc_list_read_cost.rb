@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE GAME BOY COLOR, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the Game Boy Color, `x = row[i]`, measured in the emulator: the
 # index tested against the list's length, HL pointed at the slot, the slot read and its sign spread
 # (KeptVariables#emit_list_slot_of_index, Lowering#emit_slot_widened_at_hl). The console's own code
 # reads a byte with HL on it, LD A,[HL], two machine cycles (Pan Docs, "CPU Instruction Set"); a list
@@ -30,6 +30,15 @@ class TestGBCListReadCost < Minitest::Test
 
       assert_operator cost, :<, bound, "a read at a #{index} costs #{cost.round(1)} cycles"
     end
+  end
+
+  # A slot named by a number written in the program, `x += a[1]`, costs what a variable read costs:
+  # measured 360 cycles each, the slot read at its address as a variable is.
+  def test_a_read_of_a_written_slot_costs_what_a_variable_read_costs
+    written = ListReadCostGames.cycles_a_read(:gbc, :written, FRAME_CYCLES, width: :word)
+    named = ListReadCostGames.cycles_a_read(:gbc, :named, FRAME_CYCLES, width: :word)
+
+    assert_operator written, :<=, named, "a written slot costs #{written.round(1)} cycles, a variable #{named.round(1)}"
   end
 
   HALF_BOUNDS.each do |index, bound|

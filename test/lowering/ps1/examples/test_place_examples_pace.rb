@@ -3,9 +3,9 @@
 require "test_helper"
 require "stringio"
 
-require VBlank.root.join("examples/two_rooms").to_s
-require VBlank.root.join("examples/cube3d").to_s
-require VBlank.root.join("examples/lit_corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/two_rooms").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/cube3d").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/lit_corridor").to_s)
 
 # How fast the examples that draw a place run on the PlayStation, measured in Beetle PSX
 # (Diagnostics::PS1Profiler): the frames each pass of the game loop takes, by the runtime's own count.

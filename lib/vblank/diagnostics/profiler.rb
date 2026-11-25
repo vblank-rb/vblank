@@ -7,20 +7,20 @@ require "stringio" # the throwaway first build of a measured one says nothing
 
 module VBlank
   module Diagnostics
-    # WHERE A GAME'S FRAMES ACTUALLY WENT, measured by running it.
+    # Where a game's frames actually went, measured by running it.
     #
     # This runs the finished cartridge on the emulator and writes down which instruction the
     # console was executing, over and over, then puts those addresses back against the names of
     # the routines the author wrote. Nothing is predicted and nothing is modelled: the numbers
     # are counts of what happened.
     #
-    # THE TWO HALVES IT NEEDS come from different places and neither can supply the other. The
+    # The two halves it needs come from different places and neither can supply the other. The
     # emulator knows where the console was and nothing about the program; the build knows where
     # every routine ended up and nothing about what ran. A routine kept in the console's quick
     # memory is why the second half cannot be recovered from the cartridge afterwards — it was
     # copied there when the game booted and runs nowhere near where it sits in the ROM.
     #
-    # WHAT IS NOT IN ANY ROUTINE gets a line of its own rather than being dropped or shared out.
+    # What is not in any routine gets a line of its own rather than being dropped or shared out.
     # It is mostly the console's own code: the routine it runs to divide, and the sleep at the
     # end of a frame. A profiler that quietly loses a fifth of a frame is worse than one that
     # says which fifth.
@@ -37,7 +37,7 @@ module VBlank
       # chose and often wants to know: the same routine is about two and a third times faster in
       # the console's quick memory than in the cartridge.
       #
-      # +share+ is its share of the INSTRUCTIONS run and +time_share+ its share of the TIME the
+      # +share+ is its share of the instructions run and +time_share+ its share of the time the
       # console was awake, and the two are told apart because a copy into video memory makes them
       # differ. The console's copy engine stops the processor until the copy is done, so a routine
       # that starts one runs a dozen instructions and can take most of a frame. Counted only by
@@ -59,14 +59,14 @@ module VBlank
         def to_h = detail ? { how: how.to_s, detail: detail.to_s } : { how: how.to_s }
       end
 
-      # WHETHER THE PICTURE HELD TOGETHER, on the frames that were looked at. +looked+ is how
+      # Whether the picture held together, on the frames that were looked at. +looked+ is how
       # many, +torn+ how many of those showed a seam, +worst+ the most rows one of them showed
       # before the game had finished them. nil where the screen cannot tear at all.
       Tear = Data.define(:looked, :torn, :worst) do
         def torn? = torn.positive?
       end
 
-      # HOW MANY FRAMES TO LOOK AT FOR A TEAR, and why it is a handful rather than all of them.
+      # How many frames to look at for a tear, and why it is a handful rather than all of them.
       # Reading one costs a bus read per pixel — 38,400 of them — where the profiling itself
       # costs nothing per frame. And a tear is not a rare accident: it is a frame that does more
       # drawing than fits in the gap between frames, so a game that tears tears steadily. A few
@@ -84,7 +84,7 @@ module VBlank
       # picture that holds still, which cannot flicker.
       FLICKER_SWAP_WAIT = 60
 
-      # THE FIRST PASS AFTER POWER-ON: how many breaks between pictures it ran through, each a
+      # The first pass after power-on: how many breaks between pictures it ran through, each a
       # picture later for the first picture, and how many lines before the next break it ended —
       # below nothing for one that ended a few lines into a break. Both nil for one still running
       # when the measuring stopped, which is said rather than left out: "we did not see it end"
@@ -97,9 +97,11 @@ module VBlank
 
       # A finished profile. +unattributed+ is the share that ran outside every routine the build
       # knows about.
-      # ONE KIND OF COPY INTO VIDEO MEMORY over the measured frames: what it is, how many times it
-      # ran, and the bytes it moved a frame, on average.
-      VideoCopyLine = Data.define(:source, :copies, :bytes_per_frame)
+      # One kind of copy into video memory over the measured frames: what it is, how many times it
+      # ran, the bytes it moved in all, and the bytes it moved a frame, on average. A copy is one
+      # run of the build's marked instruction, which may be one cell or a whole row of them, so
+      # what a test of how much was written asks is +bytes+.
+      VideoCopyLine = Data.define(:source, :copies, :bytes, :bytes_per_frame)
 
       # +late_passes+ is, for each pass of the game loop that ended inside a break between
       # pictures that began while it ran, how many lines sooner it had to end. Such a pass
@@ -114,7 +116,8 @@ module VBlank
                            :reached, :tearing, :flicker, :tick_rates, :sound_drops, :video_copies,
                            :late_passes, :split_hints, :list_touches, :late_hand_overs,
                            :pages_shown_at_once, :pages_shown_part_way, :power_on_pass, :colors_short,
-                           :sprites_left_out, :gap_overruns) do
+                           :sprites_left_out, :gap_overruns, :routine_lines, :gaps_into_picture,
+                           :gap_writes_missed, :went_wrong) do
         # +split_hints+ are the parts of routines that missed the quick memory worth making a
         # `func` of (see SplitHints), busiest first. +list_touches+ is how many times the run read
         # or wrote each list, by its name. +late_hand_overs+ are the scenes that run late on the
@@ -129,10 +132,20 @@ module VBlank
         # +sprites_left_out+ is how many rows were left out of the console's full table (see
         # .sprites_left_out_line), each one row on one frame; nil for a game whose rows fit it.
         # +gap_overruns+ are the passes whose gap after the wait ran past the next break (see
-        # GapOverrun), in the order they ran.
+        # GapOverrun), in the order they ran. +routine_lines+ are the routines `lines:` asked for,
+        # each with its time by line (see RoutineLines); empty where nobody asked. +gaps_into_picture+
+        # are the passes whose gap after the wait changed the display while the picture was drawn
+        # (see GapIntoPicture), in the order they ran; +gap_writes_missed+ how many runs of those
+        # changes the emulator had no room to keep, so a list cut short says so. +went_wrong+ is
+        # the number of what stopped the game in the run (IR::Backends::CartridgeFaults, kept where
+        # GBA::FaultStops keeps it), nought where nothing did, nil for a game that cannot stop so.
         def initialize(split_hints: [], list_touches: {}, late_hand_overs: [], pages_shown_at_once: 0,
                        pages_shown_part_way: 0, power_on_pass: nil, colors_short: nil, sprites_left_out: nil,
-                       gap_overruns: [], **rest) = super
+                       gap_overruns: [], routine_lines: [], gaps_into_picture: [], gap_writes_missed: 0,
+                       went_wrong: nil, **rest) = super
+
+        # Whether the game stopped in the run, as a push onto a full list stops it.
+        def stopped? = !went_wrong.nil? && went_wrong.nonzero?
 
         def dropping_frames? = fps < 59.5
 
@@ -146,11 +159,15 @@ module VBlank
             keys: keys.map(&:to_s), unattributed: unattributed, reached: reached.to_h,
             late_passes: late_passes, power_on_pass: power_on_pass&.to_h,
             gap_overruns: gap_overruns.map(&:to_h),
+            gaps_into_picture: gaps_into_picture.map(&:to_h), gap_writes_missed: gap_writes_missed,
             pages_shown_at_once: pages_shown_at_once,
             pages_shown_part_way: pages_shown_part_way, colors_short: colors_short,
             sprites_left_out: sprites_left_out,
             late_hand_overs: late_hand_overs.map { |late| { scene: late.scene.to_s, loads_first: late.loads_first } },
             split_hints: split_hints.map { |hint| hint.to_h.merge(routine: hint.routine.to_s) },
+            routine_lines: routine_lines.map do |routine|
+              routine.to_h.merge(routine: routine.routine.to_s, lines: routine.lines.map(&:to_h))
+            end,
             tearing: tearing && { looked: tearing.looked, torn: tearing.torn, worst: tearing.worst },
             flicker: flicker&.measured? ? { pixels: flicker.pixels, first: flicker.first } : nil,
             timers: tick_rates.select(&:measured?).map do |tick|
@@ -160,7 +177,7 @@ module VBlank
                                                     music_held: sound_drops.music_held,
                                                     voices: sound_drops.voices } : nil,
             video_copies: video_copies.map do |copy|
-              { source: copy.source, copies: copy.copies, bytes_per_frame: copy.bytes_per_frame }
+              { source: copy.source, copies: copy.copies, bytes: copy.bytes, bytes_per_frame: copy.bytes_per_frame }
             end,
             routines: lines.map do |line|
               { name: line.name.to_s, label: line.label, samples: line.samples,
@@ -172,10 +189,10 @@ module VBlank
       # Run +rom+ and report where its frames went. +keys+ are held for the settling and the
       # measured frames alike, because a game costs what the player makes it cost and a reading
       # with nothing held is a reading of a game standing still.
-      # +picture+ turns off the readings that look at the SCREEN rather than at where the time
+      # +picture+ turns off the readings that look at the screen rather than at where the time
       # went — whether the game tore, and whether it is losing half its drawing. Exactly one of
       # those two applies to any game (see {Flicker}), and both cost a bus read per pixel, which
-      # is the dearest thing here by a wide margin. The run the BUILD makes of itself to choose
+      # is the dearest thing here by a wide margin. The run the build makes of itself to choose
       # what goes in the quick memory wants the routine counts and nothing else, so it turns this down —
       # and the hand-over of each scene as well (see HandOvers), which it asks once itself.
       # +holding+ is words written before every frame, [address, value], to hold the game in a
@@ -193,8 +210,14 @@ module VBlank
       # +presses+ is a {ScenePresses}, what a scene's `measure_holding:` presses: played round
       # from the frame the game is put in its scene, on top of +keys+. Only a run held in a scene
       # (+holding+ or +scene:+) plays it.
+      #
+      # +lines+ asks which lines of a routine its time went to (see RoutineLines): a routine's
+      # name or a list of them (a `func`'s, a scene's, or :game_loop), or true for the busiest
+      # routines of the frames measured. nil asks for none.
       def self.run(rom, frames: FRAMES, settle: SETTLE, keys: [], scene: nil, from: nil,
-                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [], presses: nil)
+                   picture: true, holding: nil, starting: [], clock: nil, split_hints: true, press: [], presses: nil,
+                   lines: nil)
+        RoutineLines.refuse_unknown_routines!(rom, lines)
         routines = rom.built.routines
         loaded_sets = 0 # which scenes' own routines were in the quick memory; read as the run ends
         held = Array(keys)
@@ -204,7 +227,7 @@ module VBlank
         holding = scene_state(rom, scene) + Array(holding) if scene
         reached = how_reached(scene, from)
 
-        losses = Losses.new(sounds: rom.built.sound_drops, colors_short_at: rom.built.colors_short_at,
+        losses = Losses.new(sounds: rom.built.sound_drops, colors_short_at: rom.built.colors_short&.count_at,
                             sprites_left_out_at: rom.built.held_sprites&.left_out_at)
         gap_ends = gap_end_addresses(rom)
         profile, tearing, flicker, lost, counted = in_temp_rom(rom) do |path|
@@ -220,16 +243,17 @@ module VBlank
               else
                 profile_from_boot(probe, frames, settle, held, losses, pressed, gap_ends: gap_ends)
               end
-            # Looked at AFTER the profiling, from wherever it left the game — so the frames
+            # Looked at after the profiling, from wherever it left the game — so the frames
             # judged are the same frames that were measured, doing the same work.
             # A ternary rather than `picture && ...`: with the readings off these have to come
             # back nil ("not looked at"), and `false && ...` is false, which reads as a reading.
             program = rom.built.source_program
-            # READ BEFORE the picture is looked at, because looking at it steps the game on a
+            # Read before the picture is looked at, because looking at it steps the game on a
             # few more frames — and those frames are not the frames that were measured.
             lost_sounds = drops_in(probe, losses.sounds)
             counted = { colors_short: count_in(probe, losses.colors_short_at),
-                        sprites_left_out: count_in(probe, losses.sprites_left_out_at) }
+                        sprites_left_out: count_in(probe, losses.sprites_left_out_at),
+                        went_wrong: count_in(probe, rom.built.runtime[IR::Backends::GBA::Runtime::Frame::FAULT]) }
             loaded_sets = sets_in(rom, probe)
             routines = rom.built.routines_with_sets(loaded_sets)
             [measured,
@@ -251,23 +275,26 @@ module VBlank
                      tick_rates_in(profile, rom.built.timer_handlers), lost,
                      video_copies_in(profile, rom.built.video_copies, loaded_sets))
           .with(split_hints: split_hints ? SplitHints.of(profile, rom) : [],
+                routine_lines: lines ? RoutineLines.of(profile, rom, lines, routines: routines) : [],
                 list_touches: touches_by_list(profile.touches, rom.built.lists),
                 late_hand_overs: picture ? HandOvers.late(rom, keys: held) : [],
                 pages_shown_at_once: shown_at_once,
                 pages_shown_part_way: count_at_sites(profile, late_pages.select { |site| site[:tears] }, loaded_sets),
                 fps: pictures_per_second(profile, shown_at_once),
-                power_on_pass: power_on_pass, gap_overruns: gap_overruns, **counted)
+                power_on_pass: power_on_pass, gap_overruns: gap_overruns,
+                gaps_into_picture: GapIntoPicture.of(profile.passes),
+                gap_writes_missed: profile.gap_writes_missed, **counted)
       end
 
-      # WHERE EACH GAP AFTER A GAME LOOP'S WAIT ENDS, as the addresses a measured run watches (see
-      # Cartridge::BuildRecord#gap_ends). One in a scene's own routine is left out: its second
-      # address is another scene's code while that scene's set is in (see #video_copies_in), and
-      # which set is in is known only once the run is over.
+      # Where each gap after a game loop's wait ends, as the addresses a measured run watches (see
+      # Cartridge::BuildRecord#gap_ends). One in a scene's own routine is a place only while that
+      # scene's set is in, so it goes as [address, the set's number, where the word naming the sets
+      # in is], and the emulator counts an arrival there only while the word says the set is in.
       def self.gap_end_addresses(rom)
-        rom.built.gap_ends.reject { |site| site[:set] }.map { |site| site[:at] }
+        rom.built.gap_ends.map { |site| site[:set] ? [site[:at], site[:set], rom.built.scene_sets.loaded_at] : site[:at] }
       end
 
-      # A PASS WHOSE GAP AFTER ITS WAIT RAN PAST THE NEXT BREAK: the screen's updates done after the
+      # A pass whose gap after its wait ran past the next break: the screen's updates done after the
       # wait were not finished when the next break began, so that picture was lost there, however
       # many lines the pass had to spare when it went to sleep. +pass+ is which pass it was, counted
       # from one at the first the run saw; +lines+ how many lines into that break the gap ended (see
@@ -280,12 +307,74 @@ module VBlank
         end
       end
 
-      # NEW PICTURES A SECOND. The emulator counts the frames the game finished its work in by
+      # A pass whose gap after its wait changed the display while the picture was being drawn. The
+      # screen draws each row from the sprite table, the colours and the display registers as they
+      # stand when it reaches that row (GBATEK, "LCD I/O Display Control", "LCD OBJ - OAM
+      # Attributes"), so what the gap changes is meant to be changed in the break, before the first
+      # row. A gap that starts in the break and runs on into the picture changes them part way down:
+      # the rows above show the old sprites or colours and the rows below the new, and the picture
+      # tears. That can happen with the pass ending in good time and the gap ending long before the
+      # next break, so neither the late passes nor GapOverrun see it.
+      #
+      # +pass+ is which pass, counted as GapOverrun counts; +writes+ what changed late (LateWrite),
+      # one for each part of the display, in the order the gap first changed them.
+      GapIntoPicture = Data.define(:pass, :writes) do
+        def self.of(passes)
+          passes.each_with_index.filter_map do |pass, at|
+            writes = LateWrite.of(pass.gap_writes_in_picture)
+            new(pass: at + 1, writes: writes) unless writes.empty?
+          end
+        end
+
+        def to_h = { pass: pass, writes: writes.map(&:to_h) }
+      end
+
+      # Each part of the display a gap can change late, in the words the report gives it. The display
+      # registers are told apart by what they set (GBATEK, "LCD I/O"); one not named here is
+      # :display_settings.
+      LATE_WRITE_WORDS = { sprites: "the sprites", sprite_colors: "the sprites' colours",
+                           background_colors: "the backgrounds' colours", layers_shown: "which layers show",
+                           background_settings: "the backgrounds' settings",
+                           background_scroll: "the backgrounds' scroll",
+                           background_turn: "turned or stretched backgrounds", windows: "the windows",
+                           pixelation: "pixelation", blending: "blending and fades",
+                           display_settings: "the display settings" }.freeze
+
+      # The display registers by their offset from the start of the console's registers, and the
+      # part of LATE_WRITE_WORDS each is.
+      LATE_WRITE_REGISTERS = [[0x00..0x01, :layers_shown], [0x08..0x0F, :background_settings],
+                              [0x10..0x1F, :background_scroll], [0x20..0x3F, :background_turn],
+                              [0x40..0x4B, :windows], [0x4C..0x4F, :pixelation], [0x50..0x55, :blending]].freeze
+
+      # One part of the display a gap changed in the picture, and the rows the screen was drawing
+      # from the first change to the last. +part+ is one of LATE_WRITE_WORDS' keys.
+      LateWrite = Data.define(:part, :rows) do
+        # +writes+ (RubyGBAEmulator::Probe::GapWrite) as one LateWrite for each part, its rows from
+        # the first of them to the last.
+        def self.of(writes)
+          writes.group_by { |write| part_of(write.from) }.map do |part, runs|
+            new(part: part, rows: runs.map { |run| run.rows.first }.min..runs.map { |run| run.rows.last }.max)
+          end
+        end
+
+        def self.part_of(address)
+          case address >> 24
+          when 0x07 then :sprites
+          when 0x05 then (address & 0x200).zero? ? :background_colors : :sprite_colors
+          else LATE_WRITE_REGISTERS.find { |offsets, _| offsets.cover?(address & 0xFFFF) }&.last || :display_settings
+          end
+        end
+
+        def words = LATE_WRITE_WORDS.fetch(part)
+        def to_h = { part: part.to_s, rows: [rows.first, rows.last] }
+      end
+
+      # New pictures a second. The emulator counts the frames the game finished its work in by
       # whether it went to sleep in them, since a game that keeps up sleeps once a frame until
       # the screen comes round. A page shown at once although it was late is a new picture shown
       # without that sleep, so those count as well — at most one picture a frame, which is sixty.
       #
-      # COUNTED BY PASSES, NOT BY FRAMES THE CONSOLE SLEPT IN. Each pass of the game loop ends in a
+      # Counted by passes, not by frames the console slept in. Each pass of the game loop ends in a
       # sleep and makes one picture, and the emulator lists the passes (leaving out a wake that ran
       # only an interrupt's handler). Counting frames with a sleep in them counts a pass twice
       # wherever its sleep crosses from one measured frame into the next, which is what a pass that
@@ -305,7 +394,7 @@ module VBlank
         sites.reject { |site| site[:set] && loaded_sets[site[:set]].zero? }.sum { |site| profile.pc.fetch(site[:at], 0) }
       end
 
-      # WHICH SCENES' OWN ROUTINES WERE IN THE QUICK MEMORY, in a game that swaps them as a scene
+      # Which scenes' own routines were in the quick memory, in a game that swaps them as a scene
       # takes over (see Cartridge::BuildRecord::SceneSets): scenes' sets share one room, so
       # naming what ran there needs to know whose. Read as the run ends, a bit for each set in —
       # so a run held in a scene is named by that scene's set, and a run that crossed scenes by
@@ -316,7 +405,7 @@ module VBlank
         probe.read32(sets.loaded_at)
       end
 
-      # HOW MUCH THE GAME COPIED INTO VIDEO MEMORY, counted off the same histogram the routine
+      # How much the game copied into video memory, counted off the same histogram the routine
       # lines come from: the instruction that starts each copy runs once per copy, so its count
       # is the number of copies, and each one moves a number of bytes the build already knows.
       # Nothing is added to the cartridge to count them. A copy that never ran in the measured
@@ -333,11 +422,11 @@ module VBlank
           next if runs.zero?
 
           moved = sites.sum { |site| profile.pc.fetch(site[:at], 0) * site[:bytes] }
-          VideoCopyLine.new(source: source, copies: runs, bytes_per_frame: (moved / profile.frames.to_f).round)
+          VideoCopyLine.new(source: source, copies: runs, bytes: moved, bytes_per_frame: (moved / profile.frames.to_f).round)
         end.sort_by { |line| -line.bytes_per_frame }
       end
 
-      # WHAT THE MEASURED FRAMES LOST, counted off the console.
+      # What the measured frames lost, counted off the console.
       #
       # The counters run from the moment the game boots, and the frames before the measuring
       # starts are not the frames being reported on — a game settles, and a saved moment brings
@@ -354,14 +443,14 @@ module VBlank
       end
 
       # A count the console keeps in one word at +address+ — a sprite drawn in another list's
-      # colours because no group was left to lend its list (see Cartridge::BuildRecord#colors_short_at),
+      # colours because no group was left to lend its list (see Cartridge::BuildRecord#colors_short),
       # or a row left out of a full sprite table (#held_sprites) — or nil for a game that keeps
       # no such count.
       def self.count_in(probe, address)
         address && probe.read32(address)
       end
 
-      # THE COUNTS THE CONSOLE KEEPS OF WHAT A RUN LOST: the sounds that did not play (a
+      # The counts the console keeps of what a run lost: the sounds that did not play (a
       # SoundDrops table, or nil), where it counts sprites drawn in another list's colours (or
       # nil), and where it counts rows left out of a full sprite table (or nil).
       Losses = Data.define(:sounds, :colors_short_at, :sprites_left_out_at) do
@@ -379,11 +468,11 @@ module VBlank
         probe.write32(losses.sprites_left_out_at, 0) if losses.sprites_left_out_at
       end
 
-      # IS EACH TIMER DELIVERING THE RATE IT WAS ASKED FOR, counted off the same histogram the
+      # Is each timer delivering the rate it was asked for, counted off the same histogram the
       # routine lines come from. A handler's first instruction runs exactly once per tick it
       # answered, so the hits on that address are the ticks that arrived.
       #
-      # THE ELAPSED TIME IS HARDWARE FRAMES OVER SIXTY, and that is the whole care of it. A
+      # The elapsed time is hardware frames over sixty, and that is the whole care of it. A
       # timer ticks in real time whatever the game does, and interrupts preempt the main loop —
       # so a game running at thirty with a handler that keeps up delivers its full rate.
       # Measuring against passes of the game loop instead would report every frame-dropping
@@ -398,7 +487,7 @@ module VBlank
         end
       end
 
-      # IS HALF THE DRAWING BEING LOST — the tear-free screen's own version of the question
+      # Is half the drawing being lost — the tear-free screen's own version of the question
       # above, and the one only a run can answer.
       #
       # The build can see that a game keeps two pictures. It cannot see whether the game puts
@@ -406,7 +495,7 @@ module VBlank
       # on. Reading the picture on screen after four page swaps running settles it (see
       # {Flicker}).
       #
-      # READ AT A SWAP, NEVER AT A FIXED NUMBER OF FRAMES. A game whose pass takes several frames
+      # Read at a swap, never at a fixed number of frames. A game whose pass takes several frames
       # keeps its hidden page half drawn for frames on end — cleared at the bottom, say, and not
       # yet painted. Read then, that page disagrees with the one on screen and holds still across
       # a two-frame gap, which is what flicker looks like to the rule. But the player never sees
@@ -456,9 +545,9 @@ module VBlank
         end
       end
 
-      # DID THE PICTURE ACTUALLY TEAR — the question the build can only ask, not answer.
+      # Did the picture actually tear — the question the build can only ask, not answer.
       #
-      # The build records whether a game CAN tear, which is a fact about the screen it chose: a
+      # The build records whether a game can tear, which is a fact about the screen it chose: a
       # game that draws straight into the one picture the display is reading can, and a
       # double-buffered or tiled game cannot, however slow it is. Whether one that can does is a
       # race between the display's row and the game's, and only running it settles that.
@@ -480,25 +569,25 @@ module VBlank
         Reached.new(how: :boot, detail: nil)
       end
 
-      # MEASURE A MOMENT SOMEBODY PLAYED TO, which is the only fully general answer.
+      # Measure a moment somebody played to, which is the only fully general answer.
       #
       # Booting into a scene gives the routines that scene RUNS. It does not give the state that
       # makes the scene expensive: the boss scene with nothing spawned is not the boss fight. A
       # saved state carries both — the boss, its remaining health, and the twelve fireballs on
       # screen — and it is captured by playing to the moment once, in any emulator.
       #
-      # THE CATCH, AND IT IS HANDLED RATHER THAN HOPED ABOUT. A state is a snapshot of addresses,
+      # The catch, and it is handled rather than hoped about. A state is a snapshot of addresses,
       # and every one belongs to the exact cartridge it came from. Rebuild the game — change one
       # number — and everything has moved, so the state's addresses now point at whatever took
       # their place. That still reads as numbers, so it measures rubbish quietly, which is worse
       # than not running at all.
       #
-      # The emulator will not catch this for us: it refuses a state from a different GAME (it
-      # compares the title in the cartridge header) and accepts one from a different BUILD of the
+      # The emulator will not catch this for us: it refuses a state from a different game (it
+      # compares the title in the cartridge header) and accepts one from a different build of the
       # same game, which is the case that happens every time somebody edits a line. So the
       # cartridge's own checksum, which the state records, is compared here.
       #
-      # A BUILD IS DETERMINISTIC, which is what keeps this from being a nuisance: building the
+      # A build is deterministic, which is what keeps this from being a nuisance: building the
       # same source twice gives the same bytes, so simply re-running a build never costs anybody
       # their saved moments. Only a real change moves the addresses, and that is exactly when the
       # state has stopped meaning anything.
@@ -536,13 +625,13 @@ module VBlank
         probe.profile(frames: frames, keys: pressed, gap_ends: gap_ends)
       end
 
-      # RUN THE GAME UNTIL ITS FIRST PASS HAS ENDED, and at least +at_least+ frames. What a game
+      # Run the game until its first pass has ended, and at least +at_least+ frames. What a game
       # does before its first pass it does once: copying its pictures in, and looking every copy
       # of its save records over, which is a read of each byte and can take the console most of a
       # second. A window of frames that lands on that reads as a slow game, and a player who has
       # just turned the console on never sees it again.
       #
-      # WATCHED, NOT COUNTED, because how long it takes is the game's own: it grows with what the
+      # Watched, not counted, because how long it takes is the game's own: it grows with what the
       # records keep. A frame at a time, since all that asks is whether a pass ended in it. A game
       # that never ends a pass (one that halts at once) is given POWER_ON_LIMIT frames and measured
       # from there.
@@ -574,15 +663,15 @@ module VBlank
         [[address, value]]
       end
 
-      # HOLD THE GAME IN ONE SCENE AND MEASURE THAT, without playing it there.
+      # Hold the game in one scene and measure that, without playing it there.
       #
       # A profile of a title screen is a profile of the wrong thing, and holding a button will
-      # not get past one — a menu reads the press EDGE, so a held button is one press however
+      # not get past one — a menu reads the press edge, so a held button is one press however
       # long it is held. But which scene a game is in is just a variable, and the build knows
       # where that variable lives. So it is written, and the next frame is the scene asked for.
       #
-      # WRITING IT ONCE IS NOT ENOUGH, and finding that out is what this method is. A game left
-      # to itself LEAVES the scene almost at once: put snake into its playing scene with nobody
+      # Writing it once is not enough, and finding that out is what this method is. A game left
+      # to itself leaves the scene almost at once: put snake into its playing scene with nobody
       # holding a direction and the snake is dead within a few frames, so what gets measured is
       # the game-over screen under the playing scene's name. Measured on examples/snake_buffered.rb,
       # where every scene reported the same routines and the busiest one in the game — the
@@ -623,7 +712,7 @@ module VBlank
         end.reduce { |a, b| add_profiles(a, b) }
       end
 
-      # WHAT A SCENE IS PRESSED WHILE THE BUILD MEASURES IT, from the scene's `measure_holding:`.
+      # What a scene is pressed while the build measures it, from the scene's `measure_holding:`.
       # +frames+ is a list of the buttons down on each frame, played round: one frame for buttons
       # held the whole time, a tape's frames for a tape.
       ScenePresses = Data.define(:frames) do
@@ -657,11 +746,11 @@ module VBlank
                finished: a.finished + b.finished,
                pc: a.pc.merge(b.pc) { |_, x, y| x + y },
                cycles: a.cycles.merge(b.cycles) { |_, x, y| x + y }, late: a.late + b.late,
-               passes: a.passes + b.passes,
+               passes: a.passes + b.passes, gap_writes_missed: a.gap_writes_missed + b.gap_writes_missed,
                touches: a.touches.merge(b.touches) { |_, x, y| x + y })
       end
 
-      # HOW MANY TIMES THE RUN READ OR WROTE EACH LIST, by the list's name, out of the console's
+      # How many times the run read or wrote each list, by the list's name, out of the console's
       # count of every word touched. A list holds its items from its base, a whole word at a time,
       # in every slot it has (a list shifted from has more than its capacity). Its length, and the
       # place of its oldest where it keeps one, go wherever the list goes, and nearly every use of
@@ -682,13 +771,13 @@ module VBlank
       # longer than reading the largest save memory takes.
       POWER_ON_LIMIT = 300
 
-      # MEASURE THE WHOLE GAME, one scene at a time, and answer what it spends its frames on.
+      # Measure the whole game, one scene at a time, and answer what it spends its frames on.
       #
       # This is what lets the build measure rather than guess, with nobody having to play the
       # game first. A game keeps which screen it is on in a variable; the build knows where that
       # variable lives; so each scene is entered by writing it and then profiled.
       #
-      # THE SCENES ARE ADDED UP, each counted once. What is being decided is which routines are
+      # The scenes are added up, each counted once. What is being decided is which routines are
       # worth the console's quick memory, and what a routine is worth is the work it does over
       # the whole game — so one that runs on every screen counts once for each of them, and one
       # that carries a single screen counts that screen in full.
@@ -737,7 +826,7 @@ module VBlank
                    growths: growths, late_hand_overs: HandOvers.late(rom, keys: keys))
       end
 
-      # WHAT A WHOLE GAME MEASURED, scene by scene. +work+ is what the placement is decided
+      # What a whole game measured, scene by scene. +work+ is what the placement is decided
       # from; +scenes+ is each scene's own reading, kept because the build warns from it — a
       # game that misses 60 frames a second is worth saying so at build time, and the build has
       # just run it, so that costs nothing extra. +growths+ are the scenes that keep up as the
@@ -774,17 +863,17 @@ module VBlank
       # nothing, and the first few are where a reader would start anyway.
       COLLECTIONS_NAMED = 3
 
-      # WHETHER A SCENE KEEPS UP WITH EVERY COLLECTION FULL, measured: the scene again, with each
+      # Whether a scene keeps up with every collection full, measured: the scene again, with each
       # list and pool the game declared held at its capacity. Only a scene that keeps up as it
       # stands is asked — one that does not is already said, and full only makes it worse.
       #
-      # ONE RUN, HOWEVER MANY COLLECTIONS THE GAME HAS. Every build pays for this and a run plays
+      # One run, however many collections the game has. Every build pays for this and a run plays
       # the scene in the emulator, so holding each collection full on its own to see which does
       # it cost a game with dozens of them minutes on every build, for a warning it already had.
       # The run with all of them full counts what it read and wrote anyway (see #touches_by_list),
       # which is enough to say where to look.
       #
-      # WHAT THAT NAMES IS WHAT WAS USED MOST, NOT WHAT COST MOST. A long walk of cheap items
+      # What that names is what was used most, not what cost most. A long walk of cheap items
       # counts more than a short walk of dear ones, so the warning says "uses most" and leaves
       # `rom.profile` to say where the time went.
       def self.growth_in(rom, scene, writes, now, collections, frames:, keys:, presses: nil)
@@ -792,7 +881,10 @@ module VBlank
 
         full = run(rom, frames: frames, keys: keys, picture: false, split_hints: false,
                         holding: writes + collections.flat_map(&:writes), presses: presses)
-        return nil unless full.dropping_frames?
+        # Held full, a scene that adds to a list or pool without testing its size stops the game,
+        # as it would on the day it filled: that day it stops rather than slows, so there is no
+        # speed to warn of.
+        return nil if full.stopped? || !full.dropping_frames?
 
         Growth.new(scene: scene, reading: full,
                    collections: collections.one? ? collections : collections_used_more(collections, now, full))
@@ -870,7 +962,7 @@ module VBlank
                    sound_drops: sound_drops, video_copies: video_copies, late_passes: profile.late)
       end
 
-      # WHAT RAN THAT IS NOT A ROUTINE THE AUTHOR WROTE, named by where it ran rather than
+      # What ran that is not a routine the author wrote, named by where it ran rather than
       # lumped together, because the difference is the whole use of the line. Code in the
       # console's own memory is the BIOS — which on this machine means the divide routine
       # almost every time, and that is worth knowing, since a hot divide is something an
@@ -885,7 +977,7 @@ module VBlank
       # an address is the one it is counted to. Returns the routines and, separately, what fell
       # outside them grouped by the memory it ran in.
       #
-      # THE SPANS' EDGES CUT THE ADDRESSES INTO CELLS, and every address in one cell is covered by
+      # The spans' edges cut the addresses into cells, and every address in one cell is covered by
       # the same spans, so which routine a cell belongs to is worked out once — by the narrowest
       # span that covers it — and an address finds its cell by binary search. Looking through
       # every routine for every address cost most of a measured build of a big game. The tally is
@@ -931,7 +1023,7 @@ module VBlank
       # first, because that is the one worth looking at.
       def self.render(result, out: $stdout, rom: nil)
         printer = IR::Printer.for(out)
-        # WHAT THE BUILD MADE COMES FIRST, and it is here rather than under a verb of its own
+        # What the build made comes first, and it is here rather than under a verb of its own
         # because the two halves answer one question between them. The build says a routine
         # missed the quick memory by four tenths of a kilobyte; the run says that routine is
         # most of the frame. Either alone sends a reader the wrong way.
@@ -939,6 +1031,8 @@ module VBlank
           BuildReport.render(rom, out: out)
           printer.puts("")
           HiddenVariables.render(rom, printer)
+          CountedLoops.render(rom, printer)
+          InstanceVariableNumbers.render(rom, printer)
         end
         printer.puts("where your frames went, measured over #{result.frames} frames#{held_keys_suffix(result.keys)}")
         # Which moment this is of, said out loud: the same cartridge measured on its title screen
@@ -950,6 +1044,7 @@ module VBlank
         power_on_pass_line(result.power_on_pass, printer, result.frames)
         late_pass_line(result.late_passes, printer)
         gap_overrun_lines(result.gap_overruns, printer)
+        gap_into_picture_lines(result.gaps_into_picture, result.gap_writes_missed, printer)
         shown_at_once_line(result, printer)
         result.late_hand_overs.each { |late| printer.puts("  #{HandOvers.message(late)}") }
         tearing_line(result.tearing, printer)
@@ -965,9 +1060,34 @@ module VBlank
           printer.cost_line(label_for(line), "#{line.share}% of the instructions, #{line.time_share}% of the time")
         end
         split_hint_lines(result.split_hints, printer)
+        routine_line_lines(result.routine_lines, printer)
       end
 
-      # WHICH PART OF A ROUTINE THAT MISSED THE QUICK MEMORY TO MAKE A `func` OF (see
+      # How many lines of one routine the report names; the rest are counted together.
+      LINES_NAMED = 10
+
+      # Each routine `lines:` asked for, by line (see RoutineLines): its part of the frame, then
+      # each line with its part of the routine's time and of the frame's, busiest first.
+      def self.routine_line_lines(routines, printer)
+        routines.each do |routine|
+          printer.puts("")
+          printer.puts("  #{RoutineLines.words_for(routine.routine)}, by line: #{routine.frame_share}% of the frame's time")
+          width = routine.lines.first(LINES_NAMED).map { |line| line.source.length }.max.to_i
+          routine.lines.first(LINES_NAMED).each do |line|
+            printer.puts("    #{line.source.ljust(width)}  #{line.share}% of its time, #{line.frame_share}% of the frame's, " \
+                         "#{counted(line.instructions, 'instruction')} a frame")
+          end
+          rest = routine.lines.drop(LINES_NAMED)
+          unless rest.empty?
+            printer.puts("    #{counted(rest.size, 'more line')}: #{rest.sum(&:share).round(1)}% of its time")
+          end
+          next if routine.outside_lines_share.zero?
+
+          printer.puts("    entering and leaving it, outside every line: #{routine.outside_lines_share}% of its time")
+        end
+      end
+
+      # Which part of a routine that missed the quick memory to make a `func` of (see
       # SplitHints): said by the line that wrote it, with how much of the time it holds and
       # whether it would fit. Said only where there is such a part.
       def self.split_hint_lines(hints, printer)
@@ -1001,7 +1121,7 @@ module VBlank
         { quick_memory: "quick memory", cartridge: "cartridge" }.fetch(where, "somewhere else")
       end
 
-      # Said only about passes that ended late. A pass waits for the NEXT break between pictures,
+      # Said only about passes that ended late. A pass waits for the next break between pictures,
       # so one that ends a line after a break began sleeps a whole picture; said as how many lines
       # sooner it had to end, because that is what keeps the picture.
       def self.late_pass_line(late, printer)
@@ -1033,23 +1153,58 @@ module VBlank
 
       # The words for +overruns+, each a GapOverrun. A pass is named by its number in the run.
       def self.gap_overrun_message(overruns)
-        passes = overruns.map(&:pass)
-        named =
-          if passes.one? then "pass #{passes.first}"
-          elsif passes.size <= GAP_OVERRUNS_NAMED then "passes #{passes[0...-1].join(', ')} and #{passes.last}"
-          else "passes #{passes.first(GAP_OVERRUNS_NAMED).join(', ')} and #{passes.size - GAP_OVERRUNS_NAMED} more"
-          end
         lines = overruns.map(&:lines)
         lost = overruns.one? ? "there" : "each time"
-        "In #{named}, the screen updates after the wait ran #{lines_phrase(lines)} past the next break " \
-          "between pictures. So the game lost a picture #{lost}. Ending these updates " \
+        "In #{passes_named(overruns.map(&:pass))}, the screen updates after the wait ran #{lines_phrase(lines)} " \
+          "past the next break between pictures. So the game lost a picture #{lost}. Ending these updates " \
           "#{counted(lines.max, 'line')} sooner keeps the picture."
       end
+
+      # "pass 3", "passes 3, 4 and 9", "passes 3, 4, 5, 6, 7 and 12 more": +passes+ by number, the
+      # first GAP_OVERRUNS_NAMED of them named.
+      def self.passes_named(passes)
+        if passes.one? then "pass #{passes.first}"
+        elsif passes.size <= GAP_OVERRUNS_NAMED then "passes #{passes[0...-1].join(', ')} and #{passes.last}"
+        else "passes #{passes.first(GAP_OVERRUNS_NAMED).join(', ')} and #{passes.size - GAP_OVERRUNS_NAMED} more"
+        end
+      end
+
+      # Said only about passes whose gap after the wait changed the display on a row of the picture
+      # (see GapIntoPicture): what changed late, and the rows, across every such pass. Each one is a
+      # picture that can show a seam, however much time the pass had to spare.
+      # +missed+ is how many runs of changes the emulator had no room for; above nought, a line says
+      # the list is cut short.
+      def self.gap_into_picture_lines(gaps, missed, printer)
+        return if gaps.nil? || gaps.empty?
+
+        gap_into_picture_message(gaps).each_line(chomp: true) { |line| printer.puts("  #{line}", severity: :bad) }
+        return unless missed.to_i.positive?
+
+        printer.puts("  This list is not complete: there was no room for #{counted(missed, 'more run')} of changes.",
+                     severity: :bad)
+      end
+
+      # The words for +gaps+, each a GapIntoPicture: one line naming the passes, a line for each part
+      # of the display with the rows it changed on in all of them, and what to do.
+      def self.gap_into_picture_message(gaps)
+        parts = gaps.flat_map(&:writes).group_by(&:part).map do |part, writes|
+          rows = writes.map { |write| write.rows.first }.min..writes.map { |write| write.rows.last }.max
+          "  #{LATE_WRITE_WORDS.fetch(part)}: #{rows_phrase(rows)}"
+        end
+        <<~WORDS.chomp
+          In #{passes_named(gaps.map(&:pass))}, the screen updates after the wait went on into the picture. The screen drew some rows before these changed, so the picture can tear:
+          #{parts.join("\n")}
+          These must change in the break between pictures. Do less work between pictures, or do a big copy over more frames.
+        WORDS
+      end
+
+      # "row 20", "rows 20 to 31".
+      def self.rows_phrase(rows) = rows.first == rows.last ? "row #{rows.first}" : "rows #{rows.first} to #{rows.last}"
 
       # "3 lines", "1 to 9 lines": the least and the most of +lines+.
       def self.lines_phrase(lines) = "#{lines.minmax.uniq.join(' to ')} #{lines.max == 1 ? 'line' : 'lines'}"
 
-      # HOW CLOSE THE FIRST PASS AFTER POWER-ON CAME TO ONE MORE BREAK, said only on a run that saw
+      # How close the first pass after power-on came to one more break, said only on a run that saw
       # it whole. The setting up is in that pass, so it is the one a game makes longer each time it
       # declares more. Setting up that runs through a break or two is a choice a game can make; a
       # pass that ends a few lines into a break is not, since it loses a whole picture for those
@@ -1120,7 +1275,7 @@ module VBlank
       # neither does one too slow to judge over the window — a reading nobody could take must
       # never read as a clean one.
       #
-      # WHAT IT DOES NOT CLAIM, and why it is worded as a fact rather than a fault. The ticks
+      # What it does not claim, and why it is worded as a fact rather than a fault. The ticks
       # are counted, so the shortfall is real. Its CAUSE is not decidable from this number: a
       # handler too long to finish between two ticks drops them, and so does drawing, because a
       # transfer stalls the console and holds interrupts off while it runs — measured, an
@@ -1141,7 +1296,7 @@ module VBlank
       # and neither does a game that plays no samples — "we could not tell" must never read as
       # "nothing was wrong".
       #
-      # THE SPLIT IS THE SECOND LINE because it is the only part the author can act on. How many
+      # The split is the second line because it is the only part the author can act on. How many
       # voices were sounding is not worth printing: a drop means all of them were, every time.
       # Who had them is what varies, and a song holding most of them is a decision somebody made
       # and can revisit — see {SoundDrops} for why this reports and does not warn.
@@ -1159,7 +1314,7 @@ module VBlank
         end
       end
 
-      # A SPRITE IN ANOTHER LIST'S COLOURS. The console lends the groups its sprites' own
+      # A sprite in another list's colours. The console lends the groups its sprites' own
       # colours leave over to the lists things on screen wear, and with more lists on screen at
       # once than groups the extra things are drawn in whatever a group holds. Said only when it
       # happened; a game that lends nothing has no count to say.
@@ -1172,7 +1327,7 @@ module VBlank
                      "lists at once, or give more of them the same list.")
       end
 
-      # SPRITES LEFT OUT OF A FULL TABLE. A game with more sprites than the console's 128 places
+      # Sprites left out of a full table. A game with more sprites than the console's 128 places
       # copies the ones that show into the table each frame, front to back, and with more than
       # 128 showing the ones furthest back are not drawn on that frame. Said only when it
       # happened; a game whose sprites fit the table has no count to say.
@@ -1200,7 +1355,7 @@ module VBlank
       # Said only on the screen where drawing can be lost — the tear-free one. Every other
       # screen says nothing, because "we did not look" must never read as "nothing was wrong".
       #
-      # The wording is the author's, not the hardware's: they are told what the player SEES
+      # The wording is the author's, not the hardware's: they are told what the player sees
       # (pixels that change every frame and are never put right), where to look, and the two
       # things that fix it. "Page" does not appear, because nobody has to know the word to
       # understand that a screen holding two pictures needs the drawing put in both.
@@ -1218,7 +1373,7 @@ module VBlank
         printer.puts("  this screen keeps two pictures and shows them in turn, so drawing that " \
                      "ADDS to what is already there reaches only one of them")
         printer.puts("  to fix this, draw the whole picture every frame — or, for a part that " \
-                     "changes now and then, use `keep_showing`")
+                     "changes now and then, use `redraw_on_change`")
       end
 
       def self.held_keys_suffix(keys) = keys.empty? ? "" : ", holding #{keys.map(&:to_s).join(' + ').upcase}"

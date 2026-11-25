@@ -2,8 +2,11 @@
 
 require "test_helper"
 require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
+# Loaded here, before any test, so PacmanFixture.build finds the example already in and never
+# loads it from inside a Ractor, which may not set a constant it cannot share.
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
-# THE CARTRIDGE BUILD'S RECORD OF ITS DATA (BuildRecord#data_assets): where each piece the build
+# The cartridge build's record of its data (BuildRecord#data_assets): where each piece the build
 # laid down after the code starts in the finished file, how it is packed and how big it is unpacked.
 # The Pac-Man port reads its facts from it (test/fixtures/pacman_port/).
 class TestBuildRecordDataAssets < Minitest::Test

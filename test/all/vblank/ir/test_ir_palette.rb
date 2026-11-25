@@ -206,9 +206,10 @@ class TestIRPalette < Minitest::Test
   def test_two_screens_given_different_colors_is_refused
     err = assert_raises(Palette::Conflict) do
       Palette.build(program do
+        var :state, 0
         scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
         scene(:b) { screen :bitmap, tear_free: true, colors: %i[black blue green] }
-        game_loop { case_var(:state) { when_val 0, :a; when_val 1, :b } }
+        game_loop { call({ 0 => :a, 1 => :b }, number: :state) }
       end)
     end
 
@@ -217,9 +218,10 @@ class TestIRPalette < Minitest::Test
 
   def test_the_same_colors_given_to_every_screen_is_fine
     pal = Palette.build(program do
+      var :state, 0
       scene(:a) { screen :bitmap, tear_free: true, colors: %i[black red] }
       scene(:b) { screen :bitmap, tear_free: true, colors: %i[black red] }
-      game_loop { case_var(:state) { when_val 0, :a; when_val 1, :b } }
+      game_loop { call({ 0 => :a, 1 => :b }, number: :state) }
     end)
 
     assert_equal 2, pal.size
@@ -247,7 +249,7 @@ class TestIRPalette < Minitest::Test
     assert_match(/300/, err.message)
   end
 
-  # The indexed screen holds a NUMBER per pixel where a picture holds a whole color, so a
+  # The indexed screen holds a number per pixel where a picture holds a whole color, so a
   # picture needs a second form before anything can draw it there.
   def test_a_picture_converts_to_the_numbers_its_colors_sit_at
     prog = program do

@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "brr_recordings"
 
-# A PORT HOLDS ITS RECORDINGS TO ITS ORIGINAL'S by reading the sound chip's own 64K of memory off the
+# A port holds its recordings to its original's by reading the sound chip's own 64K of memory off the
 # running cartridge (Verifier#sound_ram), beside its registers: the DSP's DIR register names the page
 # of the chip's table of recordings, four bytes an entry (where a recording starts, then where it loops
 # back to), and the entry a voice plays is the number in its SRCN register (fullsnes, "SNES APU DSP BRR

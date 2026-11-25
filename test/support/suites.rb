@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHICH FILES EACH RUN OF THIS SUITE LOADS, in one place, so the Rakefile and the tests read the
+# Which files each run of this suite loads, in one place, so the Rakefile and the tests read the
 # same answer. Which run is going is the library's to say (VBlank::Testing.lowering), as it is
 # for a game's own suite.
 #
@@ -17,7 +17,7 @@
 #                              is the interpreter, since every other run's player is a lowered
 #                              game checked against it
 #
-# A NEW TEST GOES IN test/all/. One that fails on a run whose console cannot do what it asks is
+# A new test goes in test/all/. One that fails on a run whose console cannot do what it asks is
 # written again for each run that can, in that console's or that lowering's folder, with the
 # game it plays kept once in a module both include. Each folder mirrors lib/ inside it.
 #
@@ -31,7 +31,7 @@ module TestSuites
   def self.console_dir(console) = "test/console/#{console}"
   def self.lowering_dir(lowering) = "test/lowering/#{lowering}"
 
-  # THE FOLDERS EACH LOWERING OWNS: its own, and for the run whose player is the interpreter the
+  # The folders each lowering owns: its own, and for the run whose player is the interpreter the
   # interpreter's. Only that lowering's run loads them.
   LOWERING_FOLDERS = Ractor.make_shareable(VBlank::Testing::Lowering::RUNS.to_h do |run|
     own = [lowering_dir(run.name)]
@@ -39,7 +39,7 @@ module TestSuites
     [run.name, own]
   end)
 
-  # THE FOLDER EACH CONSOLE OWNS, loaded by every run that plays games as that console (the
+  # The folder each console owns, loaded by every run that plays games as that console (the
   # Advance's by the GBA lowering's run and by the native, JavaScript and Ruby runs playing as the
   # Advance) and by no other. test/all is nobody's, so every run loads it.
   CONSOLE_FOLDERS = Ractor.make_shareable(VBlank::Testing::Lowering::RUNS.map(&:console).uniq.to_h do |console|

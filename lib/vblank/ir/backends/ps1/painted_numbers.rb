@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # A PAINTED SCREEN KEPT AS COLOUR NUMBERS, for a game that fades or tints it. The interpreter fades
+        # A painted screen kept as colour numbers, for a game that fades or tints it. The interpreter fades
         # a painted screen as it is shown and changes nothing drawn (Reference::Framebuffer#shown), so the
         # picture comes back whole when the fade lifts. The PlayStation's pages hold whole colours, and its
         # graphics chip blends by rules of its own that round differently from the interpreter's
@@ -14,7 +14,7 @@ module VBlank
         # (Runtime::Paint's rt_paint_numbers_shown), the table walked by the fade or tint in force as a
         # screen drawn from tiles walks its tables (Runtime::Colors).
         #
-        # A NUMBER IS A COLOUR TO THE CHIP: it is drawn by the same fills and pictures as a colour. Number n
+        # A number is a colour to the chip: it is drawn by the same fills and pictures as a colour. Number n
         # is the halfword n, the number in its low byte, and the copy reads the page as a picture of a byte a
         # pixel, two bytes a halfword (TextureMemory's 8 bits), at half the width it draws. The chip's rule
         # for which texel a pixel shows (PS1::PolygonFill) puts pixel x of a piece at byte 2x, the low byte,

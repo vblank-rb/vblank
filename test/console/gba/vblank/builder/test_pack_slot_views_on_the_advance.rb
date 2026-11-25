@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_slot_view_games"
 
-# ONE SLOT OF VIDEO MEMORY READ IN THREE SHAPES (PackSlotViewGames): sixteen-colour tiles by a
+# One slot of video memory read in three shapes (PackSlotViewGames): sixteen-colour tiles by a
 # ground, and through views a map of bytes over tiles of a byte a pixel by a layer that turns
 # behind it. The answer key is the same game with a slot of its own for each part, built
 # all-in-one. A build that reads its pack as the game starts is held to it too: only a build for
@@ -29,7 +29,7 @@ class TestPackSlotViewsOnTheAdvance < Minitest::Test
       spin = var :spin, 0
       game_loop do
         spin += 11
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
   end

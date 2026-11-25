@@ -17,7 +17,7 @@
 #   * HOW MANY SEATS — `players:` says how many players the game takes on each build. A game
 #     played on a computer (as C, in a web page, or as Ruby) reads sixteen controllers, and here
 #     it takes four; a cartridge reads the controllers its console has. The game says four once,
-#     and `most_players` hands that number back while the game is built, to make the walkers.
+#     and `max_players` hands that number back while the game is built, to make the walkers.
 #   * RANDOM COLOURS EVERYBODY AGREES ON — the colours come from the game's random numbers
 #     (`rand`), which start from the game's own `seed`. Nothing about them comes from outside
 #     the game, so the same presses pick the same colours every time, and two machines playing
@@ -27,21 +27,23 @@
 #   * WHICH ONE IS ME — in a match over a network, each machine shows an arrow over its own
 #     walker (`drawing_for_local_player` and `mark`), and the game stays the same on every machine.
 #
-# THE CONSOLES. It is for the Game Boy Advance and the Game Boy Color, as one player. Both
-# consoles read one controller, so a cartridge for either is a one-player walk round the meadow:
-# `players: { computer: 1..4, else: 1 }` says four seats on a computer and one on a cartridge,
-# and `most_players` makes the matching number of walkers. They are here rather than left
-# out because a game played on a computer is still built AS a console — its screen size and its
-# picture rules are that console's — so the computer builds of this game are the Advance's and
-# the Color's, laid out for each screen. The Super Nintendo (two controllers) is left out for now:
-# its cartridge cannot yet tell whether a second controller is plugged in, so it refuses
-# `players_connected`.
+# It is for the Game Boy Advance, the Game Boy Color, the Super Nintendo, the Sega Genesis and the
+# PlayStation. The Advance and the Color read one controller, so a cartridge for either is a
+# one-player walk round the meadow. The Super Nintendo, the Genesis and the PlayStation seat four:
+# the first controller, and three more in an adapter plugged into the second port (a Super
+# Multitap, a Sega Team Player, a PlayStation Multitap). With no adapter, the second port's own
+# controller is the second player, and the other two never join.
+# `players: { computer: 1..4, snes: 1..4, genesis: 1..4, ps1: 1..4, else: 1 }` says four seats on a
+# computer and on those three consoles and one on the other cartridges, and `max_players` makes the
+# matching number of walkers. A game played on a computer is still built AS a console — its
+# screen size and its picture rules are that console's — so the computer builds of this game are
+# each console's, laid out for its screen.
 #
 # Players do not block each other: two walkers can stand in the same place, and one walks
 # straight through another. Two players may also be given the same colour, as two dice can
 # land the same way.
 #
-# Run it to build examples/wanderers.gba and examples/wanderers.gbc:
+# Run it to build examples/wanderers.gba, .gbc, .sfc, .gen and .exe:
 #   ruby examples/wanderers.rb
 # or play four on a computer, with a controller each (the first controller is player 1, the next
 # player 2, and so on), or two at one keyboard: player 1 on the arrows, player 2 on I J K L:
@@ -50,8 +52,9 @@
 require_relative "../lib/vblank"
 
 module Wanderers
-  # The most players a computer build seats. A cartridge seats one.
-  SEATS_ON_A_COMPUTER = 4
+  # The most players a computer build seats, and a Super Nintendo, a Genesis or a PlayStation with an
+  # adapter in its second port. The other cartridges seat one.
+  MAX_SEATS = 4
   SPEED = 1 # pixels a frame
   SIZE  = 8 # a walker is one 8x8 tile
 
@@ -116,13 +119,16 @@ module Wanderers
     ........
   ART
 
-  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc], players: { computer: 1..SEATS_ON_A_COMPUTER, else: 1 }) do
+  GAME = VBlank.game("WANDERERS", consoles: %i[gba gbc snes genesis ps1],
+                                  players: { computer: 1..MAX_SEATS, snes: 1..MAX_SEATS,
+                                             genesis: 1..MAX_SEATS, ps1: 1..MAX_SEATS, else: 1 }) do
     screen :tiled # a background for the meadow, and the console's own sprites for the walkers
     here = Layout.new(width: screen_width, height: screen_height)
 
-    # How many walkers this build makes: four on a computer, one on a cartridge. It is the number
-    # `players:` gives this build, so no line below reads a player the build does not seat.
-    seats = most_players
+    # How many walkers this build makes: four on a computer, a Super Nintendo, a Genesis or a PlayStation, one on the other
+    # cartridges. It is the number `players:` gives this build, so no line below reads a player
+    # the build does not seat.
+    seats = max_players
 
     # Whether to mark which walker is this machine's own. A test that wants every machine of a match
     # to show one picture turns it off, since that mark is the one thing that differs.
@@ -176,7 +182,8 @@ module Wanderers
     # --- the walkers: one picture, worn in different colours ---
     # `colors:` is the walker's own list, see-through first. A list given to `draw_with` swaps
     # colours BY PLACE, so a list whose second colour is red draws the walker's body red and
-    # keeps its eyes black.
+    # keeps its eyes black. Eight lists are more than some consoles keep apart at once, and the
+    # build of each makes them fit its way: the game names the lists, and that is all.
     image :walker, "." => :transparent, "#" => :gray, "o" => :black,
                    colors: %i[transparent gray black] do
       WALKER_ART
@@ -198,7 +205,7 @@ module Wanderers
     # on each machine of a match, so it may only change what is drawn: the block is held to drawing,
     # and nothing the game remembers can depend on it. A `mark` has no place of its own to remember;
     # it is shown over its walker, wherever the walker is, while the `if` around it holds. A
-    # cartridge seats one player, so it has no arrow to show.
+    # cartridge is played by one person at its own console, so the arrow is over the first walker.
     if show_you_mark && seats > 1
       image :you_arrow, "#" => :white, "." => :transparent do
         YOU_ARROW_ART

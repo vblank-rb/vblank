@@ -14,6 +14,27 @@ end
 require_relative "../lib/vblank/testing"
 require_relative "../lib/vblank/testing/in_ractors"
 require "support/suites"
+require "support/shareable_constants"
+require "tmpdir"
+require "fileutils"
+
+# Every constant a file here declares from now on is frozen all the way down as it is declared:
+# in a module of fixtures several test files share, a class of helpers or at the top of a file, as
+# well as in a test class (Minitest::Test below).
+VBlank::Testing::InRactors.share_constants_declared_in(__dir__)
+# Every `vblank run` a test starts keeps the games it writes out in a folder of the run's own
+# (Live::WrittenGames), never the person's, and the folder goes when the run ends. A test that
+# needs a folder of its own names one in the command's environment.
+#
+# Must be taken away by a finalizer, not an at_exit hook: minitest runs the tests from an at_exit
+# hook, and a hook registered after it runs first (Diagnostics::Verifier::SAVE_DIR says more).
+unless ENV.key?("VBLANK_WRITTEN_GAMES")
+  WRITTEN_GAMES_OF_THE_RUN = Dir.mktmpdir("vblank-written-games-").freeze
+  ENV["VBLANK_WRITTEN_GAMES"] = WRITTEN_GAMES_OF_THE_RUN
+  WRITTEN_GAMES_KEEPER = Object.new.tap do |keeper|
+    ObjectSpace.define_finalizer(keeper, ->(_) { FileUtils.remove_entry(WRITTEN_GAMES_OF_THE_RUN, true) })
+  end.freeze
+end
 
 # The one require a test file needs. It pulls in minitest and the library, and
 # hands every test the names and helpers that nearly all of them want, so a test
@@ -136,7 +157,7 @@ end
 # ancestors of the class it is used in, so `Reference` and `Color` resolve inside
 # any test with nothing declared in the file.
 #
-# It IS a monkey-patch of somebody else's class, which is worth knowing. The
+# It is a monkey-patch of somebody else's class, which is worth knowing. The
 # alternatives are a base class every test has to remember to inherit from, or
 # the per-file boilerplate this replaces. RSpec effectively does this too.
 #

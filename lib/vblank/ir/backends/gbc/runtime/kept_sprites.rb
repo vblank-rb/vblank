@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A SPRITE PLACED AS IT WAS ON THE PASS BEFORE IS LEFT AS IT IS (Lowering::Picture#
+          # A sprite placed as it was on the pass before is left as it is (Lowering::Picture#
           # emit_placing_unless_unchanged). The copy of the sprite table is not wiped between
           # passes: each pass writes its sprites into it from the top (rt_sprites_begin) and
           # switches off what is left past the last (rt_sprites_end). So a sprite whose numbers —
@@ -18,7 +18,7 @@ module VBlank
           # as the placing nearly: the game's code that writes one of them marks the sprite changed
           # as it writes (Lowering#store, #emit_sum), and only when it writes another number than
           # the one there. What each sprite keeps: where its entries began and ended in the table
-          # (START, FINISH), and in the list of what was drawn that a reader of the run takes it from
+          # (start, finish), and in the list of what was drawn that a reader of the run takes it from
           # (DRAWN_BEFORE, DRAWN_AFTER); the round of the table they were written in (ROUND_PLACED,
           # from ROUND: a pass that hides the sprites moves every entry, and starts a new round); two
           # marks, both set while it is placed as its numbers set (PLACED): one its place, one the

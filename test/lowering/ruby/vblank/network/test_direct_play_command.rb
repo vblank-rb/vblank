@@ -4,9 +4,10 @@ require "test_helper"
 require "open3"
 require "rbconfig"
 require "timeout"
+require "tmpdir"
 require "English"
 
-# `vblank run GAME --host` IN ONE PROCESS AND `--join ADDRESS` IN ANOTHER, over a TCP port on this computer,
+# `vblank run GAME --host` in one process and `--join address` in another, over a TCP port on this computer,
 # the way two people would play: the match, the plain words it says, and what happens to one when the
 # other is killed. They play with no window and hold buttons (--no-window, --keys), since a test has no one
 # at the keyboard. The pieces under it are tested without processes in test_direct_connection.rb.
@@ -62,6 +63,50 @@ class TestDirectPlayCommand < Minitest::Test
     [hosting, joining].each { |run| assert_match(/agreed on every checkpoint/, run.lines.join) }
   end
 
+  # A match in windows, each game built in a helper (Live::BuildHelper) and played in the window's own
+  # process, as a person plays one: SDL's dummy windows, which nobody sees. The game file notes each
+  # process that loads it: the command and its helper, on each computer.
+  def test_two_windows_play_one_match_each_game_built_by_a_helper
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      game = File.join(dir, "pair.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        VBlank.game("PAIR", consoles: %i[gba], players: { computer: 1..2, else: 1 }) do
+          screen :bitmap
+          x = 10
+          game_loop do
+            x += 1
+            clear_screen :blue
+            fill_rect x & 127, 10, 4, 4, :white
+          end
+        end
+      GAME
+      # Each computer keeps its written games in a place of its own, as two computers would.
+      in_window = lambda do |computer, *args|
+        windows = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                    "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games of #{computer}") }
+        io = IO.popen(windows, [RUBY, BIN, "run", game, *args, "--pictures", "40", "--settings-file", File.join(dir, "settings.txt"),
+                                { err: %i[child out] }])
+        Run.new(io, [], io.pid)
+      end
+      hosting = in_window.call("host", "--host", "0")
+      port = port_of(hosting)
+      flunk hosting.lines.join if port.nil?
+      joining = in_window.call("joiner", "--join", "127.0.0.1:#{port}")
+
+      joined = joining.finish
+      hosted = hosting.finish
+
+      assert_predicate joined, :success?, joining.lines.join
+      assert_predicate hosted, :success?, hosting.lines.join
+      [hosting, joining].each { |run| assert_match(/agreed on every checkpoint/, run.lines.join) }
+      loaded = File.readlines(pids).map(&:to_i)
+      assert_equal 4, loaded.size, "each command and each helper loaded the game"
+      assert_equal 2, (loaded - [hosting.pid, joining.pid]).uniq.size, "two helpers built the game"
+    end
+  end
+
   def test_a_killed_process_is_a_player_who_left_and_the_other_goes_on
     hosting = host("--pictures", "3000", "--keys", "right")
     port = port_of(hosting)
@@ -76,6 +121,25 @@ class TestDirectPlayCommand < Minitest::Test
     refute_nil said, "the host said a player left: #{hosting.lines.join}"
     assert_predicate hosted, :success?, hosting.lines.join
     assert_match(/The match is over/, hosting.lines.join)
+  end
+
+  # The host is the room, so with it killed the two who joined cannot reach each other, nor agree which
+  # pass was the host's last: each stops, and says why, rather than each playing on its own way.
+  def test_a_killed_host_stops_the_match_for_both_who_joined_saying_why
+    hosting = host("--players", "3", "--pictures", "100000", "--keys", "right")
+    port = port_of(hosting)
+    joining = %w[left up].map { |key| start("--join", "127.0.0.1:#{port}", "--no-window", "--pictures", "100000", "--keys", key) }
+    joining.each { |run| run.read_until(/The match has begun/) }
+    Process.kill("KILL", hosting.pid)
+    Process.wait(hosting.pid)
+
+    joining.each do |run|
+      status = run.finish
+
+      refute_predicate status, :success?, run.lines.join
+      assert_match(/The connection to the match closed/, run.lines.join)
+      refute_match(/\.rb:\d+:in/, run.lines.join, "no backtrace")
+    end
   end
 
   def test_joining_an_address_where_nobody_hosts_says_so_in_plain_words

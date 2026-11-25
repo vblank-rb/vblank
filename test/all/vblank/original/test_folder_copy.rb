@@ -5,7 +5,7 @@ require "digest"
 require "tmpdir"
 require "folder_original"
 
-# AN ORIGINAL WHOSE RELEASE IS SEVERAL FILES (Original::Release#files): its copy is the folder that
+# An original whose release is several files (Original::Release#files): its copy is the folder that
 # holds them, found and checked file by file (Original::Game#copy), and a data pack made from it
 # reads each file through copy.file. The answer key is FolderOriginal's fixture, whose pieces are
 # MadeUpOriginal's colours, tiles and heights.

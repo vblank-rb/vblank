@@ -2,14 +2,14 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/builder/test_save_data.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_save_data.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 # The Advance's cartridge playing these games in the emulator is in
 # test/lowering/gba/vblank/builder/test_save_data_on_the_advance_cartridge.rb, and the power cut
 # off part way through a save on flash, which only the interpreter can do, in
 # test/interpreter/vblank/builder/test_save_data_on_the_advance_interpreter.rb.
 #
-# SAVE DATA: a record is a group of the game's own state — variables and lists — kept in the
+# Save data: a record is a group of the game's own state — variables and lists — kept in the
 # cartridge's save memory when the game says so, and put back when the game says so. Unlike a
 # `save_var`, nothing is written until the game asks: a player who turns the console off
 # without saving finds the game as it was when they last saved.
@@ -32,10 +32,10 @@ module SaveDataOnTheAdvanceGames
     game_player(save: store).input_each_frame { |f| Array(pressing[f]) }.run(program, frames: frames)
   end
 
-  # ON FLASH A SAVE WIPES BEFORE IT WRITES, and a wipe takes long enough for the power to go
+  # On flash a save wipes before it writes, and a wipe takes long enough for the power to go
   # off in the middle of it. A wiped block, or half of one, is only ever the older half of a
   # copy, so wherever the power goes off the copy holds the save before or the save after.
-  # The save cut is the THIRD, so the half it wipes is one that held a save of its own.
+  # The save cut is the third, so the half it wipes is one that held a save of its own.
   private def one_file_on_flash
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(save_memory: 64))
     builder.instance_eval do
@@ -62,7 +62,7 @@ module SaveDataOnTheAdvanceGames
     builder.program
   end
 
-  # A RECORD KEEPS ITS PLACE WHEN THE GAME CHANGES AROUND IT. A game that ships and is then
+  # A record keeps its place when the game changes around it. A game that ships and is then
   # updated — a setting added, the records declared in another order, a fourth file — must
   # find the player's saves where the last build left them. Only a record whose own contents
   # changed reads as empty.

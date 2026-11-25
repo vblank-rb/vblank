@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE DATE AND TIME, READ AND SET BY THE GAME, on every console whose cartridge carries a clock: the
+# The date and time, read and set by the game, on every console whose cartridge carries a clock: the
 # Advance's and the Color's (a Super Nintendo cartridge built here carries none, and its build
 # refuses `clock`). Each console's folder has a test file that includes these, so they are written
 # once and played on every run that plays games as either console:
@@ -49,7 +49,7 @@ module ClockTests
   end
 end
 
-# SETTING THE CLOCK. `clock.set_to` keeps how far the time set is from the clock's own, in two
+# Setting the clock. `clock.set_to` keeps how far the time set is from the clock's own, in two
 # saved numbers, and every reading adds it on: so the time set is read at once, moves on as the
 # clock does, and is there the next time the game is switched on.
 module ClockSetToTests
@@ -143,7 +143,7 @@ module ClockSetToTests
                  readings_of(player).slice(:year, :month, :day, :weekday, :hour, :minute, :second))
   end
 
-  # THE TIME SET IS THERE THE NEXT TIME THE GAME IS SWITCHED ON: switched off for an hour, it
+  # The time set is there the next time the game is switched on: switched off for an hour, it
   # reads the time it set an hour on, plus the frames each run played.
   def test_the_time_set_comes_back_after_the_power_goes_off
     store = SaveImage.new(kilobytes: 32)

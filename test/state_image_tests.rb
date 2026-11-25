@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_recolor_several_lists"
 
-# THE STATE IMAGE OF THE C, JAVASCRIPT AND RUBY BUILDS (runtime/rg_state.h, Computer::StateFields):
+# The state image of the C, JavaScript and Ruby builds (runtime/rg_state.h, Computer::StateFields):
 # a game's whole state written at a frame boundary and read into a fresh run of the same build,
 # which then plays on frame for frame as the unbroken run did. Kept once here and played by each of
 # the three runs' own test file (test/lowering/{native,js,ruby}/), which says which build's
@@ -20,7 +20,7 @@ module StateImageTests
   FRAMES_ON = 120   # how many frames the run read from it plays on
   SPEAKERS = %i[left right].freeze
 
-  # A GAME OF EVERY KIND OF STATE THE IMAGE HOLDS SO FAR: variables, a list shifted round its ring,
+  # A game of every kind of state the image holds so far: variables, a list shifted round its ring,
   # a pool whose things come and go, random numbers, a timer and its handler, a press and a hold, a routine that waits for a frame
   # two calls deep, and save memory. It paints its whole picture every pass from those numbers, so
   # its picture says where it stands. It places its own waits (frame_sync: :manual), so the one in
@@ -103,7 +103,7 @@ module StateImageTests
     end
   end
 
-  # A GAME WHOSE PICTURE IS ITS HISTORY: it never clears, so each pass's square stays on the page it
+  # A game whose picture is its history: it never clears, so each pass's square stays on the page it
   # was drawn on, and only the state's copy of the pages can bring the picture back. On a tear-free
   # screen the squares fall on the two pages turn about. The window onto the picture moves too, a
   # square is drawn held inside an area that a frame ends within, and a sprite walks over the
@@ -143,7 +143,7 @@ module StateImageTests
     end
   end
 
-  # A GAME WITH A FADE, A TINT AND BLOCKS UNDER WAY: each is set only now and then, so for many
+  # A game with a fade, a tint and blocks under way: each is set only now and then, so for many
   # frames after the state the picture shows one the game set before it, which only the state's
   # copy of the drawing features brings back.
   private def effects_game(tear_free:)
@@ -190,7 +190,7 @@ module StateImageTests
     end
   end
 
-  # A GAME OF SCENERY DRAWN FROM TILES: a field scrolled only now and then, shown from its second
+  # A game of scenery drawn from tiles: a field scrolled only now and then, shown from its second
   # map since frame 25 and changed a cell at a time since, so after the state the picture shows a
   # scroll, a map and cells the game set before it. On the Advance a second background is held to a
   # box that moves now and then, in front of the field, bent row by row, and see-through by an
@@ -246,7 +246,7 @@ module StateImageTests
     assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: features))
   end
 
-  # A GAME OF THE RARER SCENERY: a wall told now and then to draw with other colours, whose cells
+  # A game of the rarer scenery: a wall told now and then to draw with other colours, whose cells
   # the game changes held together (`held: true`), under a status bar that moves now and then and
   # covers the ship for a while. Each pass waits five frames, so the state, taken in the middle of
   # one, holds what the pass set before it.
@@ -284,7 +284,7 @@ module StateImageTests
     builder.program
   end
 
-  # A BACKGROUND THAT TURNS now and then, on a screen that turns its scenery. The game hands its
+  # A background that turns now and then, on a screen that turns its scenery. The game hands its
   # turn over again every frame, so this shows the turned picture comes back, not that the state's
   # copy of the turn is needed.
   private def turned_scenery_game
@@ -299,7 +299,7 @@ module StateImageTests
       n = var :n, 0
       game_loop do
         n += 1
-        board.rotate(n * 7) if n % 6 == 1
+        board.rotate!(n * 7) if n % 6 == 1
         repeat(5) { wait_vblank }
       end
     end
@@ -319,7 +319,7 @@ module StateImageTests
     end
   end
 
-  # SCENERY THAT FOLLOWS SEVERAL LISTS THE GAME CHANGED LONG BEFORE THE STATE: two of its lists hold
+  # Scenery that follows several lists the game changed long before the state: two of its lists hold
   # other sets from early passes on and are never told again, and the background scrolls, so every
   # frame after the state is built from the tiles. The state holds the number each list holds and
   # not the tiles copied for it (rg_background_follow), so the run read from it shows the lists'
@@ -342,7 +342,7 @@ module StateImageTests
     other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
   end
 
-  # A GAME OF SPRITES THE FRAMEWORK DRAWS over scenery: a row of a dozen that crowds one line of
+  # A game of sprites the framework draws over scenery: a row of a dozen that crowds one line of
   # the screen, which a console that draws only so many on a line leaves some of out, a ship, and a
   # badge whose picture the game paints from a list. Each pass places them once and then waits seven
   # frames while the water scrolls, so the frames after the state, the middle of a pass, show the
@@ -390,12 +390,13 @@ module StateImageTests
     assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, features: %i[tiled sprites]))
   end
 
-  # A GAME THAT SOUNDS: a song on all four voices coming round, a part on each speaker, its volume
+  # A game that sounds: a song on all four voices coming round, a part on each speaker, its volume
   # turned down, faded and turned again, a sound effect over it, a beep that fades on the second
   # voice, a hit on the noise voice, the game's own waveform on the wave voice, and, on a console
   # that mixes recordings, a recording that loops and one that plays once. Mid-note, mid-effect and
-  # mid-recording at the state, and changed again after it.
-  private def sounding_game
+  # mid-recording at the state, and changed again after it. +on_timer+ counts the effect on a timer
+  # of 50 ticks a second (Audio::Score), whose count the state keeps too.
+  private def sounding_game(on_timer: false)
     mixes = VBlank::Console.described(game_console).recordings_at_once.positive?
     builder = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console, variant: VBlank::Testing.variant, frame_sync: :manual))
     builder.instance_eval do
@@ -409,7 +410,7 @@ module StateImageTests
         voice(:drums, plays: :noise) { note :C3, :quarter; rest :quarter; note :C5, :quarter, pan: :left; rest :quarter }
       end
       score = VBlank::Audio::Score
-      hit = score.new(tempo: 150, priority: 68, parts: [score::Part.new(volume: 12, notes: [
+      hit = score.new(tempo: 150, ticks_per_beat: on_timer ? 20 : 24, on_timer: on_timer, priority: 68, parts: [score::Part.new(volume: 12, notes: [
                                                          score::Note.new(at: 0, key: :E5, length: 20), score::Note.new(at: 20, key: :G5, length: 20)
                                                        ])])
       effects = sound_effects :sfx, { hit: hit }
@@ -454,7 +455,14 @@ module StateImageTests
   end
 
   def test_music_and_sound_under_way_come_back_from_the_state
-    program = sounding_game
+    assert_sound_comes_back(sounding_game)
+  end
+
+  def test_sound_effects_on_a_timer_come_back_from_the_state
+    assert_sound_comes_back(sounding_game(on_timer: true))
+  end
+
+  private def assert_sound_comes_back(program)
     unbroken_run = state_run.writing_state_after(STATE_AFTER)
     unbroken = sound_heard(unbroken_run, program, frames: STATE_AFTER + FRAMES_ON, from: STATE_AFTER)
     SPEAKERS.each { |side| refute unbroken[side].all?(&:zero?), "the game makes sound on the #{side}" }
@@ -499,7 +507,7 @@ module StateImageTests
     assert_plays_on_from(inside.state, program, seen, from: middle + 1, frames: 20)
   end
 
-  # A GAME WHOSE TIMER'S HANDLER WAITS, twice a tick, inside a loop of its own: a frame boundary can
+  # A game whose timer's handler waits, twice a tick, inside a loop of its own: a frame boundary can
   # come while the handler is stopped, part way through the timers, so the state holds where that walk is.
   # The handler draws a square where its turn has got to, and the game a square that moves.
   private def waiting_handler_game
@@ -613,6 +621,38 @@ module StateImageTests
     assert_equal VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false).map(&:name), runtime
   end
 
+  # A game given a screen of its own, whose second scene shows a smaller one: the state is taken in
+  # that scene.
+  private def scene_sized_game
+    VBlank.game("STATESIZE", consoles: [game_console]) do
+      screen :bitmap, size: [320, 200]
+      mode = :still
+      passes = 0
+      scene(:still) { screen :bitmap }
+      scene(:play) do
+        screen :bitmap, size: [240, 160]
+        draw_rect_at passes % 200, 10, 4, 4, :white
+      end
+      game_loop do
+        passes += 1
+        mode = :play if passes == 2
+        call mode
+      end
+    end.program(console: game_console, for_computer: true)
+  end
+
+  # ...keeps the size of screen it shows, in a version of the format of its own, so every other game's
+  # states read as they did; and a state of it plays on, showing the scene's size, in every build.
+  def test_a_game_given_a_screen_of_its_own_keeps_the_size_shown
+    program = scene_sized_game
+    unbroken, state = unbroken_with_state(program)
+
+    assert_equal "vblank-state #{VBlank::IR::Backends::Computer::StateFile::SCREEN_OF_ITS_OWN_VERSION}", state.lines[0].chomp
+    assert_runtime_fields(state, VBlank::IR::Backends::Computer::StateFields.kept(save_memory: false, screen_of_its_own: true))
+    assert_includes state, "screen.shown_size\t2 240 160"
+    other_runs.each { |other| assert_plays_on_from(state, program, unbroken, reader: other) }
+  end
+
   # The names of the fields the runtime visits by hand, leaving out the ones the build writes and
   # the file's own first lines, which are not fields.
   private def runtime_field_names(state)
@@ -631,7 +671,7 @@ module StateImageTests
     assert_includes error.message, this_build
   end
 
-  # THE FILE says first which version of the format it is, then which game and build wrote it, as
+  # The file says first which version of the format it is, then which game and build wrote it, as
   # the console and the build's fingerprint (Network::Fingerprint), and then holds the image.
   def test_a_state_starts_with_its_version_and_build
     program = state_game

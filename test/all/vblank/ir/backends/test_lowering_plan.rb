@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME WITH MORE THAN ONE FAULT IS REFUSED FOR THE SAME ONE ON EVERY CONSOLE: every cartridge
+# A game with more than one fault is refused for the same one on every console: every cartridge
 # lowering makes the shared refusals in the plan's one order (LoweringPlan#refuse_unbuildable!)
 # before any of its own. Each console's build is asked here directly, since no run's player plays a
 # refused game.
@@ -128,5 +128,47 @@ class TestLoweringPlan < Minitest::Test
         assert_match faults[first].last, error.message, "#{console}, fault #{first + 1} of #{faults.length}"
       end
     end
+  end
+
+  # --- which lists are made before anything can read or write them ---
+
+  private def lists_made_first(*statements)
+    program = BUILD.program(*statements)
+    Backends::LoweringPlan.new(program, console: VBlank::Console::ADVANCE, error: ArgumentError).lists_made_before_use
+  end
+
+  private def read_of(list) = BUILD.set(:got, BUILD.list_get(list, BUILD.int(0)))
+
+  # A list made first keeps its place though a timer's tick reads it and the game loop waits after.
+  def test_a_list_made_first_is_made_first_though_a_tick_reads_it
+    made = lists_made_first(BUILD.list_new(:rows, 4, full_of: 0), BUILD.timer_start(:clock, 60),
+                            BUILD.on_timer(:clock, read_of(:rows)), BUILD.loop_(BUILD.wait_vblank))
+
+    assert_includes made, :rows
+  end
+
+  # ...and a tick that can run before it is made, after a wait, reads it before then.
+  def test_a_list_made_after_a_wait_is_not_made_first_when_a_tick_reads_it
+    made = lists_made_first(BUILD.timer_start(:clock, 60), BUILD.on_timer(:clock, read_of(:rows)), BUILD.wait_vblank,
+                            BUILD.list_new(:rows, 4, full_of: 0), BUILD.loop_(BUILD.wait_vblank))
+
+    refute_includes made, :rows
+  end
+
+  # A routine called before the list is made reads it there.
+  def test_a_list_read_by_a_routine_called_before_it_is_made_is_not_made_first
+    made = lists_made_first(BUILD.func(:peek, read_of(:rows)), BUILD.call(:peek), BUILD.list_new(:rows, 4, full_of: 0),
+                            BUILD.list_new(:cols, 4, full_of: 0), BUILD.loop_(BUILD.call(:peek)))
+
+    refute_includes made, :rows
+    assert_includes made, :cols, "a list nothing before it names is made first"
+  end
+
+  # A list made in a routine is made each time the routine runs, and is never made first.
+  def test_a_list_made_in_a_routine_is_not_made_first
+    made = lists_made_first(BUILD.func(:start, BUILD.list_new(:rows, 4, full_of: 0)), BUILD.call(:start),
+                            BUILD.loop_(read_of(:rows), BUILD.wait_vblank))
+
+    refute_includes made, :rows
   end
 end

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PAINTED SCREEN THAT PAINTS AND SENDS ONLY WHAT CHANGED, on a plain cartridge (Paint).
+          # A painted screen that paints and sends only what changed, on a plain cartridge (Paint).
           #
           # A game on a painted screen usually clears it every pass and paints it all again: a menu
           # clears and writes its four rows, a score clears and writes its digits. Painting a tile of
@@ -39,7 +39,7 @@ module VBlank
           # four thousand million for each tile that changes; the hash is chosen so a small change
           # of a number (a place moved by one) changes the whole key.
           #
-          # THE MAP SENDS ONLY THE CELLS THAT CHANGED. A clear points every cell back at the clear
+          # The map sends only the cells that changed. A clear points every cell back at the clear
           # tile, and a tile painted in the new generation points its cell at itself again, so a
           # pass that paints the same tiles changes no cell. The cells of the tiles readied in a
           # generation (READIED) are looked at again when it ends, with those readied in this pass
@@ -107,12 +107,12 @@ module VBlank
             ENTRY_AGAIN = 38
             # Its hash (OP_HASH), so its tiles can take it in again without working it out.
             ENTRY_HASH = 40
-            # A PASS THAT DRAWS WHAT THE LAST ONE DREW. Most passes that clear the screen go on to
+            # A pass that draws what the last one drew. Most passes that clear the screen go on to
             # paint exactly what the pass before painted, in the same order: a menu standing still,
             # a screen of text. Writing each painting down and taking it into its tiles' keys costs
             # far more than asking whether it is the painting the last pass wrote down at the same
             # place in the log. So the first clear of a pass, to the colour the screen is cleared
-            # to already, is DEFERRED while the log the last pass left is whole (LAST_PASS_END: how
+            # to already, is deferred while the log the last pass left is whole (LAST_PASS_END: how
             # far it goes, or NO_LAST_PASS): the screen still shows the last pass, and each painting
             # the same as the one written down at LOG_END is passed over, LOG_END moved past it. A
             # pass that ends having matched the whole of the last pass's log changes nothing, and
@@ -158,7 +158,7 @@ module VBlank
             # bit alone, so one test finds either.
             KIND_LAYER = 4
             KIND_DEMOTED = 5
-            # A FILL WHOSE NUMBERS ALL HAVE A HIGH HALF OF NOUGHT, as the game knew while it was built
+            # A fill whose numbers all have a high half of nought, as the game knew while it was built
             # (a pixel or a rectangle at places written in the program): rt_paint_fill_small, given
             # only the low halves. Its entry's kind carries this bit, so a pass the same as the last
             # compares five words, not ten, to find it so; the kind is the bits below it.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/raycaster").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/raycaster").to_s)
 
 # examples/raycaster.rb built for the desktop shows the interpreter's picture pixel for pixel,
 # frame by frame, on a tear-free screen, while the player turns left, walks forward and turns

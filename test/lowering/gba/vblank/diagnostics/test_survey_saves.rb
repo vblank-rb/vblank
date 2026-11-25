@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# A MEASURED BUILD PLAYS A SAVE on each screen that saves. Nobody plays the game while it is
+# A measured build plays a save on each screen that saves. Nobody plays the game while it is
 # measured, so nobody saves, and the routines that write a save a piece a pass measured as
 # nothing: a game wanting them in the quick memory had to insist with `fast: true`, which put them
 # ahead of what every screen runs every frame. So each screen whose code saves is measured again
@@ -33,10 +33,7 @@ class TestSurveySaves < Minitest::Test
         files[0].save if pressed(:a)
       end
       game_loop do
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)

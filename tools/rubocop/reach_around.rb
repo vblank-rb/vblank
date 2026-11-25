@@ -9,14 +9,14 @@ return if defined?(RuboCop::Cop::VBlank::ReachAround)
 module RuboCop
   module Cop
     module VBlank
-      # A CALL MADE AROUND AN OBJECT, rather than to it by name: `send`, `public_send` or `__send__`
+      # A call made around an object, rather than to it by name: `send`, `public_send` or `__send__`
       # with the method's name as data, `method(:name)` handed on in place of the object, or an
       # object's instance variables read or written from outside it. Each hides the call from
       # anybody grepping for the method's name, and most reach past what the object chose to show.
       #
       # The fix is to call the method by its name: on the object (made public, if somebody outside
       # really asks it), through a block that calls it, or by a written-out `case` where the name
-      # comes from a table. Where reaching around IS the point, the way the plain-Ruby rewriter
+      # comes from a table. Where reaching around is the point, the way the plain-Ruby rewriter
       # applies the operator a game wrote, the file goes in this cop's Exclude in .rubocop.yml,
       # with a comment saying why.
       #

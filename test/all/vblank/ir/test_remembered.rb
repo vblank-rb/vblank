@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT IS WORKED OUT ABOUT A PICTURE IS WORKED OUT ONCE A CORE, by the picture's contents.
+# What is worked out about a picture is worked out once a core, by the picture's contents.
 class TestRemembered < Minitest::Test
   Remembered = VBlank::IR::Remembered
   Image = VBlank::IR::Assets::Image

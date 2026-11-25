@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EVERY LOWERING THAT CUTS ROUTINES MEASURES A RUN OF STATEMENTS THE SHARED WAY OR IS LISTED WITH ITS REASON: it
+# Every lowering that cuts routines measures a run of statements the shared way or is listed with its reason: it
 # takes MeasuredOnCopies#bytes_of, or it is in MeasuredOnCopies::OWN_WAYS with its reason, never
 # both. A lowering cuts routines when it keeps a LOWERING_STATE (RoutineCuts.for).
 class TestMeasuredOnCopies < Minitest::Test

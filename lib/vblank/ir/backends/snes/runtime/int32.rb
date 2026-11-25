@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE ARITHMETIC OF IR::Int32 that is too long to write where it is used: multiplying,
+          # The arithmetic of IR::Int32 that is too long to write where it is used: multiplying,
           # dividing, the remainder, shifting by a count worked out as the game runs, and the two
           # sums on numbers with a fraction. Adding, subtracting, the bitwise sums, turning a number
           # round and comparing are a handful of instructions each, and the lowering writes them
@@ -79,7 +79,7 @@ module VBlank
             # signed or not, so no signs are looked at. R0 is shifted left a place for every bit of R1,
             # and added to the product where that bit is one.
             #
-            # THE CONSOLE MULTIPLIES TWO BYTES BY ITSELF, in eight cycles, against a dozen
+            # The console multiplies two bytes by itself, in eight cycles, against a dozen
             # instructions a bit here. Most sums a game does are a small number by a byte, a row
             # by its width, so when one number is a byte and the other fits 16 bits it is two of
             # those: the byte by each half of the other, the second a byte up.
@@ -155,7 +155,7 @@ module VBlank
             # remainder from the top, and wherever the divisor goes into it, it is taken away and a
             # one goes into the quotient, which fills R0 from the bottom as the numerator leaves it.
             #
-            # A STEP THAT CAN ONLY GIVE NOUGHT NEED NOT BE WALKED. While what has come over into the
+            # A step that can only give nought need not be walked. While what has come over into the
             # remainder is less than the divisor, the divisor does not go in, so a step does nothing
             # but move one bit. When the numerator's top half is less than the divisor, the first
             # sixteen steps are all like that and the half moves across at once; and when that half
@@ -219,7 +219,7 @@ module VBlank
               emit_divide_by_byte(asm, s)
             end
 
-            # THE CONSOLE DIVIDES 16 BITS BY A BYTE BY ITSELF, in sixteen cycles, against dozens of
+            # The console divides 16 BITS BY A BYTE BY ITSELF, in sixteen cycles, against dozens of
             # instructions for a single bit here. So a divisor of a byte goes to it, and a numerator
             # too long for it goes as long division on paper does, with the remainder of each piece
             # coming down in front of the next: the top half first, then a byte, then a byte. Each
@@ -399,7 +399,7 @@ module VBlank
             # multiplied a byte by a byte on the console's multiplier, turned round when one of them
             # was negative, then shifted.
             #
-            # SIXTEEN PRODUCTS OF A BYTE BY A BYTE make the whole product, each added in where its
+            # Sixteen products of a byte by a BYTE make the whole product, each added in where its
             # two bytes' places put it: byte i of R0 by byte j of R1 lands i + j bytes up. Added one
             # 16-bit word at a time, a product lands on an even byte or an odd one; so the ones on
             # even bytes are added into one sum (the scratch's wide number) and the ones on odd
@@ -408,7 +408,7 @@ module VBlank
             # of a word is rare, and goes up a word at a time only as far as it must: neither sum
             # is more than the whole product, so it never goes past the top.
             #
-            # A BYTE OF NOUGHT IS SKIPPED. A number with a fraction is mostly small, so its top bytes
+            # A byte of nought is skipped. A number with a fraction is mostly small, so its top bytes
             # are nought: R1's are skipped a row at a time, and R0's, spread first into a word each
             # (the fraction scratch), one product at a time.
             #
@@ -511,7 +511,7 @@ module VBlank
             # a negative numerator. The two are made positive and divided, and the quotient turned
             # round when one of them was negative.
             #
-            # LONG DIVISION IN BASE 256, a byte of the quotient at a time, the way it is done on paper
+            # Long division in base 256, a byte of the quotient at a time, the way it is done on paper
             # (Knuth's Algorithm D). The divisor is moved up until its top bit is set, and the
             # numerator, widened by R2, is moved up as far again (the fraction scratch, a byte at a
             # time), which leaves the quotient as it was. Then, from the top: what has come down so
@@ -522,7 +522,7 @@ module VBlank
             # scratch's addend: the even products, then the odd) is taken away, and while that went
             # below nought the divisor is added back and the guess made one less.
             #
-            # A STEP THAT CAN ONLY GIVE NOUGHT IS SKIPPED. The steps start one byte above the
+            # A step that can only give nought is skipped. The steps start one byte above the
             # numerator's top four, since nothing above them can hold the divisor, and a step is a
             # compare when its top two bytes are less than the divisor's top byte, which then does
             # not go in. A quotient past 31 bits is held at the end of the range, so a byte of it

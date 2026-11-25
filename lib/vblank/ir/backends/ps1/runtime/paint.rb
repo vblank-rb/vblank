@@ -5,9 +5,9 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE PAINTED SCREEN: rectangles, pictures and the pages they are drawn into.
+          # The painted screen: rectangles, pictures and the pages they are drawn into.
           #
-          # WHERE THE PICTURE IS. The game's screen is the PlayStation's whole screen, 320 × 240
+          # Where the picture is. The game's screen is the PlayStation's whole screen, 320 × 240
           # (Console::PLAYSTATION's screen size, which the interpreter plays too), and the picture is
           # that rectangle of video RAM at its top left, a 15-bit colour a pixel, red in the low five
           # bits: the interpreter's own colours, so a colour lands exactly. A tear-free screen keeps a
@@ -16,7 +16,7 @@ module VBlank
           # x 320 holds the game's pictures (PS1::PaintedArt), and the 16 lines under each page their
           # colour tables (PS1::TextureMemory), copied in at power-on.
           #
-          # HOW IT IS DRAWN. The graphics chip draws whatever reaches its GP0 port, a command at a time;
+          # How it is drawn. The graphics chip draws whatever reaches its GP0 port, a command at a time;
           # the painted screen's commands go into the list the DMA hands to it (Runtime::DrawList). A rectangle of one colour is one command (GP0 60h), and a picture is a
           # textured rectangle for each piece of it (GP0 65h), each texel's colour copied as it is, read
           # from the piece's colour table where it has one (PS1::TextureMemory). Neither is
@@ -26,7 +26,7 @@ module VBlank
           # asked, and a number the game works out far off the screen never reaches the chip's 11-bit
           # corners.
           #
-          # THE AREA is [left, top, right, bottom], the right and bottom one past the last pixel, kept
+          # The area is [left, top, right, bottom], the right and bottom one past the last pixel, kept
           # to the screen; the whole screen until `inside` sets another. A rectangle is kept to it as
           # the interpreter keeps every pixel it paints (Reference::Framebuffer#paintable?).
           module Paint
@@ -53,7 +53,7 @@ module VBlank
             SHOWN_PAGE_Y = "rt paint shown page y"
             PASS_SHOWN_PAGE_Y = "rt paint pass shown page y"
 
-            # A SCREEN DRAWN BY NUMBER (PS1::PaintedNumbers) is drawn into the pages as any painted screen, and
+            # A screen drawn by number (PS1::PaintedNumbers) is drawn into the pages as any painted screen, and
             # shown from two pages of its own, right of them, from column PAGE_X: each pass's page is copied
             # there in its colours as the pass ends (rt_paint_numbers_shown), into the one not shown, which is
             # shown in the blank (SHOWN_COPY_PENDING). The copy reads the page through the colour table whose name
@@ -80,7 +80,7 @@ module VBlank
               [PAGE_X, NUMBERS_TABLE, SHOWN_COPY_PENDING].each { |name| memory.reserve(name, 4) } if shown_apart
             end
 
-            # THE ROUTINE THAT COPIES A PASS'S PAGE ONTO THE PAGE SHOWN, for a painted screen shown from pages of its
+            # The routine that copies a pass's page onto the page shown, for a painted screen shown from pages of its
             # own, from PAGE_X: a screen drawn by number (+by_number+, rt_paint_numbers_shown), or one with sprites
             # over it (+over_picture+, rt_paint_sprites_shown); nil for one shown from the pages it is drawn in.
             def shown_by(by_number:, over_picture:)
@@ -108,7 +108,7 @@ module VBlank
               emit_patches(asm, at)
             end
 
-            # SPRITES OVER THE PICTURE THE GAME PAINTS (`sprite ..., over_picture: true`) are drawn over it as it
+            # Sprites over the picture the game paints (`sprite ..., over_picture: true`) are drawn over it as it
             # goes to the screen and never into it (Reference#show_objects_over_picture): what the game paints stays
             # as it painted it, and a sprite that moves leaves nothing behind. So the screen is shown from pages of
             # its own, from PAGE_X, as one drawn by number is: as each pass ends its page is copied onto the page
@@ -205,12 +205,12 @@ module VBlank
             # if they changed (Colors' rt_colors_shown), and the page copied in its colours into the page shown
             # from PAGE_X that is not up, which the blank shows (rt_paint_flip).
             #
-            # THE COPY GOES IN THE LIST (Runtime::DrawList), after the pass's own commands, and is sent at once;
+            # The copy goes in the list (Runtime::DrawList), after the pass's own commands, and is sent at once;
             # the processor goes on to its wait while the chip draws it, and the blank waits for it to be drawn
             # before showing it. Sent to the chip's port a word at a time, the processor waited on the chip for
             # most of the copy, which kept it a fifth of every frame (rom.profile).
             #
-            # THE COPY is the page read as a texture of a byte a pixel through the table in NUMBERS_TABLE, in
+            # The copy is the page read as a texture of a byte a pixel through the table in NUMBERS_TABLE, in
             # pieces NUMBERS_PIECE_PIXELS pixels wide, each a texture page of its own, as two triangles (GP0 25h,
             # raw: each texel's colour from the table as it is, neither blended nor dithered). A piece reads
             # twice its width in bytes, two a halfword, so each pixel is one halfword of the page: the chip's
@@ -294,7 +294,7 @@ module VBlank
             PATCH_HEIGHT = 12
             PATCH_STATE_BYTES = 16
 
-            # THE PATCH UNDER A SPRITE on a painted screen: the screen under it saved before it is drawn, and
+            # The patch under a sprite on a painted screen: the screen under it saved before it is drawn, and
             # put back before it moves (Reference#exec_save_region, #exec_restore_region). The patch is kept in
             # video RAM beside the pictures, and both are one copy inside video RAM (GP0 80h), which the chip
             # makes without the processor touching a pixel.
@@ -384,7 +384,7 @@ module VBlank
               asm.jr(:ra) { asm.sw(:t0, area + AREA_BOTTOM_OFFSET_BYTES, :gp) }
             end
 
-            # ONE SIDE OF A RECTANGLE KEPT BETWEEN TWO EDGES, in place: +pos+ and +size+ (registers
+            # One side of a rectangle kept between two edges, in place: +pos+ and +size+ (registers
             # holding where it starts and how far it runs) between +low+ and +high+ (registers holding
             # the first place in and the first place past). Leaves where the part inside starts in
             # +start+ and how far it runs in +length+, and, when +skip+ names one, how far in from the
@@ -484,7 +484,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # A RECTANGLE KEPT TO THE AREA, both ways (#emit_clip): a0, a1, a2, a3 = x, y, width, height.
+            # A rectangle kept to the area, both ways (#emit_clip): a0, a1, a2, a3 = x, y, width, height.
             # Leaves the part inside as t5, t7 (its corner) and t6, t8 (its width and height), and how far
             # in from the rectangle's own corner that is as t4 and t9; jumps to +empty+ when nothing is
             # inside. Changes t0 to t3.
@@ -581,7 +581,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # TWO PAGES, OR ONE (Reference::Framebuffer#paged=).
+            # Two pages, or one (Reference::Framebuffer#paged=).
             #
             # rt_paint_screen: a0 = 1 for a tear-free screen, 0 for one page. Becoming tear-free, the page
             # drawn so far goes on being drawn into and the other page, black, is shown in front of it;
@@ -590,7 +590,7 @@ module VBlank
             # rt_paint_flip: at the frame boundary, once the blank has begun, a tear-free screen shows the
             # page just drawn and draws into the other. Only after a pass's wait (FLIP_OWED).
             #
-            # A SCREEN SHOWN FROM PAGES OF ITS OWN (+shown_apart+: drawn by number, or with sprites over it) never shows the pages it is drawn in: rt_paint_screen changes
+            # A screen shown from pages of its own (+shown_apart+: drawn by number, or with sprites over it) never shows the pages it is drawn in: rt_paint_screen changes
             # which page is drawn into and shows nothing, and rt_paint_flip trades the pages drawn into as it
             # does, then shows the page from PAGE_X its pass's copy went into (SHOWN_COPY_PENDING).
             def emit_pages(asm, at, shown_apart)
@@ -663,7 +663,7 @@ module VBlank
             # size in halfwords (height << 16 | width), where its halfwords are and how many words they
             # take; a nought after the last.
             #
-            # THE PIXELS GO BY DMA, not a word at a time from the processor. While the chip takes a copy
+            # The pixels go by DMA, not a word at a time from the processor. While the chip takes a copy
             # in, it signals it has room for another word only once it has had time to store the last, and
             # time does not move on for it while the processor only asks (Beetle PSX measured: a picture
             # sent a word at a time had not arrived after 600 frames). The DMA controller hands the chip

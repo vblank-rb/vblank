@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A CALL OF A ROUTINE IN THE CALLER'S OWN BANK, on the Color. Only a call into another bank must
+# A call of a routine in the caller's own bank, on the Color. Only a call into another bank must
 # go through the runtime's far call, which puts the routine's bank in view and the caller's back
 # after (Runtime::Calls); a routine already in view is called with a plain CALL, as the console's
 # own games call within a bank. Which bank each routine lands in is known only once the linker has

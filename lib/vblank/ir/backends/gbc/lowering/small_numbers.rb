@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # NUMBERS PROVEN TO STAY IN ONE OR TWO BYTES (Backends::NumberRanges), compared and worked
+          # Numbers proven to stay in one or two bytes (Backends::NumberRanges), compared and worked
           # at that width. Mixed into Lowering.
           #
           # The Color's processor works a byte at a time, so a comparison of two whole numbers is the
@@ -21,6 +21,54 @@ module VBlank
           # What every number means is unchanged: these give IR::Int32's answer.
           module SmallNumbers
             private
+
+            # A number from 0 to 255 times a number written in the program, the product proven to stay
+            # from 0 to 65535: the SM83 has no multiply, so the console's own games multiply a small
+            # number by a known one with shifts and adds, `add a, a` and `add a, c` a bit at a time in
+            # A, or `add hl, hl` and `add hl, de` in HL where the product needs two bytes (Pan Docs,
+            # "CPU Instruction Set"), where the runtime's rt_mul32_byte shifts and adds all four bytes
+            # for each of the factor's eight bits. What a loop folded from a Ruby `times` works its
+            # stepping numbers out with (`k * 5 + 2`, PlainRuby::Counts::KnownRounds). True when it
+            # was done so.
+            def emit_small_product(node)
+              [[node.rhs, node.lhs], [node.lhs, node.rhs]].each do |by, other|
+                factor = folded(by)
+                next unless factor&.between?(2, 0xFF) && !folded(other) && proven_within?(other, 0..0xFF)
+                next unless proven_within?(node, 0..0xFFFF)
+
+                emit_low_byte_in_a(other)
+                proven_within?(node, 0..0xFF) ? emit_byte_times(factor) : emit_half_times(factor)
+                @asm.load(:bc, 0)
+                return true
+              end
+              false
+            end
+
+            # E = A times +factor+, its bits walked from the top below the highest: double, then add
+            # the number once more where the bit is set. D nought.
+            def emit_byte_times(factor)
+              @asm.load(:c, :a)
+              factor.digits(2).reverse.drop(1).each do |bit|
+                @asm.add_a(:a)
+                @asm.add_a(:c) if bit == 1
+              end
+              @asm.load(:e, :a)
+              @asm.load(:d, 0)
+            end
+
+            # DE = A times +factor+, the same walk in HL.
+            def emit_half_times(factor)
+              @asm.load(:e, :a)
+              @asm.load(:d, 0)
+              @asm.load(:h, 0)
+              @asm.load(:l, :a)
+              factor.digits(2).reverse.drop(1).each do |bit|
+                @asm.add_hl(:hl)
+                @asm.add_hl(:de) if bit == 1
+              end
+              @asm.load(:e, :l)
+              @asm.load(:d, :h)
+            end
 
             # The carry set when +operand+'s number, proven small, is below +number+, a number written
             # in the program, and clear when not: true when it was done so. A number the range is all
@@ -48,20 +96,28 @@ module VBlank
                 @asm.sub_a(number & 0xFF)
                 @asm.load(:a, :h)
                 @asm.sbc_a(((number >> 8) & 0xFF) ^ 0x80)
+              elsif proven_within?(operand, NumberRanges::UNSIGNED_HALF) && number <= 0xFFFF
+                # Two bytes with no sign: the borrow out of the high byte is the carry.
+                low_value(operand, 2)
+                @asm.load(:a, :e)
+                @asm.sub_a(number & 0xFF)
+                @asm.load(:a, :d)
+                @asm.sbc_a((number >> 8) & 0xFF)
               else
                 return false
               end
               true
             end
 
-            # TWO SIDES OF A COMPARISON PROVEN TO FIT THE SAME BYTE OR TWO: [the width, :byte for
-            # two from 0 to 255, :signed_byte for two from -128 to 127, or :half for two that fit 16
-            # bits], or nil.
+            # Two sides of a comparison proven to fit the same byte or two: [the width, :byte for
+            # two from 0 to 255, :signed_byte for two from -128 to 127, :half for two that fit 16
+            # bits, or :unsigned_half for two from 0 to 65535], or nil.
             def small_sides_width(left, right)
               return :byte if [left, right].all? { |side| proven_within?(side, 0..0xFF) }
               return :signed_byte if [left, right].all? { |side| proven_within?(side, NumberRanges::BYTE) }
+              return :half if [left, right].all? { |side| proven_within?(side, NumberRanges::HALF) }
 
-              :half if [left, right].all? { |side| proven_within?(side, NumberRanges::HALF) }
+              :unsigned_half if [left, right].all? { |side| proven_within?(side, NumberRanges::UNSIGNED_HALF) }
             end
 
             # An ordering (<, <=, >, >=) of two sides proven small: [the one, the other, whether it
@@ -92,6 +148,7 @@ module VBlank
             # is worked out first and kept on the stack, as a sum of four bytes keeps its right side.
             def emit_carry_when_small_below(one, other, width)
               return emit_carry_when_half_below(one, other) if width == :half
+              return emit_carry_when_unsigned_half_below(one, other) if width == :unsigned_half
 
               emit_low_bytes_of_pair(one, other, 1)
               if width == :signed_byte
@@ -108,7 +165,7 @@ module VBlank
 
             # The zero flag set when +one+ and +other+, both proven small at +width+, are equal.
             def emit_zero_when_small_equal(one, other, width)
-              if width == :half
+              if %i[half unsigned_half].include?(width)
                 done = fresh("compared")
                 emit_low_bytes_of_pair(one, other, 2)
                 @asm.load(:a, :e)
@@ -131,6 +188,15 @@ module VBlank
               @asm.load(:a, :d)
               @asm.xor_a(0x80)
               @asm.load(:d, :a)
+              @asm.load(:a, :e)
+              @asm.sub_a(:l)
+              @asm.load(:a, :d)
+              @asm.sbc_a(:h)
+            end
+
+            # Two sides from 0 to 65535: the borrow out of the high bytes of +one+ less +other+.
+            def emit_carry_when_unsigned_half_below(one, other)
+              emit_low_bytes_of_pair(one, other, 2)
               @asm.load(:a, :e)
               @asm.sub_a(:l)
               @asm.load(:a, :d)

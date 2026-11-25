@@ -4,7 +4,7 @@ require "minitest"
 
 module VBlank
   module Testing
-    # FAIL_FAST=1: A RUN STOPS AT ITS FIRST FAILING TEST, for someone waiting on the answer. A whole
+    # FAIL_FAST=1: a run stops at its first failing test, for someone waiting on the answer. A whole
     # run takes a long while, and the first failure is usually what they came for.
     #
     # A reporter sees every result as it comes in, wherever the test was played, so this is one. It

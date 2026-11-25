@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SOUND EFFECTS WHOSE PARTS PLAY A RECORDING, on every console whose build mixes recordings for
+# Sound effects whose parts play a recording, on every console whose build mixes recordings for
 # its tunes: the Advance's and the Super Nintendo's. An effect's recorded note sounds on a voice
 # the effect owns, and shares the voices with the song and the game's own sounds by rank. Each
 # console's folder has a test file that includes these:
@@ -86,7 +86,7 @@ module SoundEffectRecordingGames
     game([every_ten_ticks(:C4, :E4, plays: :piano)]) { |sfx, pass| sfx.play 0 if pass == 3 }
   end
 
-  # RECORDED EFFECTS IN A GROUP: cut off, not played for a lower one, on a tie, and asked for
+  # Recorded effects in a group: cut off, not played for a lower one, on a tie, and asked for
   # again — whose each mixer voice is, the same on every backend.
   private def long_recorded(key, priority)
     Score.new(tempo: 150, priority: priority, group: :voice,
@@ -141,7 +141,7 @@ module SoundEffectRecordingGames
   end
 end
 
-# A SCORE PLAYED ONCE, AS A SOUND EFFECT, whose part plays a recording: its notes on voices of
+# A score played once, as a sound effect, whose part plays a recording: its notes on voices of
 # the mixer the effect owns, shared with the song and the game's own sounds by rank.
 module SoundEffectRecordingTests
   include SoundEffectRecordingGames
@@ -283,7 +283,7 @@ module SoundEffectRecordingTests
     assert_equal [[:"sfx.0", 0]], game_player.run(recorded_effect_asked_for_once, frames: 8).sound_owners
   end
 
-  # RECORDED EFFECTS IN A GROUP: whose each mixer voice is, frame by frame.
+  # Recorded effects in a group: whose each mixer voice is, frame by frame.
   def test_a_group_of_recorded_effects_decides_whose_each_voice_is
     recorded_pairs_and_owners.each do |program, moments|
       moments.each do |frames, owners|

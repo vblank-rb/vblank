@@ -26,7 +26,7 @@ module VBlank
       # too (`rake test:lowering:native` plays only that), checked against the interpreter on
       # every frame, so a feature is not done until it works here as well.
       #
-      # How it writes C, and why that way (doc/research/writing-c.md has the reading behind it):
+      # How it writes C, and why that way (docs/research/writing-c.md has the reading behind it):
       #
       # - The game's arithmetic lives in runtime/rg_int32.h, a C function for each thing
       #   IR::Int32 and the interpreter do with a number. C leaves several of the things a game
@@ -58,13 +58,12 @@ module VBlank
         # carries the windowless runtime too, so the program a player runs can be driven by a
         # test with --headless. It also carries the window's own settings (rg_window.c, plain C
         # with no SDL, tested on its own), the menu over the picture (rg_window_menu.c and its
-        # letters, rg_menu_font.c, with what the menu holds written out by MenuData), the emulator
-        # the console's own start-up runs in where the player has the BIOS (rg_bios_boot.c, with the
-        # start of the game's cartridge beside it, CartridgeStart), and the windows of keys and of
-        # the game's variables (rg_menu.cpp, Dear ImGui), which
-        # build/build.zig compiles itself since it is C++ and wants flags of its own: a desktop
-        # build always has them, and the builds a test makes of the game do not come through here
-        # at all.
+        # letters, rg_menu_font.c, with what the menu holds written out by MenuData, which also
+        # draws the window of the game's variables and what the window says over the picture),
+        # and the emulator the console's own start-up runs in where the player has the BIOS
+        # (rg_bios_boot.c, with the start of the game's cartridge beside it, CartridgeStart). All of
+        # it is C: a game that has no menu (menu: false) is built from the same files, its menu
+        # never opened.
         SHARED_RUNTIME = %w[rg_headless.c rg_refusal.c rg_runtime.c rg_save.c rg_screen.c rg_sound.c rg_state.c].freeze
         HEADLESS_RUNTIME = (["rg_headless_main.c"] + SHARED_RUNTIME).freeze
         FEATURES_FILE = "rg_runtime_features.h" # What rg_screen.c includes for the game's features (RuntimeFeatures#c_text)
@@ -80,16 +79,19 @@ module VBlank
 
         # The program built into a program with no window (runtime/rg_headless.c), and the
         # path to it. See that file for how it is run and what it prints. Built with zig on
-        # its own, with no SDL to fetch or compile, which is what keeps the tests quick.
-        def build_headless(program, mode: :checked)
-          lowering = Lowering.new(program, title: "VBlank")
+        # its own, with no SDL to fetch or compile, which is what keeps the tests quick. +seeded+
+        # builds in the routine that adds a seed handed to the program (`--seed`) to the game's random
+        # numbers (Computer::Lowering#mix_seed); the seed is not in the C, so the program is one for
+        # every seed.
+        def build_headless(program, mode: :checked, seeded: false)
+          lowering = Lowering.new(program, title: "VBlank", seeded: seeded)
           numbers = Computer::ConsoleNumbers.header(program.described_console) + Computer::StateFile.c_text(program)
           game = write_source(lowering.source_files, numbers, lowering.runtime_features)
           Zig.compile_without_sdl([game, *HEADLESS_RUNTIME.map { |file| File.join(Zig::RUNTIME_DIR, file) }],
                                   include: [File.dirname(game), RuntimeFeatures::ROOT], mode: mode)
         end
 
-        # THE OTHER COMPUTERS A GAME CAN BE BUILT FOR FROM THIS ONE, by the name a build asks for
+        # The other computers a game can be built for from this one, by the name a build asks for
         # each, and what zig calls it. zig carries the C library of each and SDL is compiled for
         # each from its own source, so nothing for them has to be installed here. Linux is held to
         # a C library from 2018, so the program also starts on an older system. A Mac cannot be
@@ -98,7 +100,7 @@ module VBlank
         TARGETS = Ractor.make_shareable({ windows: "x86_64-windows-gnu", linux: "x86_64-linux-gnu.2.28",
                                           linux_arm: "aarch64-linux-gnu.2.28" })
 
-        # +game+ built into ONE program with a window, written to +path+: the game checked as a
+        # +game+ built into one program with a window, written to +path+: the game checked as a
         # cartridge build checks it, written as C, and compiled with SDL3 by zig into an
         # executable that needs nothing installed beside it. The first build fetches SDL's source
         # and compiles it, which takes a while once; every build after that reuses it. +target+
@@ -216,7 +218,7 @@ module VBlank
             end
             File.write(File.join(src, MenuData::FILE), MenuData.source(menu: menu, states: states,
                                                                         buttons: program.described_console.buttons))
-            File.write(File.join(src, ShellData::FILE), Printer.new.print_file(ShellData.items(shell)))
+            ShellData.source_files(shell).each { |name, body| File.binwrite(File.join(src, name), body) }
             Dir.glob(File.join(Zig::RUNTIME_DIR, "*")).each { |file| FileUtils.cp(file, src) }
             progress.step("Compiling C")
             progress.show_detail(part_name) if part_name

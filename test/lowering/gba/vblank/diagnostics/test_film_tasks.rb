@@ -3,19 +3,26 @@
 require "test_helper"
 require "json"
 require "open3"
+require "rbconfig"
 require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
+require "heard_film"
 
-# A GAME'S `rake film NAME=...`: the film files in its folder, each a few lines naming frames and
+# A game's `rake film NAME=...`: the film files in its folder, each a few lines naming frames and
 # buttons, made into MP4s of the sides its Rakefile names. The games here are small ones of this
 # repository's own, filmed beside themselves.
 class TestFilmTasks < Minitest::Test
   # A film is made by ImageMagick and ffmpeg and read back by ffprobe: child processes, which hang
   # inside a Ractor. And the task is defined in a rake application of the test's own.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   STRIP = 28
+
+  # The Ruby that runs this test, read once as the file loads (RbConfig is not for a Ractor).
+  RUBY = RbConfig.ruby.freeze
+  LIB = VBlank.root.join("lib").to_s.freeze
 
   def setup
     require_emulator!
@@ -133,6 +140,23 @@ class TestFilmTasks < Minitest::Test
     assert_match(/door, walk/, error.message)
   end
 
+  # The task is run by rake in a process that has not loaded the library, as a person runs it: the
+  # list of films is all that is said, with no NameError for a class the library defines.
+  def test_rake_film_with_no_name_lists_the_films_without_a_name_error
+    film_file("walk", "parts 1..2\n")
+    File.write(File.join(scratch, "Rakefile"), <<~RAKEFILE)
+      require "vblank/diagnostics/film_tasks"
+      VBlank::Diagnostics::FilmTasks.new { |t| t.films = "films"; t.out = "out" }
+    RAKEFILE
+
+    said, status = Open3.capture2e({ "NAME" => nil }, RUBY, "-I", LIB, "-e", 'require "rake"; Rake.application.run(ARGV)', "film",
+                                   chdir: scratch)
+
+    assert_includes said, "walk"
+    refute_predicate status, :success?
+    refute_match(/NameError/, said)
+  end
+
   def test_a_film_that_is_not_there_is_named
     film_file("walk", "parts 1..2\n")
 
@@ -154,6 +178,73 @@ class TestFilmTasks < Minitest::Test
 
     error = assert_raises(ArgumentError) { tasks(sides: { "ours" => "x.gba" }).make_film("walk") }
     assert_match(/parts 1\.\.90/, error.message)
+  end
+
+  # SOUND. A film file's `sound` hears that side alone: the other side's tone is not in the film.
+  def test_a_film_files_sound_hears_the_side_it_names
+    film_file("heard", "parts 1..30\nsound \"ours\"\n")
+    rakefile = tasks(sides: { "ours" => -> { beeping(beep_on: 6) }, "theirs" => -> { beeping(beep_on: 20) } })
+
+    left, right = film_sound(rakefile.make_film("heard"))
+
+    assert_in_delta 6, onset(left), 2, "ours begins on its frames"
+    assert_equal onset(left), onset(right)
+  end
+
+  # SOUND= on the command line is over the film file's: one side heard, so the film is shown once.
+  def test_the_command_lines_sound_is_over_the_film_files
+    film_file("turns", "parts 1..30\nsound :in_turn\n")
+    tasks(sides: { "ours" => -> { beeping(beep_on: 6) }, "theirs" => -> { beeping(beep_on: 20) } })
+
+    with_name("turns") { with_env("SOUND", "theirs") { capture_io { Rake::Task["film"].invoke } } }
+    left, = film_sound(File.join(scratch, "out", "turns.mp4"))
+
+    # Shown once, not twice; an encoder may end the sound with one more silent slice.
+    assert_includes 180..181, left.size
+    assert_in_delta 20, onset(left), 2
+  end
+
+  # A lowering heard beside the cartridge of the same game, one on each speaker: the lowering is held
+  # back the frames the cartridge takes to start, silent meanwhile, so the two tones begin together.
+  def test_a_lowering_is_heard_in_step_with_its_cartridge
+    film_file("pair", <<~FILM)
+      parts 1..30
+      sound :side_by_side
+      game = VBlank.game("FILMED", consoles: %i[gba]) do
+        enable_sound
+        game_loop do
+          after(8) { beep 440, decay: :none }
+          clear_screen :red
+        end
+      end
+      side "cartridge", game
+      side "ruby", game, lowering: "ruby"
+    FILM
+
+    left, right = film_sound(tasks.make_film("pair"))
+
+    assert_in_delta onset(left), onset(right), 1
+  end
+
+  # The interpreter keeps no samples, so a side it shows cannot be heard.
+  def test_a_side_shown_by_the_interpreter_cannot_be_heard
+    game = VBlank.game("FILMED", consoles: %i[gba], &beeping_game_source(8))
+    error = assert_raises(ArgumentError) do
+      VBlank::Diagnostics::FilmCartridge.open(game, lowering: "interpreter", sound: true)
+    end
+    assert_match(/interpreter/, error.message)
+    assert_match(/ruby, js or native/, error.message)
+  end
+
+  def test_sound_naming_no_side_is_refused_before_any_side_opens
+    film_file("walk", "parts 1..2\nsound \"retail\"\nside(\"ours\") { raise \"opened\" }\n")
+
+    error = assert_raises(ArgumentError) { tasks.make_film("walk") }
+    assert_match(/"retail"/, error.message)
+  end
+
+  private def beeping(beep_on:)
+    VBlank.build("FILMED", console: :gba, out: StringIO.new, err: StringIO.new, &beeping_game_source(beep_on))
   end
 
   private def scratch = @scratch ||= Dir.mktmpdir("film-tasks-test")

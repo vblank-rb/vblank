@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST OF BYTES DECLARED FULL, on the Color. A game keeps its score and its queues this way, and
+# A list of bytes declared full, on the Color. A game keeps its score and its queues this way, and
 # declares them before its first frame, so whatever the fill costs is a late start for the whole
 # game. It has to cost a store and a count for each byte, not the walk one item takes alone.
 class TestGBCFullLists < Minitest::Test

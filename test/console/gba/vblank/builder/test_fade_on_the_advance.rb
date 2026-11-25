@@ -43,11 +43,11 @@ class TestFadeOnTheAdvance < Minitest::Test
     end
   end
 
-  # Halfway on each channel, in both directions. A fade MOVES a channel by a share and
+  # Halfway on each channel, in both directions. A fade moves a channel by a share and
   # rounds the share, whichever way it is going: toward black red loses half of what it
   # has, and half of 31 is 15.5, of which it loses 15 and keeps 16. Toward white it gains
   # half of the headroom it has left. They are not mirror images — one lands on 16 where
-  # the other lands on 15 — because the part that rounds is the part that MOVES.
+  # the other lands on 15 — because the part that rounds is the part that moves.
   #
   # Blue on its way to black lands on 15, not red's 16, and that is the emulator the
   # picture is checked against: it works a fade out at eight bits a channel, and for the

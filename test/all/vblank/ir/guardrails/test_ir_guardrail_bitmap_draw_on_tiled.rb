@@ -166,7 +166,7 @@ class TestIRGuardrailBitmapDrawOnTiled < Minitest::Test
         fill_rect 10, 10, 40, 20, :red
       end
       scene(:play) { }
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end
 
     assert_empty Check.new.detect(prog), "the title scene is a bitmap scene; its fill is correct"

@@ -2,11 +2,11 @@
 
 module VBlank
   module IR
-    # A GAME WITH NOTHING TO SEE OR HEAR: the program as a copy, with every step that only makes a
+    # A game with nothing to see or hear: the program as a copy, with every step that only makes a
     # picture or a sound left out and every other step just as written, for a bot that plays one
     # long run many times (Backends::Native::RulesRun).
     #
-    # ONLY THE VERBS GO, NEVER THE CODE AROUND THEM. A game can learn things while it draws: a ray
+    # Only the verbs go, never the code around them. A game can learn things while it draws: a ray
     # walk that fills a list of how far away each wall is, say, which then decides whether a shot
     # can land. So a routine that draws stays, with its arithmetic and everything it writes.
     #

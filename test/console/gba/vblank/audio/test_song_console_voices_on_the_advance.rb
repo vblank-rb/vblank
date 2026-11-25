@@ -2,18 +2,18 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/audio/test_song_console_voices.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/audio/test_song_console_voices.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file. What the
 # Advance's cartridge sounds, read in the emulator, is in
 # test/lowering/gba/vblank/audio/test_song_console_voices_cartridge.rb.
 #
-# A SONG PART ON THE WAVE VOICE AND ON THE NOISE VOICE — the console's other two.
+# A song part on the wave voice and on the noise voice — the console's other two.
 #
 # A part played the square wave or a recorded instrument, and the console had two more voices a
 # tune could use and did not: the wave voice, which loops a short waveform (rounder than a square
 # wave, and it reaches an octave lower), and the noise voice, which makes a hiss (the drums).
 #
-# WHAT THEY ARE WORTH is that they cost NO mixer voice. A part that plays a recording keeps one
+# What they are worth is that they cost no mixer voice. A part that plays a recording keeps one
 # of the mixer's voices for as long as its note sounds; these two the console makes itself. So a
 # busy song reaches for them before it reaches for another recording, and the voices it does not
 # spend stay free for the game's own sounds.
@@ -65,7 +65,7 @@ class TestSongConsoleVoicesOnTheAdvance < Minitest::Test
     assert_equal :fast, hits.first[:decay], "a drum hit rings out rather than being held"
   end
 
-  # THE POINT OF THE WHOLE THING. Five parts, and only the one playing a recording keeps a
+  # The point of the whole thing. Five parts, and only the one playing a recording keeps a
   # mixer voice — so a tune with a pad and drums leaves fifteen of the sixteen for the game.
   def test_only_the_recorded_part_keeps_a_mixer_voice
     i = game_player.run(every_voice_game, frames: 6)

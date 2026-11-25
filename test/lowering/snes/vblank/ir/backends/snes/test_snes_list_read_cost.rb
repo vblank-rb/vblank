@@ -3,7 +3,7 @@
 require "test_helper"
 require "list_read_cost_games"
 
-# A LIST READ AT A WORKED-OUT INDEX ON THE SUPER NINTENDO, `x = row[i]`, measured in the emulator: the
+# A list read at a worked-out index on the Super Nintendo, `x = row[i]`, measured in the emulator: the
 # index's two halves tested against the list's length, its low half scaled into X, the slot read
 # with X and its sign spread into the variable (SNES::Lowering#emit_slot_into_x,
 # #emit_slot_into_variable). No routine is called: the call to the runtime's list routine is only
@@ -28,6 +28,20 @@ class TestSNESListReadCost < Minitest::Test
 
       assert_operator cost, :<, bound, "a read at a #{index} costs #{cost.round(1)} master clocks"
     end
+  end
+
+  # A slot named by a number written in the program, `x += a[1]`, is read where it is, as a variable
+  # is (SNES::Lowering#halves_in_place). Measured: 197 master clocks a read against 175 for a variable;
+  # the difference is the long address of a list past the first 8K, a cycle more each half, where the
+  # variables have the direct page (SNES::Lowering#near_list?).
+  WRITTEN_SLOT_SLACK = 30
+
+  def test_a_read_of_a_written_slot_costs_what_a_variable_read_costs
+    written = ListReadCostGames.cycles_a_read(:snes, :written, FRAME_CLOCKS, width: :word)
+    named = ListReadCostGames.cycles_a_read(:snes, :named, FRAME_CLOCKS, width: :word)
+
+    assert_operator written, :<, named + WRITTEN_SLOT_SLACK,
+                    "a written slot costs #{written.round(1)} master clocks, a variable #{named.round(1)}"
   end
 
   # The reads are the interpreter's on every pass.

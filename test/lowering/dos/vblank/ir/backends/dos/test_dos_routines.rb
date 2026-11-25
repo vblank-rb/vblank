@@ -2,8 +2,8 @@
 
 require "test_helper"
 
-# ROUTINES AND SCENES ON A PC, in DOSBox, held to the interpreter on every pass (DOS::CheckedRun). What `func`,
-# `scene` and `case_var` do is in test/all/vblank/builder/test_scenes.rb and its neighbours, which this run
+# Routines and scenes on a PC, in DOSBox, held to the interpreter on every pass (DOS::CheckedRun). What `func`,
+# `scene` and `call` with `number:` do is in test/all/vblank/builder/test_scenes.rb and its neighbours, which this run
 # plays too; these are what is DOS's own: a routine is a near call in the one code segment, its numbers are
 # kept in the data segment, and a wait or a stop can come in the middle of one.
 class TestDOSRoutines < Minitest::Test
@@ -77,11 +77,7 @@ class TestDOSRoutines < Minitest::Test
       end
       scene(:over) { fill_rect 60, 0, 20, 20, :blue }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-          when_val 2, :over
-        end
+        call({ 0 => :title, 1 => :play, 2 => :over }, number: :state)
       end
     end
 

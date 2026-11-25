@@ -5,31 +5,31 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE FACES OF A PLACE, filled by the graphics chip. The processor cuts each face into pieces the
+          # The faces of a place, filled by the graphics chip. The processor cuts each face into pieces the
           # chip can draw and sends each piece as textured triangles (GP0 25h); the chip fills them, fast,
           # by its own rules. PS1::FacePieces says what is cut and why, in Ruby, and this is the same sums
           # in MIPS, number for number: the checked run holds the two to each other through the picture.
           #
-          # WHAT DIFFERS FROM THE INTERPRETER'S PICTURE, and is the chip's: a corner is a whole pixel and
+          # What differs from the interpreter's picture, and is the chip's: a corner is a whole pixel and
           # a whole texel; the chip samples a pixel's top-left corner, half a texel on; it steps the place
           # on the picture straight across each triangle, so a quad's two triangles bend it differently
           # from the interpreter's rows; and perspective is exact only at the corners of the squares a
           # face is cut into. Turning the place, cutting it at the near limit and where each corner lands
           # are the game's own statements, so those, and `screen_spot`, are the interpreter's to the bit.
           #
-          # THE PICTURES are textures in video RAM beside the screen (PS1::TextureMemory), each at a place
+          # The pictures are textures in video RAM beside the screen (PS1::TextureMemory), each at a place
           # in its page that is a multiple of its size, so the chip's texture window (GP0 E2h) repeats it
           # like wallpaper. A picture's record (RECORD_ fields) holds its window, its colour table and
           # page as a triangle names them, and its size as the masks the pieces' places are moved by.
           #
-          # HOW IT IS CALLED. The lowering works out the face's numbers in the interpreter's order: the
+          # How it is called. The lowering works out the face's numbers in the interpreter's order: the
           # picture (PICTURE_OFFSET_BYTES, its record's address), then the count, and rt_face_corners reads
           # the corners from the list; only when there are three or more are the edges and the perspective
           # worked out (LEFT_OFFSET_BYTES to SPANS_OFFSET_BYTES), and rt_fill_face called.
           #
-          # THE PIECES are kept in RAM out of gp's reach (PIECES, made only for a game that fills faces):
+          # The pieces are kept in RAM out of gp's reach (PIECES, made only for a game that fills faces):
           # each a count and up to FacePieces::MOST_CORNERS corners, POLYGON_BYTES in all. A piece holds
-          # the ADDRESS of each of its corners, a word, not the corner's FacePieces::NUMBERS words: a cut
+          # the address of each of its corners, a word, not the corner's FacePieces::NUMBERS words: a cut
           # hands most of a piece's corners on to the pieces either side of its line unchanged, and the
           # main RAM the pieces are in has no cache, so copying a corner's eight words at every cut was most
           # of what cutting cost. The corners themselves are in the pool after the pieces (POOL_CORNERS):
@@ -45,7 +45,7 @@ module VBlank
           # that piece can still be using any of it, so a piece cut on the picture again and again takes no
           # more of the pool than one cut once. POOL_CORNERS says why that is always enough.
           #
-          # A LIT FACE (LIGHT_FLOOR_OFFSET_BYTES not nought) has a shade at each corner, its light, stepped like
+          # A lit face (LIGHT_FLOOR_OFFSET_BYTES not nought) has a shade at each corner, its light, stepped like
           # the rest wherever a cut makes a corner, and is sent as shaded triangles, each corner with its
           # colour, which the chip steps across the triangle and multiplies each texel by (FacePieces says
           # why). It is cut no more than a face not lit.
@@ -58,7 +58,7 @@ module VBlank
             # of filling a face reads it; so it is named from fp, which points there.
             FACE_BASE = :fp
 
-            # THE STACK A FACE IS FILLED ON, in the scratchpad too. Each routine that calls another keeps
+            # The stack a face is filled on, in the scratchpad too. Each routine that calls another keeps
             # nine registers on the stack as it starts and takes them back as it ends (KEPT_REGISTERS),
             # and a face of many squares is hundreds of such calls; on the stack in main RAM each register
             # taken back waits for the bus. rt_fill_face moves the stack here for as long as it runs, and
@@ -167,7 +167,7 @@ module VBlank
             COMPACT_OFFSET_BYTES = WAITING_OFFSET_BYTES + (FacePieces::MOST_WAITING * POLYGON_BYTES)
             POOL_OFFSET_BYTES = COMPACT_OFFSET_BYTES + (FacePieces::MOST_CORNERS * CORNER_BYTES)
 
-            # HOW MANY CORNERS THE POOL HOLDS: the most that can be in use at once. A cut makes at most a
+            # How many corners the pool holds: the most that can be in use at once. A cut makes at most a
             # corner for each edge of the piece it cuts, so MOST_CORNERS. In use at once are the face's own,
             # the four cuts that hold it to the screen, every cut of rt_face_sweep's rest across the screen
             # one way and the other (its parts are handed back, the rest is not) or the two crossings
@@ -198,7 +198,7 @@ module VBlank
 
             FILL_STACK_BYTES = (FILL_STACK_FRAMES * KEPT_REGISTERS.length * 4) + INTERRUPT_STACK_BYTES
 
-            # A FACE SENT STRAIGHT FROM ITS CORNERS (#emit_straight_face_records): one of up to STRAIGHT_CORNERS
+            # A face sent straight from its corners (#emit_straight_face_records): one of up to STRAIGHT_CORNERS
             # corners that needs no cut at all, kept as it is worked out in the bottom of FILL_STACK, which
             # only the routines called from rt_fill_face use, and a straight face calls none that keeps
             # anything there. Each corner is STRAIGHT_CORNER_BYTES: its texel across, and down (and once the
@@ -259,7 +259,7 @@ module VBlank
               asm.section
             end
 
-            # WORKING OUT A FACE'S CELLS (rt_face_cell_sides), a section of its own, which the build places
+            # Working out a face's cells (rt_face_cell_sides), a section of its own, which the build places
             # after the game's code (Runtime.late_sections). It is a few hundred instructions run once for
             # each face cut into cells, a few dozen a pass, while the routines that send every face run
             # hundreds of times a pass beside the game's own. The processor keeps the last 4 KB of code it ran
@@ -308,7 +308,7 @@ module VBlank
               asm.jr(:ra) { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
             end
 
-            # A FACE'S COMMANDS GO STRAIGHT TO THE CHIP'S PORT, not into the list of drawing commands the
+            # A face's commands go straight to the chip's port, not into the list of drawing commands the
             # painted screen sends by DMA (Runtime::DrawList). A place's faces are many small triangles the
             # chip draws faster than the processor works them out, so the processor seldom waits for it; and
             # writing each into the list in RAM cost the processor more than storing it to the port (Beetle
@@ -596,7 +596,7 @@ module VBlank
               asm.move(:ra, :t9)
             end
 
-            # A FACE THE CHIP CAN DRAW AS IT IS, the way the console's own games sent most of a level's faces:
+            # A face the chip can draw as it is, the way the console's own games sent most of a level's faces:
             # one of up to STRAIGHT_CORNERS corners that FacePieces.triangles would send without a cut, since
             # it is not clipped (FacePieces.sent_unclipped?), in perspective it lies inside one square
             # (FacePieces.each_cell), and its place on the picture reaches no further than PICTURE_REACH
@@ -1050,7 +1050,7 @@ module VBlank
               asm.jr(:ra) { asm.slt(:v0, :v0, :t7) }
             end
 
-            # THE NEARNESS'S SLOPES ACROSS AND DOWN (FacePieces.nearness_slopes), from the corners a2 to a3,
+            # The nearness's slopes across and down (FacePieces.nearness_slopes), from the corners a2 to a3,
             # the least nearness in t5 and t1 the least over the share's bits: t1 across, t2 down, with
             # SLOPE_BITS of fraction.
             #
@@ -1132,7 +1132,7 @@ module VBlank
               asm.subu(number, number, :t7)
             end
 
-            # THE PAIR OF SIDES CUTTING THE FACE INTO THE FEWEST CELLS (FacePieces.cell_side_shifts), from the
+            # The pair of sides cutting the face into the fewest cells (FacePieces.cell_side_shifts), from the
             # slopes in t1 and t2 and the reach kept in REACH_OFFSET_BYTES, into v0 and v1 in sixteenths, and
             # the return. t4 is the width's shift, up to t0, the widest worth trying; t5 the height's, from the
             # tallest worth trying down; t6 the fewest cells so far, and v0 and v1 the shifts that made them;
@@ -1445,7 +1445,7 @@ module VBlank
               asm.j("rt_face_sweep") { asm.addiu(:sp, :sp, 4 * KEPT_REGISTERS.length) }
             end
 
-            # THE LAST SQUARE, past the last line: each run's corners to the most, and those at the most; sent
+            # The last square, past the last line: each run's corners to the most, and those at the most; sent
             # by rt_face_quad where it is the two last crossings and two corners at the most, and otherwise put
             # together in `square` (a3) and falling through to be sent.
             def emit_last_square(asm, x)
@@ -1493,7 +1493,7 @@ module VBlank
               asm.label("rt_face_row_behind_rested")
             end
 
-            # THE SQUARE OF FOUR CORNERS, most of a big face's: neither run passes a corner of the strip before
+            # The square of four corners, most of a big face's: neither run passes a corner of the strip before
             # the line s5 or meets one on it. It is then each run's last crossing (or first corner) and the
             # crossing each makes on this line, sent by rt_face_quad without being put together in `square`;
             # then on to rt_face_row_next. Any other square goes on to rt_face_row_any.
@@ -1699,7 +1699,7 @@ module VBlank
               asm.jr(:ra) { asm.li(:v0, 1) }
             end
 
-            # THE STRIP'S TWO RUNS (FacePieces.strip_chains), for the strip in s0: falls through with s5 the
+            # The strip's two runs (FacePieces.strip_chains), for the strip in s0: falls through with s5 the
             # first line, s6 its most x, s7 where its corners end, s1 where the last of its corners at its least
             # is in it and s3 the first; or goes to rt_face_row_whole where no line crosses it, and to
             # rt_face_row_cut where it has more than two corners at its least or x does not rise along both
@@ -2198,7 +2198,7 @@ module VBlank
             # picture's size, each held to a byte, its corners rounded to whole pixels on the page drawn
             # into; a triangle with no area is left out.
             #
-            # EACH CORNER IS READ ONCE AND SENT FROM REGISTERS. The pieces and their corners are in main RAM,
+            # Each corner is read once and sent from registers. The pieces and their corners are in main RAM,
             # which has no cache, so every load waits for the bus; writing each corner as it is sent into a
             # list there and reading it back for every triangle it is in cost more than working it out. The
             # first corner, which every triangle has, is kept in s6 (its place as the chip takes it), s7 (its
@@ -2400,7 +2400,7 @@ module VBlank
               asm.subu(:t2, :zero, :t2)
               asm.sll(:t2, :t2, FacePieces::SHARE_BITS)
               asm.div(:t2, :t3)
-              # THE DIVIDE TAKES DOZENS OF CYCLES, and the processor goes on beside it until the share is
+              # The divide takes dozens of cycles, and the processor goes on beside it until the share is
               # asked for (MFLO), which waits for what is left. So the corner made goes in the pool's next
               # free place, which way the cut goes is decided, and the first number to step is read and
               # its difference taken, all before the share is asked for: the first step of each way asks

@@ -5,7 +5,7 @@ require "tmpdir"
 require "all/vblank/builder/test_pack_poses"
 require "pack_at_start_tests"
 
-# A POSE FROM THE PACK, ITS PACK LEFT OUT: what the games of PackPoseGames
+# A pose from the pack, its pack left out: what the games of PackPoseGames
 # (test/all/vblank/builder/test_pack_poses.rb) built with `pack_at_start: true` refuse, what a
 # player's file that asks for more than the build holds draws, and what the build holds when
 # written out. That each plays as its all-in-one build is the registry's (PackGames::Poses and
@@ -34,7 +34,7 @@ module PackPoseAtStartTests
     end
   end
 
-  # WHAT THE PLAYER'S FILE HOLDS IS NOT KNOWN AS THE GAME IS BUILT, so nothing in it stops the
+  # What the player's file holds is not known as the game is built, so nothing in it stops the
   # game. Here the file's frame says it has six pieces: the first two as the original's, one whose
   # tiles are past the slot, one that sits wholly outside the picture, and two more that the slot
   # ends before. The game shows the first two, as an all-in-one build of a frame of those two does.

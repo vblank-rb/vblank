@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # THE FACES OF A PLACE, lowered for a PlayStation. Drawing a place is the statements under it
+          # The faces of a place, lowered for a PlayStation. Drawing a place is the statements under it
           # (IR::PlaceDrawing): turning each point to the viewer, cutting at the near limit and finding
           # where it lands are sums every lowering makes, so they come out the interpreter's to the bit,
           # and `screen_spot`, which runs the same sums, agrees with them. What is left is filling each
@@ -37,7 +37,7 @@ module VBlank
             # they call, by name: they go straight after the runtime's face routines (Runtime::Faces.section), in
             # that order, ahead of the game's tables and its other routines.
             #
-            # WHY THEY GO TOGETHER. The processor keeps the last 4 KB of code it ran in its instruction cache,
+            # Why they go together. The processor keeps the last 4 KB of code it ran in its instruction cache,
             # each 16-byte line of code in the one place the bits 4 to 11 of its address name, so code 4 KB apart
             # pushes each other out. A place's faces are filled hundreds of times a pass, and the routine looping
             # over them and the runtime's routines filling each are together about the size of the cache, so
@@ -77,7 +77,7 @@ module VBlank
 
             private
 
-            # THE LIST A PLACE'S DRAWING HANDS EACH FACE'S CORNERS IN, kept in the scratchpad where the runtime
+            # The list a place's drawing hands each face's corners in, kept in the scratchpad where the runtime
             # reads a face's corners (Runtime::Faces::CORNERS_LIST_OFFSET_BYTES), or nil for none. The drawing
             # puts every corner of every face drawn there, and the fill reads them all back: in main RAM, which
             # has no cache, each number written and read again waits on the bus, and the fill copied every

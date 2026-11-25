@@ -3,9 +3,9 @@
 require "test_helper"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# CHAT BETWEEN THE PLAYERS OF A ROOM, BEFORE THE MATCH AND DURING IT, through the stand-in relay and through a direct
+# Chat between the players of a room, before the match and during it, through the stand-in relay and through a direct
 # connection, in the network's own messages and never into the game. A line is shown as "Player 2: hello": the
 # sender is a number, since nobody's name goes over the network. What a person typed cannot change the game: a match
 # with chat in it ends in the state a match without it does, which these show by the state numbers (a checkpoint

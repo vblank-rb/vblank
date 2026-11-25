@@ -5,7 +5,7 @@ require "mkmf"
 # The libretro frontend bsnes is played through. It links nothing but the system's dlopen: the core
 # is opened when a console is made, from the copy KeptCopy hands out, and never linked in here.
 # Linux keeps dlopen in libdl before glibc 2.34; elsewhere it is in the C library.
-have_library("dl", "dlopen")
+have_library("dl", "dlopen") unless RUBY_PLATFORM.include?("mingw")
 
 $srcs = %w[ruby_snes_emulator_ext.c libretro_frontend.c]
 

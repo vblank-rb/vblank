@@ -4,15 +4,15 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # WHAT A DESKTOP, WEB OR RUBY BUILD MADE AS THE PLAYSTATION NEEDS TO PLAY ITS VOICES THE SOUND CHIP'S
-        # WAY (runtime/rg_spu.c and its twins): the chip's own numbers, the loops of the game's sound memory
+        # What a desktop, web or Ruby build made as the PlayStation needs to play its voices the sound chip's
+        # way (runtime/rg_spu.c and its twins): the chip's own numbers, the loops of the game's sound memory
         # (SoundMemory, the same bytes the PlayStation program copies there) and where each starts. The
         # layouts are atop rg_spu.c. Computer::Sound writes them for a console whose voices read sound
         # memory (Console::Description#voices_read_sound_memory).
         module SPUTables
           H = Console::PS1Hardware
 
-          # THE CHIP'S GAUSSIAN TABLE (psx-spx, "SPU Gaussian Interpolation"; Beetle PSX, spu.c FIR_Table, which
+          # The chip's gaussian table (psx-spx, "SPU Gaussian Interpolation"; Beetle PSX, spu.c FIR_Table, which
           # holds the same numbers four to a row): a voice's sample is the four decoded samples around where
           # its pitch counter stands, weighed by gauss[0FFh - i], gauss[1FFh - i], gauss[100h + i] and
           # gauss[i], oldest first, for i the counter's 4096ths of a sample over 16, and shifted down 15.

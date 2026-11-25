@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "tmpdir"
 
-# A POOL'S PICTURES GO INTO SPRITE MEMORY THE FIRST TIME ONE OF ITS THINGS SHOWS THEM, not all
+# A pool's pictures go into sprite memory the first time one of its things shows them, not all
 # at once when its scene takes over.
 #
 # A scene's sprite pictures are copied in as it arrives, and the processor waits while they are.
@@ -42,7 +42,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
     b.program
   end
 
-  # THE PICTURE COMES OUT RIGHT on the frame a pose is first shown, for a thing spawned showing
+  # The picture comes out right on the frame a pose is first shown, for a thing spawned showing
   # it, for a thing turned to another pose, and back in the scene after another scene's picture
   # has gone into the same memory and come out again.
   private def room_with_shards
@@ -69,7 +69,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
         tick += 1
         state = 1 if tick == 8
         state = 0 if tick == 11
-        case_var(:state) { when_val 0, :playing; when_val 1, :away }
+        call({ 0 => :playing, 1 => :away }, number: :state)
       end
     end
   end
@@ -96,7 +96,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
     end
   end
 
-  # POSES CUT INTO DIFFERENT NUMBERS OF PIECES. A pose of fewer pieces than the pool's largest is
+  # Poses cut into different numbers of pieces. A pose of fewer pieces than the pool's largest is
   # filled out with blank ones, which draw a blank tile kept at the end of the pool's pictures —
   # so that tile has to be in sprite memory too, even though no pose's own run of tiles holds it.
   # The game opens on another scene, so the memory the pool lands in holds that scene's pictures
@@ -124,7 +124,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
       game_loop do
         tick += 1
         state = 0 if tick == 3
-        case_var(:state) { when_val 0, :playing; when_val 1, :away }
+        call({ 0 => :playing, 1 => :away }, number: :state)
       end
     end
   end
@@ -134,7 +134,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
     [6, 7].each { |frames| assert_backends_agree(prog, frames: frames, name: "RAGGED") }
   end
 
-  # THE SCENE'S ARRIVAL DOES NOT WAIT FOR POSES NOTHING SHOWS. Two games whose play scene holds
+  # The scene's arrival does not wait for poses nothing shows. Two games whose play scene holds
   # a pool that nothing is spawned into: one pool can show one picture, the other all eight,
   # which is fourteen kilobytes more for the arrival to copy if it copied them. The console is
   # as busy over the first frames either way.
@@ -153,7 +153,7 @@ class TestPoolPicturesSentWhenShown < Minitest::Test
         shards.each { |shard| shard.face poses, showing: shard.look }
       end
       scene(:away) {}
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :away } }
+      game_loop { call({ 0 => :playing, 1 => :away }, number: :state) }
     end
   end
 

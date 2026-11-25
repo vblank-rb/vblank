@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # ONE SPRITE'S PICTURES, as the console will hold them — worked out once per build, since
+        # One sprite's pictures, as the console will hold them — worked out once per build, since
         # nothing about them depends on where in sprite memory they land or on which sprites end
         # up kept to one frame at a time.
         #
@@ -27,8 +27,12 @@ module VBlank
         # nil for any other sprite. Such a pose stores nothing: each of its own pieces' +starts+
         # is the number of its tile in the set, and the set's room is where they are counted from
         # (SpriteLayout#tile_set_placement).
+        #
+        # +piece_banks+ is, for a sprite of poses of several banks of colours
+        # (ScreenLayout#sprite_bank_parts), the bank each of each pose's pieces names, a list for
+        # each pose, padded as +boxes+ is; nil for any other sprite.
         SpritePictures = Data.define(:node, :place, :boxes, :mirrors, :encoded, :stored, :starts,
-                                     :repeats, :width, :height, :animates, :grouped, :tile_set) do
+                                     :repeats, :width, :height, :animates, :grouped, :tile_set, :piece_banks) do
           def name = node.name
           def scene = node.scene
           def animates? = animates
@@ -37,20 +41,21 @@ module VBlank
           def pieces = boxes.first.size
           def stored_bytes = stored.bytesize
 
-          # EVERY POSE DRAWN OUT OF ONE BOX, and none of them another reversed. Then the sprite's
-          # own entry can carry that one size and the draw needs no table of poses.
-          def one_shape? = pieces == 1 && boxes.map(&:first).uniq.size == 1 && mirrors.none?
+          # Every pose drawn out of one box, and none of them another reversed. Then the sprite's
+          # own entry can carry that one size and the draw needs no table of poses. A sprite whose
+          # pieces name banks of their own carries a table, which holds each piece's bank.
+          def one_shape? = pieces == 1 && boxes.map(&:first).uniq.size == 1 && mirrors.none? && piece_banks.nil?
 
-          # DOES ONE POSE'S TILES FOLLOW THE LAST'S, ALL THE WAY DOWN? That is what the plain
+          # Does one pose's tiles follow the last's, all the way down? That is what the plain
           # draw assumes: it multiplies the pose the game is showing by a fixed stride, so
           # the poses have to sit an even distance apart in the order they were declared. A
-          # pose that REPEATS an earlier one is stored once and points back at it, which
+          # pose that repeats an earlier one is stored once and points back at it, which
           # usually breaks the run — so such a sprite carries the pose table instead, where
           # each pose holds where its own tiles are. Usually, and not always: a cycle whose
-          # frames are ALL the same picture shares one run, which is an even distance of
+          # frames are all the same picture shares one run, which is an even distance of
           # nothing, and it keeps the plain draw.
           #
-          # THAT TRADE IS THE ONE DECISION HERE, and it goes this way because the two sides
+          # That trade is the one decision here, and it goes this way because the two sides
           # are not the same kind of thing. Falling to the table measured 12 instructions a
           # frame on a four-pose sprite; what it buys is at least one whole pose of picture
           # memory, and picture memory is a WALL — a game that runs out does not build at
@@ -61,11 +66,11 @@ module VBlank
           def evenly_spaced? = one_shape? && starts.each_with_index.all? { |at, k| at.first == k * stride }
 
           # The stride from one pose's tiles to the next, read off where the second one landed
-          # rather than divided out of the total: a cycle whose frames are all the SAME picture
+          # rather than divided out of the total: a cycle whose frames are all the same picture
           # shares one run between them, and its stride is then 0, which is the truth.
           def stride = starts.length > 1 ? starts[1].first : 0
 
-          # THE ROOM ONE FRAME TAKES, piece by piece, for a sprite kept to one frame at a time:
+          # The room one frame takes, piece by piece, for a sprite kept to one frame at a time:
           # the most any pose needs for that piece, and a blank tile where a pose has none.
           def one_frame_piece_bytes
             blank = place.narrow? ? 32 : 64
@@ -81,7 +86,7 @@ module VBlank
             node.poses.map { at.dup }
           end
 
-          # EVERY FRAME, laid out the way the room is and back to back, for the cartridge: a
+          # Every frame, laid out the way the room is and back to back, for the cartridge: a
           # mirrored pose holds the pictures of the pose it mirrors, and a piece a pose does not
           # have holds nothing, which the console draws as nothing.
           def frames
@@ -92,13 +97,13 @@ module VBlank
           end
         end
 
-        # ONE POSE OF A SPRITE WHOSE PICTURE IS IN A SET OF PICTURE GROUPS: the name of the set,
+        # One pose of a sprite whose picture is in a set of picture groups: the name of the set,
         # the pose's pieces as the bytes copied in when one of its groups comes up, and how many of
         # its pieces are its own. The rest are the blank pieces a short pose is filled out with,
         # which draw the blank tile kept with the sprite's other pictures.
         GroupedPose = Data.define(:set, :bytes, :pieces)
 
-        # A SET OF PICTURES AND EVERY SPRITE SHOWING IT. Two sprites showing the same pictures
+        # A set of pictures and every sprite showing it. Two sprites showing the same pictures
         # store them once (see ObjectArt) — every slot of a pool does — so the set, not the
         # sprite, is what can give sprite memory back.
         PictureSet = Data.define(:sprites) do

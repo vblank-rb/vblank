@@ -10,6 +10,7 @@ require_relative "runtime/tint"
 require_relative "runtime/picture"
 require_relative "runtime/collide"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/recordings"
@@ -18,11 +19,11 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # THE RUNTIME every Genesis cartridge carries: from power-on to the game's first line (Boot),
+        # The runtime every Genesis cartridge carries: from power-on to the game's first line (Boot),
         # the arithmetic (Int32), the frame and the buttons (Frame), the lists (Lists), and the
         # picture (Picture).
         #
-        # HOW ITS ROUTINES ARE CALLED. With JSR (and they return with RTS), from anywhere in the
+        # How its routines are called. With JSR (and they return with RTS), from anywhere in the
         # cartridge, with A5 at the middle of work RAM (Memory::BASE, which Boot sets and nothing
         # changes); with their numbers in D0, D1, D2... and their answer in D0. A routine may use every
         # data register, A0 to A4 and A6 as it likes, but never A5.
@@ -35,17 +36,22 @@ module VBlank
           # effects (Effects).
           # +sprites_over_picture+ for a painted screen that shows sprites over its picture (Paint).
           # +counted+ for a game that reads how many frames it has shown since power-on (Frame::SETTING_UP).
+          # +second_pad+ for a game that reads the second pad (Frame.reads_second_pad?), and +team_player+ for
+          # one that reads a Team Player there (Frame.reads_team_player?).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
-                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false)
-            Frame.reserve(memory, counted: counted)
-            Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles)
+                      sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false,
+                      second_pad: false, team_player: false, bends: false, effect_clock_step: nil)
+            Frame.reserve(memory, counted: counted, second_pad: second_pad, team_player: team_player)
+            Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles, bends: bends)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, glides: glides, sides: recorded_sides) if samples
             return unless songs
           
             Music.reserve(memory, follows_level: music_follows_level, effects: effects, holds: holds_music, wobbles: wobbles,
-                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides)
+                                  steps_shapes: steps_shapes, swells: swells, slides: slides, sides: sides,
+                                  effect_clock_step: effect_clock_step)
+            Strikes.reserve(memory) if effects.positive? && effect_clock_step
           end
 
           # The runtime's sections: the vectors' entry points first, then everything else in one.
@@ -63,6 +69,7 @@ module VBlank
           # +poses+ for a tiled game with a sprite kept to one pose in video memory, whose blank copies the
           # pose it changed to (Lowering::PoseRooms).
           # +blocks+ for a tiled game that changes a block of cells in one step (Tiles#emit_block_noted).
+          # +bends+ for a tiled game that bends a background row by row (Lowering::Bends), here and in #reserve.
           # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
           # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
@@ -78,25 +85,36 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         poses: false, blocks: false, count_at: nil)
+                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
             Boot.emit(asm, main: main, registers: registers, held_at: memory.displacement(Frame::HELD),
-                           counting: (Frame.counting_block(memory) if count_at))
+                           counting: (Frame.counting_block(memory) if count_at), second: second_pad_places(memory),
+                           team_player: Frame.team_player?(memory))
             Int32.emit(asm, fractions: fractions)
             Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
-                                      samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks)
+                                      samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks, bends: bends)
             Collide.emit(asm, memory) if collision
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts) if music
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts,
+                                    effect_clock_step: effect_clock_step) if music
+            Strikes.emit(asm, memory) if Strikes.strikes?(memory)
             Recordings.emit(asm, memory) if plays
             emit_start(asm, samples: !plays.nil?, counting_at: (memory.displacement(Frame::COUNTING) if count_at))
             emit_frame_begins(asm, frame_begins)
             [entry.section, asm.section, music, *plays].compact
+          end
+
+          # Where Boot puts the second pad's buttons from power-on, in a game that reads it; nil for any other.
+          def second_pad_places(memory)
+            return unless Frame.second_pad?(memory)
+
+            Boot::SecondPad.new(held_at: memory.displacement(Frame::SECOND_HELD),
+                                connected_at: memory.displacement(Frame::PLAYERS_PAST_FIRST))
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the

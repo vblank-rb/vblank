@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pong").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
 
 # Where the title's rows are, shared with the cartridge's tests
 # (test/lowering/gba/examples/test_pong_title_cartridge.rb).
@@ -22,14 +22,14 @@ end
 
 # Pong's title screen (examples/pong.rb): a two-row `menu` over the zooming backdrop.
 #
-# It is worth its own test file because of WHERE it runs. The title declares
+# It is worth its own test file because of where it runs. The title declares
 # `screen :rotozoom`, so there is no framebuffer to paint into — the console composites
 # every character of every row as a little sprite of its own. The menu written there is
 # the same verb, written the same way, as the one the jukebox uses on a plain bitmap
 # screen. These tests read the picture the console would show and never mention which of
 # the two it is.
 #
-# The MUSIC row is the part that could not be written before: what it SAYS depends on the
+# The MUSIC row is the part that could not be written before: what it says depends on the
 # setting, so the row carries the list of things it can say and the variable that decides.
 #
 # The same title on the Advance's cartridge, read in the emulator, is in
@@ -157,7 +157,7 @@ class TestPongTitle < Minitest::Test
   # That game, played once for every test that reads it: it is most of this file's running
   # time. Returns the interpreter, how much had sounded when the game ended, and how much when
   # START left the end screen.
-  # KEPT PER WORKER, not per class. Three tests read this one game and it is most of this
+  # Kept per worker, not per class. Three tests read this one game and it is most of this
   # file's running time, so it is worth playing once rather than three times — but a worker
   # may not keep anything on a class, and the tests that read it may land on three different
   # workers. Each keeps its own.
@@ -225,8 +225,8 @@ class TestPongTitle < Minitest::Test
 
   # --- the difficulty screen, and where its cursor opens ---
   #
-  # The title's third row opens a screen of its own: two rows, NORMAL and HARD, and a
-  # cursor that starts on the SECOND of them. That is the game recommending a setting —
+  # The title's third row opens a screen of its own: two rows, normal and hard, and a
+  # cursor that starts on the second of them. That is the game recommending a setting —
   # a player who presses the button straight through gets the harder game rather than
   # the gentler one, which is a real difference in how pong plays rather than a
   # cosmetic one.
@@ -238,7 +238,7 @@ class TestPongTitle < Minitest::Test
   DIFF_NORMAL = 80 # examples/pong.rb: `at: [diff_x, 80], spacing: 16`
   DIFF_HARD = 96
 
-  # Down twice to the DIFFICULTY row, then A to open it.
+  # Down twice to the difficulty row, then A to open it.
   private def open_difficulty(frames, extra = {})
     title(frames) { |f| { 1 => [:down], 4 => [:down], 7 => [:a] }.merge(extra).fetch(f, []) }
   end
@@ -264,7 +264,7 @@ class TestPongTitle < Minitest::Test
     assert_equal PLAIN, difficulty_row_color(i, DIFF_NORMAL), "and NORMAL is the plain row"
   end
 
-  # Where the cursor STARTS, not where it is held: it moves from there like any other.
+  # Where the cursor starts, not where it is held: it moves from there like any other.
   def test_the_difficulty_cursor_still_moves_from_where_it_started
     i = open_difficulty(13, 10 => [:up])
 

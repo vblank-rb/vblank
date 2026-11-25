@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOUR WALK, the fade a console's own game does: each channel of each colour is one step from
+# A colour walk, the fade a console's own game does: each channel of each colour is one step from
 # the last, so a bright channel starts first, a dim colour stays at the far end for most of the
 # walk, and every channel arrives on the same step. A mix would show the dim colours sooner.
 class TestColorWalk < Minitest::Test
@@ -143,7 +143,7 @@ class TestColorWalk < Minitest::Test
     assert_equal shown(gray), seen.screen.pixel(26, 10), "the other sprite is as drawn"
   end
 
-  # A WALK WHOSE CHANNELS WAIT FOR A FALLING COUNT, the rule of a retail fade routine: a count
+  # A walk whose channels wait for a falling count, the rule of a retail fade routine: a count
   # starts at 32 and falls by the step, 2, on each step; a channel waits until what it has to go is
   # at least the count, then moves by the step, and one that passes its height comes back on the
   # next step. Each channel's trail below is worked by hand from that rule, one number a step.

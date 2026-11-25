@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# READING A CONSOLE'S OWN LAYOUT (IR::FormatReading). The tiles and colours each lowering writes are
+# Reading a console's own layout (IR::FormatReading). The tiles and colours each lowering writes are
 # held in that lowering's own folder (test_gbc_format_reading.rb and its siblings).
 class TestFormatReading < Minitest::Test
   Reading = VBlank::IR::FormatReading

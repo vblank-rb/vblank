@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE PICTURE: what a pass changed on the screen, copied to the console in the blank
+          # The picture: what a pass changed on the screen, copied to the console in the blank
           # (rt_upload), everything at once while the screen is still off (rt_upload_whole), and the
           # part the game's own picture asks for.
           module Picture
@@ -13,11 +13,12 @@ module VBlank
 
             # +picture+ is how the game draws: :painted (Paint), :tiled (Tiles), or :none. +sprites+ means a
             # painted screen shows sprites over its picture (`sprite ..., over_picture: true`). +scene_tiles+
-            # for a tiled game whose scenes each bring their own tiles in (Tiles#emit_scene_tiles).
-            def reserve(memory, picture: :none, colors: false, sprites: false, scene_tiles: false)
+            # for a tiled game whose scenes each bring their own tiles in (Tiles#emit_scene_tiles), and +bends+ for one
+            # that bends a background row by row (Lowering::Bends).
+            def reserve(memory, picture: :none, colors: false, sprites: false, scene_tiles: false, bends: false)
               Paint.reserve(memory) if picture == :painted
               Paint.reserve_sprites(memory) if picture == :painted && sprites
-              Tiles.reserve(memory, scene_tiles: scene_tiles) if picture == :tiled
+              Tiles.reserve(memory, scene_tiles: scene_tiles, bends: bends) if picture == :tiled
               Tint.reserve(memory) if colors && %i[painted tiled].include?(picture)
             end
 
@@ -29,12 +30,12 @@ module VBlank
             # +samples+ for a game that plays recordings, whose sound processor reads the cartridge while
             # the picture is copied (#emit_dma_started).
             def emit(asm, memory, picture: :none, columns: 32, camera: false, colors: false, backdrop: false, sprites: false,
-                     scene_tiles: false, scene_colors: false, samples: false, runs: false, poses: false, blocks: false)
+                     scene_tiles: false, scene_colors: false, samples: false, runs: false, poses: false, blocks: false, bends: false)
               case picture
               when :painted then Paint.emit(asm, memory, camera: camera, colors: colors, sprites: sprites, samples: samples)
               when :tiled
                 Tiles.emit(asm, memory, columns: columns, colors: colors, scene_tiles: scene_tiles, samples: samples, runs: runs,
-                                        poses: poses, blocks: blocks)
+                                        poses: poses, blocks: blocks, bends: bends)
               else
                 asm.label("rt_picture_start")
                 asm.rts
@@ -50,11 +51,11 @@ module VBlank
               emit_screen_on(asm, memory)
             end
 
-            # A COPY BY THE VIDEO CHIP (DMA) STARTED: the command in +command+, a data register, written to
+            # A copy by the video chip (DMA) started: the command in +command+, a data register, written to
             # the chip's control port, which +port+ points at. The chip takes the 68000's bus for itself
             # with that write and gives it back when the last word is in video memory.
             #
-            # THE SOUND PROCESSOR IS STOPPED FOR IT, in a game that plays recordings (+samples+). The Z80
+            # The sound processor is stopped for it, in a game that plays recordings (+samples+). The Z80
             # reads a recording out of the cartridge through the 68000's bus, a byte every sample, and
             # the console's maker tells its games to send the Z80 a bus request before every copy of
             # this kind, from the cartridge or from work RAM alike: on some consoles a Z80 that reaches
@@ -71,7 +72,7 @@ module VBlank
             # A game with no recordings pays nothing for that: its Z80 has been held stopped since
             # power-on (Boot#emit_sound_quiet) and never reaches for the bus.
             #
-            # THE COMMAND GOES AS TWO WORDS READ FROM WORK RAM, for every game. The console's maker
+            # The command goes as two words read from work RAM, for every game. The console's maker
             # says a copy now and then fails unless the write that starts it is a word, not a long
             # word, and is read from work RAM, and its own games keep a word of RAM for it. Here the
             # command is put on the stack, which is in work RAM, and its two halves are written from

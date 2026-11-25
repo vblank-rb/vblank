@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A POOL KEPT EACH WAY THE GAME BOY COLOR CAN KEEP ONE (Backends::PoolLayout): as lists, as tables
+# A pool kept each way the Game Boy Color can keep one (Backends::PoolLayout): as lists, as tables
 # side by side, as a record for each thing. Each game is played on the cartridge and checked against
 # the interpreter on every pass, so a slot read, written, filled or walked at the wrong place, or a
 # walk that leaves its variables otherwise than the tree does, fails at the pass it shows.

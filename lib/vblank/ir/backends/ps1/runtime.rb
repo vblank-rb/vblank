@@ -12,6 +12,7 @@ require_relative "runtime/colors"
 require_relative "runtime/collide"
 require_relative "runtime/faces"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/recordings"
 
@@ -19,13 +20,13 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE RUNTIME every PlayStation program carries: from power-on to the game's first line (Boot),
+        # The runtime every PlayStation program carries: from power-on to the game's first line (Boot),
         # the arithmetic too long to write in place (Int32), the frame, the interrupt and the pads
         # (Frame, Pads), the lists (Lists), the list of drawing commands the DMA hands to the graphics chip
         # (DrawList), the painted screen (Paint), the faces of a place (Faces), and
         # the sound chip (Sound).
         #
-        # HOW ITS ROUTINES ARE CALLED. With JAL, from anywhere in the program, and they return with
+        # How its routines are called. With JAL, from anywhere in the program, and they return with
         # `jr ra`. Their numbers are in ARGUMENTS (a0, a1, a2, a3, then t4 to t7) and their answer in v0.
         # A routine may change at, v0, v1, the argument registers and t0 to t9, and keeps s0 to s7, gp
         # and sp as it found them; one that calls another keeps its own return address on the stack.
@@ -46,19 +47,23 @@ module VBlank
           # drawn from tiles (+tiles+), and Colors' for one whose colours change as it runs (+colors+); and
           # Paint's for a painted screen drawn by number (+by_number+, PS1::PaintedNumbers) or with sprites over
           # it (+over_picture+), each shown from pages of its own; and Frame's count of the frames setting up
-          # took for one that reads how many frames it has shown since power-on (+counted+).
+          # took for one that reads how many frames it has shown since power-on (+counted+); and the places of
+          # the pads it reads (+pads+, Pads.pads_read).
           def reserve(memory, faces:, sound: false, songs: false, follows_level: false, effects: 0, holds_music: false, notes: {},
                       samples: false, recorded_pans: false, glides: false, tiles: false, colors: false, by_number: false,
-                      over_picture: false, counted: false)
+                      over_picture: false, counted: false, pads: 1, effect_clock_step: nil)
             Faces.reserve(memory) if faces
             Frame.reserve(memory, counted: counted)
+            Pads.reserve(memory, pads: pads)
             Paint.reserve(memory, shown_apart: by_number || over_picture)
             Tiles.reserve(memory) if tiles
             Tiles.reserve_sprites(memory) if over_picture
             Colors.reserve(memory) if colors
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, sides: recorded_pans, glides: glides) if samples
-            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, **notes) if songs
+            Music.reserve(memory, follows_level: follows_level, effects: effects, holds: holds_music, effect_clock_step: effect_clock_step,
+                                  **notes) if songs
+            Strikes.reserve(memory) if songs && effects.positive? && effect_clock_step
           end
 
           # The runtime's sections: the entry point, then everything else, and for a game that fills faces the
@@ -81,7 +86,7 @@ module VBlank
           # (Boot#emit), and nil for any other.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
                        samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false,
-                       count_at: nil)
+                       count_at: nil, effect_clock_step: nil)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
@@ -104,8 +109,9 @@ module VBlank
             Colors.emit(asm, memory, backdrop: !tiled.nil?) if colors
             Collide.emit(asm) if collides
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
+            Strikes.emit(asm, memory) if Strikes.strikes?(memory)
             Recordings.emit(asm, memory) if samples
-            Music.emit(asm, memory, level_at: music_level_at, effects: effects) if songs
+            Music.emit(asm, memory, level_at: music_level_at, effects: effects, effect_clock_step: effect_clock_step) if songs
             emit_start(asm, sound: sound, tiles: !tiled.nil?)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(faces ? [Faces.reciprocals_section(Lowering::TABLES_HOLDING), Faces.section(memory)] : [])]

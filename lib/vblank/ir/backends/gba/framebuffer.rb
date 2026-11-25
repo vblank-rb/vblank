@@ -13,18 +13,18 @@ module VBlank
         class Framebuffer
           include Console::Hardware
 
-          # HOW A PICTURE ROW BECOMES A SCREEN ROW, which is a divide by the picture's own
+          # How a picture row becomes a screen row, which is a divide by the picture's own
           # height: a stretch that covers rows 8 to 15 of a 64-row picture covers the eighth
           # to the fifteenth part of however tall the column is drawn.
           #
           # The chip has no divide instruction, so a divide is normally a subroutine — far too
           # dear for something a stretch does twice. A height that is a power of two escapes
-          # that by SHIFTING, which is one instruction, and for a long time that was the only
+          # that by shifting, which is one instruction, and for a long time that was the only
           # height a picture could have and still ship its stretches.
           #
-          # ANY OTHER HEIGHT MULTIPLIES INSTEAD. Dividing by 38 is the same as multiplying by
+          # Any other height multiplies instead. Dividing by 38 is the same as multiplying by
           # 1/38, and while the chip holds no fractions it does hold the whole 64-bit answer of
-          # a multiply — so multiplying by 2^32/38 and keeping the TOP half divides by 38. The
+          # a multiply — so multiplying by 2^32/38 and keeping the top half divides by 38. The
           # multiplier is worked out here, while the program is being built, and costs the walk
           # one instruction over the shift.
           #
@@ -58,6 +58,7 @@ module VBlank
             @lowering = lowering
             @divide = divide
             @stretched_columns = nil
+            @pixel_size = 1
           end
 
           # The pictures a stretched column draws, and where each of their columns holds
@@ -65,12 +66,19 @@ module VBlank
           # what decides which pictures those are.
           attr_writer :stretched_columns
 
-          # WHERE DRAWING MAY LAND. The whole screen, unless an `inside` sets otherwise
-          # — and then these four are what every shape cuts itself against.
+          # How many of the screen's pixels each of the game's covers across and down (`screen
+          # :bitmap, pixel_size: 2`), handed over with the program (see GBA#lower). The display shows
+          # only the top left of the painted memory then, the game's small picture, so drawing is
+          # cut at that picture's edge and nothing is written that is never seen.
+          attr_writer :pixel_size
+
+          # Where drawing may land. The whole screen, or the part a game of big pixels shows,
+          # unless an `inside` sets otherwise — and then these four are what every shape cuts
+          # itself against.
           def clip_left = (area = @lowering.draw_area) ? area[0] : 0
           def clip_top = (area = @lowering.draw_area) ? area[1] : 0
-          def clip_right = (area = @lowering.draw_area) ? area[0] + area[2] : SCREEN_WIDTH
-          def clip_bottom = (area = @lowering.draw_area) ? area[1] + area[3] : SCREEN_HEIGHT
+          def clip_right = (area = @lowering.draw_area) ? area[0] + area[2] : SCREEN_WIDTH / @pixel_size
+          def clip_bottom = (area = @lowering.draw_area) ? area[1] + area[3] : SCREEN_HEIGHT / @pixel_size
           def clipping? = !@lowering.draw_area.nil?
 
           # Is this cell one drawing may land on? The screen, held further to whatever
@@ -95,11 +103,36 @@ module VBlank
             count | DMA_ENABLE | DMA_32BIT | DMA_SRC_FIXED
           end
 
+          # Fill the shown part of the painted screen's memory in the colour word held at +scratch+, a
+          # row at a time: +rows+ rows of +row_bytes+ bytes each, the first at +first+ (an address, or
+          # :hidden_page for the page of a tear-free screen drawn on this frame), each +stride+ bytes after
+          # the one before. A game of big pixels shows only the top left of the memory's rows, so a fill of
+          # whole rows writes what is never seen; this writes only the part the display reads, at the price
+          # of starting the copying engine once a row. Must be used only where +row_bytes+ is a whole
+          # number of words.
+          def emit_shown_rows_filled(scratch, first:, rows:, row_bytes:, stride:)
+            at = 4
+            left = 5
+            again = @emitter.gensym
+            if first == :hidden_page
+              @primitives.load_var(at, BACKBUF)
+            else
+              @emitter.emit_number(at, first)
+            end
+            @emitter.emit_number(left, rows)
+            @emitter.place_label(again)
+            @primitives.emit_start_copy_engine(from: scratch, to: Primitives::InRegister.new(at),
+                                               control: dma_fill_control(row_bytes / 4))
+            @primitives.emit_add_const(at, at, stride, SPARE)
+            @emitter.emit(ASM.subs_imm(left, left, 1))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+          end
+
           # The same fill, one pixel per transfer instead of two.
           #
           # DMA moves whole units and quietly rounds the destination address DOWN to
           # that unit's size. A 32-bit transfer therefore needs a 4-byte-aligned
-          # destination — and at 2 bytes per pixel, only EVEN screen columns are.
+          # destination — and at 2 bytes per pixel, only even screen columns are.
           # Aim a 32-bit fill at an odd column and the hardware silently shifts it a
           # pixel to the left, with nothing to say it did. A 16-bit transfer needs
           # only 2-byte alignment, which every pixel address has, so it lands where
@@ -143,7 +176,7 @@ module VBlank
           # What a picture's palette-number form is filed under, beside its colors.
           def indexed_blob(name) = DerivedNames.join(name, INDEXED_SUFFIX)
 
-          # ...and the same numbers COLUMN BY COLUMN, for a picture a stretched column draws on
+          # ...and the same numbers column by column, for a picture a stretched column draws on
           # the tear-free screen. The walk goes down one column of the picture, so kept that way
           # the next row's number is the next byte; kept row by row it is a whole picture width
           # further on, and finding it is a multiply every row. The copy costs the cartridge the
@@ -160,7 +193,7 @@ module VBlank
           # screen, a slot of the colour table on the tear-free one — the block turns a
           # colour into whichever of those this screen wants.
           #
-          # ONE COLOUR IS ONE LOAD, exactly as it always was. Two are the test worked out
+          # One colour is one load, exactly as it always was. Two are the test worked out
           # first and then one load or the other, so the words that follow are painted once
           # whichever colour they come out — a handful of instructions, where painting the
           # words under the test and again under its opposite was every pixel of them twice.
@@ -179,7 +212,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # A LINE OF FIXED TEXT WITH THIS MANY LIT PIXELS OR MORE IS A TABLE. Written out, a pixel is an
+          # A line of fixed text with this many lit pixels or more is a table. Written out, a pixel is an
           # address loaded and a store, right where the line is drawn; in a table it is two bytes,
           # and a pass round a shared loop that reads them from the cartridge, which is slower. So
           # a short line, which a game may well draw every frame, stays as it is, and what goes in
@@ -243,11 +276,11 @@ module VBlank
             @emitter.emit(ASM.add_reg(COLUMN_SRC, COLUMN_SRC, ACC))
           end
 
-          # HOW FAR DOWN THE PICTURE EACH SCREEN ROW MOVES: (picture height << 16) / height, by
+          # How far down the picture each screen row moves: (picture height << 16) / height, by
           # the shared divide routine — which takes the numerator in TMP and the divisor in
           # ACC, and hands the answer back in ACC.
           #
-          # A DIVIDE IS A CALL AND A LOOP, AND MOST STRIPS DO NOT NEED ONE. A thing on screen is
+          # A divide is a call and a loop, and most strips do not need one. A thing on screen is
           # many strips of one height, and a wall's strips change height a row at a time, so
           # the strip before this one has very often just worked out this very step. The last
           # step is kept with the two numbers it came from, and a strip whose numbers match takes
@@ -286,7 +319,7 @@ module VBlank
             @emitter.emit(ASM.mov_reg(COLUMN_STEP, ACC))
           end
 
-          # NO STEP IS KNOWN AT POWER-ON. The memory holds whatever it held, which could pass for
+          # No step is known at power-on. The memory holds whatever it held, which could pass for
           # a height and a step that were never worked out. A height of nothing never reaches
           # the step (a column of no height draws nothing), so it is the one that cannot match.
           def emit_clear_remembered_column_step
@@ -313,7 +346,7 @@ module VBlank
             @emitter.emit(ASM.add_reg(COLUMN_RUNS, COLUMN_RUNS, SPARE))
           end
 
-          # THE WALK, ONCE PER STRETCH OF PIXELS instead of once down the whole square.
+          # The walk, once per stretch of pixels instead of once down the whole square.
           #
           # A picture that ships no list is drawn in one pass over its full height,
           # which is what every picture did before there were lists and what an opaque
@@ -321,15 +354,15 @@ module VBlank
           # to is emitted once however many stretches a column turns out to have.
           #
           # +bail+ is where a column with no rows left to draw goes; the block is
-          # handed the label to jump to when ITS stretch has none, which is the next
+          # handed the label to jump to when its stretch has none, which is the next
           # stretch rather than the end.
           #
-          # THE PICTURE CANNOT CHANGE, however the arithmetic rounds. Where every row of
+          # The picture cannot change, however the arithmetic rounds. Where every row of
           # every stretch is a pixel, each end is stepped on to exactly the screen row the
           # walk shows it at (see #emit_exact_stretch_ends), so the walk meets only pixels and
           # asks no row whether it is see-through. Where one is not (see
           # ColumnStretches#stretches_are_all_pixels?), the walk asks each row, so a stretch a
-          # row too wide costs one row and draws nothing extra; and it is never too NARROW,
+          # row too wide costs one row and draws nothing extra; and it is never too narrow,
           # because its first row is rounded down and its last is rounded up with a row to
           # spare. See {ColumnDivide} for how each end is rounded and why the far one sometimes
           # wants a second spare row.
@@ -393,7 +426,7 @@ module VBlank
             @emitter.emit(ASM.pop(*held))
           end
 
-          # A STRETCH'S ENDS LANDED EXACTLY, so the walk between them meets only pixels.
+          # A stretch's ends landed exactly, so the walk between them meets only pixels.
           #
           # The walk shows, at screen row r, picture row (r × step) >> 16 — so a stretch from
           # picture row a to picture row b begins at the first r whose r × step reaches a << 16,
@@ -401,7 +434,7 @@ module VBlank
           # those straight off; the divide above gives a guess instead, and this steps each guess
           # on a row at a time until it sits on the answer.
           #
-          # NEITHER GUESS IS EVER TOO LATE, so neither has to step back. A guess is the picture
+          # Neither guess is ever too late, so neither has to step back. A guess is the picture
           # row times the height over the picture's height, rounded up; the true row is that
           # same picture row over a step that was itself rounded down, which can only come out
           # later. How much later grows with how tall the strip is drawn: on a strip a few times
@@ -449,11 +482,11 @@ module VBlank
 
           # One end of a stretch, from a picture row times the height on screen to the screen
           # row it lands on. A shift where the picture's height allows one; otherwise the long
-          # multiply, whose top half IS the answer — and which writes a whole 64-bit product,
+          # multiply, whose top half is the answer — and which writes a whole 64-bit product,
           # so it needs somewhere to put the half nothing reads (+spill+). ACC carries the
           # multiplier, loaded from the stack by the caller.
           #
-          # A picture ONE row tall is the odd one out: dividing by one changes nothing, so the
+          # A picture one row tall is the odd one out: dividing by one changes nothing, so the
           # number is carried across as it stands.
           def emit_column_divide(divide, from:, into:, spill:)
             if divide.by_multiply?
@@ -465,7 +498,7 @@ module VBlank
             end
           end
 
-          # WHICH ROWS OF THE COLUMN ARE ACTUALLY ON THE SCREEN, worked out once before
+          # Which rows of the column are actually on the screen, worked out once before
           # the walk starts.
           #
           # A wall you are nose-to-nose with is many times taller than the screen.
@@ -532,7 +565,7 @@ module VBlank
           # Work out a run-time rect's x, y, row count and width into their registers.
           #
           # The two coordinates go via the stack rather than straight into their
-          # registers, because working out the SECOND one can use the register the
+          # registers, because working out the second one can use the register the
           # first was just parked in — a multiply of two numbers holding a fraction
           # borrows exactly those. The stack is the one place nothing else touches.
           # The size registers are high enough that nothing evaluating an expression
@@ -564,7 +597,7 @@ module VBlank
           # +width+ is the digits' shared width (the caller checked all ten match) and
           # the cell is on-screen, so the walk needs no clipping.
           #
-          # Called once per font, to build the ONE shared routine each screen mode's
+          # Called once per font, to build the one shared routine each screen mode's
           # digit calls reach with a BL rather than a copy of this loop apiece (see
           # Drawing#emit_digit_routines) — the digit itself already sits in r0 when
           # this runs, left there by whichever call evaluated it before branching in.

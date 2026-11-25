@@ -86,7 +86,7 @@ class TestTileRunsOnTheAdvance < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :shop }
+        call({ 0 => :house, 1 => :shop }, number: :state)
       end
     end
     b.finalize_program
@@ -163,7 +163,7 @@ class TestTileRunsOnTheAdvance < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :shop }
+        call({ 0 => :house, 1 => :shop }, number: :state)
       end
     end
     b.finalize_program

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/snake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake").to_s)
 
 # The Snake example as a whole (examples/snake.rb). This is the capstone POC game;
 # the focused move/collision core lives in test_snake_core.rb. Here we prove the

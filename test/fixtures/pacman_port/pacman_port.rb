@@ -15,7 +15,7 @@
 #   none of the data, and on the first run Load ROM takes pacman.gba, unpacks it into a data pack kept
 #   on the player's machine, and the next runs never read the cartridge.
 #
-# THE UNPACKING is game code (`slots.fill_from_copy`). The cartridge keeps most of its data
+# The unpacking is game code (`slots.fill_from_copy`). The cartridge keeps most of its data
 # packed with the Advance's BIOS schemes, LZ77 and run-length, and the routine undoes both. Where
 # each piece is in the file is a fact (pacman_facts.yml, written by tools/make_pacman_fixture.rb
 # from the cartridge build's own record); what each piece is, the port's own knowledge below, is
@@ -24,7 +24,7 @@
 # Every asset the cartridge packs is unpacked into the pack, and the picture of every one is drawn
 # from it, the letters and digits of the score included (a picture font of the cartridge's glyph tiles).
 #
-# THE SOUNDS are the one thing not read from it. The cartridge holds no sound settings as data: the
+# The sounds are the one thing not read from it. The cartridge holds no sound settings as data: the
 # Advance's build writes waka and caught as writes to the sound registers in its code, so there is
 # nothing in the file to unpack. A real port reads them from a decompilation's sound tables, so the
 # port keeps them as define_sound lines. Nothing in the cartridge is a tune.
@@ -63,7 +63,7 @@ module PacmanPort
   HUD_BANK = 0
   # The cartridge draws each glyph 6 pixels on from the last, in an 8-pixel tile.
   HUD_GLYPH_ADVANCE = 6
-  # Where the cartridge's digits start after SCORE: its five letters 6 apiece, the last 5 pixels across.
+  # Where the cartridge's digits start after score: its five letters 6 apiece, the last 5 pixels across.
   SCORE_LABEL_WIDTH = 29
 
   # Pac's pictures in the cartridge, each four tiles (16x16): his mouth open to the right, shut, open

@@ -2,7 +2,8 @@
 
 module VBlank
   class Builder
-    # SAVE DATA: a group of the game's own state — variables and lists — kept in the
+    #--
+    # Save data: a group of the game's own state — variables and lists — kept in the
     # cartridge's save memory when the game asks for it, and put back when it asks for it.
     #
     #   files = save_data :file, copies: 3 do
@@ -14,12 +15,13 @@ module VBlank
     # for a game's progress: a player who turns the console off without saving must find the
     # game as it was when they last saved. So nothing here is written until the game asks.
     #
-    # WHAT IS BUILT is ordinary program: a routine per record for saving, loading, erasing,
+    # What is built is ordinary program: a routine per record for saving, loading, erasing,
     # copying and looking a copy over, each made of the three save-memory steps (see
     # IR::SaveLayout) and the arithmetic every backend already runs, so the interpreter and the
     # console cannot disagree about the rules that keep a save safe. Each is written once: two
     # halves per copy and the newer one wins (#save_data_scan), the order a half is written in
     # with its checksum last (SaveHalf), and where each kept thing sits in a body (Kept).
+    #++
     module SaveRecords
       # One thing a record keeps, and where in its body it sits — the one place that sets how a
       # kept thing is laid out. A variable is a word at +at+. A list is its length, a word at
@@ -27,7 +29,7 @@ module VBlank
       #
       # +base+ below is where the body starts, as the program works it out: a half in save
       # memory, or the snapshot a background save copies the kept things into first.
-      Kept = Data.define(:kind, :name, :at, :width, :count) do
+      Kept = Data.define(:kind, :name, :at, :width, :count) do  # :nodoc:
         def bytes = kind == :var ? WORD : WORD + (count * slot_bytes)
         def slot_bytes = SaveRecords::WIDTH_BYTES.fetch(width)
 
@@ -41,16 +43,16 @@ module VBlank
         end
       end
 
-      WORD = 4
+      WORD = 4  # :nodoc:
 
-      WIDTH_BYTES = { byte: 1, half: 2, word: 4 }.freeze
+      WIDTH_BYTES = { byte: 1, half: 2, word: 4 }.freeze  # :nodoc:
 
       # Declare a record of the game's state, kept in save memory in +copies+ numbered
       # copies. The block, if there is one, names what it keeps with `keep`; the handle's own
       # `keep` adds more later, from anywhere in the program. Returns a handle: `files[n]` is
       # one copy, and a copy saves, loads, erases and reports whether it is good.
       #
-      # THE RECORD IS USABLE AT ONCE AND LAID OUT AT THE END. A file-select screen comes first
+      # The record is usable at once and laid out at the end. A file-select screen comes first
       # in a game and has to save and peek at the record, while what the record keeps belongs
       # to the gameplay declared after it. So nothing here depends on what is kept: the handle
       # knows the record's name, its copies and its variables, which is all a save, a load or a
@@ -76,6 +78,8 @@ module VBlank
                                "To fix this, call `keep` while the program is declared."
         end
         things.each do |thing|
+          # An Array of Structs is kept as the pool it is built as (DSL::StructArray).
+          thing = thing.pool if thing.is_a?(DSL::StructArray)
           next @save_data_keeping.fetch(name) << thing if thing.is_a?(KeptPart)
           next @save_data_keeping.fetch(name) << keep_pool_part(name, thing) if pool_part?(thing)
 
@@ -83,13 +87,13 @@ module VBlank
         end
       end
 
-      # A PART KEPT WHOLE (`keep part: :play`): every variable, list and pool the part declares, or a
+      # A part kept whole (`keep part: :play`): every variable, list and pool the part declares, or a
       # scene's, as `start_over` puts back (Builder::Parts). Its members are only all known once every
       # routine is built, so it is held as it is until then, and #expand_kept_parts! puts its members
       # where it stands in the record, in the order the part declared them. A member added to the part
       # later is kept with no change to the record; it changes the record's shape, so a save made
       # before reads as empty, as a moved keep does.
-      KeptPart = Data.define(:name)
+      KeptPart = Data.define(:name)  # :nodoc:
 
       # Each part a record keeps, as its members, once every routine is built.
       #   - A member this record keeps already, by a `keep` of its own or an earlier part, is kept
@@ -179,7 +183,7 @@ module VBlank
       # The name a kept thing has in its record's shape: its own, or nothing for one the framework named.
       private def save_shape_name(name) = @save_data_unnamed.include?(name) ? nil : name
 
-      # A POOL, OR ONE FIELD OF ONE, is kept as the lists and variables it is made of, which
+      # A pool, or one field of one, is kept as the lists and variables it is made of, which
       # are only all known once the program is built (see DSL::Pool#saved_lists_and_vars) — so it is
       # held as it is until the record is laid out. Kept twice is refused here, where the
       # game wrote it: a whole pool claims each of its fields, so a field kept elsewhere
@@ -212,7 +216,7 @@ module VBlank
         Kept.new(kind: :list, name: name, at: 0, width: made.width || :word, count: made.capacity)
       end
 
-      # LAY EVERY RECORD OUT, once the whole program is declared: where each kept thing sits,
+      # Lay every record out, once the whole program is declared: where each kept thing sits,
       # how big a copy is, whether the records fit in save memory, and every routine that
       # reads or writes them — the table of places, the job queue, each record's own. The
       # Builder calls this after building every routine the game wrote, which is the last
@@ -250,7 +254,7 @@ module VBlank
       # Until the program is fully declared a record's +kept+, +body+, +half+, +shape+ and
       # +pools+ are nil (see #declare), so anything that reads them too early fails where it
       # reads.
-      Layout = Data.define(:name, :copies, :kept, :body, :half, :place, :shape, :key, :number, :when_busy,
+      Layout = Data.define(:name, :copies, :kept, :body, :half, :place, :shape, :key, :number, :when_busy,  # :nodoc:
                            :pools, :fast) do
         def routine(job) = Messages::MadeNames.make(:save_record, record: name, piece: job)
         def scratch(what) = Messages::MadeNames.make(:save_record, record: name, piece: what)
@@ -306,7 +310,7 @@ module VBlank
 
       # What a save, erase or copy of this record does when one of the record's is already in
       # hand. Waiting is the default because it is the one that loses nothing.
-      WHEN_BUSY = %i[wait replace refuse].freeze
+      WHEN_BUSY = %i[wait replace refuse].freeze  # :nodoc:
 
       def check_save_data_when_busy!(name, when_busy)
         return if WHEN_BUSY.include?(when_busy)
@@ -316,7 +320,7 @@ module VBlank
                              "one not yet written) or :refuse (it does nothing and failed? holds)."
       end
 
-      # WHERE THE RECORD'S ROUTINES RUN FROM is `func`'s word, with `func`'s three answers.
+      # Where the record's routines run from is `func`'s word, with `func`'s three answers.
       def refuse_invalid_save_data_fast!(name, fast)
         return if [true, false, nil].include?(fast)
 
@@ -327,9 +331,9 @@ module VBlank
 
       # The jobs that write to save memory, and so go through the queue and are written a
       # piece each pass.
-      JOBS_THAT_WRITE = %i[save erase copy].freeze
+      JOBS_THAT_WRITE = %i[save erase copy].freeze  # :nodoc:
 
-      # WHERE ONE OF A RECORD'S ROUTINES IS KEPT, from what the game set for the record:
+      # Where one of a record's routines is kept, from what the game set for the record:
       # true for the quick memory, false for the cartridge, nil for the build to decide.
       #
       # `fast: false` applies to every routine the record has. `fast: true` applies to the two
@@ -353,7 +357,7 @@ module VBlank
       # Did the game set `fast: true` on this record, and ask it for a job that writes?
       def insists_on_writing?(layout) = layout.fast && @save_jobs_asked[layout.name].intersect?(JOBS_THAT_WRITE)
 
-      # WHERE THE QUEUE'S OWN ROUTINES ARE KEPT, which no game sets for them: they are every
+      # Where the queue's own routines are kept, which no game sets for them: they are every
       # record's, and a write goes through them on its way to the record's own. So they go
       # where the game's records decide between them — the quick memory when a record that
       # insisted on it writes, since those writes pass through here; the cartridge when every
@@ -383,9 +387,10 @@ module VBlank
 
       def check_save_data_count!(layout)
         records = [*@save_data.each_value, layout]
-        if records.length > IR::SaveLayout::TABLE_ROWS
+        rows = (named_save_memory || IR::SaveLayout::PACKED).table_rows
+        if records.length > rows
           raise ArgumentError, "#{record_words_first(layout.name)} is record #{records.length}, and a game can have " \
-                               "#{IR::SaveLayout::TABLE_ROWS}. To fix this, keep more in fewer records."
+                               "#{rows}. To fix this, keep more in fewer records."
         end
         return unless (same = @save_data.each_value.find { |other| other.key == layout.key })
 
@@ -393,7 +398,7 @@ module VBlank
                              "memory cannot tell apart. To fix this, rename one of them."
       end
 
-      # THE RECORDS MUST FIT THE CARTRIDGE'S SAVE MEMORY: the size the game named with
+      # The records must fit the cartridge's save memory: the size the game named with
       # `save_memory:`, or else the biggest there is. Asked once the records are laid out, since
       # what they keep is only known then.
       def refuse_records_over_save_memory!
@@ -403,10 +408,19 @@ module VBlank
 
         records = "save_data records"
         records += ", with the record that keeps its save_var numbers," if save_vars_in_record?
+        refuse_records_over_small_eeprom!(named, records) if named.small_eeprom?
         smallest = named.eeprom? ? " #{named.kilobytes}K, the EEPROM, is the smallest save memory there is." : ""
         raise ArgumentError, "This game asks for `save_memory: #{named.kilobytes}`, and its #{records} need " \
                              "#{needed_save_memory.kilobytes}K.#{smallest} To fix this, ask for `save_memory: " \
                              "#{needed_save_memory.kilobytes}`, or keep less in each record, or use fewer copies."
+      end
+
+      # The 512-byte EEPROM is the smallest chip, so the way out is a bigger one, or less to keep.
+      def refuse_records_over_small_eeprom!(named, records)
+        raise ArgumentError, "This game asks for `save_memory: #{named.kilobytes}`, the 512-byte EEPROM. Its #{records} " \
+                             "need #{named.bytes_filled(record_halves)} bytes there, and the chip has #{named.size}. " \
+                             "To fix this, ask for `save_memory: #{IR::SaveLayout::EEPROM}`, or keep less in each " \
+                             "record, or use fewer copies."
       end
 
       # The records in the order they were declared, each with what it keeps laid out. The
@@ -449,6 +463,7 @@ module VBlank
         keeping = @save_data_keeping.fetch(layout.name)
         pools = keeping.select { |one| pool_part?(one) }
         kept = keeping.flat_map { |one| pool_part?(one) ? pool_items(one) : [one] }
+        kept += kept_part_started(layout.name, keeping, kept)
         if kept.empty?
           raise ArgumentError, "save_data :#{layout.name} keeps nothing, so a save of it has nothing to save. " \
                                "To fix this, name what it keeps: `files.keep hearts`, or " \
@@ -458,6 +473,19 @@ module VBlank
         lay_out_save_data(layout.name, layout.copies, kept, place: layout.place, number: layout.number,
                                                             when_busy: layout.when_busy, pools: pools,
                                                             fast: layout.fast)
+      end
+
+      # The hidden numbers that keep the Arrays +record+ keeps to one filling by the part that made
+      # them (Builder#part_started_for), each kept beside them, unnamed in the record's shape as the
+      # framework's own are. Without it a game loaded on a fresh power-on would fill them again on
+      # top of what it loaded.
+      def kept_part_started(record, keeping, kept)
+        arrays = keeping.map { |one| pool_part?(one) ? (one.is_a?(DSL::Pool) ? one : one.pool).name : one.name }
+        flags = arrays.filter_map { |name| @port.handle.part_started_for(name) }.uniq
+        flags.reject { |flag| kept.any? { |item| item.name == flag } }.map do |flag|
+          @save_data_unnamed << flag
+          claim_kept!(record, Kept.new(kind: :var, name: flag, at: 0, width: :word, count: 1))
+        end
       end
 
       # One record's lists, buffer, power-on scans and routines, once it is laid out.
@@ -521,7 +549,7 @@ module VBlank
 
       # --- the routines' bodies, run while the routines are built ---
 
-      # LOOK ONE COPY OVER: which half is good and newer, and so what the copy is.
+      # Look one copy over: which half is good and newer, and so what the copy is.
       #
       # A half is good when it has the marker, the record's shape, and a checksum that matches
       # its bytes. Of two good halves the one with the higher sequence number is the copy. With
@@ -530,8 +558,8 @@ module VBlank
       # marker, or another record's shape, was never this record's, and the copy is empty.
       #
       # The body is summed only for a half that has the marker and the shape, as a retail
-      # cartridge checks a block's signature before its sum: a half never written costs two
-      # reads, not a pass over every byte of it. So setting up at power-on costs what the saves
+      # cartridge checks a block's signature before its sum: a half never written costs one
+      # read, not a pass over every byte of it. So setting up at power-on costs what the saves
       # on the chip hold, which on an empty chip is nothing, and on a slow console that was most
       # of the frames before the first pass.
       def save_data_scan(layout)
@@ -542,16 +570,21 @@ module VBlank
           at = layout.scratch(:"at#{half}")
           record(Build.set(at, @halves.half_at(layout, copy, sd_int(half))))
           here = sd_var(at)
-          # Good starts as marked, and is narrowed to summed only where it was marked.
+          # Good starts as marked, and is narrowed to summed only where it was marked. The shape
+          # is read only behind a marker, so a half never written costs one read.
           good = layout.scratch(:"v#{half}")
-          record(Build.set(good, sd_and(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER)),
-                                        sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape)))))
+          record(Build.set(good, sd_int(0)))
+          sd_when(sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::MARKER_AT))), sd_int(IR::SaveLayout::MARKER))) do
+            record(Build.set(good, sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::SHAPE_AT))), sd_int(layout.shape))))
+          end
           record(Build.set(started, Build.binop(:|, sd_var(started), sd_var(good))))
+          # The sequence number is read only here too: it is only ever compared for a half that
+          # turns out good.
           sd_when(sd_eq(sd_var(good), sd_int(1))) do
             record(Build.set(good, sd_eq(sd_read(sd_add(here, sd_int(IR::SaveLayout::CHECKSUM_AT))),
                                          Build.save_sum(sd_add(here, sd_int(IR::SaveLayout::HEADER)), sd_int(layout.body)))))
+            record(Build.set(layout.scratch(:"s#{half}"), sd_read(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)))))
           end
-          record(Build.set(layout.scratch(:"s#{half}"), sd_read(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)))))
         end
         winner = layout.scratch(:winner)
         record(Build.set(winner, sd_int(-1)))
@@ -569,8 +602,10 @@ module VBlank
         end.else do
           at = @halves.half_at(layout, copy, sd_var(winner))
           record(Build.set(layout.scratch(:at), at))
+          # The winner's sequence number, read above: s0, or s1 for the second half.
+          s0 = sd_var(layout.scratch(:s0))
           record(Build.list_set(layout.directory(:seq), copy,
-                                sd_read(sd_add(sd_var(layout.scratch(:at)), sd_int(IR::SaveLayout::SEQUENCE_AT)))))
+                                sd_add(s0, sd_op(:*, sd_var(winner), sd_op(:-, sd_var(layout.scratch(:s1)), s0)))))
           erased = sd_eq(sd_read(sd_add(sd_var(layout.scratch(:at)), sd_int(IR::SaveLayout::KIND_AT))),
                          sd_int(IR::SaveLayout::ERASED))
           sd_when(erased) { record(Build.list_set(layout.directory(:state), copy, sd_int(state.index(:erased)))) }
@@ -578,18 +613,26 @@ module VBlank
         end
       end
 
-      # SAVE THE TABLE OF PLACES in one go (see SavePlaces): its body into the older half, then
+      # Save the table of places in one go (see SavePlaces): its body into the older half, then
       # the header, the checksum last of all — until that is written the half cannot pass for
       # good, so a save cut off anywhere leaves the other half as the table. The game's own
       # records are written the same way, but a piece a pass (see SaveJobs); the table is written
       # only at power-on, before the game has anything to show, so it is written whole.
+      #
+      # The half is looked over again once it is in (SaveHalf#emit_half_commit) only where the
+      # table read as good before it was written. A second write in the same power-on goes in the
+      # half that read back names, and only a table the chip already held is written twice: one
+      # the chip did not hold is written once (SavePlaces#save_places_fresh), and its state is
+      # not asked for again before the next power-on.
       def save_data_save(layout)
-        save_data_write(layout, IR::SaveLayout::SAVED) do |body|
+        copy = sd_var(layout.scratch(:copy))
+        held = sd_eq(layout.directory_at(:state, copy), sd_int(IR::SaveLayout::STATES.index(:good)))
+        save_data_write(layout, IR::SaveLayout::SAVED, read_back: held) do |body|
           layout.kept.each { |item| emit_write_kept_item(item, body) }
         end
       end
 
-      # A NEW GAME: each kept variable set to what it was declared with, each kept list emptied.
+      # A new game: each kept variable set to what it was declared with, each kept list emptied.
       # The random numbers roll on: a new game that started them where power-on does would
       # play the same rolls as every new game before it.
       #
@@ -601,6 +644,8 @@ module VBlank
         layout.pools.each { |part| reset_pool_part(part, layout.pools) }
         layout.kept.each do |item|
           next if random_numbers?(item.name) || pooled.include?(item.name)
+          # A list a build started in a chosen state gave items holds them again, as power-on made it.
+          next @port.emit_list_start.call(item.name) if item.kind == :list && @port.chosen_list_start.call(item.name)
           # A list declared full of a value is made full again, as power-on made it.
           made = list_new_node(item.name) if item.kind == :list
           next record(Build.list_new_like(made)) if made&.full_of
@@ -621,14 +666,14 @@ module VBlank
 
       # A whole half written in one go, in the safe order (see SaveHalf): opened, the body the
       # block writes, closed.
-      def save_data_write(layout, kind)
+      def save_data_write(layout, kind, read_back: true)
         copy = sd_var(layout.scratch(:copy))
         sd_when(layout.copy_in_range(copy)) do
           record(Build.set(layout.scratch(:at), @halves.half_to_write(layout, copy)))
           here = sd_var(layout.scratch(:at))
           @halves.emit_half_header(layout, here)
           yield sd_add(here, sd_int(IR::SaveLayout::HEADER))
-          @halves.emit_half_commit(layout, here, copy, kind)
+          @halves.emit_half_commit(layout, here, copy, kind, read_back: read_back)
         end
       end
 
@@ -641,7 +686,7 @@ module VBlank
         record(Build.save_store_list(item.name, at: item.slot_at(body, sd_int(0)), width: item.width, index: declare_loop_counter))
       end
 
-      # LOAD A COPY INTO THE GAME'S STATE, when it is good; otherwise nothing changes, so a
+      # Load a copy into the game's state, when it is good; otherwise nothing changes, so a
       # game can load its settings at power-on with no test around it.
       def save_data_load(layout)
         copy = sd_var(layout.scratch(:copy))
@@ -706,7 +751,8 @@ module VBlank
 
       def refuse_non_state_keep!(record, what)
         raise ArgumentError, "save_data :#{record} was asked to keep #{what}. A record keeps the game's " \
-                             "own state: the handles `var` and `list` give you. To fix this, pass one of those."
+                             "own state: a number the game changes, an Array the game changes, or an Array " \
+                             "of Structs. To fix this, give it one of those."
       end
 
       # --- what the handles call ---
@@ -740,7 +786,7 @@ module VBlank
         Build.binop(:*, within, layout.directory_at(:state, index))
       end
 
-      # ONE PEEK AT A COPY, written wherever the game reads it — which on a file-select screen
+      # One peek at a COPY, written wherever the game reads it — which on a file-select screen
       # is before the record names what it keeps, so where the thing sits in a copy is not known
       # yet. The line gets a stand-in for the number, named after the record, and
       # #resolve_save_data_peeks puts the real reading in its place once every record is laid
@@ -749,7 +795,7 @@ module VBlank
       #
       # +shape+ is how the game read it: :number for a variable, :item (with +index+) for one
       # item of a list, :length for how many a list holds.
-      PeekSite = Data.define(:record, :name, :copy, :shape, :index)
+      PeekSite = Data.define(:record, :name, :copy, :shape, :index)  # :nodoc:
 
       def peek_stand_in(layout, copy, name, shape, index: nil)
         @jobs.emit_finish_jobs_of(layout)
@@ -759,7 +805,7 @@ module VBlank
         Build.var_ref(stand_in)
       end
 
-      # EVERY PEEK'S STAND-IN REPLACED BY ITS READING, wherever in +program+ it ended up — a
+      # Every peek's stand-in replaced by its reading, wherever in +program+ it ended up — a
       # stand-in copied along with a condition is replaced where the copy went, too. Called
       # once the whole program is built. A peek at something its record never kept is a
       # friendly error whether or not the game used it; one read the wrong way for what is

@@ -4,8 +4,8 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE MAIN VOLUME A GAME NAMES (`enable_sound main_volume:`, Program#main_volume, in 127ths), AS
-        # THE ADVANCE'S REGISTERS HOLD IT. The Advance has no one main volume: it has three settings, and
+        # The main volume a game names (`enable_sound main_volume:`, Program#main_volume, in 127ths), AS
+        # the Advance's registers hold it. The Advance has no one main volume: it has three settings, and
         # each takes the nearest it can.
         #
         # The Game Boy voices (the squares, the wave and the noise) are turned down twice before they

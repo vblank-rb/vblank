@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A FADE OR A TINT THAT WALKS THE COLOURS (IR::Fading#palette_walk?), as a console with no
+      # A fade or a tint that walks the colours (IR::Fading#palette_walk?), as a console with no
       # blend does every one: every colour the game shows moved part of the way toward black, white
       # or a colour of the game's, and the moved colours sent to the console's colour memory. What that walk is, and when it is done, is the
       # same on every console that does it, so it is set out here once and each lowering hands its
@@ -11,7 +11,7 @@ module VBlank
       # multiplies a channel, how many bits a channel keeps, where it keeps the colours and how it
       # sends them in the blank.
       #
-      # THE RULES, each the interpreter's (Reference#exec_fade, #exec_tint, Framebuffer#walked_toward
+      # The rules, each the interpreter's (Reference#exec_fade, #exec_tint, Framebuffer#walked_toward
       # and #mixed):
       #
       # - A walk is three things: toward what (black, white, or a colour, as TOWARD_BLACK, TOWARD_WHITE
@@ -24,7 +24,7 @@ module VBlank
       #   asks the steps, not where they go, whether there is any walk to do.
       # - Asked for again the same as the walk in force, it does nothing: a game writes `tint :red, hurt`
       #   every pass, and almost every pass nothing moved. Only a change works the colours out.
-      # - The colours walked are the ones each picture is drawn in NOW: the declared set of a list,
+      # - The colours walked are the ones each picture is drawn in now: the declared set of a list,
       #   or the set the game told it to hold (Reference#colors_held_by), so a list that changes
       #   and a walk in force meet on the same pass, whichever was given first.
       # - The work is done as the pass ends and sent in the blank, so the moved colours show on the
@@ -35,7 +35,7 @@ module VBlank
       # none refuses it in its answers' words (Console::Questions, :fade) before anything is made;
       # Fading never asks a console that cannot blend to walk one.
       #
-      # TWO CONSOLES DO PART OF THIS THEIR OWN WAY, and neither changes the answer, which the checked
+      # Two consoles do part of this their own way, and neither changes the answer, which the checked
       # runs hold to the interpreter:
       #
       # - The Advance blends, so most of its fades are the display's, and the walk it does

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT DRAWING A BIG POOL COSTS A GAME BOY COLOR, measured in the emulator. Each of a pool's sprites
+# What drawing a big pool costs a Game Boy Color, measured in the emulator. Each of a pool's sprites
 # is placed from the copy of the pool made in order every pass (DSL::Pool#stacked_list), read at a
 # place in it written in the program; and thirty-two things of sixteen by sixteen are more pieces
 # than the console's sprite table holds, so most of them find the table full.

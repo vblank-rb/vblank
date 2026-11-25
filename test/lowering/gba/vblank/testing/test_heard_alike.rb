@@ -5,7 +5,7 @@ require "heard_alike_tests"
 
 # A port's heard sound held to its original's, on the Advance: both cartridges in libmgba.
 class TestHeardAlike < Minitest::Test
-  include HeardAlikeTests
+  include HeardVoiceTests
 
   private def console = :gba
 

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SQUARE NOTE'S OWN TONE SHAPE (its duty: how much of each wave is high), and a shape that
+# A square note's own tone shape (its duty: how much of each wave is high), and a shape that
 # changes a frame at a time while the note holds — a list of two or four shapes the music player
 # steps through, one a frame, from the note's first frame on, round and round.
 #
@@ -57,7 +57,7 @@ class TestSongDuties < Minitest::Test
     assert_equal [nil, Duty.said(:eighth, where: "a note")], voices.map { |entry| entry[10] }.first(2)
   end
 
-  # A SHAPE THAT STEPS: the note's first frame its first shape, then one a frame, round again.
+  # A shape that steps: the note's first frame its first shape, then one a frame, round again.
   def test_a_pattern_steps_a_shape_a_frame_from_the_notes_start
     moves = duty_moves(song_game do
       voice(:lead) { |v| v.duty %i[eighth quarter half quarter]; v.note :C5, :whole }
@@ -94,7 +94,7 @@ class TestSongDuties < Minitest::Test
     [log.take(at), log.drop(at)].map { |entries| entries.any? { |entry| entry.first == :duty } }
   end
 
-  # THE GAME'S BEEP takes the second voice, and no part's pattern changes the beep's shape.
+  # The game's beep takes the second voice, and no part's pattern changes the beep's shape.
   def test_a_beep_stops_a_pattern_on_its_voice
     game = song_game(each_frame: ->(count) { beep 880 if count == 10 }) do
       voice(:lead) { |v| v.rest :whole }
@@ -113,7 +113,7 @@ class TestSongDuties < Minitest::Test
     assert_equal [true, false], steps_around(game_player.run(game, frames: 30).audio, :stop_music)
   end
 
-  # A SOUND EFFECT'S NOTE steps its shapes too, and its end stops them.
+  # A sound effect's note steps its shapes too, and its end stops them.
   def test_a_sound_effect_steps_its_shapes_until_it_ends
     score = VBlank::Audio::Score
     zap = score.new(tempo: 150, parts: [score::Part.new(duty: %i[eighth half], notes: [score::Note.new(at: 0, key: 76, length: 12)])])
@@ -138,7 +138,7 @@ class TestSongDuties < Minitest::Test
     assert(log.drop(ended).none? { |entry| entry.first == :duty }, "and not after it ended")
   end
 
-  # A SCORE SAYS IT THE SAME WAY: a part's `duty:` and a note's own.
+  # A score says it the same way: a part's `duty:` and a note's own.
   def test_a_score_says_its_notes_shapes
     score = VBlank::Audio::Score
     lead = score::Part.new(duty: %i[quarter half], notes: [score::Note.new(at: 0, key: 72, length: 24),

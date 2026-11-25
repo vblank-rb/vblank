@@ -15,7 +15,7 @@ class TestFramesSincePowerOnCartridge < Minitest::Test
     assert_frames_setting_up_counted(:gba, busy: 30_000)
   end
 
-  # A SONG WITH A RECORDED PART starts the sound mixer at power-on, and the mixer takes most of a
+  # A song with a recorded part starts the sound mixer at power-on, and the mixer takes most of a
   # frame to find its footing before the screen's interrupt is armed. Those frames are shown too.
   def test_the_frames_the_mixer_takes_to_start_are_counted
     frame, read = first_pass_frame_and_reading(:gba, screen_waiting_game(hold: GREEN_FROM_FRAME, song: true))
@@ -33,5 +33,32 @@ class TestFramesSincePowerOnCartridge < Minitest::Test
 
     assert_equal [GREEN_FROM_FRAME + 1], changed.values.uniq,
                  "the frame each build's screen changed on, counted from power-on: #{changed}"
+  end
+
+  # A list of this many words is written with its starting value as the game sets up, which the
+  # copying engine does with interrupts held off. Done in one go it outlasts a frame or two, the
+  # display's frame interrupt is only remembered once whatever it was held, and those frames were
+  # missed.
+  HUGE_LIST_WORDS = 60_000
+
+  private def game_with_a_huge_list
+    words = HUGE_LIST_WORDS
+    VBlank.game("HUGELIST", consoles: %i[gba]) do
+      screen :bitmap
+      list :huge, capacity: words, width: :word, full_of: 7
+      passes = 0
+      first = -1
+      game_loop do
+        first = frames_since_power_on if passes.zero?
+        passes += 1
+      end
+    end.program
+  end
+
+  def test_a_list_written_across_several_frames_as_the_game_sets_up_is_counted_in_them
+    frame, read = first_pass_frame_and_reading(:gba, game_with_a_huge_list)
+
+    assert_operator frame, :>=, 4, "setting up takes several frames"
+    assert_equal frame - 1, read, "the frames the list took to write are counted"
   end
 end

@@ -4,7 +4,7 @@ require "json"
 
 module VBlank
   module Cartridge
-    # A SEGA GENESIS CARTRIDGE: the code the Genesis lowering linked, with the vectors and the header
+    # A Sega Genesis cartridge: the code the Genesis lowering linked, with the vectors and the header
     # the console reads in front of it.
     #
     # The 68000 reads its first two long words at power-on: the place the stack starts, and the place
@@ -15,7 +15,7 @@ module VBlank
     # cartridge. A vector a game does not name points where reset does, so a fault restarts the game
     # in place of running off into the weeds.
     #
-    # THE HEADER sits at $100, 256 bytes of text and numbers: the console's name (which must start
+    # The header sits at $100, 256 bytes of text and numbers: the console's name (which must start
     # with "SEGA" or a console with the security check will not start the cartridge), the maker, the
     # game's title twice (once as the home market writes it and once as the overseas market does),
     # a serial number, the checksum, which devices the game reads (J is a three-button pad), where the
@@ -59,6 +59,8 @@ module VBlank
 
       def size = @bytes.bytesize
 
+      include ProfileNotes::WithRoutineSizes
+
       # The console a cartridge of this kind is for; whether +bytes+ are one (a cartridge whose header
       # starts with the console's name, SEGA); and its title field.
       def self.console = :genesis
@@ -78,9 +80,9 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK: the cartridge run in the emulator
+      # How many frames its passes took: the cartridge run in the emulator
       # (Diagnostics::GenesisProfiler), reported for a person or as JSON. +keys+ are held from
       # power-on, and +settle+ passes run before the +frames+ passes measured.
       #
@@ -88,9 +90,10 @@ module VBlank
       # read by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the
       # game's and the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::GenesisProfiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "Genesis")
         Diagnostics::TimeByRoutine.refuse_press!(press, "Genesis")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "Genesis")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::GenesisProfiler, tape: tape, frames: frames, keys: keys,
                                                                                       settle: settle, format: format, out: out,
@@ -101,8 +104,13 @@ module VBlank
         result = Diagnostics::GenesisProfiler.run(self, frames: frames, settle: settle || Diagnostics::GenesisProfiler::SETTLE,
                                                         keys: keys)
         case format
-        when :human then Diagnostics::GenesisProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h))
+        when :human
+          Diagnostics::BuildNotes.render(self, out)
+          Diagnostics::GenesisProfiler.render(result, out: out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{size / 1024} KB")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::BuildNotes.as_json(self))
+                                            .merge(Diagnostics::RoutineSizes.as_json(routine_sizes))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

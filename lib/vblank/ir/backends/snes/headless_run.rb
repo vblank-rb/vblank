@@ -13,7 +13,7 @@ module VBlank
         # within a step for a see-through layer, and a run of no frames ending before the screen is
         # on.
         class HeadlessRun < CartridgeHeadlessRun
-          # A PICTURE HELD WITHIN A STEP OF EACH CHANNEL, the picture of a Moment for a game with a
+          # A picture held within a step of each channel, the picture of a Moment for a game with a
           # layer half see-through (Lowering::Picture#refuse_unmade_see_through!). The console adds
           # the two sides' 5-bit channels and halves the sum; the interpreter widens both to eight
           # bits, mixes them and narrows the mix back, which comes out a step higher for some pairs
@@ -141,7 +141,7 @@ module VBlank
           # recordings — for a test to read a recording the DSP plays. Nil for a game with no sound.
           attr_reader :apu_ram
 
-          # WHAT WAS HEARD: the loudest sample bsnes played in each screen frame from power-on, left
+          # What was heard: the loudest sample bsnes played in each screen frame from power-on, left
           # or right, as a number from 0 to 32768. The registers hold what the sound unit was told
           # at the end of each pass; this gives what came out between, so a test can measure a
           # sound's shape — a rest's silence, a fade's length — where the registers cannot see it.
@@ -210,20 +210,26 @@ module VBlank
           # game was found waiting at that pass's end: read again as the pass's moment is.
           def read_setting_up = @setting_up = half(runtime_place(Runtime::Frame::SETTING_UP))
 
-          def power_on = set_buttons(@held)
+          # A game that reads the third or fourth player is played with a Super Multitap in the
+          # second port, as a person playing it with four would have.
+          def power_on
+            @core.plug_in_multitap if Runtime::Frame.reads_multitap?(@rom.built.source_program)
+            set_buttons(@held)
+          end
 
           # The buttons a game names, on the controller's: the same names, A, B, the shoulders L and R.
+          # The second controller's go to the second port, and through a Super Multitap the third's
+          # and fourth's to its next plugs.
           def set_buttons(buttons)
-            first, second = Buttons.by_controller(buttons.map(&:to_sym))
-            @core.set_buttons(first)
-            @core.set_buttons(second, port: 1)
+            Buttons.by_controller(Buttons.held_names(buttons).map(&:to_sym), controllers: Console::SUPER_NINTENDO.controllers)
+                   .each_with_index { |held, port| @core.set_buttons(held, port: port) }
           end
 
           # A pass's moment waits for the count of its sounds (#sounds_counted?), but for the moment
           # the run ends on.
           def moment_ready?(pass, frames) = pass > frames || sounds_counted?(pass)
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): Runtime::Frame turns the screen on as the
           # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -235,7 +241,7 @@ module VBlank
           # interpreter's switched-off white.
           def screen_forced_off? = @core.colors.none?(&:positive?)
 
-          # FRAME 1 CAN BE READ BEFORE IT IS DECIDED. An emulated frame ends as the console starts its
+          # FRAME 1 can be read before it is decided. An emulated frame ends as the console starts its
           # vertical blank, and the blank's interrupt reads the controller as it starts — so a first
           # pass that ends late in a frame finds that frame's interrupt, frame 1's, taken before the
           # emulator stops and the pass is seen to be over: frame 1 read the buttons held from
@@ -290,7 +296,7 @@ module VBlank
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+
           # is how many entries the sound log held as the game was found waiting (#read_sounds).
           #
-          # A PASS'S SOUNDS INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the interpreter plays after the
+          # A pass's sounds include its frame boundary's music, which the interpreter plays after the
           # pass, before anything reads the frame (Reference#advance_frame). The cartridge plays it
           # where the wait ends (Runtime::Music), after the game was found waiting, so a pass's moment
           # takes the count the cartridge kept as that wait ended (Runtime::Sound::LOGGED_BY_PASS),
@@ -321,7 +327,7 @@ module VBlank
 
             logged = half(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @dsp_reads << [logged, @core.dsp_registers] unless sound_writes_waiting?
+            @dsp_reads << [logged, dsp_registers_after_strikes] unless sound_writes_waiting?
             logged
           end
 
@@ -332,6 +338,18 @@ module VBlank
           def sound_writes_waiting?
             sound = Runtime::Sound
             @places.runtime.key?(sound::QUEUE) && half(runtime_place(sound::QUEUE_HEAD)) != half(runtime_place(sound::QUEUE_TAIL))
+          end
+
+          # The DSP's registers as the sound unit will leave them once it has done what its list holds, in a
+          # game whose sound effects are struck inside the frame (Runtime::Strikes): commands the log already
+          # counts can still be waiting there for their time.
+          def dsp_registers_after_strikes
+            registers = @core.dsp_registers
+            return registers unless @places.runtime.key?(Runtime::Strikes::FROM_SENT)
+
+            Runtime::Strikes.registers_after_list(registers, @core.apu_ram,
+                                                  chip_envelopes: @places.runtime.key?(Runtime::Recordings::CHIP_ENVELOPES),
+                                                  sides: @places.runtime.key?(Runtime::Recordings::SIDES))
           end
 
           # The recordings the cartridge's places held at the moment of +frame+, each [name, level], in
@@ -475,6 +493,8 @@ module VBlank
           # A pool's list read back where its layout placed its slots (Lowering#slot_places), any other
           # list a slot after another.
           def slot_place_of(name, width) = @places.slot_places.fetch(name) { super }
+
+          def unsigned_list?(name) = @places.unsigned_lists.include?(name)
 
           # Each variable as the interpreter holds it: one kept in two bytes (HalfVariables) read with
           # its sign spread upward, since the bytes after it are another variable's.

@@ -3,8 +3,8 @@
 require "test_helper"
 require "differential"
 require "place_games"
-require VBlank.root.join("examples/raycaster").to_s
-require VBlank.root.join("examples/breakout").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/raycaster").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/breakout").to_s)
 
 # A place made of flat faces on the Advance's cartridge, read back in the emulator: every pixel
 # where the interpreter puts it. What the faces draw is in
@@ -101,7 +101,7 @@ class TestPlacesCartridge < Minitest::Test
     assert_backends_agree(both, frames: 3, console_frames: 30, name: "BOTHGAPS")
   end
 
-  # THE BIGGEST FILL ROUTINE THERE IS: lit, see-through, every 8 pixels and every 16 in one game, so
+  # The biggest fill routine there is: lit, see-through, every 8 pixels and every 16 in one game, so
   # it has every run and every twin. Its room in the quick memory (GBA::Faces.routine_bytes) leaves
   # it little to spare, so a routine grown past it fails here, not in a game.
   def test_a_lit_see_through_face_drawn_every_8_and_every_16_pixels_builds_and_agrees

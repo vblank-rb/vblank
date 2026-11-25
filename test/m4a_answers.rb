@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE ANSWER KEY FOR THE ADVANCE'S COMMON SOUND DRIVER (Original::Packing::M4A): a made-up song of
+# The answer key for the Advance's common sound driver (Original::Packing::M4A): a made-up song of
 # VBlank's own in MusicPlayer2000's form, written by a small assembler, and a player that plays it
 # as the driver does, written in plain Ruby from the driver's source (tmc's asm/lib/m4a_asm.s:
 # MPlayMain, ply_note, ChnVolSetAsm, ply_goto, ply_patt, ply_pend, ply_rept, ply_endtie and the rest;
@@ -34,7 +34,8 @@ module M4AAnswers
   SPLIT_GROUP_AT = 0x0C0        # two voices a key split picks from
   SPLIT_TABLE_AT = 0x0E0        # 128 bytes
   KIT_AT = 0x160                # a drum kit's voices, 12 bytes a key, keys 0, 1, 36 and 38 written
-  DRIFT_SONG_AT = 0x590         # a late part at a tempo whose count never comes back in a few times round
+  TIES_SONG_AT = 0x580          # ties let go by EOT at a tempo that is not a tick a frame
+  DRIFT_SONG_AT = 0x590        # a late part at a tempo whose count never comes back in a few times round
   APART_SONG_AT = 0x5A0         # a song whose tracks' loops do not divide each other
   LATE_SONG_AT = 0x5B0          # a song with a track that first sounds after a short track's many rounds
   MIXED_SONG_AT = 0x5C0        # a song whose tracks switch between plain voices, the kit and the split
@@ -43,13 +44,19 @@ module M4AAnswers
   ONE_SHOT_AT = 0x660           # one that does not
   TRACKS_AT = 0x700
 
+  # A plain voice's key byte (its base key) is not read by the driver: ply_note strikes a note at the
+  # note's own key, and MidiKeyToFreq takes the recording's own rate from its wave data. So the
+  # recording here is written with base key 67 and the second square with 72, and every note plays
+  # as it would with 60. Only a drum kit's entry gives a key (ply_note reads the entry's byte as the
+  # key the note plays at), as the kit's entries below do.
+  #
   # The voices: a recording, the two squares, the wave, the noise, a key split (low keys the
   # recording, from key 60 the second square), a drum kit, and a recording at a fixed rate. The
   # first square slides down (its sweep byte), and the noise swells in (its attack).
   WAVE_PATTERN_AT = 0x5F0
   WAVE_PATTERN = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10].freeze
-  VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x2B, 2, [0, 0, 15, 0]],
-            [0x02, 60, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + WAVE_PATTERN_AT, [0, 0, 15, 0]],
+  VOICES = [[0x00, 67, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x2B, 2, [0, 0, 15, 0]],
+            [0x02, 72, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + WAVE_PATTERN_AT, [0, 0, 15, 0]],
             [0x04, 60, 0, 0, 0, [3, 2, 0, 0]],
             [0x40, 0, 0, 0, ROM + SPLIT_GROUP_AT, ROM + SPLIT_TABLE_AT], [0x80, 0, 0, 0, ROM + KIT_AT, [0, 0, 0, 0]],
             [0x08, 60, 0, 0, ROM + ONE_SHOT_AT, [255, 40, 200, 10]]].freeze
@@ -92,7 +99,7 @@ module M4AAnswers
      [:note, 2, 38, 127], [:wait, 2], [:wait, 36], [:wait, 36], [:wait, 2], [:rept, 0, :drums]]
   ].freeze
   # A song that ends: its tracks run to their end, the second later than the first; the first holds
-  # a tie as it ends with an XCMD the driver's table sends to FINE, the second jumps forward past a
+  # a tie as it ends with an XCMD the driver's table sends to fine, the second jumps forward past a
   # note, and the third names no voice, so it plays the first square.
   ENDING_TRACKS = [[[:voice, 1], [:vol, 127], [:note, 8, 70, 100], [:wait, 8], [:tie, 74, 100], [:wait, 4], [:xcmd, 0]],
                    [[:voice, 2], [:vol, 64], [:wait, 6], [:goto, :ahead], [:note, 12, 50, 90], [:label, :ahead],
@@ -130,14 +137,23 @@ module M4AAnswers
   DRIFT_TRACKS = [[[:tempo, 41], [:voice, 1], [:vol, 127], [:label, :round], [:note, 6, 60, 100], [:wait, 6], [:goto, :round]],
                   [[:voice, 2], [:vol, 100], [:wait, 96], [:wait, 96], [:label, :round], [:note, 24, 72, 110], [:wait, 24],
                    [:note, 24, 76], [:wait, 24], [:goto, :round]]].freeze
+  # Ties let go by EOT at a tempo that is not a tick a frame. The first track opens at a tempo of 250
+  # for 96 ticks, several a frame, then sets 76 (152 added to the count a frame, a tick on a little
+  # under a frame) and goes round every 24 ticks. The second ties key 47 on tick 108 and lets it go
+  # with an EOT naming no key on tick 214; then ties key 50 and lets it go with an EOT naming it.
+  TIES_TRACKS = [[[:tempo, 250], [:voice, 1], [:vol, 100], [:wait, 96], [:tempo, 76], [:label, :round], [:note, 12, 60, 100],
+                  [:wait, 24], [:goto, :round]],
+                 [[:voice, 0], [:vol, 100], [:wait, 96], [:wait, 12], [:tie, 47, 127], [:wait, 84], [:wait, 22],
+                  [:eot], [:wait, 2], [:tie, 50, 100], [:wait, 48], [:eot, 50], [:note, 24, 52, 90], [:wait, 24],
+                  [:label, :round], [:note, 12, 55], [:wait, 12], [:goto, :round]]].freeze
   # Two loops apart, a tick a frame: the first track goes round every 6 ticks from its start, the
   # second every 9 from tick 12, so they come round together every 18.
   APART_TRACKS = [[[:voice, 1], [:vol, 127], [:label, :round], [:note, 3, 60, 100], [:wait, 6], [:goto, :round]],
                   [[:voice, 2], [:vol, 100], [:wait, 12], [:label, :round], [:note, 4, 67, 90], [:wait, 9],
                    [:goto, :round]]].freeze
   # A song whose recorded notes sit off the middle and are changed while they sound, a tick a frame.
-  # The first track, left of the middle: a long note whose BEND moves it whole keys (BENDR 12 is
-  # three keys a step of 16), then two BENDs on one tick, a TUNE between keys, a KEYSH; then a note
+  # The first track, left of the middle: a long note whose bend moves it whole keys (BENDR 12 is
+  # three keys a step of 16), then two BENDs on one tick, a tune between keys, a KEYSH; then a note
   # bent on the tick it is struck; a recording at a fixed rate, which no bend moves; a note on the
   # right after a PAN, made quieter (VOL) and moved to the left (PAN) as it sounds; and a square
   # note, bent too, which a glide cannot move. The second track is the drum kit, whose voices sit
@@ -151,7 +167,7 @@ module M4AAnswers
                      [:wait, 2], [:bend, 0x48], [:wait, 4], [:fine]],
                     [[:voice, 6], [:vol, 90], [:note, 4, 36, 120], [:wait, 6], [:note, 4, 1, 100], [:wait, 6], [:fine]]].freeze
 
-  # The number a kit's or a split's first voice is given, past the 128 a VOICE names (Packing::M4A).
+  # The number a kit's or a split's first voice is given, past the 128 a voice names (Packing::M4A).
   KIT_AND_SPLIT_NUMBERS_FROM = 128
   # The recorded voices the mixed song plays, each where its twelve bytes are, as a port names them.
   MIXED_VOICES = { looped: GROUP_AT, one_shot: GROUP_AT + (12 * 7), kit_one_shot: KIT_AT, kit_wave: KIT_AT + 12,
@@ -234,7 +250,7 @@ module M4AAnswers
 
   COPY = copy_with({ SONG_AT => TRACKS, ENDING_SONG_AT => ENDING_TRACKS, MIXED_SONG_AT => MIXED_TRACKS,
                      ROUNDS_SONG_AT => ROUNDS_TRACKS, BENDING_SONG_AT => BENDING_TRACKS, LATE_SONG_AT => LATE_TRACKS,
-                     DRIFT_SONG_AT => DRIFT_TRACKS, APART_SONG_AT => APART_TRACKS }).freeze
+                     DRIFT_SONG_AT => DRIFT_TRACKS, APART_SONG_AT => APART_TRACKS, TIES_SONG_AT => TIES_TRACKS }).freeze
 
   # --- the player --------------------------------------------------------------------------------
 
@@ -258,7 +274,7 @@ module M4AAnswers
   # kit's or a split's voice is numbered from +kit_from+ or +split_from+; #voices is where the voice
   # each record played is, record by record.
   #
-  # WHERE A SONG COMES ROUND, as the reader works it out (Packing::M4A, "A SONG COMES ROUND"), in
+  # Where a song comes round, as the reader works it out (Packing::M4A, "a song comes round"), in
   # ticks: each track repeats on its own from where it first reaches the place it jumps back to, or
   # from its first jump back where its second time round does not start as its first did; the song
   # repeats from the latest of those (and of where a track that stops falls silent), every time
@@ -271,8 +287,8 @@ module M4AAnswers
   class Player
     attr_reader :records, :voices, :end_frame, :loop_frame, :loops, :silent_from, :frame, :marks
 
-    # +voiced+ gives each recording's record its settings, as a voiced record keeps them (VOICED
-    # RECORDINGS, below), and writes a gliding record where the part's note is bent as it sounds.
+    # +voiced+ gives each recording's record its settings, as a voiced record keeps them (voiced
+    # recordings, below), and writes a gliding record where the part's note is bent as it sounds.
     def initialize(copy, song_at, walked: nil, kind: 255, frames: nil, kit_from: KIT_AND_SPLIT_NUMBERS_FROM,
                    split_from: KIT_AND_SPLIT_NUMBERS_FROM, voiced: false)
       @source = copy
@@ -460,7 +476,7 @@ module M4AAnswers
         track.wait -= 1 if track.active
       end
       # MPlayMain counts a track that starts the tick playing, so the song stops a tick after its
-      # last track's FINE.
+      # last track's fine.
       @ended = true unless playing
     end
 
@@ -719,7 +735,7 @@ module M4AAnswers
     VBlank::Original::PackNote.bytes_of(records(song_at, walked, kind: kind, numbering: numbering), count: count)
   end
 
-  # THE SAME RECORDS VOICED, each with its console voice's settings as the driver sets the voice up
+  # The same records voiced, each with its console voice's settings as the driver sets the voice up
   # for the note (ply_note: the sweep, 8 where bits 4 to 6 are clear or bit 7 set; CgbSound: NRx1's
   # duty from the voice's wave word, the envelope from its attack, decay and sustain; CgbModVol:
   # the sustain level), matched to a note's own words as Packing::M4A::Walk#emit_voice_settings says.

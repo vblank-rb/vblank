@@ -85,7 +85,7 @@ module PoolWalkOrderGames
                  visit: ->(things, t, passes) { things.spawn id: 4 if passes == 0 && t.id == 2 })
   end
 
-  # A WALK CAN GO THE OTHER WAY, newest first, where the last thing added has to act first.
+  # A walk can go the other way, newest first, where the last thing added has to act first.
   # It is the exact reverse of the walk above, and what each promises during a walk holds
   # the same way round.
   private def newest_first_game = walking_game(setup: spawning(1, 2, 3), newest_first: true)
@@ -159,7 +159,7 @@ module PoolWalkOrderGames
     end
   end
 
-  # TWO THINGS ROLL THE SAME NUMBERS WHATEVER SLOTS THEY LANDED IN. Both games spawn 1 then 2
+  # Two things roll the same numbers whatever slots they landed in. Both games spawn 1 then 2
   # on the third pass and walk them on the fourth, each rolling as it is visited. In the plain
   # game 1 takes the highest slot and 2 the one below it. The other first spawns 7, 8 and 9 and
   # removes 7 and then 9 on passes of their own, which hands 1 a lower slot than 2 — so walked
@@ -195,7 +195,7 @@ module PoolWalkOrderGames
     [run[:first_roll], run[:second_roll]]
   end
 
-  # A KEPT POOL COMES BACK IN ITS ORDER. The first run removes 1 and spawns 4 into its slot,
+  # A kept pool comes back in its order. The first run removes 1 and spawns 4 into its slot,
   # then saves; the second run loads that save at power-on and its first walk goes 2, 3, 4.
   private def saved_pool_game
     VBlank.game("WALKSAVE", consoles: %i[gba]) do
@@ -224,7 +224,7 @@ module PoolWalkOrderGames
     end
   end
 
-  # A SAVE MADE DURING A WALK, AFTER A REMOVAL, holds a thing the walk has not yet let go of.
+  # A save made during a walk, after a removal, holds a thing the walk has not yet let go of.
   # Loaded at power-on, the next spawn into the full pool still appears: 1 was removed, so
   # there is room for 4 without recycling 2.
   private def save_during_walk_game
@@ -303,7 +303,7 @@ module PoolWalkOrderGames
   end
 end
 
-# A POOL IS WALKED IN THE ORDER ITS THINGS WERE ADDED, whatever slot each landed in: a thing
+# A pool is walked in the order its things were added, whatever slot each landed in: a thing
 # removed leaves the order, and a new one always goes last. Games depend on it where a player
 # can see it — things that roll random numbers one after another, and things that act on
 # each other first come, first served.
@@ -432,5 +432,37 @@ class TestPoolWalkOrder < Minitest::Test
     run = game_player.run(large_pool_game.program, frames: 2)
 
     assert_equal 200, run[:in_place]
+  end
+
+  # A thing kept past its turn (`target = t` in the walk) is the last thing the walk visited, read
+  # after the walk is over. Each thing's place moves every pass, so a handle left on another thing
+  # or on none reads another number.
+  private def kept_handle_game
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:floor, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :floor
+      background :field, tiles: :set, map: Array.new(20) { "#" * 30 }
+      last_x = var :last_x, 0
+      things = pool :thing, x: 0, capacity: 4
+      [10, 20, 30].each { |x| things.spawn(x: x) }
+      game_loop do
+        target = nil
+        things.each do |t|
+          t.x += 1
+          target = t
+        end
+        last_x = target.x
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_thing_kept_past_its_turn_is_the_last_one_walked
+    run = game_player.run(kept_handle_game, frames: 5)
+
+    assert_operator run[:last_x], :>, 30
   end
 end

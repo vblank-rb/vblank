@@ -1,22 +1,22 @@
 /*
  * Drives runtime/rg_bios_boot.c for test_native_bios_boot.rb. Three ways:
  *
- *   program IMAGE STEPS [ADDRESS ...]
- *     Puts the file IMAGE where the BIOS goes (a made-up program a test assembled, never a BIOS), runs
+ *   program image steps [address ...]
+ *     Puts the file image where the BIOS goes (a made-up program a test assembled, never a BIOS), runs
  *     STEPS instructions from address 0, and prints each register ("r0 0x...", up to "pc", then "cpsr"
- *     and "cycles") and the word at each ADDRESS ("mem 0x... 0x...").
+ *     and "cycles") and the word at each address ("mem 0x... 0x...").
  *
- *   boot BIOS ROM FRAMES PICTURES SOUND [MEMORY]
+ *   boot BIOS ROM frames pictures sound [memory]
  *     Switches the console on with the player's BIOS and the cartridge ROM (its first bytes and its
- *     size are all it reads) and plays up to FRAMES frames, or until the start-up reaches the
- *     cartridge. Writes each frame's picture to PICTURES
- *     (240 by 160, four bytes a pixel), each frame's sound to SOUND (a 32-bit count of samples, then
- *     that many left and right 16-bit pairs), and with MEMORY each frame's memories there (the work
+ *     size are all it reads) and plays up to frames frames, or until the start-up reaches the
+ *     cartridge. Writes each frame's picture to pictures
+ *     (240 by 160, four bytes a pixel), each frame's sound to sound (a 32-bit count of samples, then
+ *     that many left and right 16-bit pairs), and with memory each frame's memories there (the work
  *     memories, the colours, the picture's memory, the sprite table and the registers, in that order),
  *     and prints "frames N", "reached_game 0|1", "rate R" and "unhandled ...".
  *
- *   trace BIOS ROM FRAMES STEPS
- *     Plays FRAMES frames, then STEPS instructions, printing for each the address it ran, the cycles
+ *   trace BIOS ROM frames steps
+ *     Plays FRAMES frames, then steps instructions, printing for each the address it ran, the cycles
  *     counted, the registers and the status: for finding where the emulator and mGBA part ways.
  */
 #include <stdio.h>

@@ -2,19 +2,25 @@
 
 module VBlank
   module DSL
-    # THE DATE AND TIME, as the clock a cartridge carries keeps them. `clock` hands one back
-    # (see Builder#clock), and each reading is a {Value} like any variable's:
+    # The date and time
     #
-    #   now = clock
-    #   if now.present? && now.set?
-    #     draw_number now.hour, 40, 60, :white, digits: 2
-    #   else
-    #     draw_text "SET THE CLOCK", :center, 70, :white
-    #   end
+    # The date and time, as the clock a cartridge carries keeps them. Builder#clock hands one
+    # back, and each reading is a Value like any variable's.
+    #
+    # ```ruby
+    # now = clock
+    # if now.present? && now.set?
+    #   draw_number now.hour, 40, 60, :white, digits: 2
+    # else
+    #   draw_text "set the clock", :center, 70, :white
+    # end
+    # ```
     #
     # Every reading in one pass of the game loop is of the same moment, so a minute cannot turn
-    # over between reading the minute and the second. Where a build has no clock to read yet,
-    # it answers as a cartridge without one (see IR::Clock).
+    # over between reading the minute and the second.
+    #--
+    # Where a build has no clock to read yet, it answers as a cartridge without one (see IR::Clock).
+    #++
     class Clock
       def initialize(builder)
         @builder = builder
@@ -50,15 +56,26 @@ module VBlank
       # ask the player to set it rather than show a date that is not today.
       def set? = Condition.new(@builder, IR::Build.clock(:set))
 
-      # SET THE CLOCK to a date and time, each a number or a {Value} the game works out — the
-      # player's choice on a screen that asks, say. The readings are that moment at once, and
-      # move on from it; `set?` is true from then on. On a cartridge with no clock it does
-      # nothing, and every reading stays 0.
+      # Sets the clock to a date and time.
       #
-      #   now.set_to(year: 2026, month: 10, day: year_day, hour: 9, minute: 30)
+      # Each part is a number or a Value the game works out, such as the player's choice on a
+      # screen that asks. The readings are that moment at once, and move on from it, and
+      # Clock#set? is true from then on. On a cartridge with no clock it does nothing, and every
+      # reading stays 0.
       #
-      # Each is held to what a clock can keep: the year to 2000-2099, the day to the days its
-      # month has. The day of the week follows from the date.
+      # ```ruby
+      # now.set_to(year: 2026, month: 10, day: chosen_day, hour: 9, minute: 30)
+      # ```
+      #
+      # Each part is held to what a clock can keep: the year to 2000 to 2099, the day to the days
+      # its month has. The day of the week follows from the date.
+      #
+      # * `year:` - the year as it is written, 2000 to 2099.
+      # * `month:` - 1 for January to 12.
+      # * `day:` - the day of the month.
+      # * `hour:` - 0 to 23.
+      # * `minute:` - 0 to 59.
+      # * `second:` - 0 to 59.
       def set_to(year:, month:, day:, hour:, minute:, second: 0)
         given = { year: year, month: month, day: day, hour: hour, minute: minute, second: second }
         held = IR::Clock::SET_RANGES.to_h { |part, range| [part, number(given.fetch(part)).clamp(range.min, range.max)] }

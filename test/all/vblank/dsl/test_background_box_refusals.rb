@@ -16,7 +16,7 @@ class TestBackgroundBoxRefusals < Minitest::Test
   end
 
   def test_a_console_that_cannot_hold_a_background_to_a_box_refuses_in_plain_words
-    %i[gbc genesis snes].each do |console|
+    %i[gbc genesis].each do |console|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) { boxed_build(console, err: said) }
 

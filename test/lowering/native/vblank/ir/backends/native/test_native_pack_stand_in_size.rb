@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_stand_in_size_tests"
 
-# WHAT A PICTURE READ AS THE GAME STARTS COSTS THE GAME WRITTEN AS C (PackStandInSizeTests in
+# What a picture read as the game starts costs the game written as C (PackStandInSizeTests in
 # test/pack_stand_in_size_tests.rb): game.c and the files its big tables are embedded from.
 class TestNativePackStandInSize < Minitest::Test
   include PackStandInSizeTests

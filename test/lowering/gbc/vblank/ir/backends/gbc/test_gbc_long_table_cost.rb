@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A TABLE LONGER THAN 256 ENTRIES READ AT AN INDEX THE GAME WORKS OUT, on the Color. The read holds
+# A table longer than 256 entries read at an index the game works out, on the Color. The read holds
 # the index between the table's ends (IR::Build#table_read), and an index in range — almost every
 # one — must be found so on the two bytes that can hold it, as the console's own games read such a
 # table with a 16-bit add and a load, rather than by the runtime's 32-bit clamp and its two 32-bit

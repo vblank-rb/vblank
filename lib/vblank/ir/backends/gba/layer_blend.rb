@@ -4,44 +4,44 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # SEEING THROUGH ONE LAYER TO WHAT IS BEHIND IT.
+        # Seeing through one layer to what is behind it.
         #
         # The console blends as it draws the scanline: it is told which layers are the
         # near side of a blend, which are the far side, and how much of each to take. So
         # nothing is redrawn, no pixel in memory changes, and a see-through layer costs
         # the same whatever is on screen — the same bargain `fade` and `camera` make.
         #
-        # TWO PATHS, and the difference is real even though it does not reach the author.
+        # Two paths, and the difference is real even though it does not reach the author.
         #
-        #   A LAYER OF SCENERY is named as the near side of the blend in the blend-control
+        #   A layer of scenery is named as the near side of the blend in the blend-control
         #   register, with everything behind it as the far side. That register also holds
         #   WHICH effect is running, so this path needs the effect set to "mix two layers".
         #
-        #   A LAYER OF SPRITES needs none of that. A sprite can be marked see-through in
+        #   A layer of sprites needs none of that. A sprite can be marked see-through in
         #   its own table entry, and the display then blends that sprite and no other
         #   whatever the effect bits hold. It is one bit OR'd into an entry the frame
         #   already writes, so it costs nothing and it picks out exactly the sprites in
         #   that layer.
         #
-        # NEITHER PATH SURVIVES A FADE THAT USES THIS REGISTER, measured rather than
+        # Neither path survives a fade that uses this register, measured rather than
         # assumed. The sprite's own bit frees it from the effect field, but a see-through
-        # sprite still has to be told WHAT it blends with — the far side of that same
+        # sprite still has to be told what it blends with — the far side of that same
         # register — and a fade writes the register whole. So such a fade takes the blend
         # from both paths for as long as it runs, and both get it back when it lifts (see
         # ScreenEffects#emit_fade_beside_see_through).
         #
         # Keeping the far side across a fade was tried, and the picture it gives is worse.
         # The sprite does go on blending — but the display then blends it with the darkened
-        # picture WITHOUT darkening the sprite itself, so fading out to a game-over screen
+        # picture without darkening the sprite itself, so fading out to a game-over screen
         # leaves half-bright ghosts floating on a black screen. Letting the fade have the
         # whole register makes everything darken together, which is what a fade out is
         # supposed to look like, and it costs nothing to do.
         #
-        # WHICH IS WHY A WHOLE-SCREEN FADE DOES NOT COME HERE AT ALL any more. A program
+        # Which is why a whole-screen fade does not come here at all any more. A program
         # that sees through a layer fades by walking its color table instead, which never
         # touches this register and leaves both paths blending right through the fade (see
         # IR::Fading, and ScreenEffects#emit_palette_fade). What still arrives here
-        # is a fade PLACED in the stack, which is the one thing only this register can do,
+        # is a fade placed in the stack, which is the one thing only this register can do,
         # and a fade left on from a painted screen, which has no colors to walk and fades by
         # this register too (see #note_display_fades for what that asks of this class).
         #
@@ -51,10 +51,9 @@ module VBlank
         # how much. Reads the screen's layout ({ScreenLayout}: how the scenery and sprites
         # stack, and which of the console's layers each background landed on), handed over
         # through #screen= once it exists, since it is worked out from the program after this
-        # object is built (the same shape Functions#modes= is set in). `drawing:` reaches
-        # Drawing for the fade/blend arithmetic it shares with a tint and a fade — GBA builds
-        # this object before its own @drawing exists, so it hands in `self` and the call
-        # resolves once @drawing does (see gba.rb#initialize).
+        # object is built (the same shape Functions#modes= is set in). The fade/blend arithmetic
+        # it shares with a tint and a fade is ScreenEffects', made after this, and arrives late
+        # through #effects= (see gba.rb#initialize).
         class LayerBlend
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[see_through].freeze
@@ -73,11 +72,12 @@ module VBlank
           # and a sprite cannot be both.)
           OBJ_SEMI_TRANSPARENT = 0x0400
 
-          def initialize(emitter:, lowering:, primitives:, drawing:, raster:)
+          attr_writer :effects
+
+          def initialize(emitter:, lowering:, primitives:, raster:)
             @emitter = emitter
             @lowering = lowering
             @primitives = primitives
-            @drawing = drawing
             @raster = raster
             # Nothing has a layer until the backgrounds are given their slots, and a
             # program with no tiled backgrounds never gives out any. A see-through layer of
@@ -86,14 +86,14 @@ module VBlank
           end
 
           # The screen's layout: how the picture stacks, the same picture cut into what can be
-          # on screen AT ONCE, and which of the console's layers each background landed on.
+          # on screen at once, and which of the console's layers each background landed on.
           def screen=(layout)
             @picture = layout.picture
             @screenfuls = layout.screenfuls
             @hardware_layers = layout.hardware_layers
           end
 
-          # WHICH OF A SEE-THROUGH LAYER'S SCREENS IS UP. A game with a see-through layer on
+          # Which of a see-through layer's screens is up. A game with a see-through layer on
           # more than one screen writes, as each scene takes over, which of its layers that
           # screen shows — counting from 1, so the 0 nothing has written means none. The
           # frame boundary reads it to tell the display that layer's amounts and no other's.
@@ -127,7 +127,7 @@ module VBlank
           # for the bookkeeping.
           def several_see_through_layers? = @layers.size > 1
 
-          # DOES THE FRAME BOUNDARY ASK WHICH SCREEN IS UP before telling the display a layer's
+          # Does the frame boundary ask which screen is up before telling the display a layer's
           # amounts? Where there are several see-through layers, so it tells the one on screen.
           # And where the one there is belongs to a single scene and its amounts are worked
           # out: then on any other scene's frames nothing on screen is mixed by them, and
@@ -161,7 +161,7 @@ module VBlank
           # where the layer behind has a hole, what shows through is the backdrop, and it
           # has to be blended too or that hole would come out at full strength.
           #
-          # A see-through layer of SPRITES leaves the effect bits at nothing and writes the
+          # A see-through layer of sprites leaves the effect bits at nothing and writes the
           # far side alone: the sprites blend because their own entries mark them so, and nothing
           # else has to be in force for them.
           #
@@ -174,9 +174,9 @@ module VBlank
             emit_store_see_through_screen(first) if tracks_see_through_screen?
           end
 
-          # PUT THE BLEND BACK, for whatever took it — entering a display mode, and a fade
+          # Put the blend back, for whatever took it — entering a display mode, and a fade
           # lifting. Both happen while the game is running, so this writes the amount the
-          # picture has NOW rather than the one it started with: a game whose fog is half
+          # picture has now rather than the one it started with: a game whose fog is half
           # thick when a hit flash ends must come back half thick, not clear.
           #
           # For a number the author wrote there is no difference and no extra instruction:
@@ -195,7 +195,7 @@ module VBlank
             @layers.each { |layer| emit_blend_amounts_or_call(layer) }
           end
 
-          # A FADE THE DISPLAY DOES AND A SEE-THROUGH LAYER, IN ONE GAME. Everything below is
+          # A fade the display does and a see-through layer, in one game. Everything below is
           # for that game and no other, so that a game without the pair comes out byte for
           # byte as it did.
           #
@@ -221,12 +221,12 @@ module VBlank
           # black" with it, and "mix" or "nothing" without.
           FADE_HOLDS_BLEND = BLD_BRIGHTEN & BLD_DARKEN
 
-          # WHAT THE SCENE THAT IS UP TELLS THE BLEND UNIT, kept where a fade lifting can read
+          # What the scene that is up tells the blend unit, kept where a fade lifting can read
           # it. A fade lifts wherever the game asks, and what it hands the register back to
           # has to be that scene's layers, not the first screen's.
           SCENE_CONTROL = :_scene_blend_control
 
-          # COMING ONTO A SCREEN DRAWN FROM TILES: tell the display which layer is seen
+          # Coming onto a screen drawn from tiles: tell the display which layer is seen
           # through, unless a fade is holding the blend. Setting the layer up regardless ended
           # a fade left on from the screen before, and the new screen arrived bright.
           def emit_layer_blend_on_entry
@@ -235,7 +235,7 @@ module VBlank
             emit_unless_fade_holds_blend { emit_restore_layer_blend }
           end
 
-          # A SCENE SETS WHICH LAYERS IT MIXES, on every pass it runs (see
+          # A scene sets which layers it mixes, on every pass it runs (see
           # Drawing#emit_scene_blend). Where a fade can hold the blend the scene's answer is
           # remembered and written only while none does; the fade lifting writes it then.
           def emit_scene_blend_control(wanted)
@@ -253,8 +253,8 @@ module VBlank
             @primitives.store_word_immediate(wanted, @primitives.var_addr(SCENE_CONTROL))
           end
 
-          # A FADE OR A TINT THAT MOVES THE COLORS TAKES THE PLACE OF A FADE THE DISPLAY WAS
-          # DOING, since a picture has one such effect at a time. It lifts that fade by
+          # A fade or a tint that moves the colors takes the place of a fade the display was
+          # doing, since a picture has one such effect at a time. It lifts that fade by
           # another road than the display's own, so it hands the blend back the way the
           # display's own lift does. Nothing where no display fade can be in force, and nothing
           # while a light holds the register: its darkening has the bit a fade sets, and handing
@@ -265,7 +265,7 @@ module VBlank
             emit_if_fade_holds_blend { @raster.emit_unless_light_holds_blend { emit_restore_layer_blend } }
           end
 
-          # HOW SEE-THROUGH A LAYER IS, NOW. A picture whose amounts the program works out
+          # How see-through a layer is, now. A picture whose amounts the program works out
           # gets one of these at every frame boundary, so the display is told again before
           # the frame it applies to is drawn — and a game with a see-through layer on more
           # than one screen gets one for each, of which only the one on screen writes.
@@ -278,7 +278,7 @@ module VBlank
             emit_blend_amounts_or_call(@layers.find { |layer| layer.name == node.layer })
           end
 
-          # THE ROUTINES THAT WORK OUT AMOUNTS THE GAME CHANGES, each with the scene it works
+          # The routines that work out amounts the game changes, each with the scene it works
           # for — or with the frame's own routine, for a layer that is not one scene's alone.
           #
           # Turning two percentages into the display's sixteenths is a multiply, a divide and
@@ -299,11 +299,11 @@ module VBlank
             emit_blend_amounts(@amount_layers.fetch(name))
           end
 
-          # WHICH SEE-THROUGH LAYER THIS SCENE'S SCREEN SHOWS, written as the scene runs so
+          # Which see-through layer this scene's screen shows, written as the scene runs so
           # the frame boundary tells the display that one's amounts. Nothing for a game that
           # never has to ask (see #tracks_see_through_screen?).
           #
-          # ON THE PASS IT CHANGES, the scene tells the display its layer's amounts there and
+          # On the pass it changes, the scene tells the display its layer's amounts there and
           # then. The boundary is too late for that one frame: the scene has just set which
           # layers to mix, the display holds one pair of amounts, and until the boundary that
           # pair is the last screen's — so the scene's first frame would be mixed by the other
@@ -334,10 +334,10 @@ module VBlank
             @primitives.store_word_immediate(control, @primitives.var_addr(SCENE_CONTROL)) if @scenes_say_control
           end
 
-          # WHAT EACH SCENE HAS TO TELL THE BLEND UNIT, or nothing at all where every scene
+          # What each scene has to tell the blend unit, or nothing at all where every scene
           # wants the same thing.
           #
-          # The register names a layer by NUMBER, and scenes take turns with the console's
+          # The register names a layer by number, and scenes take turns with the console's
           # layers — so the number the see-through layer sits on is a fact about the scene
           # rather than about the program. A scene that sees through nothing has to set that
           # too, or whichever background inherited that number is quietly blended in its
@@ -373,9 +373,9 @@ module VBlank
           # The one-number form worked out as the game runs: what is behind is the amount's
           # share, and the layer takes what is left of a whole.
           def emit_split_amount(amount)
-            @lowering.value(@drawing.fade_steps_value(amount))
-            @drawing.emit_clamp_blend_steps
-            @drawing.emit_blend_weights_from_acc
+            @lowering.value(@effects.fade_steps_value(amount))
+            @effects.emit_clamp_blend_steps
+            @effects.emit_blend_weights_from_acc
           end
 
           # The weight pair as one halfword: how much of the layer itself survives in the
@@ -450,7 +450,7 @@ module VBlank
           # refused before this runs (see Guardrails::Checks::SeeThroughPerScreen).
           def see_through_layer_on(screenful) = IR::SeeThrough.on_screen(screenful, @layers).first
 
-          # WHAT THE BLEND REGISTER HOLDS FOR ONE SCREENFUL: which layers are the near side
+          # What the blend register holds for one screenful: which layers are the near side
           # of the blend, which are the far side, and which effect is running.
           #
           # A screen holding neither see-through scenery nor a see-through sprite turns the
@@ -473,13 +473,13 @@ module VBlank
             @screenfuls.find { |screenful| blend_control(screenful) != BLD_OFF } || @screenfuls.first
           end
 
-          # Everything on this screen BEHIND the see-through layer: the scenery below it,
+          # Everything on this screen behind the see-through layer: the scenery below it,
           # the sprites below it, and the backdrop, which is behind everything there is.
           # The scenery is read off the picture rather than off the stack, because what the
           # register names is a hardware layer number and only the picture knows which
           # background got which.
           #
-          # THE SPRITES ARE ONE LAYER TO THE DISPLAY, named on the far side or not as a whole.
+          # The sprites are one layer to the display, named on the far side or not as a whole.
           # At each pixel it mixes the near side with the one thing directly behind it, and
           # only where that thing is on the far side; anywhere else the near side is drawn at
           # full strength. So with a sprite behind the see-through layer and the sprites not
@@ -503,7 +503,7 @@ module VBlank
           end
 
           # The register bits naming these backgrounds, by the hardware layer each one
-          # really landed on. That is NOT where the background sits in the program's list
+          # really landed on. That is not where the background sits in the program's list
           # of scenery: scenes take turns with the console's layers, so the second scene's
           # first background is fifth in the program and first on the hardware.
           #

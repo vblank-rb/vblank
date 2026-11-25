@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYTHROUGH ON ANOTHER WAY OF RUNNING A GAME than the emulator: the interpreter, or the game
+    # A playthrough on another way of running a game than the emulator: the interpreter, or the game
     # built as C, as JavaScript played by node, or as Ruby, or its rules alone (Native::RulesRun).
     # It answers what a playthrough asks of a running game (a frame played, a number read) the way
     # the emulator's reader does, so a script and its steering blocks need no change. Each of these
@@ -19,13 +19,23 @@ module VBlank
       # The way with nothing to see or hear, for a bot playing one long run many times.
       LOGIC = "logic"
 
-      # The ways, by the word `on:` takes, and the run each is (`vblank run --on` uses "js" for "web":
-      # see CommandLine::WAYS).
-      RUNS = { "interpreter" => -> { IR::Backends::Reference }, "native" => -> { IR::Backends::Native::HeadlessRun },
-               "web" => -> { IR::Backends::JS::HeadlessRun }, "ruby" => -> { IR::Backends::Ruby::HeadlessRun },
-               LOGIC => -> { IR::Backends::Native::RulesRun } }.freeze
+      # The ways, by the word `on:` takes (`vblank run --on` uses "js" for "web": see CommandLine::WAYS);
+      # LoweredGame.run_for says the run each is. Names alone, so any Ractor can read them.
+      RUNS = ["interpreter", "native", "web", "ruby", LOGIC].freeze
 
-      def self.ways = [EMULATOR, *RUNS.keys]
+      def self.ways = [EMULATOR, *RUNS]
+
+      # The run that plays the way +way+ names. Looked up when asked, as the lowerings load after this.
+      def self.run_for(way)
+        case way
+        when "interpreter" then IR::Backends::Reference
+        when "native" then IR::Backends::Native::HeadlessRun
+        when "web" then IR::Backends::JS::HeadlessRun
+        when "ruby" then IR::Backends::Ruby::HeadlessRun
+        when LOGIC then IR::Backends::Native::RulesRun
+        else raise KeyError, "key not found: #{way.inspect}"
+        end
+      end
 
       # More frames than any playing gets to: the playing decides when it is over (#finish).
       UNENDING = 1 << 30
@@ -36,11 +46,14 @@ module VBlank
       # +speaker+ marks that somebody is listening, so a way that makes its sound as a file hands it over
       # a frame at a time (#last_frame_samples). +match+ is the match a tape replays (a Tape::Match),
       # which the interpreter plays the game as (Reference#play_as_match); the other ways have no
-      # match, and a tape of one is refused before it gets here (Tape#play).
-      def initialize(program, way, speaker: false, match: nil)
+      # match, and a tape of one is refused before it gets here (Tape#play). +seed+ is added to the
+      # game's random numbers once it has set itself up (Reference#mix_seed_after_setup), on a way that
+      # takes one (Playthrough::SEEDED_WAYS); nil adds nothing.
+      def initialize(program, way, speaker: false, match: nil, seed: nil)
         @console = program.described_console
-        @run = RUNS.fetch(way).call.new
+        @run = LoweredGame.run_for(way).new
         @run.play_as_match(seed: match.seed, players: match.players) if match
+        @run.mix_seed_after_setup(seed) if seed
         @run.forgetting_moments if @run.respond_to?(:forgetting_moments)
         @speaker = speaker && @run.respond_to?(:sounding_as_played)
         @run.sounding_as_played if @speaker
@@ -97,6 +110,9 @@ module VBlank
       def screenshot(path)
         Graphics::PNG.write(path, width: screen_width, height: screen_height, pixels: frame_gba)
       end
+
+      # The same picture as a film asks for it, with no file (Diagnostics::Verifier#screen_picture).
+      def screen_picture = Diagnostics::Film::Picture.new(pixels: frame_gba, width: screen_width, height: screen_height)
 
       # The run stopped, as a film closes a side whose frames it has taken.
       def close = finish

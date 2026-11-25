@@ -6,49 +6,53 @@ require "yaml"
 
 module VBlank
   module Original
-    # SOMETHING IS WRONG WITH THE PLAYER'S COPY OF THE ORIGINAL, or nothing sets where it is. The
+    # Something is wrong with the player's copy of the original, or nothing sets where it is. The
     # message says what to set, so a caller that turns this into words for a person rescues this
     # one class.
     class CopyError < StandardError; end
 
-    # NOTHING NAMES WHERE THE COPY IS: neither the setting nor the settings file names one. A fresh
+    # Nothing names where the copy is: neither the setting nor the settings file names one. A fresh
     # clone of a game is like this. A build can carry on without the original's data; a test stops,
     # saying what to set (Testing#original_copy). Every other CopyError is a mistake to fix.
     class NotSet < CopyError; end
 
-    # A COPY WAS NAMED AND CANNOT BE USED: nothing is there, it is the wrong length, its bytes are
+    # A copy was named and cannot be used: nothing is there, it is the wrong length, its bytes are
     # no release the game knows, it is a release the game does not read, the game's probe refused
     # it, or the settings file that names it cannot be read.
     class WrongCopy < CopyError; end
 
-    # ANOTHER PATH A GAME NAMES WAS NAMED AND CANNOT BE USED (Game#path): nothing is there, a file is
+    # Another path a game names was named and cannot be used (Game#path): nothing is there, a file is
     # there where a folder is wanted or a folder where a file is, or the settings file that names it
     # cannot be read.
     class WrongPath < CopyError; end
 
-    # A SHELL IS BUILT WITH NO COPY ON THE MACHINE, so a port whose code depends on what the copy
+    # A shell is built with no copy on the machine, so a port whose code depends on what the copy
     # holds cannot be built as one. While the block runs, every Game answers NotSet whatever names a
-    # copy (Shell.build turns that into the words naming the line that asked). Kept per Ractor, as
-    # each core builds its own games.
+    # copy (Shell.build turns that into the words naming the line that asked). Kept per thread, not
+    # per Ractor: two threads of one Ractor can build at once, and a shell built on one must not hide
+    # the copy from a game built on the other. Each Ractor has threads of its own.
     def self.without_copies
-      before = Ractor.current[:vblank_copies_hidden]
-      Ractor.current[:vblank_copies_hidden] = true
+      thread = Thread.current
+      before = thread.thread_variable_get(COPIES_HIDDEN_KEY)
+      thread.thread_variable_set(COPIES_HIDDEN_KEY, true)
       yield
     ensure
-      Ractor.current[:vblank_copies_hidden] = before
+      thread.thread_variable_set(COPIES_HIDDEN_KEY, before)
     end
 
-    # Whether a shell is being built here now (Original.without_copies).
-    def self.copies_hidden? = Ractor.current[:vblank_copies_hidden] == true
+    COPIES_HIDDEN_KEY = :vblank_copies_hidden
 
-    # WHAT AN ORIGINAL FROM A COMPUTER NAMES AS ITS PLATFORM. An original names any platform: a
+    # Whether a shell is being built on this thread now (Original.without_copies).
+    def self.copies_hidden? = Thread.current.thread_variable_get(COPIES_HIDDEN_KEY) == true
+
+    # What an original from a computer names as its platform. An original names any platform: a
     # console's name (Console::KITS), this, or one VBlank does not list (:arcade, :nes).
     COMPUTER = :pc
 
     # The platform an original is for when its game names none.
     DEFAULT_PLATFORM = :gba
 
-    # THE NAME OF VBLANK'S OWN LAYOUT (Console::VBLANK_FORMATS), the layout a slot of an original is
+    # The name of VBLANK's own layout (Console::VBLANK_FORMATS), the layout a slot of an original is
     # in where its platform keeps its data in no layout VBlank reads.
     VBLANK_LAYOUT = :vblank
 
@@ -62,7 +66,7 @@ module VBlank
     # The platform +platform+ names, as a Symbol. Any name is a platform; a value that is no name is
     # refused.
     #
-    # A NAME CLOSE TO A KNOWN ONE IS REFUSED, unless +new_platform+ says it is meant: one a letter or
+    # A name close to a known one is refused, unless +new_platform+ says it is meant: one a letter or
     # two from a console's name or COMPUTER, or the same but for case or punctuation (:gbcc, "GBA",
     # :p_c). A typo is not a new platform: its slots would be read in VBlank's own layout, and a slot
     # the original keeps in its console's layout would then show a wrong picture with no error.
@@ -99,11 +103,11 @@ module VBlank
     # platform.
     def self.layout_for(platform) = Console.original_formats_of(platform) ? platform : VBLANK_LAYOUT
 
-    # ONE FILE OF A COPY THAT IS A FOLDER: where it is on this machine, and the file of the release
+    # One file of a copy that is a folder: where it is on this machine, and the file of the release
     # it was accepted as (ReleaseFile).
     FolderFile = Data.define(:path, :release_file)
 
-    # THE PLAYER'S COPY, ACCEPTED: where it is, the name of its release, its SHA-1 (nil for a
+    # The player's copy, accepted: where it is, the name of its release, its SHA-1 (nil for a
     # folder accepted by a probe, which has no one hash), and the platform of the original it is a
     # copy of (Game#platform). A copy of a release that is several files (Release#files) is a folder,
     # and +files+ are its files in the release's order, each a FolderFile; its SHA-1 is the
@@ -131,7 +135,7 @@ module VBlank
       def read_bytes = files ? files.map { |file| File.binread(file.path) }.join.b : File.binread(path)
     end
 
-    # HOW ANOTHER PATH ON THIS MACHINE IS FOUND, the way the copy is: its environment variable, its
+    # How another path on this machine is found, the way the copy is: its environment variable, its
     # key in the settings file, whether it is a folder, and what it is, in words for a message
     # ("a checkout of the disassembly").
     PathSetting = Data.define(:setting, :key, :folder, :what) do
@@ -143,7 +147,7 @@ module VBlank
       def kind_words = folder ? "a folder" : "a file"
     end
 
-    # WHAT A GAME MADE FROM AN ORIGINAL DECLARES ABOUT ITS COPY, and the one way to ask for it.
+    # What a game made from an original declares about its copy, and the one way to ask for it.
     #
     # No game made from a retail original may ship that original, so each one reads the copy the
     # player already owns. Every such game has to answer the same three questions before it reads a
@@ -151,7 +155,7 @@ module VBlank
     # wrong copy is the worst kind of mistake here, because it does not fail: it builds plausible
     # wrong pictures far downstream. So it is refused at the door, by name.
     #
-    # WHAT THE GAME SUPPLIES:
+    # What the game supplies:
     #
     #   title:          what to call the game in a message ("Space Pinball")
     #   setting:        the environment variable that names the copy (SPACE_PINBALL_ROM); it wins.
@@ -187,7 +191,7 @@ module VBlank
     #               called with the path and returns the release's name, or nil to refuse the copy.
     #               It may raise WrongCopy itself to say more.
     #
-    # WITH BOTH, the digest alone accepts a copy, and the probe only names one it refuses. A copy
+    # With both, the digest alone accepts a copy, and the probe only names one it refuses. A copy
     # whose SHA-1 is no release's is changed, damaged or cut short, and a person cannot tell which
     # release they hold from a SHA-1; the probe reads what the copy says it is (a cartridge's
     # header, which survives most damage) and the refusal names that release: "is the EU release

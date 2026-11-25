@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# ONE GAME FILE FOR FOUR CONSOLES: the Game Boy Advance, the Game Boy Color, the Super Nintendo and
-# the Sega Genesis. `ruby examples/everywhere.rb` builds a cartridge for each of them from the one
-# block below.
+# Everywhere — one game file for four consoles.
+#
+# The consoles are the Game Boy Advance, the Game Boy Color, the Super Nintendo and the Sega
+# Genesis. `ruby examples/everywhere.rb` builds a cartridge for each of them from the one block
+# below.
 #
 # A ball bounces round the edges of the screen with a click at every wall, under the game's name,
 # while a little tune plays.
@@ -79,23 +81,10 @@ module Everywhere
 
       x += dx
       y += dy
-      # At a wall the ball turns round: `abs!` sends it right or down, `negate_abs!` left or up.
-      if x <= 0
-        dx.abs!
-        beep :click
-      end
-      if x >= right
-        dx.negate_abs!
-        beep :click
-      end
-      if y <= 0
-        dy.abs!
-        beep :click
-      end
-      if y >= bottom
-        dy.negate_abs!
-        beep :click
-      end
+      # At a wall the ball turns round: at the low end of the range its speed is made to point
+      # right or down, at the high end left or up, and the block clicks at each turn.
+      x.bounce!(dx, 0..right) { beep :click }
+      y.bounce!(dy, 0..bottom) { beep :click }
       ball.move_to x, y
     end
   end

@@ -172,7 +172,7 @@ class TestJSPage < Minitest::Test
                                                  "pad stick 0.2 -0.2", "play 5", "picture"])
   end
 
-  # THE COLOURS ON THE PAGE ARE THE CONSOLE'S: each channel's five bits widened to eight by repeating
+  # The colours on the page are the console's: each channel's five bits widened to eight by repeating
   # the top bits (so the brightest is 255 and not 248), in the order the canvas keeps them. Bars of
   # every channel alone, white, and one that is half of each, played in the page, are the
   # interpreter's picture pixel for pixel, which a red and a blue swapped would not be.
@@ -451,7 +451,7 @@ class TestJSPage < Minitest::Test
     end
   end
 
-  # THE PAGE'S CLOCK IS THE BROWSER'S, in its local time: the game is told there is a clock, that
+  # The page's clock is the browser's, in its local time: the game is told there is a clock, that
   # it was set, and the date and the minute the computer says — at the start of the run or at its
   # end, should a minute turn over between the two. (The page's first frame is the game setting up
   # and shows nothing, so the picture read is the second's.)
@@ -475,6 +475,6 @@ class TestJSPage < Minitest::Test
     end
     said = played_page(["play 5"], game).grep(/\Asaid /).first
 
-    assert_match(/The game stopped: .*list :trail is full/, said)
+    assert_match(/The game stopped: .*`trail` is full/, said)
   end
 end

@@ -5,29 +5,29 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE SOUND CHIP, AND HOW THE PROCESSOR TALKS TO IT. The PlayStation's sound chip (the SPU) sits
+          # The sound chip, and how the processor talks to it. The PlayStation's sound chip (the SPU) sits
           # among the ports from 1F801C00h, a register of 16 bits each: for each of its 24 voices a volume
           # for each speaker, a pitch, where in the chip's own 512K of sound memory its sound starts, and its
           # envelope; and for the whole chip which voices to start (key on) and let go (key off), its main
           # volume, and whether it is on at all (psx-spx, "Sound Processing Unit"). What each sound-log entry
           # writes is SPUWrites'.
           #
-          # AT POWER-ON the game's loops (SoundMemory) are copied into sound memory, 32 halfwords at a time
+          # At power-on the game's loops (SoundMemory) are copied into sound memory, 32 halfwords at a time
           # through the chip's queue for them, and the game's voices are given their envelope (#emit_upload).
           # The chip is on from then but its sound is held in (SPU_UNMUTED clear) and its main volume is
           # nought.
           #
-          # NOTHING SOUNDS UNTIL `enable_sound`, as nothing does on the Advance: until then ON is nought and
+          # Nothing sounds until `enable_sound`, as nothing does on the Advance: until then ON is nought and
           # the writes here go nowhere, and a voice's loudness does not move. A sound before it is still in
           # the sound log, as it is in the interpreter's.
           #
-          # A VOICE'S LOUDNESS. A voice's volume register holds a loudness, so a note that fades or swells is
+          # A voice's loudness. A voice's volume register holds a loudness, so a note that fades or swells is
           # the runtime's work, as on the Genesis: each voice's volume is kept here, with the number of 64ths
           # of a second between its steps, and once a frame each is counted on (rt_sound_fades) the way the
           # Advance's voice counts itself. The chip's envelope could fade a voice by itself, but by rates
           # of its own, not the Advance's sixty-fourths.
           #
-          # THE FRAME BOUNDARY, where a pass's wait ends (rt_sound_frame): every voice's fade moved on for
+          # The frame boundary, where a pass's wait ends (rt_sound_frame): every voice's fade moved on for
           # each frame the pass took, the voices the pass started and let go told to the chip at once
           # (SPUWrites says why), and the count of the log kept for the pass.
           module Sound
@@ -40,7 +40,7 @@ module VBlank
             KEYS_OFF = "rt sound keys off" # The voices to let go there
             TICKS_LEFT = "rt sound ticks left" # Frames still to move the fades on by, where a wait ends
 
-            # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the number
+            # The sound log, for whoever reads a run back: every sound statement the game ran, as the number
             # the lowering gave its entry of the interpreter's log (Lowering::Sound), the last LOG_LENGTH of
             # them in a ring (a half each), and how many there have been (a word).
             LOG = "rt sound log"
@@ -52,7 +52,7 @@ module VBlank
             LOGGED_BY_PASS = "rt sound logged by pass"
             LOGGED_SLOT_BYTES = 4
 
-            # THE ENVELOPE every game voice is given (Beetle PSX, spu.c SPU_CacheEnvelope and
+            # The envelope every game voice is given (Beetle PSX, spu.c SPU_CacheEnvelope and
             # SPU_RunEnvelope): attack at rate 0, linear, which climbs 7 << 11 a sample and is at full in
             # three; decay at its slowest rate, Fh, which takes off 8 every 16 samples, so the level is under
             # the sustain level (Fh, which is 8000h) after its first step and stays; sustain at rate 7Fh,
@@ -64,7 +64,7 @@ module VBlank
             # How many halfwords the chip's queue for sound memory holds (psx-spx: "FIFO ... 32 halfwords").
             QUEUE_HALVES = 32
 
-            # THE COMMANDS OF A GROUP of the song table (PS1::Music), one for each kind of write, each sent to
+            # The commands of a group of the song table (PS1::Music), one for each kind of write, each sent to
             # its routine with its first number in a0 and its second in a1. Nought ends a group and 4 logs an
             # entry (SongTable::GROUP_END, GROUP_LOG), so neither is one of these.
             WRITE_SPU = 1
@@ -114,14 +114,15 @@ module VBlank
               at = ->(name) { Runtime.at(memory, name) }
               emit_on(asm, at)
               emit_log(asm, at)
-              emit_spu_write(asm, at)
-              emit_loudness(asm, at)
-              emit_key(asm, at, "rt_sound_key_on", KEYS_ON, KEYS_OFF)
-              emit_key(asm, at, "rt_sound_key_off", KEYS_OFF, KEYS_ON)
+              strikes = Strikes.strikes?(memory)
+              emit_spu_write(asm, at, strikes: strikes)
+              emit_loudness(asm, at, strikes: strikes)
+              emit_key(asm, at, "rt_sound_key_on", KEYS_ON, KEYS_OFF, struck_as: (0 if strikes))
+              emit_key(asm, at, "rt_sound_key_off", KEYS_OFF, KEYS_ON, struck_as: (Strikes::KEY_OFF if strikes))
               emit_silence(asm)
               emit_keys(asm, at)
               emit_fades(asm, at)
-              emit_frame(asm, at, songs, samples)
+              emit_frame(asm, at, songs, samples, strikes: strikes)
               emit_upload(asm, samples ? Recordings::FIRST_VOICE + Recordings::PLACES : SPUWrites::VOICES)
               emit_volume_table(asm)
             end
@@ -159,16 +160,39 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # rt_spu_write(a0 = the register's distance from 1F801C00h, a1 = what goes in it).
-            def emit_spu_write(asm, at)
+            # rt_spu_write(a0 = the register's distance from 1F801C00h, a1 = what goes in it). With +strikes+, one
+            # asked for while a tick's pass plays goes on Strikes' list instead, and one asked for while the
+            # list holds something is folded into it (Strikes#emit_fold).
+            def emit_spu_write(asm, at, strikes: false)
               asm.label("rt_spu_write")
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "rt_spu_write_done")
+              if strikes
+                asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
+                asm.beq(:t0, :zero, "rt_spu_write_unlisted")
+                emit_write_word_returning(asm, "rt_strikes_put")
+                asm.label("rt_spu_write_unlisted")
+                Strikes.emit_branch_if_empty(asm, at, "rt_spu_write_now")
+                emit_write_word_returning(asm, "rt_strikes_fold")
+                asm.label("rt_spu_write_now")
+              end
               asm.lui(:t1, h::IO >> 16)
               asm.addu(:t1, :t1, :a0)
               asm.sh(:a1, spu_at(0), :t1)
               asm.label("rt_spu_write_done")
               asm.jr(:ra)
+            end
+
+            # A call of +routine+ with rt_spu_write's numbers as a write's word (Strikes#write_word), inline,
+            # that returns to rt_spu_write's caller.
+            def emit_write_word_returning(asm, routine)
+              emit_strikes_call_returning(asm, routine) do
+                asm.sll(:a0, :a0, 16)
+                asm.andi(:t0, :a1, 0xFFFF)
+                asm.or(:a0, :a0, :t0)
+                asm.lui(:t0, Strikes::WRITE >> 16)
+                asm.or(:a0, :a0, :t0)
+              end
             end
 
             # rt_sound_loud(a0 = the side << 12 | the voice << 8 | its volume, a1 = the step it moves by): the
@@ -179,8 +203,10 @@ module VBlank
             #
             # rt_sound_volume (t0 = a volume, t2 = a voice, t3 = gp plus four bytes a voice): the voice's volume
             # registers set to the volume's loudness (SPUWrites::VOLUME_REGISTER), the one of a side it is not
-            # heard from at nought. It changes t4 to t7.
-            def emit_loudness(asm, at)
+            # heard from at nought. It changes t4 to t7. With +strikes+, the two writes asked for while a tick's
+            # pass plays go on Strikes' list instead, and those asked for while the list holds something are
+            # folded into it (#emit_volume_listed).
+            def emit_loudness(asm, at, strikes: false)
               asm.label("rt_sound_loud")
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "rt_sound_volume_done")
@@ -199,6 +225,13 @@ module VBlank
               asm.sw(:t0, at.call(VOLUMES), :t3)
 
               asm.label("rt_sound_volume")
+              if strikes
+                asm.lw(:t4, at.call(Strikes::STRIKING), :gp)
+                asm.bne(:t4, :zero, "rt_sound_volume_struck")
+                asm.lw(:t4, at.call(Strikes::HEAD), :gp)
+                asm.lw(:t5, at.call(Strikes::TAIL), :gp)
+                asm.bne(:t4, :t5, "rt_sound_volume_folded")
+              end
               asm.la(:t4, "rt_sound_volume_table")
               asm.sll(:t5, :t0, 1)
               asm.addu(:t4, :t4, :t5)
@@ -220,6 +253,57 @@ module VBlank
               asm.sh(:t5, spu_at(h::SPU_VOLUME_RIGHT), :t7)
               asm.label("rt_sound_volume_done")
               asm.jr(:ra)
+              return unless strikes
+
+              emit_volume_listed(asm, at, "rt_sound_volume_struck", "rt_strikes_put")
+              emit_volume_listed(asm, at, "rt_sound_volume_folded", "rt_strikes_fold")
+            end
+
+            # rt_sound_volume_struck and rt_sound_volume_folded (+label+): rt_sound_volume's two writes, worked out
+            # the same way, each handed to +routine+, rt_strikes_put or rt_strikes_fold.
+            def emit_volume_listed(asm, at, label, routine)
+              asm.label(label)
+              asm.addiu(:sp, :sp, -8)
+              asm.sw(:ra, 0, :sp)
+              asm.sw(:a0, 4, :sp)
+              asm.la(:t4, "rt_sound_volume_table")
+              asm.sll(:t5, :t0, 1)
+              asm.addu(:t4, :t4, :t5)
+              asm.lhu(:t5, 0, :t4)
+              asm.lw(:t6, at.call(SIDES), :t3)
+              asm.move(:t4, :t5)
+              asm.li(:t0, SPUWrites::SIDES.fetch(:right))
+              asm.bne(:t6, :t0, "#{label}_left")
+              asm.move(:t4, :zero) # heard from the right alone
+              asm.label("#{label}_left")
+              asm.li(:t0, SPUWrites::SIDES.fetch(:left))
+              asm.bne(:t6, :t0, "#{label}_right")
+              asm.move(:t5, :zero) # heard from the left alone
+              asm.label("#{label}_right")
+              [[h::SPU_VOLUME_LEFT, :t4], [h::SPU_VOLUME_RIGHT, :t5]].each do |register, value|
+                asm.sll(:a0, :t2, 20) # the voice's registers, 10h apart, in the word's distance
+                asm.lui(:t0, Strikes.write_word(register, 0) >> 16)
+                asm.or(:a0, :a0, :t0)
+                asm.andi(:t0, value, 0xFFFF)
+                asm.or(:a0, :a0, :t0)
+                asm.jal(routine)
+              end
+              asm.lw(:ra, 0, :sp)
+              asm.lw(:a0, 4, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }
+            end
+
+            # A call of +routine+, rt_strikes_put or rt_strikes_fold, inline, that returns to the caller: the block
+            # makes a0 the entry's word, and a0 is as it was after.
+            def emit_strikes_call_returning(asm, routine)
+              asm.addiu(:sp, :sp, -8)
+              asm.sw(:ra, 0, :sp)
+              asm.sw(:a0, 4, :sp)
+              yield
+              asm.jal(routine)
+              asm.lw(:ra, 0, :sp)
+              asm.lw(:a0, 4, :sp)
+              asm.jr(:ra) { asm.addiu(:sp, :sp, 8) }
             end
 
             # t2 = the voice in a0's bits 8 to 11, and t3 = gp plus four bytes a voice.
@@ -232,15 +316,37 @@ module VBlank
 
             # rt_sound_key_on(a0 = a voice) and rt_sound_key_off: the voice's bit set in what the frame
             # boundary writes (+mine+), and taken from the other (+other+), so the last asked for wins.
-            def emit_key(asm, at, label, mine, other)
+            # With +struck_as+ (a game whose effects are struck inside the frame), one asked for while a
+            # tick's pass plays goes on Strikes' list instead, as that voice with +struck_as+'s bits, and
+            # one asked for outside it while the list holds something of the voice goes on the list after
+            # it (rt_strikes_after).
+            def emit_key(asm, at, label, mine, other, struck_as: nil)
               asm.label(label)
               asm.lw(:t0, at.call(ON), :gp)
               asm.beq(:t0, :zero, "#{label}_done")
+              if struck_as
+                asm.lw(:t0, at.call(Strikes::STRIKING), :gp)
+                asm.beq(:t0, :zero, "#{label}_at_boundary")
+                emit_strikes_call_returning(asm, "rt_strikes_put") { asm.ori(:a0, :a0, struck_as) }
+                asm.label("#{label}_at_boundary")
+                asm.addiu(:sp, :sp, -8)
+                asm.sw(:ra, 0, :sp)
+                asm.sw(:a0, 4, :sp)
+                asm.ori(:a0, :a0, struck_as)
+                asm.jal("rt_strikes_after")
+                asm.lw(:a0, 4, :sp)
+                asm.lw(:ra, 0, :sp)
+                asm.addiu(:sp, :sp, 8)
+              end
               asm.li(:t1, 1)
               asm.sllv(:t1, :t1, :a0)
+              if struck_as # listed after the voice's strikes: not gathered for the frame boundary
+                asm.bne(:v0, :zero, "#{label}_listed")
+              end
               asm.lw(:t2, at.call(mine), :gp)
               asm.or(:t2, :t2, :t1)
               asm.sw(:t2, at.call(mine), :gp)
+              asm.label("#{label}_listed") if struck_as
               asm.nor(:t1, :t1, :zero)
               asm.lw(:t2, at.call(other), :gp)
               asm.and(:t2, :t2, :t1)
@@ -355,7 +461,10 @@ module VBlank
             # took, the voices' fades (Reference#advance_frame's order: the mix, then the player); then the
             # voices started and let go; and, kept for the pass, how many entries the log holds, with the
             # pass's number (LOGGED_BY_PASS).
-            def emit_frame(asm, at, songs, samples)
+            #
+            # With +strikes+, the keys Strikes listed whose line has come already are done after the voices
+            # the frame boundary started, the interrupt held off, and the timer set for the rest.
+            def emit_frame(asm, at, songs, samples, strikes: false)
               asm.label("rt_sound_frame")
               asm.addiu(:sp, :sp, -4)
               asm.sw(:ra, 0, :sp)
@@ -371,6 +480,12 @@ module VBlank
               asm.sw(:t0, at.call(TICKS_LEFT), :gp)
               asm.bgtz(:t0, "rt_sound_frame_tick")
               asm.jal("rt_sound_keys")
+              if strikes
+                asm.mtc0(:zero, R3000::COP0_STATUS)
+                asm.jal("rt_strikes_due")
+                asm.li(:t0, h::SR_INTERRUPTS_ON)
+                asm.mtc0(:t0, R3000::COP0_STATUS)
+              end
               asm.jal("rt_recordings_kept_for_pass") if samples
               asm.lw(:t0, at.call(Frame::PASSES), :gp)
               asm.andi(:t1, :t0, Frame::STEPS_KEPT - 1)

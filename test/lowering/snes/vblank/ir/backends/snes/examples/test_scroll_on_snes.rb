@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/scroll").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/scroll").to_s)
 
 # examples/scroll.rb on a Super Nintendo: a 64x64-tile world, bigger than one of the console's
 # maps, panned under the screen and held to the interpreter — every pixel — after every pass.

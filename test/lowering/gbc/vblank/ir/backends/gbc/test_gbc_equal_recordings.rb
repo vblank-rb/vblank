@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# RECORDINGS WITH THE SAME SAMPLES ARE KEPT ONCE IN A COLOR CARTRIDGE. A Color keeps a recording as
+# Recordings with the same samples are kept once in a color cartridge. A Color keeps a recording as
 # the bits its voice is switched by, one for each sample the mix would read of it, so what it keeps
 # follows the samples, the rate they were recorded at and the note they are played at. Recordings
 # alike in all three read one section of bits; a different rate reads the samples at another

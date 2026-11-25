@@ -8,7 +8,8 @@ For an option or a handle's method, grep `.claude/dsl/`.
 
 A drift test (`test/all/vblank/test_dsl_reference.rb`) fails if a verb is on no page's list, if a
 verb on a list is not told on that page, or if a page is missing here. A new verb gets a line on
-its page's list and its entry below it.
+its page's list and its entry below it. `list` and `pool` are on no list: plain Ruby Arrays build
+into them, and `lists.md` and `pools.md` tell them under "What plain Ruby builds".
 
 Coordinates are pixels from the top left of a 240×160 screen. Where a verb takes a number, a
 number the game keeps works too.
@@ -19,13 +20,13 @@ number the game keeps works too.
 - A `:byte`/`:half` slot keeps the low bits: 200 in a `:byte` reads -56. (lists)
 - `pressed` inside `once_a_frame` fires once per caught-up frame; test presses in the loop. (control-flow)
 - `pixelate_size == 16` and `iris_shut?` hold two frames running; keep a flag of your own. (drawing)
-- A picture painted once on a tear-free screen flickers between pages (one page on the Color and on DOS); use `keep_showing`. (drawing)
+- A picture painted once on a tear-free screen flickers between pages (one page on the Color and on DOS); use `redraw_on_change`. (drawing)
 
 ## The pages, under `.claude/dsl/`
 
 **Writing a game**
 
-- `plain-ruby.md` — game code: variables, tests, loops, what is refused, what builds and means something else.
+- `plain-ruby.md` — game code: variables, tests, loops, Arrays, what is refused, what builds and means something else. Its published account for game authors is PLAIN_RUBY.md at the root: a change to plain Ruby, in that page or the code, updates PLAIN_RUBY.md in the same commit.
 - `variables.md` — numbers and fractions, arithmetic and bits, saves (`save_var`, `save_data`), `part` and `start_over`.
 - `control-flow.md` — `game_loop`, `repeat`, `every`/`after`, `once_a_frame`, `each_pass`, timers.
 - `scenes.md` — `func` and `call`, `scene`, game states.
@@ -36,7 +37,7 @@ number the game keeps works too.
 **The screen**
 
 - `screen.md` — `VBlank.game` options, `screen` kinds, `setting`, `built_for?`.
-- `drawing.md` — painting, `inside`, `camera`, fades, tints, pixelation, lights, `keep_showing`.
+- `drawing.md` — painting, `inside`, `camera`, fades, tints, pixelation, lights, `redraw_on_change`.
 - `sprites.md` — `image`, `sprite`, `blit`, colours and recolouring, sprite tiles.
 - `backgrounds.md` — `tiles`, `canvas`, `background`, `status_bar`.
 - `layers.md` — the stack, and the order sprites are drawn in.
@@ -47,7 +48,9 @@ number the game keeps works too.
 
 **The game's data**
 
-- `lists.md`, `tables.md`, `pools.md` — a list the game changes, a table in the cartridge, many of one thing.
+- `lists.md` — what an Array of numbers game code changes builds as: its costs, `capacity:`, `width:`, `fast:`, `fill`, sorting. A game writes the Array, never `list`.
+- `tables.md` — a table in the cartridge.
+- `pools.md` — what an Array of Structs builds as: walk order, drawing, a full Array, `drawn_as`, `narrow`. A game writes the Array, never `pool`.
 - `original.md` — `data_pack`: data read from the player's own copy of an original.
 - `sound.md` — sounds, songs, samples, instruments.
 - `clock.md` — the date and time.

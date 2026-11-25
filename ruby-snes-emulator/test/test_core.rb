@@ -87,6 +87,16 @@ class TestCore < Minitest::Test
     assert_equal 0x1234, @core.wram_read16(0x0100)
   end
 
+  # A state saved puts back the work RAM it was saved with, over whatever was written after.
+  def test_a_saved_state_puts_work_ram_back
+    @core.wram_write32(0x1000, 0x1234_5678)
+    state = @core.serialize
+    @core.wram_write32(0x1000, 0x0BAD_F00D)
+    @core.unserialize(state)
+
+    assert_equal 0x1234_5678, @core.wram_read32(0x1000)
+  end
+
   def test_colour_memory_reads_what_the_cartridge_wrote
     assert_equal 0x001F, @core.cgram.unpack1("v")
   end
@@ -98,6 +108,18 @@ class TestCore < Minitest::Test
   def test_the_sprite_table_reads_what_the_cartridge_wrote
     assert_equal 544, @core.oam.bytesize
     assert_equal 0x42, @core.oam.getbyte(0)
+  end
+
+  # OBSEL ($2101) cannot be read back on the console, so the core hands over what the cartridge
+  # wrote: the two sprite sizes in its top three bits, where the sprites' tiles are in the rest.
+  def test_obsel_reads_what_the_cartridge_wrote
+    code = RED_BACKDROP.take(11) + [0xA9, 0x6B, 0x8D, 0x01, 0x21, 0x80, 0xFE] # LDA #$6B; STA $2101; BRA -2
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, code))
+    2.times { core.run_frame }
+
+    assert_equal 0x6B, core.obsel
+  ensure
+    core&.destroy
   end
 
   def test_the_registers_say_where_the_processor_is
@@ -142,6 +164,70 @@ class TestCore < Minitest::Test
     @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(fresh, [0x80, 0xFE], **HandMadeCartridge::BATTERY),
                                        save_dir: fresh)
     refute_equal [0x5A], @core.save_ram.bytes.uniq, "the new console started from the dropped console's save"
+  end
+
+  # Reads the second port as a program for a Super Multitap does (fullsnes, "SNES Controllers
+  # Multiplayer 5"): JOYSER1 ($4017) with the latch held high, then low with WRIO's top bit set,
+  # then with it clear, each read's byte stored at $0100, $0101 and $0102.
+  MULTITAP_READ = [
+    0x78,             # SEI
+    0xA9, 0x01,       # LDA #$01
+    0x8D, 0x16, 0x40, # STA $4016    latch high
+    0xAD, 0x17, 0x40, # LDA $4017    a tap answers 1 on its second line while latched
+    0x8D, 0x00, 0x01, # STA $0100
+    0x9C, 0x16, 0x40, # STZ $4016    latch low: the buttons are held
+    0xAD, 0x17, 0x40, # LDA $4017    B of the controllers on its first two plugs
+    0x8D, 0x01, 0x01, # STA $0101
+    0xA9, 0x7F,       # LDA #$7F
+    0x8D, 0x01, 0x42, # STA $4201    WRIO: the top bit clear picks the other two plugs
+    0xAD, 0x17, 0x40, # LDA $4017    B of the controllers on its last two plugs
+    0x8D, 0x02, 0x01, # STA $0102
+    0x80, 0xFE        # BRA -2
+  ].freeze
+
+  # Ports 1 to 4 are the four plugs of a tap in the second port: B held on the second plug and on
+  # the third, which a program reads on JOYSER1's second line, then on its first.
+  def test_a_multitap_in_the_second_port_hands_over_four_controllers
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, MULTITAP_READ))
+    core.plug_in_multitap
+    core.set_buttons(%i[b], port: 2)
+    core.set_buttons(%i[b], port: 3)
+    core.run_frame
+
+    assert_equal 0b10, core.wram_read8(0x0100) & 0b11, "the tap is seen"
+    assert_equal 0b10, core.wram_read8(0x0101) & 0b11, "the second plug's B, and not the first's"
+    assert_equal 0b01, core.wram_read8(0x0102) & 0b01, "the third plug's B"
+  ensure
+    core&.destroy
+  end
+
+  # The voices left out are the listener's, kept beside the console and not in it: a save state
+  # leaves them as they are, and the next console switched on, in the same copy of the core or
+  # another, hears all eight.
+  def test_voices_left_out_are_kept_until_the_next_console_switches_on
+    @core.silence_voices([1, 6])
+    assert_equal [1, 6], @core.silent_voices
+    state = @core.serialize
+    @core.silence_voices([])
+    @core.unserialize(state)
+    assert_empty @core.silent_voices, "a state does not carry them"
+    @core.silence_voices([0, 1, 2, 3, 4, 5, 6, 7])
+    @core.destroy
+    @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, RED_BACKDROP))
+
+    assert_empty @core.silent_voices
+    assert_raises(ArgumentError) { @core.silence_voices([8]) }
+  end
+
+  def test_a_plain_controller_in_the_second_port_is_not_a_multitap
+    core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, MULTITAP_READ))
+    core.set_buttons(%i[b], port: 2)
+    core.run_frame
+
+    assert_equal 0, core.wram_read8(0x0100) & 0b10
+    assert_equal 0, core.wram_read8(0x0101) & 0b10, "nothing answers on the second line"
+  ensure
+    core&.destroy
   end
 
   # Opened on a thread of its own and let go of there: Ruby looks for what is still held on every

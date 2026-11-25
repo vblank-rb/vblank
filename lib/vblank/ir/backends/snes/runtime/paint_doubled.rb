@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PAINTED SCREEN OF BIG PIXELS (`screen :bitmap, pixel_size: 2`): the game paints a
+          # A painted screen of big pixels (`screen :bitmap, pixel_size: 2`): the game paints a
           # picture 128 pixels across and 112 down, and the console shows each of its pixels as a
           # square of four, filling its 256×224 screen.
           #
-          # Paint's screen is Mode 3's tiles, whose pixels are kept in PLANES: a pixel's colour is
+          # Paint's screen is Mode 3's tiles, whose pixels are kept in planes: a pixel's colour is
           # eight bits spread over eight bytes of its tile. Painting one means changing eight bytes,
           # and a picture copied to video RAM is 64 bytes a tile however little of it changed. Mode 7
           # (BGMODE 7) keeps its tiles another way, ONE BYTE A PIXEL: a tile is 64 bytes, its rows
@@ -26,7 +26,7 @@ module VBlank
           # VIDEO RAM. Mode 7 reads its layer from the first 32K words of video RAM: the low byte of
           # each word is a cell of its map, 128 cells across and 128 down, and the high byte of each
           # word is a byte of its tiles, 256 tiles of 64 bytes. The picture is 16 tiles across and 14
-          # down, 224 tiles, numbered DOWN EACH COLUMN OF TILES: the 14 tiles of the first column of
+          # down, 224 tiles, numbered down each column of tiles: the 14 tiles of the first column of
           # tiles are 0 to 13, the next column's 14 to 27, and so on, and the map's top left 16×14
           # cells name them so. The rest of the map is never shown: the screen ends at the picture's
           # edges.
@@ -34,7 +34,7 @@ module VBlank
           #   word $0000 + tile × 64 + row × 8 + column   (high byte)  a pixel of a tile
           #   word $0000 + cell row × 128 + cell column   (low byte)   a cell of the map
           #
-          # THE GAME PAINTS INTO A COPY in work RAM, in the last bank, laid out as video RAM keeps the
+          # The game paints into a COPY in work RAM, in the last bank, laid out as video RAM keeps the
           # tiles (Layout). With the tiles numbered down each column, a column of tiles is 896 bytes
           # one after another, and inside it the pixel below any pixel is always 8 bytes on, tile or
           # no tile. So the pixel (x, y) is the byte
@@ -52,7 +52,7 @@ module VBlank
           # The copy writes the high bytes alone (VMAIN increments after the high byte, and the
           # copying engine writes VMDATAH), one word of video RAM for each byte.
           #
-          # THE COPY TO VIDEO RAM IS SPREAD OVER BLANKS, WITH THE SCREEN ON, as Paint's is (see
+          # The copy to video RAM is spread over blanks, with the screen on, as Paint's is (see
           # Blank), as many bytes at a time as the blank has room for: a picture that changes all of
           # its 14336 bytes takes three blanks. Where nothing must arrive after it, there are two
           # copies, and the next pass paints one while the other is sent (see
@@ -61,7 +61,7 @@ module VBlank
           # bigger than one blank (or one window) holds is seen arriving across the screen, as
           # Paint's tiles painted in both passes are.
           #
-          # A CLEAR OF THE WHOLE SCREEN is the copying engine filling the copy with one byte, a
+          # A clear of the whole screen is the copying engine filling the copy with one byte, a
           # fixed source sent to work RAM's port, a byte a slow cycle. A fill covering a column of
           # tiles from side to side is the same copy for the rows it covers, which are bytes one
           # after another there, so a floor or a ceiling is one copy for each column of tiles; the
@@ -122,7 +122,7 @@ module VBlank
             # The bytes of the whole colour memory, sent after the picture when a fade or tint changed it.
             COLOR_BYTES = 512
 
-            # A COLUMN OF A PICTURE (rt_paint_column) is read from a record the lowering keeps for
+            # A column of a picture (rt_paint_column) is read from a record the lowering keeps for
             # each picture drawn so (Lowering::Paint#doubled_column_sections): the picture's width
             # and height (a word each); where the table of the step down the picture for each height
             # is (a long address and a spare byte); where the code for each height from nought to
@@ -140,7 +140,7 @@ module VBlank
 
             R = Paint::R
 
-            # WHERE THE PICTURE'S PIXELS ARE KEPT: the pixel rows painted, +first_row+ to before
+            # Where the picture's pixels are kept: the pixel rows painted, +first_row+ to before
             # +past_row+, which are the rows shown. A game that gives rows up (`shown_rows:`) never
             # sees them, as the screen is switched off there, so painting is held to the rows shown
             # as an area holds it (rt_paint_anywhere), and only the rows of tiles they are in are
@@ -704,7 +704,7 @@ module VBlank
             # inside the area, worked out in 32 bits, so a column far off the screen whose width or
             # height still reaches it is drawn.
             #
-            # CODE MADE FOR EACH HEIGHT. A column shown whole and with no see-through pixel, the walls
+            # Code made for each height. A column shown whole and with no see-through pixel, the walls
             # of a view at any distance, is drawn by the code made for its height when the game was
             # built (#scaler_sections): a byte read from the picture's column and written to the
             # copy for each row, at places worked out then, and the read left out where a row shows
@@ -986,7 +986,7 @@ module VBlank
               asm.rtl
             end
 
-            # THE WALL OF A VIEW: a column wholly inside the area, in one column of tiles, with every
+            # The wall of a view: a column wholly inside the area, in one column of tiles, with every
             # number in 16 bits and none below nought, where the copy painted is not behind. Its
             # rows are all of them and its pixels across all of its width, its one column of tiles
             # is marked here, and it goes straight on to its picture (rt_paint_column_picture). Any
@@ -1058,7 +1058,7 @@ module VBlank
               asm.label("rt_paint_column_not_whole")
             end
 
-            # THE USUAL COLUMN, its numbers all well inside 16 bits: a height and a width below
+            # The usual column, its numbers all well inside 16 bits: a height and a width below
             # SMALL, and a place across and down no further than SMALL either side of nought. Its
             # rows and pixels across shown are worked out in 16 bits, which nothing there can
             # overflow, and it goes on to rt_paint_column_shown; any other goes on to the 32-bit
@@ -1162,7 +1162,7 @@ module VBlank
               end
             end
 
-            # THE CODE FOR EACH HEIGHT a column of a picture +picture_height+ rows tall can be shown
+            # The code for each height a column of a picture +picture_height+ rows tall can be shown
             # whole at, 1 to HEIGHT (rt_paint_column), as sections for the Linker, each height's
             # code under #scaler_label, at most +most_bytes+ to a section. The code for height h is
             # reached with A 8 bits wide, the column's places in the data bank at Y and the copy's
@@ -1451,7 +1451,7 @@ module VBlank
             # index past it. rt_paint_blit(number, x, y): the picture, inside the area.
             #
             # A picture is "paint pictures"' entry +number+: where its rows are, its width and its
-            # height. Each row is its RUNS of pixels drawn, each a word of how many, a word of how far
+            # height. Each row is its runs of pixels drawn, each a word of how many, a word of how far
             # from the picture's left edge, and a byte for each pixel, its colour's place; a run of
             # none ends the row. So a see-through pixel costs nothing, and a run is cut to the area
             # once, not a pixel at a time.

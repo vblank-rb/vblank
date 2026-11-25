@@ -6,7 +6,7 @@ module VBlank
       # The relay did not accept the connection as a WebSocket, said in plain words.
       class HandshakeFailed < StandardError; end
 
-      # THE OPENING HANDSHAKE: an HTTP request that asks to turn the connection into a WebSocket, and the
+      # The opening handshake: an HTTP request that asks to turn the connection into a WebSocket, and the
       # answer that agrees. The client sends a random key; the server proves it understood by sending back a
       # number made from that key and a fixed text (GUID), so a server that is not a WebSocket one, or a
       # cache that replays an old answer, cannot pass for one.

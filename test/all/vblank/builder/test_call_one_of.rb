@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A CALL PICKED BY NUMBER: `call [:op_end, :op_wait, ...], number: opcode`.
+# A call picked by number: `call [:op_end, :op_wait, ...], number: opcode`.
 #
 # The number comes out of data — the instruction byte of a script read from a cartridge, the
 # state kept on one of thirty guards — and what it picks is a routine. The point of it is that
@@ -67,7 +67,7 @@ class TestCallOneOf < Minitest::Test
     assert_equal 33, game_player.run(program)[:n]
   end
 
-  # THE CASE THE FEATURE IS FOR: each instance of a pool carries its own number, so one line
+  # The case the feature is for: each instance of a pool carries its own number, so one line
   # inside `each` runs a different routine for every one of them.
   def test_each_pooled_instance_picks_its_own_routine
     program = program_with do
@@ -178,7 +178,177 @@ class TestCallOneOf < Minitest::Test
     assert_match(/:missing is called but never defined/, err.message)
   end
 
+  # --- a Hash of numbers to routines ---
+
+  # A Hash built while the cartridge is made picks the same way, by its keys. A key it leaves
+  # out, and a number past its last key or below its first, names no routine and calls nothing.
+  def test_a_hash_picks_the_routine_its_key_names
+    assert_equal [11, 0, 33, 0, 0], [0, 1, 2, 3, -1].map { |which| run_picking_from_hash(which)[:n] }
+  end
+
+  # Keys below 0 are numbers like any other.
+  def test_a_hash_with_keys_below_nought_picks_by_them
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      picked = var :picked, -2
+      b = self
+      b.func(:low) { n = 11 }
+      b.func(:high) { n = 22 }
+      game_loop { b.call({ -2 => :low, 1 => :high }, number: picked) }
+    end
+
+    assert_equal 11, game_player.run(program)[:n]
+  end
+
+  def test_a_written_number_picks_from_a_hash_while_building
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      game_loop { b.call({ 0 => :first, 2 => :third }, number: 2) }
+    end
+
+    refute_includes program.walk.map(&:kind), :call_one_of
+    assert_equal 33, game_player.run(program)[:n]
+  end
+
+  def test_an_empty_hash_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({}, number: 0) } }
+
+    assert_match(/empty Hash/, err.message)
+  end
+
+  def test_a_hash_with_no_number_says_to_give_one
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a }) } }
+
+    assert_match(/no number to pick one/, err.message)
+  end
+
+  def test_a_hash_key_that_is_not_a_whole_number_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ title: :a }, number: 0) } }
+
+    assert_match(/:title/, err.message)
+    assert_match(/whole number/, err.message)
+  end
+
+  def test_a_hash_value_that_is_not_a_routine_name_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => "a" }, number: 0) } }
+
+    assert_match(/name of a routine/, err.message)
+  end
+
+  def test_a_hash_routine_nobody_defined_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        which = var :which, 0
+        b = self
+        b.func(:defined) { b.halt }
+        game_loop { b.call({ 0 => :defined, 1 => :missing }, number: which) }
+      end
+    end
+
+    assert_match(/:missing is called but never defined/, err.message)
+  end
+
+  def test_a_written_number_no_key_names_is_refused
+    err = assert_raises(ArgumentError) { program_with { call({ 0 => :a, 2 => :b }, number: 1) } }
+
+    assert_match(/no routine for 1/, err.message)
+  end
+
+  # The table a Hash is laid out as has a slot for every number from its first key to its last.
+  # The table is laid out once every routine is declared, so the refusal names the line that
+  # wrote the Hash.
+  def test_a_hash_whose_keys_are_far_apart_is_refused_naming_its_line
+    err = assert_raises(ArgumentError) do
+      program_with do
+        which = var :which, 0
+        call({ 0 => :a, 5000 => :b }, number: which)
+      end
+    end
+
+    assert_match(/0 to 5000/, err.message)
+    assert_match(/at .*test_call_one_of\.rb:\d+/, err.message)
+  end
+
+  # `number:` can be the variable's name, and a name that is no variable is refused rather than
+  # made a new variable.
+  def test_a_hash_picks_by_a_variable_named_in_number
+    program = program_with do
+      n = var :n, 0
+      var :picked, 2
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      game_loop { b.call({ 0 => :first, 2 => :third }, number: :picked) }
+    end
+
+    assert_equal 33, game_player.run(program)[:n]
+  end
+
+  def test_a_hash_number_naming_no_variable_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        var :state, 0
+        func(:a) {}
+        func(:b) {}
+        game_loop { call({ 0 => :a, 1 => :b }, number: :stat) }
+      end
+    end
+
+    assert_match(/no variable :stat/, err.message)
+  end
+
+  def test_a_hash_number_naming_a_variable_with_a_fraction_is_refused
+    err = assert_raises(ArgumentError) do
+      program_with do
+        var :speed, 0.5
+        func(:a) {}
+        func(:b) {}
+        game_loop { call({ 0 => :a, 1 => :b }, number: :speed) }
+      end
+    end
+
+    assert_match(/holds a fraction/, err.message)
+  end
+
+  # A `call` taken back out of the program after it was recorded, as a test worked out twice
+  # by a game `while` is, is no longer there to be laid out.
+  def test_a_hash_call_taken_back_out_of_the_program_is_left_out
+    b = VBlank::Builder.new
+    b.instance_eval do
+      var :state, 0
+      func(:a) {}
+      func(:b) {}
+    end
+    mark = b.statement_mark
+    b.instance_eval { call({ 0 => :a, 1 => :b }, number: :state) }
+    b.take_statements_since(mark)
+    b.finalize_program
+
+    refute_includes b.program.walk.map(&:kind), :call_one_of
+  end
+
   private
+
+  # Two routines in a Hash at 0 and 2, each setting :n to its own number, and +which+ picking.
+  def run_picking_from_hash(which)
+    program = program_with do
+      screen :bitmap
+      n = var :n, 0
+      picked = var :picked, which
+      b = self
+      b.func(:first) { n = 11 }
+      b.func(:third) { n = 33 }
+      routines = { 0 => :first }
+      routines[2] = :third
+      game_loop { b.call routines, number: picked }
+    end
+    game_player.run(program)
+  end
 
   # Three routines, each setting :n to its own number, and the number +which+ picking between
   # them. :n stays 0 when the number names none of them.

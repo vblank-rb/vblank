@@ -2,39 +2,72 @@
 
 module VBlank
   class Builder
-    # A SET OF SPRITE TILES THE GAME LOADS AS IT RUNS, and the poses drawn from it.
+    # Sprite tiles that the game loads as it runs
     #
-    #   ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
-    #   image :spin0, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]]
-    #   sprite :ball, at: [80, 60], frames: %i[spin0 spin1], rate: 4
-    #   ball_tiles.copy_from :great_ball, at: 0, count: 3, to: 9
+    # A sprite usually keeps its own tiles for each pose. A set of sprite tiles works the other way
+    # round: the console's sprite memory holds a few tiles that the game rewrites, and every pose
+    # of the sprite is a picture made of some of them. Rewrite the tiles and every pose that draws
+    # them shows the new picture from the next frame on, while the poses take no room of their own.
     #
-    # A sprite usually keeps its own tiles for each pose, and a pose that shares a tile with
-    # another keeps a copy. Retail games often do it the other way round: the console's sprite
-    # memory holds a few tiles the game rewrites, and every pose of the sprite points at some of
-    # them. The ball of a pinball game spins through eight poses drawn from 32 tiles, and turning
-    # it into another kind of ball rewrites those 32 tiles, a few at a time, from the cartridge.
-    # Every pose then shows the new ball with nothing else changed, and the poses take no room of
-    # their own however many kinds of ball the cartridge holds.
+    # ```ruby picture=still
+    # VBlank.game "TILESET", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ball, %i[transparent yellow red]
+    #   # two tiles side by side: yellow, red
+    #   image :art, "#" => :yellow, "o" => :red,
+    #               colors: :ball do
+    #     "########oooooooo\n" * 8
+    #   end
+    #   tiles = sprite_tiles :ball_tiles,
+    #                        count: 2,
+    #                        colors: :ball
+    #   # A pose of four pieces made of the
+    #   # set's two tiles: [left, top, tile].
+    #   pieces = [[0, 0, 0], [8, 0, 1],
+    #             [0, 8, 1], [8, 8, 0]]
+    #   image :ball, tiles_from: :ball_tiles,
+    #                pieces: pieces
+    #   sprite :ball, at: [112, 72]
+    #   # load the art's two tiles into the set
+    #   tiles.copy_from :art, at: 0, count: 2,
+    #                         to: 0
+    #   game_loop {}
+    # end
+    # ```
     #
-    # The set is that room, and a pose is a picture made of its tiles. Loading tiles of the set
-    # changes every pose that draws them from the next frame on, as a painted picture's
-    # `changed` does. On a console whose sprites point at tiles, a pose is only which tiles and
-    # where, so showing another pose is what `face` always costs and a load copies the tiles it
-    # names and nothing else. A build that draws each pose as a picture of its own writes the
-    # loaded tiles into each pose that draws them.
+    # ```ruby
+    # ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
+    # image :spin0, tiles_from: :ball_tiles, pieces: [[0, 0, 0], [8, 0, 1], [0, 8, 2], [8, 8, 3]]
+    # sprite :ball, at: [80, 60], frames: %i[spin0 spin1], rate: 4
+    # ball_tiles.copy_from :great_ball, at: 0, count: 3, to: 9
+    # ```
+    #--
+    # On a console whose sprites point at tiles, a pose is only which tiles and where, so showing
+    # another pose is what `face` always costs and a load copies the tiles it names and nothing
+    # else. A build that draws each pose as a picture of its own writes the loaded tiles into each
+    # pose that draws them.
+    #++
     module SpriteTiles
       # Bytes one tile of a load's source takes: 8 rows of 8 pixels, two pixels a byte, as painted
       # tiles keep them (Builder::TileRuns::TILE_BYTES).
-      TILE_BYTES = 32
+      TILE_BYTES = 32  # :nodoc:
 
       # The most tiles one set holds. A Game Boy Color keeps a sprite's tiles in sides of 128,
       # and a set lives in one of them, so its loads are one copy each.
-      MOST_TILES = 128
+      MOST_TILES = 128  # :nodoc:
 
-      # A set of +count+ tiles of 8×8 in sprite memory, drawn from +colors+ by place (place 0
-      # see-through), each see-through until the game loads it. Returns the handle the game
-      # loads tiles through (DSL::SpriteTileSet).
+      # Declares a set of 8 by 8 tiles in sprite memory, and returns the set to load tiles through.
+      #
+      # Each tile is see-through until the game loads it. Draw poses from the set with `image
+      # ..., tiles_from:`, and load tiles into it with `copy_from`.
+      #
+      # ```ruby
+      # ball_tiles = sprite_tiles :ball_tiles, count: 32, colors: :ball
+      # ```
+      #
+      # * `name` - the set's name, as a symbol.
+      # * `count:` - how many tiles it holds.
+      # * `colors:` - the `colors` list the tiles are drawn from. The first colour is see-through.
       def sprite_tiles(name, count:, colors:)
         refuse_sprite_tiles_name_taken!(name)
         refuse_bad_sprite_tiles_count!(name, count)
@@ -48,7 +81,8 @@ module VBlank
 
       # The set +name+'s tiles from +to+ on take +count+ tiles of +source+ from its tile +at+ on,
       # in the picture of this pass (DSL::SpriteTileSet#copy_from).
-      def load_sprite_tiles(name, source, at:, count:, to:)
+      # Hook behind `copy_from` on a set of sprite tiles, documented on `sprite_tiles`.
+      def load_sprite_tiles(name, source, at:, count:, to:)  # :nodoc:
         set = @sprite_tile_sets.fetch(name)
         unless count.is_a?(Integer) && count.between?(1, set[:count])
           raise ArgumentError, "sprite_tiles :#{name} was told to copy #{count.inspect} tiles. Give count: a whole " \
@@ -103,22 +137,22 @@ module VBlank
         name
       end
 
-      TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze
+      TILE_POSE_OF_FRAME_OPTIONS = %i[tiles_from frame first_tile origin size].freeze  # :nodoc:
 
-      # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: FRAME),
-      # first_tile: 0x40, origin: [8, 16]`: A POSE OF THE SET WHOSE PIECES ARE ONE OF THE ORIGINAL'S
-      # FRAMES. A retail game's frame names tiles of sprite memory, and the set is a run of them:
+      # `image :spin0, tiles_from: :ball_tiles, frame: pack[:frames].frame(at, layout: frame),
+      # first_tile: 0x40, origin: [8, 16]`: a pose of the set whose pieces are one of the original's
+      # frames. A retail game's frame names tiles of sprite memory, and the set is a run of them:
       # +first_tile+ is the number the frames give the set's first tile, so a frame's tile 0x42 is
       # the set's tile 2. A piece sits from the object's place, which is +origin+ in the picture, as
       # a pose of the pack's tiles places its pieces (PackPoses). A piece of several tiles is each
       # of them, on the picture's 8-pixel grid.
       #
-      # BUILT ALL-IN-ONE the frame is read here, and the pose is the pose of pieces a port would have
+      # Built all-in-one the frame is read here, and the pose is the pose of pieces a port would have
       # written by hand: every console draws it as any pose of the set. A frame the set cannot draw
       # is refused: a piece naming a tile outside the set, a piece turned (a pose of the set does
       # not turn its tiles), off the grid, or left of or above the picture.
       #
-      # WITH THE PACK LEFT OUT nothing of the frame is known here, so the game gives `size:`, and
+      # With the pack left out nothing of the frame is known here, so the game gives `size:`, and
       # the pose holds stand-in pieces (IR::StartFile.tile_pose_stand_ins) and where its frame's
       # record is (IR::StartFile::TilePose). Each backend that plays such a program puts the frame's
       # pieces in their place as it starts. The file is the player's: a piece the build that holds
@@ -207,7 +241,7 @@ module VBlank
         table_name
       end
 
-      # WITH THE PACK LEFT OUT the build holds no pixel of a picture whose places are in the pack,
+      # With the pack left out the build holds no pixel of a picture whose places are in the pack,
       # only a stand-in where every place is 1. The tiles of a load are worked out here from the
       # picture's places, so a load from such a picture would show one solid colour. A picture
       # that takes only its colours from the pack holds its places, and loads as any other.

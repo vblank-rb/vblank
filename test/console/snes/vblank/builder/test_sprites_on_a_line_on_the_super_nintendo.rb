@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-# A CROWDED LINE ON THE SUPER NINTENDO. As it draws a line of the screen the console takes the first
+# A crowded line on the Super Nintendo. As it draws a line of the screen the console takes the first
 # 32 entries of its sprite table that reach the line, front-most first, and leaves the rest out of
 # that line. Then it fetches their pictures eight pixels at a time, starting from the entry furthest
 # back, and has time for 34 of those slivers: a sliver off the screen is not fetched. So past 32
-# sprites the one furthest back goes, and past 34 slivers the one IN FRONT loses its right-hand
+# sprites the one furthest back goes, and past 34 slivers the one in front loses its right-hand
 # slivers first. A picture of 16×16 drawn all over is one entry of two slivers.
 class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
   RED = Color.resolve(:red)
@@ -96,8 +96,8 @@ class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
     assert red, "the crowd is drawn"
   end
 
-  # THE TABLE'S 128 ROWS. The cartridge places the sprite furthest back first, so with more pieces
-  # than rows the ones IN FRONT find it full. 65 bars of 16×8 are two rows each, 130: the bar in
+  # The table's 128 ROWS. The cartridge places the sprite furthest back first, so with more pieces
+  # than rows the ones in front find it full. 65 bars of 16×8 are two rows each, 130: the bar in
   # front of them all is not drawn.
   def test_past_a_full_table_the_sprite_in_front_is_left_out
     game = program do
@@ -137,7 +137,7 @@ class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
     end
   end
 
-  # PIECES AS THE BUILD MADE THEM. A screen whose pictures do not all fit video memory as squares of
+  # Pieces as the build made them. A screen whose pictures do not all fit video memory as squares of
   # 16×16 draws the last of them in pieces of 8×8, each a row of the table. 165 pictures of three
   # quarters drawn are more than fit, so the last is two pieces on each of its top eight lines, not
   # one square. Seventeen of it side by side are then 34 entries on those lines: the two furthest
@@ -161,10 +161,7 @@ class TestSpritesOnALineOnTheSuperNintendo < Minitest::Test
         17.times { |i| sprite :"row#{i}", at: [i * 14, 80], image: names.last }
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :crowded
-        end
+        call({ 0 => :title, 1 => :crowded }, number: :state)
       end
     end
     screen = game_player.run(game, frames: 3).screen

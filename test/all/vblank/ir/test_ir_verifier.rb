@@ -164,11 +164,11 @@ class TestIRVerifier < Minitest::Test
     assert_match(/every\.period must be an author-time int/, err.message)
   end
 
-  # A SONG'S PARTS ARE RECORDS, and the slot says so. A part used to be a plain Hash, which
+  # A song's parts are records, and the slot says so. A part used to be a plain Hash, which
   # nothing could check past "it is an Array" — so a misspelt key sat there unread and came out
   # layers away as a part playing the wrong voice. A shape-compatible Hash is now refused here,
   # which is what stops one being written again by hand.
-  # THE SAME FOR A SAVED VARIABLE, and this one has a trap of its own worth pinning: Hash has a
+  # The same for a saved variable, and this one has a trap of its own worth pinning: Hash has a
   # #default method already — it answers the hash's own fallback, not the key called :default —
   # so a hand-built hash sailed straight past `var.default` and handed a backend nonsense
   # instead of raising. The slot says it must be a record, so it cannot happen again.
@@ -235,6 +235,25 @@ class TestIRVerifier < Minitest::Test
     # No Finding/severity/fix surface — a malformed tree is a hard error aimed at
     # the library authors, distinct from the developer-facing Guardrails.
     bad = program(Nodes::Set.new(var: :x, value: 5))
+    assert_raises(IR::InvariantError) { Verifier.verify!(bad) }
+  end
+
+  # ---- a `break` or `next` belongs to the repeat it is in, under tests alone ----
+
+  def test_a_jump_in_a_repeat_under_a_test_passes
+    good = program(repeat(4, :i, if_(binop(:==, var_ref(:i), int(2)), break_repeat), next_repeat))
+
+    assert_same good, Verifier.verify!(good)
+  end
+
+  def test_a_jump_outside_every_repeat_is_refused
+    err = assert_raises(IR::InvariantError) { Verifier.verify!(program(break_repeat)) }
+    assert_match(/inside a repeat/, err.message)
+  end
+
+  def test_a_jump_through_a_timer_to_its_repeat_is_refused
+    bad = program(repeat(4, :i, every(:beat, 2, next_repeat)))
+
     assert_raises(IR::InvariantError) { Verifier.verify!(bad) }
   end
 end

@@ -3,7 +3,7 @@
 module VBlank
   module Original
     module Packing
-      # THE GAME BOY ADVANCE'S PACKED FORMATS, which the copy of an Advance original offers: the
+      # The Game Boy Advance's packed formats, which the copy of an Advance original offers: the
       # formats of the console's BIOS, the ones retail cartridges keep their pictures in and the ones
       # the GBA lowering packs with (BiosCompress, which is their answer key). A packed block starts
       # with four bytes: the scheme in the top half of the first and the size unpacked in the next

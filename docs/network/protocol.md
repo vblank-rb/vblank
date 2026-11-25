@@ -52,6 +52,24 @@ machines that have the same digest run the same game.
 | `chat` | `text` | A line of chat from the sender, for the others of the room to read: before the match, while others join, or during it. It is not a button and not state, so no checkpoint covers it and the game never sees it. A machine shows it as "Player N: text", N from `from`: no name goes over the network. A line is plain text of at most 200 characters; a machine turns control characters into spaces and cuts a longer line, and does the same to a line that comes. |
 | `left` | none | Said by the room, never by a machine. The sender (in `from`) has gone. The room passes on every message the sender sent before it says this. So every machine knows the same last pass of that player. |
 
+### A machine that goes silent
+
+On a socket, a machine also sends an empty line at least once each second. An empty line is not a
+message, and nobody passes it on. It says that the machine is still there when it has no message to
+send: for example, when it waits for the match to start, or when its player paused the game.
+
+A machine that hears nothing on a socket for 10 seconds, not even an empty line, decides that the other
+end is gone. This is how a machine finds a cable that was pulled out, or a machine that stopped. If the
+other end is a player, the room says `left` for that player, as for any player who leaves.
+
+### When the link to the room closes
+
+If the link to the room closes during the match, a machine cannot know the last pass of each other
+player. If only the host was still in, the host leaves after the last pass that the machine heard
+from it. The game then continues on that machine. If another player was still in, the match stops on
+that machine, with words that say why. Two machines that each chose a last pass for the other would
+play different games, and nothing would tell them.
+
 Pass 1 is the pass in which the game sets itself up. It reads no buttons. Pass 2 is the first pass
 that does. The buttons for passes 2 to `input_delay` + 1 are nothing, for every player, and are not
 sent.

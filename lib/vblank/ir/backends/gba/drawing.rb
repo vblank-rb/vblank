@@ -8,7 +8,7 @@ module VBlank
         # which kind of screen is up, what a scene does to it as it takes over, the shapes
         # and pictures a game paints itself, and text.
         #
-        # What the console draws FOR the game lives beside this, one file each: the sprites
+        # What the console draws for the game lives beside this, one file each: the sprites
         # ({SpriteDrawing}), the background layers ({BackgroundDrawing}), and what happens to
         # the whole picture — camera, fade, tint ({ScreenEffects}). Copying data into video
         # memory, which all of them do, is {BlobUpload}. A change of screen sets the sprites
@@ -31,7 +31,7 @@ module VBlank
         class Drawing
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[
-            screen pixel fill_rect clear_screen dma_fill_rect draw_rect_at draw_column_at draw_text draw_digit
+            screen pixel fill_rect clear_screen draw_rect_at draw_column_at draw_text draw_digit
             blit blit_pose background save_region restore_region
           ].freeze
 
@@ -41,7 +41,6 @@ module VBlank
             when :pixel then emit_pixel(node)
             when :fill_rect then emit_fill_rect(node)
             when :clear_screen then emit_clear_screen(node)
-            when :dma_fill_rect then emit_dma_fill_rect(node)
             when :draw_rect_at then emit_draw_rect_at(node)
             when :draw_column_at then emit_draw_column_at(node)
             when :draw_text then emit_draw_text(node)
@@ -56,7 +55,6 @@ module VBlank
           end
 
           include Console::Hardware
-          include EmitterCalls
 
           def initialize(emitter:, primitives:, lowering:, divide:, framebuffer:, raster:, palette_tint:,
                           layer_blend:, effects:, buffered:, uploads:, sprite_drawing:, background_drawing:,
@@ -114,17 +112,30 @@ module VBlank
           Layout = Data.define(:screen, :bitmaps, :palette, :indexed_bitmaps, :blob_codecs, :blob_raw_bytes,
                                 :modes, :fading, :tiled, :has_objects, :scene_blend, :movement,
                                 :scene_sprites, :gated_sprites, :waits_for_frames, :draw_runs, :pose_sent_bytes,
-                                :room_tables, :late_pages, :held_sprites, :border, :pixel_size) do
+                                :room_tables, :late_pages, :held_sprites, :border, :pixel_size, :camera_at_flip) do
             # +border+ is the border round a smaller screen shown in the middle of the Advance's
             # (BorderSprites), or nil for a game shown on the whole screen. +pixel_size+ is how many
             # of the console's pixels across and down one of the game's is shown as (1, or 2 for
-            # `screen :bitmap, pixel_size: 2`: Drawing#emit_bigger_pixels).
-            def initialize(held_sprites: nil, border: nil, pixel_size: 1, **rest) = super
+            # `screen :bitmap, pixel_size: 2`: Drawing#emit_bigger_pixels). +camera_at_flip+ marks a game that moves
+            # the camera and has a tear-free screen, whose camera is shown with its page (ScreenEffects#emit_camera).
+            def initialize(held_sprites: nil, border: nil, pixel_size: 1, camera_at_flip: false, **rest) = super
 
             # How many rows of the painted screen's memory the console shows: every row, or the
             # small picture's alone in a game of big pixels. A whole-screen fill fills these and
             # leaves the rows under them, which are never shown.
             def shown_rows = SCREEN_HEIGHT / pixel_size
+
+            # ...and how many of each row's columns, the same share.
+            def shown_columns = SCREEN_WIDTH / pixel_size
+
+            # Does a whole-screen fill leave out part of each row it fills, which the display never
+            # reads? Only in a game of big pixels, and only where the shown part of a row of
+            # +pixel_bytes+ bytes a pixel is a whole number of words.
+            def fills_shown_rows_alone?(pixel_bytes) = pixel_size > 1 && ((shown_columns * pixel_bytes) % 4).zero?
+
+            # Does the game switch layers off to send them something, and wait for frames, so that
+            # a sending can hold them for a picture (BackgroundDrawing::LAYERS_HELD)?
+            def holds_layers? = waits_for_frames && screen.layers_off_while_sending?
             # The backgrounds that turn AND sit on the tiled screen — the ones that decide
             # which way the console arranges that screen's layers. A background that turns
             # on `screen :rotozoom` is on a screen of its own, up at a different moment, so
@@ -134,22 +145,16 @@ module VBlank
           end
 
           # Fill the area itself, which is what clearing means when only part of the picture may
-          # be painted: a row-at-a-time block fill over exactly those edges. It does not go
-          # through the rectangle verb because that one holds authors to an even width, and an
-          # area's width is whatever the author set.
+          # be painted: a row-at-a-time block fill over exactly those edges, whatever width the
+          # author set, with no narrow-row stores (an area is seldom that narrow).
           #
           # An area of no width fills nothing, and must copy nothing: the copy engine reads a count
           # of nought as its biggest count, and would fill all of video memory.
           def emit_fill_area(color)
-            width = @framebuffer.clip_right - @framebuffer.clip_left
-            return unless width.positive?
+            return unless @framebuffer.clip_right > @framebuffer.clip_left
 
-            scratch = @framebuffer.emit_color_fill_word(color)
-            control = @framebuffer.fill_control_for_column(@framebuffer.clip_left, width)
-            (@framebuffer.clip_top...@framebuffer.clip_bottom).each do |row|
-              @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + @framebuffer.clip_left) * 2,
-                                         control)
-            end
+            emit_rows_filled(@framebuffer.clip_left, @framebuffer.clip_right,
+                             (@framebuffer.clip_top...@framebuffer.clip_bottom), color)
           end
 
           # Turn the screen on by writing the chosen mode to the display-control
@@ -205,12 +210,12 @@ module VBlank
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
             value |= display_window_bits
             late = late_layer_enable_bits
-            return @emitter.write_reg16(REG_DISPCNT, value | initial_forced_blank_bit) if late.zero?
+            return @background_drawing.emit_display_control_written(value | initial_forced_blank_bit) if late.zero?
 
             emit_display_control_keeping(value & ~late, late)
           end
 
-          # A GAME THAT NEVER CALLS `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
+          # A game that never calls `screen` DRAWS ON A BITMAP SCREEN, as if its first line were
           # `screen :bitmap` — the interpreter and the native build have always drawn it there.
           # The console needs telling: at power-on its display-control register holds "mode 0,
           # every layer off", so a pixel written to video memory sits there unseen and the
@@ -225,7 +230,7 @@ module VBlank
             emit_screen(Build.screen(:bitmap))
           end
 
-          # A SCREEN THE GAME PAINTS IS ONE BACKGROUND TO THE CONSOLE — its third — and that
+          # A screen the game paints is one background to the console — its third — and that
           # background's own settings set whether it is drawn in blocks, as any background's
           # do. Nothing else on such a screen reads those settings, so in a game that
           # pixelates they are written whole, as the screen is set up. With the size of a
@@ -243,8 +248,8 @@ module VBlank
             emit_bigger_pixels
           end
 
-          # A GAME OF BIG PIXELS (`screen :bitmap, pixel_size: 2`) DRAWS A SMALL PICTURE IN THE TOP
-          # LEFT OF THE PAINTED SCREEN'S MEMORY, AND THE DISPLAY SHOWS IT BIGGER, copying nothing.
+          # A game of big pixels (`screen :bitmap, pixel_size: 2`) draws a small picture in the top
+          # left of the painted screen's memory, and the display shows it bigger, copying nothing.
           #
           # The painted screen is the console's third background, the one that can turn and resize:
           # for each pixel of the screen it shows, the display steps through the picture by the
@@ -257,13 +262,12 @@ module VBlank
           # as every painted screen does, so every drawing verb writes where it always did; it only
           # draws in fewer of them.
           #
-          # This is the hardware's way and not mosaic. Mosaic shows blocks of the WHOLE picture
+          # This is the hardware's way and not mosaic. Mosaic shows blocks of the whole picture
           # — the top left pixel of each square shown for all four — so the game would still draw
           # a picture of the screen's size, and only a quarter of what it drew would be seen.
           #
           # Written as the painted screen is set up, so a game that never sets pixel_size: writes
-          # nothing. Nothing else writes these registers on a painted screen of big pixels: the
-          # camera, which does, is refused there (Guardrails::Checks::BiggerPixelsNotMadeYet).
+          # nothing. The camera writes them again, at the same half step (ScreenEffects#emit_camera).
           def emit_bigger_pixels
             return if @layout.pixel_size == 1
 
@@ -274,12 +278,12 @@ module VBlank
             @emitter.write_reg16(REG_BG2PD, step)
           end
 
-          # A LAYER OF A PROGRAM SHOWN AS IT IS DECLARED WAITS FOR ITS OWN BACKGROUND.
+          # A layer of a program shown as it is declared waits for its own background.
           #
           # The screen is declared before the backgrounds on it, and a background's own
           # statement is what copies its map in and tells its layer where that map is. A layer
           # switched on before then is not blank: its map is taken to be at the very start of
-          # video memory, which is where the tile PICTURES are, so the console draws the art as
+          # video memory, which is where the tile pictures are, so the console draws the art as
           # though it were a grid for however many rows setting the background up takes.
           #
           # A program with a game loop never shows that, because its picture is held off until
@@ -308,18 +312,22 @@ module VBlank
           # goes in a byte at a time, since that is the most one instruction can hold.
           def emit_display_control_keeping(value, late)
             change_display_control do
-              emit(ASM.and_imm(ACC, ACC, late))
-              [value & 0x00FF, value & 0xFF00].reject(&:zero?).each { |byte| emit(ASM.orr_imm(ACC, ACC, byte)) }
+              @emitter.emit(ASM.and_imm(ACC, ACC, late))
+              [value & 0x00FF, value & 0xFF00].reject(&:zero?).each { |byte| @emitter.emit(ASM.orr_imm(ACC, ACC, byte)) }
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
             end
           end
 
           def emit_enable_late_layer(background)
             return unless late_layers?
 
-            change_display_control { emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background))) }
+            change_display_control do
+              @emitter.emit(ASM.orr_imm(ACC, ACC, layer_enable_bit(background)))
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # ...save one the game hid
+            end
           end
 
-          # KEEP THE PICTURE SWITCHED OFF UNTIL THE FIRST FRAME HAS BEEN SET UP.
+          # Keep the picture switched off until the first frame has been set up.
           #
           # Everything a game sets up before its loop — a screen painted, a flash it opens on — is
           # carried onto the screen by work done between frames: the effect a routine writes
@@ -346,26 +354,26 @@ module VBlank
           def emit_end_forced_blank
             return unless @layout.waits_for_frames
 
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
-            emit(ASM.bic_imm(ACC, ACC, FORCED_BLANK))
-            emit(ASM.store_halfword(ACC, TMP))
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.load_halfword(ACC, TMP))
+            @emitter.emit(ASM.bic_imm(ACC, ACC, FORCED_BLANK))
+            @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # WHICH OF THE CONSOLE'S TILE ARRANGEMENTS THIS PROGRAM NEEDS, and which layers
+          # Which of the console's tile arrangements this program needs, and which layers
           # to turn on — the whole display-control value for a tiled screen.
           #
           # The console arranges its tile layers two ways, and the difference is what the
-          # layers ARE rather than how many: mode 0 is four layers that scroll and nothing
+          # layers are rather than how many: mode 0 is four layers that scroll and nothing
           # that turns; mode 1 is two that scroll plus one that turns and resizes. A game
           # needs the second exactly when it turns a background — a title where something
           # flies at the player over a backdrop, a map that spins inside a fixed frame, a
           # road that banks under a sky — and nothing in a program asks for it, because
-          # turning a background IS asking for it. (The third arrangement, mode 2, is `screen
+          # turning a background is asking for it. (The third arrangement, mode 2, is `screen
           # :rotozoom`: two turning layers and nothing else, and it keeps its own path.)
-          # +on+ names the layers to switch on, +turning+ which arrangement THIS screen
+          # +on+ names the layers to switch on, +turning+ which arrangement this screen
           # wants, and +bar+ whether it shows a status bar's window. Given none of them, this is the
-          # value for the screen the console is set up for BEFORE any scene has run — see
+          # value for the screen the console is set up for before any scene has run — see
           # #first_scene_layers. The sprite layer is added by the
           # callers, which all do it the same way for every screen.
           def tiled_dispcnt(on = nil, turning: nil, bar: nil)
@@ -373,18 +381,26 @@ module VBlank
             on = boot.on if boot
             turning = (boot ? boot.turning : turning_background?) if turning.nil?
             bar = (boot ? boot.bar : bar_on_screen?) if bar.nil?
-            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | (bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0)
+            (turning ? MODE_1 : MODE_0) | tiled_bg_enable_bits(*[on].compact) | bar_window_bit(bar)
           end
 
-          # THE SCREEN THE CONSOLE IS SET UP FOR BEFORE ANY SCENE HAS RUN, or nothing at all
-          # for a game whose scenes all want the same one — there the whole program IS the
+          # The window a status bar on this screen is shown through: the second, or in a border the
+          # first, since the second is the game's screen there (BorderSprites#emit_bar_registers).
+          def bar_window_bit(bar)
+            return (bar ? WIN0_ENABLE : 0) if @layout.border
+
+            bar || @layout.screen.boxes_backgrounds? ? WIN1_ENABLE : 0
+          end
+
+          # The screen the console is set up for before any scene has run, or nothing at all
+          # for a game whose scenes all want the same one — there the whole program is the
           # screen and every layer in it belongs on.
           #
-          # Where the scenes differ, boot names the FIRST scene's layers rather than the
+          # Where the scenes differ, boot names the first scene's layers rather than the
           # union of every background in the game. A layer switched on before its own scene
           # has told it where its map is does not draw blank: nought points at the start of
-          # video memory, which is where the tile PICTURES are, so it draws the art as
-          # though it were a grid, in front of everything. Naming too FEW layers instead is
+          # video memory, which is where the tile pictures are, so it draws the art as
+          # though it were a grid, in front of everything. Naming too few layers instead is
           # a black frame, which is the safe way to be wrong for the one frame it lasts.
           def first_scene_layers = (@layout.screen.first_scene_screen if @layout.screen.layers_differ_by_scene?)
 
@@ -410,22 +426,27 @@ module VBlank
             bits | display_window_bits
           end
 
-          # THE FIRST WINDOW, ON EVERY SCREEN OF A GAME THAT HOLDS A FADE TO A RECTANGLE (see
+          # The first window, on every screen of a game that holds a fade to a rectangle (see
           # ScreenEffects#emit_fade_window). The window is switched on here, in the display's
           # settings, and those are written whole each time the screen changes kind, so every
           # one of them carries it — the bitmap screens' too, where the picture is the console's
           # third layer and the window cuts the effect on it like any other.
           #
-          # A game shown in a border has the first window on every screen too: it is the game's
+          # A game shown in a border has the second window on every screen: it is the game's
           # screen, the only place the blend reaches (see BorderSprites). The checks refuse a fade
-          # held to a rectangle in such a game, so the two never both want it.
-          def display_window_bits = (@layout.fading.rectangle_fades? || @layout.border) ? WIN0_ENABLE : 0
+          # held to a rectangle in such a game, and a background held to a box, which would want
+          # the windows too.
+          def display_window_bits
+            return WIN1_ENABLE if @layout.border
+
+            @layout.fading.rectangle_fades? ? WIN0_ENABLE : 0
+          end
 
           # The layers a program that declares no scenes uses — every one its
           # backgrounds landed on, and the first layer for a program with none, so a tiled
           # screen always has one on.
           #
-          # A SCENE that names none of them is a different thing and keeps its empty list:
+          # A scene that names none of them is a different thing and keeps its empty list:
           # it draws no scenery, so it wants no layer, and handing it one anyway leaves that
           # layer on with nobody to point it anywhere. A title screen of sprites and words
           # showed the game's tile pictures as a grid behind them for exactly that reason.
@@ -466,6 +487,7 @@ module VBlank
             @primitives.store_word_immediate(base, @primitives.var_addr(DISPCNT_STATE))
             @primitives.store_word_immediate(PAGE1, @primitives.var_addr(BACKBUF))
             @emitter.write_reg16(REG_DISPCNT, base | held)
+            emit_game_window_without_bar
             @primitives.store_word_immediate(MODE_BUFFERED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
             @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
@@ -490,6 +512,7 @@ module VBlank
             emit_painted_screen_settings
             emit_sprites_over_picture_again
             @emitter.write_reg16(REG_DISPCNT, MODE_3 | BG2_ENABLE | display_window_bits | sprites_over_picture_bits | held)
+            emit_game_window_without_bar
             @primitives.store_word_immediate(MODE_DIRECT, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
             @background_drawing.emit_forget_all_held_tiles # ...nor any cell change waiting for it
@@ -511,7 +534,7 @@ module VBlank
             @effects.emit_kept_tint_on_entry(IR::Modes::TILED)
             value = tiled_dispcnt
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @emitter.write_reg16(REG_DISPCNT, value | held)
+            @background_drawing.emit_display_control_written(value | held)
             @primitives.store_word_immediate(MODE_TILED, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
           end
@@ -530,7 +553,7 @@ module VBlank
             @palette_tint.emit_changed_obj_lists_again(up: nil)
           end
 
-          # A PAINTED SCREEN WITH SPRITES SHOWN OVER IT (`sprite ..., over_picture: true`) keeps
+          # A painted screen with sprites shown over it (`sprite ..., over_picture: true`) keeps
           # the sprite layer on, as a tiled screen does: the display draws those sprites over
           # the picture as it sends it to the screen. Their pictures are in the half of sprite
           # memory no painted picture reaches (ScreenLayout#first_sprite_tile), so they are only
@@ -558,7 +581,7 @@ module VBlank
             @effects.emit_kept_tint_on_entry(IR::Modes::AFFINE)
             value = MODE_2 | BG2_ENABLE | display_window_bits
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @emitter.write_reg16(REG_DISPCNT, value | held)
+            @background_drawing.emit_display_control_written(value | held)
             @primitives.store_word_immediate(MODE_AFFINE, @primitives.var_addr(MODE_STATE))
             @scene_entry.emit_clear_used_markers # a new display: nothing any scene put up is there
           end
@@ -567,11 +590,11 @@ module VBlank
           # scene: switch into this scene's mode, but only if it isn't already there (a
           # transition). Steady frames — the same scene running again — cost just the
           # compare, and a buffered scene's DISPCNT is left to the page flip.
-          # WHAT A SCENE TELLS THE DISPLAY AS IT TAKES OVER. Both halves are skipped by the
+          # What a scene tells the display as it takes over. Both halves are skipped by the
           # programs that do not need them, so a game with one screen and one set of layers
           # emits nothing here at all.
           #
-          # SET UP, THEN SWITCH ON — the order matters and cannot be seen by reading the
+          # Set up, then switch on — the order matters and cannot be seen by reading the
           # registers once a frame. Pointing a layer at its map is the long part (a map per
           # layer, sent in one go) and the console draws the picture while it happens, so a
           # layer switched on first draws the tile pictures as a grid for whatever is left of
@@ -581,15 +604,24 @@ module VBlank
             emit_painted_scene_without_backdrop(name) if @palette_tint.tints_screen_backdrops?
             emit_scene_mode(name) if @layout.modes.switched_per_scene?
             emit_painted_run_places(name)
-            emit_scene_scenery(name)
+            # The backdrop, blend and light are written first, in the gap, before anything is sent
+            # under a hold: a sending that runs on into the picture would land them part way down
+            # it, where a backdrop or a brightness changed would tear the picture's colour.
             emit_scene_backdrop(name) if scene_handover.backdrops?
             @raster.emit_light_leaving(name, @layout.scene_blend.fetch(name, BLD_OFF))
             emit_scene_blend(name)
             @raster.emit_light_for_lit_scene(name)
+            emit_scene_scenery(name)
+            # ...and its own sprite pictures, which scenes share the room for, so a scene taking
+            # over sends its own and one already running sends nothing. Straight after scenery
+            # it sends, so one hold covers both (#emit_with_layers_held_for_art).
+            sends_scenery = scene_handover.arrival(name).scenery.any?
+            emit_scene_art_upload(name) if sends_scenery
             emit_scene_layers(name)
+            emit_scene_art_upload(name) unless sends_scenery
           end
 
-          # THE COLOUR THIS SCENE SHOWS WHEREVER NOTHING IS DRAWN, in a game where a screen sets one
+          # The colour this scene shows wherever nothing is drawn, in a game where a screen sets one
           # (IR::SceneHandover::Arrival#backdrop). The console keeps it in the first place of its
           # background colours, which every tile's see-through pixels and every empty cell show;
           # it is written as the scene takes over, after the scene's own colours, whose table
@@ -604,7 +636,7 @@ module VBlank
             @scene_entry.emit_once_on_arrival(:backdrop, name) { emit_backdrop_color(arrival.backdrop) }
           end
 
-          # A PAINTED SCENE TAKING OVER, in a build that puts a screen's backdrop back after a walk
+          # A painted scene taking over, in a build that puts a screen's backdrop back after a walk
           # of the colours (PaletteTint#prepare_screen_backdrops): it has no backdrop to put back,
           # and says so before its screen and colours go up, since a tint kept across the change
           # walks them as they do. A scene drawn from tiles writes its own after (#emit_scene_backdrop).
@@ -624,9 +656,9 @@ module VBlank
             @emitter.emit(ASM.store_halfword(ACC, TMP))
           end
 
-          # WHICH LAYERS THIS SCENE BLENDS, for a game whose scenes want different answers.
+          # Which layers this scene blends, for a game whose scenes want different answers.
           #
-          # The blend unit is told which layers to mix by NUMBER, and scenes take turns with
+          # The blend unit is told which layers to mix by number, and scenes take turns with
           # the console's layers — so the number the see-through layer sits on belongs to
           # the scene rather than to the game. A scene that sees through nothing sets that
           # here too, which is what stops whichever background inherited that number being
@@ -643,7 +675,7 @@ module VBlank
           # write replaces, and an interrupt landing between the two would leave rows of the
           # picture drawn from it: the light's window right, and nothing outside it darkened.
           #
-          # A FADE PLACED IN THE STACK IS LEFT IN THE REGISTER by a scene that takes over, since it
+          # A fade placed in the stack is left in the register by a scene that takes over, since it
           # is the game's and stays until the game lifts it. The one scene that takes it off is a
           # scene the light is on in, which the fade takes turns with. A scene whose light shows
           # nothing outside it therefore mixes nothing unless it has an answer of its own: that
@@ -659,7 +691,7 @@ module VBlank
             @layer_blend.emit_screen_marker(name)
           end
 
-          # SET WHERE EACH PAINTED RUN SITS ON THIS SCENE'S SCREEN, for a run shown in several
+          # Set where each painted run sits on this scene's screen, for a run shown in several
           # scenes that each lay it out somewhere else (see ScreenLayout::PaintedRun). The copy
           # that paints it reads this, both the one as the scene takes over and the one the
           # game asks for with `changed`; a scene that does not show the run sets 0, so a copy
@@ -674,11 +706,11 @@ module VBlank
               next @background_drawing.emit_walking_run_place(run_name, run, shown: run.shown_in?(name)) if run.walk
 
               at = run.places[name]
-              store_word_immediate(at ? VRAM_START + at : 0, @primitives.var_addr(ScreenLayout::PaintedRun.place_var(run_name)))
+              @primitives.store_word_immediate(at ? VRAM_START + at : 0, @primitives.var_addr(ScreenLayout::PaintedRun.place_var(run_name)))
             end
           end
 
-          # PUT THIS SCENE'S BACKGROUNDS UP, ONCE, AS IT TAKES OVER.
+          # Put this scene's backgrounds up, once, as it takes over.
           #
           # Pointing a layer at a background sends the whole map into video memory and puts
           # the layer's scroll back to the top-left corner. That is right the first time and
@@ -691,7 +723,7 @@ module VBlank
           # A game whose scenery belongs to no scene emits none of this.
           def emit_scene_scenery(name)
             arrival = scene_handover.arrival(name)
-            # A SCENE WITH NO SCENERY OF ITS OWN STILL TAKES THE LAST ONE'S DOWN, so it marks
+            # A scene with no scenery of its own still takes the last one's down, so it marks
             # nobody's as up. Without this, a scene that comes back after one with no
             # scenery found its own marked as still up and skipped putting it up again —
             # keeping the cells and painted tiles of the last visit, where the scene rules
@@ -712,7 +744,7 @@ module VBlank
                   @uploads.emit_dma_blob(stretch.blob, VRAM_START + stretch.offset, stretch.units)
                 end
                 arrival.scenery.each { |node| @background_drawing.emit_background_hardware(node) }
-                @background_drawing.emit_box_set_aside
+                @background_drawing.emit_box_set_aside(arrival.scenery)
                 arrival.painted_tiles.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
                 @raster.emit_bends_on_arrival(name)
               end
@@ -724,7 +756,7 @@ module VBlank
             end
           end
 
-          # SWITCH THE LAYERS OFF WHILE A SCENE'S SCENERY IS SENT, AND ON AGAIN AFTER.
+          # Switch the layers off while a scene's scenery is sent, and on again after.
           #
           # Scenes that take turns put their pictures and maps in the same room (see
           # ScreenLayout#place_each_scene), so sending this scene's writes over what the last
@@ -732,29 +764,76 @@ module VBlank
           # runs, and a layer left on would show the last scene's maps drawn out of this
           # scene's pictures — garbage — for whatever is left of the frame. Off, it shows the
           # backdrop, which is the safe way to be wrong for part of one frame; the frame after
-          # is this scene's scenery, whole.
+          # is this scene's scenery, whole. Where the sending runs past the gap into a picture,
+          # the layers stay off for the rest of it, so that whole picture is the backdrop (see
+          # BackgroundDrawing::LAYERS_HELD).
           #
-          # Only the background layers are touched: the sprites, the arrangement and the rest
-          # of the display's settings stay as they were. A scene not drawn from tiles has no
-          # layers to switch, and is left alone.
+          # Only the layers are touched: the background layers, and in a game that waits for
+          # frames the sprites too, unless the game is in a border, which is sprites (see
+          # BackgroundDrawing#held_layer_bits). The arrangement and the rest of the display's
+          # settings stay as they were. A scene not drawn from tiles has no layers to switch, and
+          # is left alone.
           BG_ENABLE_MASK = BG0_ENABLE | BG1_ENABLE | BG2_ENABLE | BG3_ENABLE
 
           def emit_with_bg_layers_disabled(name)
             screen = @layout.screen.scene_send(name).screen
             return yield unless screen
 
-            change_display_control { emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
-            yield
             on = screen.on.reduce(0) { |bits, layer| bits | BG_ENABLES[layer] }
-            change_display_control { emit(ASM.orr_imm(ACC, ACC, on)) } unless on.zero?
+            return emit_with_layers_held_for_sending(on, name) { yield } if @background_drawing.holds_layers?
+
+            change_display_control { @emitter.emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK)) }
+            yield
+            return if on.zero?
+
+            change_display_control do
+              @emitter.emit(ASM.orr_imm(ACC, ACC, on))
+              @background_drawing.emit_without_switched_off_layers(ACC, scratch: 2) # TMP holds the register's address
+            end
           end
 
-          # Read the display's settings into ACC, let the block change them, write them back.
-          def change_display_control
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.load_halfword(ACC, TMP))
+          # The same, in a game that waits for frames: the background layers and the sprites go
+          # off for the sending, and come back on, the scene's layers in place of the last
+          # scene's, at once in the gap or at the start of the next gap where the sending ran
+          # into a picture (see BackgroundDrawing::LAYERS_HELD). Where the scene's sprite pictures
+          # are sent next, the layers stay off for them, and they come on after (see
+          # #emit_with_layers_held_for_art).
+          def emit_with_layers_held_for_sending(on, name)
+            art_follows = art_held?(name)
+            @scene_entry.emit_unless_scene_up(:art, name) { @sprite_drawing.emit_hide_game_rows } if art_follows && @layout.border
+            @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
             yield
-            emit(ASM.store_halfword(ACC, TMP))
+            @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
+            @emitter.emit(ASM.bic_imm(ACC, ACC, BG_ENABLE_MASK))
+            @emitter.emit(ASM.orr_imm(ACC, ACC, on)) unless on.zero?
+            return @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name)) unless art_follows
+
+            # The pictures are sent when the note of whose are up names another scene, as
+            # SceneEntry#emit_once_on_arrival reads it: then the layers stay off for them.
+            @primitives.store_var(ACC, SCENE_SEND_DISPLAY)
+            @emitter.emit_number(ACC, 1)
+            @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
+            @scene_entry.emit_if_scene_up(:art, name) do
+              @emitter.emit_number(ACC, 0)
+              @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
+              @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
+              @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
+            end
+          end
+
+          # Where the display's settings are kept while a scene's scenery is sent.
+          SCENE_SEND_DISPLAY = :_scene_send_display
+
+          # Read the display's settings into ACC, let the block change them, write them back.
+          # Where the screen's interrupt can switch held layers on, with the interrupt switch off
+          # between the read and the write (SpriteDrawing#changing_display_control).
+          def change_display_control(&change)
+            @sprite_drawing.changing_display_control do
+              @emitter.emit_number(TMP, REG_DISPCNT)
+              @emitter.emit(ASM.load_halfword(ACC, TMP))
+              change.call
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
+            end
           end
 
           # What a scene does to the screen as it takes over, worked out once for both backends.
@@ -773,7 +852,7 @@ module VBlank
             end
           end
 
-          # A PAINTED SCREEN REACHED FROM ONE DRAWN FROM TILES STARTS AS THE BACKDROP. The picture
+          # A painted screen reached from one drawn from tiles starts as the backdrop. The picture
           # of the painted screen and the tiled screen's tiles and maps are the same video memory,
           # so what was tiles would show as coloured noise wherever the scene does not paint, on
           # both of a tear-free screen's pages. One painted screen reached from the other keeps the
@@ -790,7 +869,7 @@ module VBlank
             end
           end
 
-          # PUT UP AGAIN WHAT EVERY SCREEN DRAWN FROM TILES SHOWS, on the way back from a screen
+          # Put up again what every screen drawn from tiles shows, on the way back from a screen
           # of another kind (see IR::SceneHandover#always_up). Entering the mode sends the
           # pictures again; the maps of the scenery declared in no scene, and what the game
           # paints from lists, were sent once at power-on and nothing else sends them. The maps
@@ -806,7 +885,7 @@ module VBlank
             end
           end
 
-          # SWITCH ON THE LAYERS THIS SCENE USES, AND ONLY THOSE.
+          # Switch on the layers this scene uses, and only those.
           #
           # Scenes take turns, so they share the console's four layers rather than each
           # having some of their own (see ScreenLayout#layer_slots). A scene that uses fewer than
@@ -825,7 +904,32 @@ module VBlank
 
             value = tiled_dispcnt(wanted.on, turning: wanted.turning, bar: wanted.bar)
             value |= OBJ_ENABLE | OBJ_1D_MAP if @layout.has_objects
-            @sprite_drawing.emit_screen_layers(value) # leaves the sprites off on a frame hide_sprites asked for
+            # Leaves the sprites off on a frame hide_sprites asked for, the layers
+            # off for the rest of a picture the scene's setup ran into, and the layers the game
+            # hid off (BackgroundDrawing#emit_layer_switch).
+            if @background_drawing.holds_layers?
+              @sprite_drawing.emit_screen_layers(value) do |reg|
+                @background_drawing.emit_without_switched_off_layers(reg)
+                @background_drawing.emit_display_control_keeping_held_off(reg)
+              end
+            elsif @layout.screen.hides_layers?
+              @sprite_drawing.emit_screen_layers(value) do |reg|
+                @background_drawing.emit_without_switched_off_layers(reg)
+                @emitter.emit_number(TMP, REG_DISPCNT)
+                @emitter.emit(ASM.store_halfword(reg, TMP))
+              end
+            else
+              @sprite_drawing.emit_screen_layers(value)
+            end
+            emit_game_window_without_bar unless wanted.bar
+          end
+
+          # A screen with no status bar, in a border, shows every layer in the game's screen again: a
+          # screen with a bar left its layer out there (BorderSprites#emit_bar_registers), and the
+          # layer may be another background's on this screen, or the painted picture's. A game with no
+          # bar, or none in a border, emits nothing.
+          def emit_game_window_without_bar
+            @layout.border.emit_game_window_without_bar if @layout.border && bar_on_screen?
           end
 
           # Send a scene's sprite pictures when it takes over. Scenes share the room above
@@ -843,10 +947,11 @@ module VBlank
           # scene's pictures go into the same memory, so taking over has to mark those frames
           # as gone and mark this scene as the one loaded.
           #
-          # The copy lands where the scene's own routine runs, which is near the top of a
-          # frame rather than strictly between frames. A sprite caught half-replaced would
-          # show for one frame — on the frame a game changes what the whole screen is, and
-          # where the scene it is leaving has already stopped drawing its own sprites.
+          # The copy lands where the scene's own routine runs, after its scenery, so in the gap
+          # or past it. A copy that runs on into the picture would show the rows above the line
+          # it had reached without the scene's sprites and the rows below with them, the line
+          # set by how many cycles the pass spent getting there. So in a game that holds its
+          # layers, the copy is a sending like the scenery's (#emit_with_layers_held_for_art).
           def emit_scene_art_upload(name)
             own = @layout.screen.scene_send(name)
             art = own.art || []
@@ -866,21 +971,157 @@ module VBlank
             end
 
             @scene_entry.emit_once_on_arrival(:art, name) do
-              # Its colours first: the groups its sprites name are this scene's now (see
-              # ScreenLayout#build_shared_object_palette). A scene a `case_var` picks has them sent
-              # with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
-              if colors && !@layout.screen.scene_colors_picked?(name)
-                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name)
-              end
-              art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
-              @sprite_drawing.emit_reset_resident_frames(rooms)
-              pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
-              @picture_group_copying.emit_forget_sets_of(name) # the groups it wants copied in before its sprites
+              emit_with_layers_held_for_art(name) do
+                # Its colours first: the groups its sprites name are this scene's now (see
+                # ScreenLayout#build_shared_object_palette). A scene the scene dispatch picks has them
+                # sent with its sprites instead (see SpriteDrawing#emit_scene_colors_on_change).
+                @palette_tint.emit_send_scene_obj_palette(colors, @layout.screen.obj_palette_units, name) if sends_scene_colors?(name)
+                art.each { |blob, at, units| @uploads.emit_dma_blob(blob, SpriteDrawing::OBJ_TILE_BASE + (at * 32), units * 16) }
+                @sprite_drawing.emit_reset_resident_frames(rooms)
+                pools.each { |pool| @sprite_drawing.emit_forget_poses_sent(pool) }
+                @picture_group_copying.emit_forget_sets_of(name) # the groups it wants copied in before its sprites
 
-              # A picture the game paints goes up from its list as it is now: the scene before
-              # used the same memory (see IR::SceneHandover).
-              painted.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
+                # A picture the game paints goes up from its list as it is now: the scene before
+                # used the same memory (see IR::SceneHandover).
+                painted.each { |run| @background_drawing.emit_copy_tiles(Build.copy_tiles(run.name)) }
+              end
             end
+          end
+
+          # Does +name+ send its sprites' colours as it takes over, rather than with its sprites?
+          def sends_scene_colors?(name)
+            @layout.screen.scene_send(name).obj_palette && !@layout.screen.scene_colors_picked?(name)
+          end
+
+          # Is +name+'s sending of its sprite pictures held (#emit_with_layers_held_for_art)? In a game
+          # that holds its layers, where the scene sends its sprites' colours or copies pictures, since
+          # either landing part way down a picture tears it: on a painted screen as on one drawn from
+          # tiles, since a painted screen's sprites over the picture are the console's own. A scene that
+          # only marks what it has sent writes nothing seen.
+          def art_held?(name)
+            own = @layout.screen.scene_send(name)
+            arrival = scene_handover.arrival(name)
+            sends = sends_scene_colors?(name) || !(own.art || []).empty? || !arrival.painted_pictures.empty?
+            sends && @background_drawing.holds_layers?
+          end
+
+          # A scene's sprite pictures sent as its scenery is, with the layers and the sprites off,
+          # and back on in the gap or held for the picture the copy ran into (see
+          # BackgroundDrawing::LAYERS_HELD). The sprites' rows were written in the gap before
+          # this, so a picture the copy reaches part way down would show them torn at a row set by
+          # timing; held, that picture is the backdrop whole in every build, and the next is the
+          # scene whole. A copy that ends inside the gap shows the scene on the picture after it,
+          # as the interpreter does. A scene with no scenery of its own is held the same way: the
+          # pair keeps the display's settings as they were and puts them back.
+          #
+          # One hold for the scenery and the pictures. Where the scene's scenery was sent just
+          # before, with the layers off, they are still off (SCENE_ART_FOLLOWS): switched on between
+          # the two, a line drawn in that moment would show the scene with the last scene's sprite
+          # pictures, at a row set by timing.
+          #
+          # In a border the sprites stay on through a hold, since the border is sprites, so the
+          # game's own rows of the sprite table are hidden instead (SpriteDrawing#emit_hide_game_rows),
+          # and copied in again (#emit_game_rows_back_in_gap).
+          def emit_with_layers_held_for_art(name)
+            return yield unless art_held?(name)
+
+            off = @emitter.gensym
+            @sprite_drawing.emit_hide_game_rows if @layout.border
+            @primitives.load_var(ACC, SCENE_ART_FOLLOWS)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, off, cond: :ne)
+            @background_drawing.emit_layers_off_for_sending(SCENE_SEND_DISPLAY)
+            @emitter.place_label(off)
+            yield
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, SCENE_ART_FOLLOWS)
+            @primitives.load_var(ACC, SCENE_SEND_DISPLAY)
+            @background_drawing.emit_layers_back_on_or_held(ACC, held: first_picture_held?(name))
+            emit_game_rows_back_in_gap if @layout.border && !first_picture_held?(name)
+          end
+
+          # A scene whose sending can run past the gap holds its first picture whatever the timing.
+          #
+          # Where a sending ends decides whether the picture after it shows the scene (in the gap)
+          # or the backdrop (past it), and two builds of one game move their pictures from different
+          # memories at different speeds: the all-in-one build from the cartridge, one built with
+          # its data pack left out from the pack's copy in work memory. Near the gap's end one shows
+          # the scene and the other holds it. So a scene whose sending can need more than the room
+          # the gap leaves it (SENDING_ROOM_CYCLES) is held for the picture after it on every build,
+          # wherever it ends, and the scene shows on the one after that. The count is made from
+          # what the sending moves, which is the same on every build of a game, so every build
+          # decides alike. A scene whose sending fits is left to the timing, as before (see
+          # BackgroundDrawing::LAYERS_HELD).
+          #
+          # What it moves is counted at the slowest source any build reads it from. The copying
+          # engine reads a halfword and writes it for each unit (GBATEK, "DMA Transfers": 2N +
+          # 2(n-1)S + xI): from the cartridge at the power-on wait states a build keeps with
+          # `fast_cartridge: false` a sequential halfword is three cycles, from work memory three
+          # too (two wait states), and the write to video or palette memory one (GBATEK, "GBA
+          # Memory Map", "System Control"). Four cycles a halfword is two a byte.
+          SENDING_CYCLES_A_BYTE = 2
+
+          # A map filled by the processor rather than copied whole: the view of a background whose
+          # map is bigger than video memory keeps, filled round its corner a row at a time
+          # (MapStreaming). Counted as the block of cells the console keeps for it, each read and
+          # written by a few instructions: a fixed eight cycles a cell.
+          STREAM_FILL_CYCLES = MapStreaming::STREAM_CELLS * MapStreaming::STREAM_CELLS * 8
+
+          # The room a scene's sending has: half the gap between pictures (GBATEK, "LCD Dimensions
+          # and Timings": 228 lines of 1232 cycles, 160 of them drawn). The other half is for the
+          # pass's own work in the gap before the scene's routine runs: the sprite table and the
+          # sound's handover, and whatever the game's loop does before it picks the scene. The game
+          # decides how much that is, and the build cannot count it, so the room keeps half the gap
+          # for it rather than a figure that one game's loop already passes.
+          LINE_CYCLES = 1232
+          GAP_CYCLES = LINE_CYCLES * (228 - SCREEN_HEIGHT)
+          SENDING_ROOM_CYCLES = GAP_CYCLES / 2
+
+          # Is +name+'s first picture held whatever the timing (see SENDING_ROOM_CYCLES)? Never in a
+          # game that does not hold its layers, which has no gap to hold them for.
+          def first_picture_held?(name)
+            (@first_picture_held ||= {}).fetch(name) do
+              @first_picture_held[name] = @background_drawing.holds_layers? && scene_sending_cycles(name) > SENDING_ROOM_CYCLES
+            end
+          end
+
+          # The cycles +name+'s sending is counted to take as it takes over: its tile pictures, maps
+          # and colours, its painted tiles, and its sprite pictures and colours (#emit_scene_scenery,
+          # #emit_scene_art_upload), at SENDING_CYCLES_A_BYTE, and STREAM_FILL_CYCLES for each map
+          # the processor fills. A map the BIOS unpacks into place is counted as the bytes it
+          # unpacks to, at the copying engine's rate.
+          def scene_sending_cycles(name)
+            own = @layout.screen.scene_send(name)
+            arrival = scene_handover.arrival(name)
+            halfwords = (own.tiles || []).sum(&:units) + (own.art || []).sum { |_blob, _at, units| units * 16 }
+            halfwords += @layout.screen.bg_shared.palette_units if own.bg_palette
+            halfwords += @layout.screen.obj_palette_units if sends_scene_colors?(name)
+            filled = 0
+            arrival.scenery.each do |node|
+              bg = @layout.screen.declared_background(node)
+              bg.stream ? filled += 1 : halfwords += bg.map_units
+            end
+            painted = (arrival.painted_tiles + arrival.painted_pictures).sum do |run|
+              @layout.screen.painted_vram&.[](run.name)&.bytes || 0
+            end
+            (((halfwords * 2) + painted) * SENDING_CYCLES_A_BYTE) + (filled * STREAM_FILL_CYCLES)
+          end
+
+          # Set while a scene's scenery has been sent and its sprite pictures are about to be, with
+          # the layers left off between the two (#emit_with_layers_held_for_art).
+          SCENE_ART_FOLLOWS = :_scene_art_follows
+
+          # In a border, the game's rows of the sprite table copied in again where the sending
+          # ended in the gap; one that ran into the picture leaves them hidden for it, and the next
+          # pass copies them in the gap after (SpriteDrawing#emit_present_objects).
+          def emit_game_rows_back_in_gap
+            past = @emitter.gensym
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, past, cond: :lo)
+            @sprite_drawing.emit_game_rows_copied_in
+            @emitter.place_label(past)
           end
 
           # End the pass a scene that loads first takes over on (see SceneEntry).
@@ -902,18 +1143,13 @@ module VBlank
           # Copy the color table from the cartridge into background palette memory —
           # one DMA of `size` 16-bit entries, source and destination both advancing.
           def upload_palette
-            emit_load_data_address(ACC, PALETTE_BLOB) # r0 = table address in the cartridge
-            emit_start_copy_engine(from: in_register(ACC), to: BG_PALETTE, # the table, into palette memory
+            @emitter.emit_load_data_address(ACC, PALETTE_BLOB) # r0 = table address in the cartridge
+            @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: BG_PALETTE, # the table, into palette memory
                                    control: @layout.palette.size | DMA_ENABLE) # 16-bit, both ends advancing
             @palette_tint.emit_tint_reset_if_tinting # the table now holds the originals again
           end
 
-          # This file's own seams, called as bare methods like the ones in {EmitterCalls}.
-          def backing_info(name) = @lists.backing_info(name)
-          def placed_fade = @layout.screen.placed_fade
-          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
-
-          # WHAT THE SCREEN UP NOW DOES WITH A PAGE FINISHED TOO LATE (see IR::LatePages), kept
+          # What the screen up now does with a page finished too late (see IR::LatePages), kept
           # where the end of a pass can read it: nothing to wait, else one more than the row a
           # late page is still shown at once above — so a row of nothing, which shows a late
           # page only when it is finished during the break, is not mistaken for waiting.
@@ -934,7 +1170,7 @@ module VBlank
 
           # What the screen a scene draws on does with a late page — its own `screen`, or the
           # game's — set at the top of the scene's routine every pass. That is every scene,
-          # however the game reaches it: one the game loop picks with `case_var` and one it
+          # however the game reaches it: one the game loop picks with a scene dispatch and one it
           # calls by a name it keeps in a variable alike. A routine that is not a scene is on
           # whatever screen is up, and sets nothing.
           def emit_scene_late_pages(name)
@@ -951,21 +1187,21 @@ module VBlank
             @frames.emit_pace_at_power_on
           end
 
-          # JUMP TO +shown+ INSTEAD OF WAITING, when the screen up asks to show a late page at once
-          # and the page just finished may be shown now. Waiting means sleeping until the NEXT
+          # Jump to +shown+ instead of waiting, when the screen up asks to show a late page at once
+          # and the page just finished may be shown now. Waiting means sleeping until the next
           # break between pictures, which for a page that missed its break is a whole picture.
           #
           # A page is late when the pass missed the break the game's pace aims at (see
           # Frames#emit_branch_if_on_pace) — so a game aiming at thirty does not show its page at
           # once on every pass, only on the ones that ran over thirty. A page on time waits.
           #
-          # WHERE THE SCREEN HAS GOT TO is the console's own count of the line it is sending, 0 to
+          # Where the screen has got to is the console's own count of the line it is sending, 0 to
           # 159 down the picture and 160 to 227 through the break after it, and it decides the
           # rest:
           #
-          #   - IN THE BREAK, nothing is being sent, so showing the page cannot tear, and a late
+          #   - In the break, nothing is being sent, so showing the page cannot tear, and a late
           #     page is shown.
-          #   - PART WAY DOWN THE PICTURE, showing it tears there, so a late page is shown only
+          #   - Part way down the picture, showing it tears there, so a late page is shown only
           #     above the row the game named — and, just after a page was shown part way down,
           #     only if it is late counting from the break after the coming one, so one tear does
           #     not set off another.
@@ -976,31 +1212,31 @@ module VBlank
           def emit_skip_wait_for_late_page(shown)
             return unless @layout.late_pages.any?
 
-            wait = gensym
-            in_break = gensym
+            wait = @emitter.gensym
+            in_break = @emitter.gensym
             @frames.emit_branch_if_on_pace(wait)
-            load_var(ACC, LATE_PAGE_ROWS)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, wait, cond: :eq) # this screen waits
-            emit_number(TMP, REG_VCOUNT)
-            emit(ASM.load_halfword(TMP, TMP))
-            emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
-            emit_branch(:bcond, in_break, cond: :ge)
-            emit(ASM.add_imm(TMP, TMP, 1))
-            emit(ASM.cmp_reg(TMP, ACC))
-            emit_branch(:bcond, wait, cond: :ge) # below the row the game allows
+            @primitives.load_var(ACC, LATE_PAGE_ROWS)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, wait, cond: :eq) # this screen waits
+            @emitter.emit_number(TMP, REG_VCOUNT)
+            @emitter.emit(ASM.load_halfword(TMP, TMP))
+            @emitter.emit(ASM.cmp_imm(TMP, SCREEN_HEIGHT))
+            @emitter.emit_branch(:bcond, in_break, cond: :ge)
+            @emitter.emit(ASM.add_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.cmp_reg(TMP, ACC))
+            @emitter.emit_branch(:bcond, wait, cond: :ge) # below the row the game allows
             @frames.emit_branch_if_on_pace(wait, spent: true)
 
             @emitter.note_late_page_shown(tears: true)
             @frames.emit_note_break_spent(true)
-            emit_branch(:b, shown)
+            @emitter.emit_branch(:b, shown)
 
-            place_label(in_break)
+            @emitter.place_label(in_break)
             @emitter.note_late_page_shown(tears: false)
             @frames.emit_note_break_spent(false)
-            emit_branch(:b, shown)
+            @emitter.emit_branch(:b, shown)
 
-            place_label(wait)
+            @emitter.place_label(wait)
             @frames.emit_note_break_spent(false)
           end
 
@@ -1008,12 +1244,12 @@ module VBlank
           # live (a direct scene draws straight to the screen and has nothing to flip).
           # The runtime check costs a compare; the mode rarely changes.
           def emit_flip_if_buffered
-            load_var(ACC, MODE_STATE)
-            emit(ASM.cmp_imm(ACC, MODE_BUFFERED))
-            skip = gensym
-            emit_branch(:bcond, skip, cond: :ne)
+            @primitives.load_var(ACC, MODE_STATE)
+            @emitter.emit(ASM.cmp_imm(ACC, MODE_BUFFERED))
+            skip = @emitter.gensym
+            @emitter.emit_branch(:bcond, skip, cond: :ne)
             emit_flip
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # Present the page just drawn and start drawing the other one — the page
@@ -1022,17 +1258,18 @@ module VBlank
           # point the back buffer at the other page (its address is the pair's sum
           # minus the current one).
           def emit_flip
-            load_var(ACC, DISPCNT_STATE)
-            emit_number(TMP, DISPCNT_FRAME_SELECT)
-            emit(ASM.eor_reg(ACC, ACC, TMP))            # flip the page-select bit
-            store_var(ACC, DISPCNT_STATE)
-            emit_number(TMP, REG_DISPCNT)
-            emit(ASM.store_halfword(ACC, TMP))          # the finished page is now shown
+            @primitives.load_var(ACC, DISPCNT_STATE)
+            @emitter.emit_number(TMP, DISPCNT_FRAME_SELECT)
+            @emitter.emit(ASM.eor_reg(ACC, ACC, TMP))            # flip the page-select bit
+            @primitives.store_var(ACC, DISPCNT_STATE)
+            @emitter.emit_number(TMP, REG_DISPCNT)
+            @emitter.emit(ASM.store_halfword(ACC, TMP))          # the finished page is now shown
 
-            load_var(ACC, BACKBUF)
-            emit_number(TMP, PAGE_PAIR_SUM)
-            emit(ASM.sub_reg(ACC, TMP, ACC))            # the other page
-            store_var(ACC, BACKBUF)
+            @primitives.load_var(ACC, BACKBUF)
+            @emitter.emit_number(TMP, PAGE_PAIR_SUM)
+            @emitter.emit(ASM.sub_reg(ACC, TMP, ACC))            # the other page
+            @primitives.store_var(ACC, BACKBUF)
+            @effects.emit_camera_shown_with_page if @layout.camera_at_flip
           end
 
           # Plot one pixel. With constant coordinates the VRAM address is known now,
@@ -1042,47 +1279,99 @@ module VBlank
             return @buffered.emit_pixel_buffered(node) if @lowering.mode == :buffered
 
             color = Graphics::Color.resolve(node.color)
-            xi = const_int(node.x)
-            yi = const_int(node.y)
+            xi = @primitives.const_int(node.x)
+            yi = @primitives.const_int(node.y)
 
             if xi && yi
               return unless @framebuffer.in_bounds?(xi, yi) # off-screen: clip, like the framebuffer
 
-              write_reg16(VRAM_START + ((yi * SCREEN_WIDTH) + xi) * 2, color)
+              @emitter.write_reg16(VRAM_START + ((yi * SCREEN_WIDTH) + xi) * 2, color)
             else
+              # Video memory is the picture: row after row of 16-bit colours, so the pixel at
+              # (x, y) is the halfword at VRAM_START + (y * SCREEN_WIDTH + x) * 2.
+              #
+              #   VRAM_START ->  [ row 0: x = 0 ... SCREEN_WIDTH-1 ][ row 1 ] ... [ row y ] ...
+              #                                                          the pixel: ^ x halfwords in
+              #
+              # Working it out takes the registers below; the store at the end is the pixel
+              # appearing on the screen, nothing more is needed to draw it.
               @lowering.value(node.y)            # r0 = y
-              emit(ASM.push(ACC))
+              @emitter.emit(ASM.push(ACC))       # the x side may use every scratch register: keep y on the stack
               @lowering.value(node.x)            # r0 = x
-              emit(ASM.pop(TMP))              # r1 = y
-              emit_number(2, SCREEN_WIDTH)
-              emit(ASM.mul(3, TMP, 2))        # r3 = y * width
-              emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x
-              emit(ASM.lsl_imm(3, 3, 1))      # r3 = offset * 2 bytes
-              emit_number(2, VRAM_START)
-              emit(ASM.add_reg(3, 2, 3))      # r3 = VRAM address
-              emit_number(ACC, color)
-              emit(ASM.store_halfword(ACC, 3))
+              @emitter.emit(ASM.pop(TMP))              # r1 = y
+              @emitter.emit_number(2, SCREEN_WIDTH)    # r2 = the width of a row, in pixels
+              @emitter.emit(ASM.mul(3, TMP, 2))        # r3 = y * width: the first pixel of row y
+              @emitter.emit(ASM.add_reg(3, 3, ACC))    # r3 = y*width + x: pixels from the start
+              @emitter.emit(ASM.lsl_imm(3, 3, 1))      # r3 = offset * 2 bytes
+              @emitter.emit_number(2, VRAM_START)      # r2 = where video memory starts
+              @emitter.emit(ASM.add_reg(3, 2, 3))      # r3 = VRAM address
+              @emitter.emit_number(ACC, color)         # r0 = the colour, 15 bits
+              @emitter.emit(ASM.store_halfword(ACC, 3)) # one halfword store: the pixel is drawn
             end
           end
 
-          # Fill a rectangle of constant size. Load the color once, then write each
-          # on-screen pixel (off-screen pixels are clipped).
+          # From this many pixels across, a row of a rectangle is filled by the copy engine
+          # rather than a store per pixel.
+          #
+          # Counted off the emitted code, which a fixed rectangle unrolls, so the instructions
+          # written are the instructions run. A pixel stored is four instructions: three to
+          # build its address and the store. A row the copy engine fills is eleven, whatever
+          # its width: the engine's address, the fill word's address, the row's own address
+          # and the control word, each stored into the engine's three registers (GBATEK,
+          # "DMA Transfers"). The rectangle also pays three instructions more, once, to put its
+          # colour where the engine reads it. So from four pixels a row the engine is the
+          # smaller.
+          #
+          # It is the quicker from four pixels too, played from the cartridge, where most of
+          # a game's code runs: the processor waits while the engine copies, but the engine
+          # moves a pixel in a cycle or two, where four instructions fetched from the
+          # cartridge take several times that. Measured in the emulator, a row of four stored
+          # pixels takes longer than a transfer and a row of three a little less. Code placed
+          # in fast memory runs its stores quicker, and there they win a pixel or two further, but
+          # at four instructions a pixel they spend that small memory fastest of all.
+          ENGINE_FILL_MIN_WIDTH = 4
+
+          # Fill a rectangle of constant size, held to the area (off-screen pixels are
+          # clipped). A wide one fills each row with one transfer of the copy engine; a narrow
+          # one loads the colour once and stores each pixel.
           def emit_fill_rect(node)
             return @buffered.emit_fill_rect_buffered(node) if @lowering.mode == :buffered
 
-            x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
-            color = Graphics::Color.resolve(node.color)
-            emit_number(ACC, color)
-            h.times do |dy|
-              row = y + dy
-              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(row)
+            x, y, w, h = @primitives.constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
+            # Every row of a rectangle spans the same columns, so where it starts and how far it
+            # reaches is one answer, settled before a single row is emitted.
+            left = [x, @framebuffer.clip_left].max
+            right = [x + w, @framebuffer.clip_right].min
+            top = [y, @framebuffer.clip_top].max
+            bottom = [y + h, @framebuffer.clip_bottom].min
+            return if right <= left || bottom <= top
 
-              w.times do |dx|
-                col = x + dx
-                next unless (@framebuffer.clip_left...@framebuffer.clip_right).cover?(col)
+            if right - left >= ENGINE_FILL_MIN_WIDTH
+              emit_rows_filled(left, right, (top...bottom), node.color)
+            else
+              emit_pixels_stored(left, right, (top...bottom), node.color)
+            end
+          end
 
-                emit_number(TMP, VRAM_START + ((row * SCREEN_WIDTH) + col) * 2)
-                emit(ASM.store_halfword(ACC, TMP))
+          # Fill each of +rows+ from column +left+ up to +right+ with one transfer of the copy
+          # engine, repeating one fixed word of the colour. Two pixels a transfer needs an even
+          # left column and an even width; any other row goes a pixel a transfer, which still
+          # lands where it was asked (Framebuffer#fill_control_for_column).
+          def emit_rows_filled(left, right, rows, color)
+            scratch = @framebuffer.emit_color_fill_word(color)
+            control = @framebuffer.fill_control_for_column(left, right - left)
+            rows.each do |row|
+              @framebuffer.emit_dma_fill_row(scratch, VRAM_START + ((row * SCREEN_WIDTH) + left) * 2, control)
+            end
+          end
+
+          # Store each pixel of +rows+ from column +left+ up to +right+, the colour loaded once.
+          def emit_pixels_stored(left, right, rows, color)
+            @emitter.emit_number(ACC, Graphics::Color.resolve(color))
+            rows.each do |row|
+              (left...right).each do |col|
+                @emitter.emit_number(TMP, VRAM_START + ((row * SCREEN_WIDTH) + col) * 2)
+                @emitter.emit(ASM.store_halfword(ACC, TMP))
               end
             end
           end
@@ -1100,60 +1389,36 @@ module VBlank
 
           # The whole picture of the painted screen in +color+, a 15-bit colour.
           def emit_screen_filled(color)
+            # Two pixels share one 32-bit word, so the copy engine fills the picture two pixels at
+            # a time: +count+ words, all read from the same place.
+            #
+            #   scratch (one word: colour, colour) --x count--> video memory, filling forward
             word = (color << 16) | color
             count = SCREEN_WIDTH * @layout.shown_rows / 2
-            scratch = var_addr(Primitives::FILL_SCRATCH)
+            scratch = @primitives.var_addr(Primitives::FILL_SCRATCH)
 
-            store_word_immediate(word, scratch) # hold the fill word in IWRAM
-            # From that one fixed word, to the screen.
-            emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
-          end
-
-          # A rectangle at a fixed position and size, filled fast with per-row DMA:
-          # each row is one block transfer of a repeated two-pixel word. Rows off the
-          # top/bottom of the screen are skipped.
-          def emit_dma_fill_rect(node)
-            return @buffered.emit_fill_rect_buffered(node) if @lowering.mode == :buffered
-
-            x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
-            @framebuffer.refuse_odd_width!(w, :dma_fill_rect)
-            # Held to the area sideways before a single row is emitted: every row of a rectangle
-            # spans the same columns, so where it starts and how far it reaches is one answer.
-            left = [x, @framebuffer.clip_left].max
-            right = [x + w, @framebuffer.clip_right].min
-            return if right <= left
-
-            scratch = @framebuffer.emit_color_fill_word(node.color)
-            control = @framebuffer.fill_control_for_column(left, right - left)
-
-            h.times do |dy|
-              row = y + dy
-              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(row)
-
-              row_addr = VRAM_START + ((row * SCREEN_WIDTH) + left) * 2
-              @framebuffer.emit_dma_fill_row(scratch, row_addr, control)
+            @primitives.store_word_immediate(word, scratch) # hold the fill word in IWRAM
+            if @layout.fills_shown_rows_alone?(2)
+              return @framebuffer.emit_shown_rows_filled(scratch, first: VRAM_START, rows: @layout.shown_rows,
+                                                                  row_bytes: @layout.shown_columns * 2,
+                                                                  stride: SCREEN_WIDTH * 2)
             end
+
+            # From that one fixed word, to the screen. The control word's fill flag keeps the
+            # source from stepping, so the engine writes the same word every time (GBATEK, "DMA
+            # Transfers"); writing it starts the copy.
+            @primitives.emit_start_copy_engine(from: scratch, to: VRAM_START, control: @framebuffer.dma_fill_control(count))
           end
 
-          # A rectangle whose position and size are all computed at run time. Same
-          # per-row DMA fill as dma_fill_rect, but each row's destination address is
-          # built from the live x/y instead of known up front. r2/r3 hold x/y across the
-          # loop, r6 the rows left, r7 the fill's control word; r4/r5 are address
-          # scratch. (No run-time bounds clip yet — the caller is expected to keep it
-          # on-screen, as pong does by clamping.)
-          #
-          # A size settled while building is unrolled with an immediate control word,
-          # exactly as it always was, so a paddle or a ball costs what it did before.
-          # Only a size the game works out pays for a counter and a computed word.
           # One column of a picture, stretched to a height worked out as the game runs. The
           # whole of a first-person view is this, once per strip across the screen.
           #
-          # It walks DOWN THE SCREEN, asking which row of the picture belongs at each screen
+          # It walks down the screen, asking which row of the picture belongs at each screen
           # row. The other way round — walking the picture and working out where each of its
           # rows lands — leaves gaps when stretching and writes some rows twice when squashing.
           # The interpreter walks the same way, which is what makes the two agree pixel for
           # pixel.
-          # ONE WALK FILLS THE WHOLE STRIP. Every pixel across a strip shows the same picture
+          # One walk fills the whole strip. Every pixel across a strip shows the same picture
           # column at the same height, so working the walk out once and writing its answer
           # across is not an optimisation — calling this once per pixel instead asks for the
           # same answer that many times over.
@@ -1168,37 +1433,37 @@ module VBlank
             # reaches is a pixel.
             see_through = bmp.transparent && !@framebuffer.column_rows_all_pixels?(node.name)
 
-            done = gensym
+            done = @emitter.gensym
             @framebuffer.emit_column_setup(node, bmp, done)
             @framebuffer.emit_column_runs(node.name, bmp, done) do |leave|
               @framebuffer.emit_clip_column_rows(leave)
 
-              # The left and right edges are settled ONCE here, because a strip has one x for
+              # The left and right edges are settled once here, because a strip has one x for
               # its whole height. A strip wholly inside them then writes with nothing to test;
               # one hanging over an edge takes a second copy of the rows that tests each pixel,
               # which is the rare case and pays for itself only there. A strip one pixel wide
               # has no second case: it is inside or it draws nothing.
-              clipped = gensym
-              emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
-              emit_branch(:bcond, clipped, cond: :lt)
-              emit_number(TMP, @framebuffer.clip_right - width)
-              emit(ASM.cmp_reg(COLUMN_X, TMP))
-              emit_branch(:bcond, clipped, cond: :gt)
+              clipped = @emitter.gensym
+              @emitter.emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
+              @emitter.emit_branch(:bcond, clipped, cond: :lt)
+              @emitter.emit_number(TMP, @framebuffer.clip_right - width)
+              @emitter.emit(ASM.cmp_reg(COLUMN_X, TMP))
+              @emitter.emit_branch(:bcond, clipped, cond: :gt)
 
               emit_column_rows { emit_draw_column_row(bmp, width, clipped: false, see_through: see_through) }
-              emit_branch(:b, leave) if width > 1
-              place_label(clipped)
+              @emitter.emit_branch(:b, leave) if width > 1
+              @emitter.place_label(clipped)
               emit_column_rows { emit_draw_column_row(bmp, width, clipped: true, see_through: see_through) } if width > 1
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # The walk down the screen, one pass per row of the column that shows.
           def emit_column_rows
-            emit_row_loop(COLUMN_ROWS) do
+            @primitives.emit_row_loop(COLUMN_ROWS) do
               yield
-              emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
-              emit(ASM.add_imm(COLUMN_Y, COLUMN_Y, 1))
+              @emitter.emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
+              @emitter.emit(ASM.add_imm(COLUMN_Y, COLUMN_Y, 1))
             end
           end
 
@@ -1206,36 +1471,36 @@ module VBlank
           # write it across. Every row this reaches is on the screen — that was settled before
           # the walk started.
           def emit_draw_column_row(bmp, width, clipped:, see_through:)
-            skip = gensym
+            skip = @emitter.gensym
 
             emit_read_column_pixel(bmp, skip, see_through)
 
             # ...to the screen at (x, y), and to the pixels beside it. Their addresses are a
             # fixed distance along from the first, so the row's address is built once.
-            emit_number(TMP, SCREEN_WIDTH)
-            emit(ASM.mul(TMP, COLUMN_Y, TMP))
-            emit(ASM.add_reg(TMP, TMP, COLUMN_X))
-            emit(ASM.lsl_imm(TMP, TMP, 1))
-            emit_number(SPARE, VRAM_START)
-            emit(ASM.add_reg(TMP, TMP, SPARE))
+            @emitter.emit_number(TMP, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(TMP, COLUMN_Y, TMP))
+            @emitter.emit(ASM.add_reg(TMP, TMP, COLUMN_X))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))
+            @emitter.emit_number(SPARE, VRAM_START)
+            @emitter.emit(ASM.add_reg(TMP, TMP, SPARE))
             width.times { |dx| emit_column_store(dx, clipped: clipped) }
 
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # colour = picture[(pos >> 16) * width + slice], the slice already folded into
           # COLUMN_SRC. Leaves it in ACC, or jumps to +skip+ when the pixel is see-through.
           #
-          # THE ROW CANNOT RUN PAST THE PICTURE, so nothing holds it back. The step is the
+          # The row cannot run past the picture, so nothing holds it back. The step is the
           # picture's height shifted up over the row count, rounded down, and the last row
           # reaches at most one less than that count times it — which is strictly less than
           # the picture's height however the rounding falls.
           def emit_read_column_pixel(bmp, skip, see_through)
-            emit(ASM.lsr_imm(ACC, COLUMN_POS, COLUMN_FIXED))
-            emit_number(TMP, bmp.width * 2)
-            emit(ASM.mul(ACC, ACC, TMP))
-            emit(ASM.add_reg(ACC, COLUMN_SRC, ACC))
-            emit(ASM.load_halfword(ACC, ACC))
+            @emitter.emit(ASM.lsr_imm(ACC, COLUMN_POS, COLUMN_FIXED))
+            @emitter.emit_number(TMP, bmp.width * 2)
+            @emitter.emit(ASM.mul(ACC, ACC, TMP))
+            @emitter.emit(ASM.add_reg(ACC, COLUMN_SRC, ACC))
+            @emitter.emit(ASM.load_halfword(ACC, ACC))
 
             # A see-through pixel carries a value no real color has, so it means "leave this
             # one alone" and nothing is written — which is what lets a scaled sprite in a
@@ -1243,33 +1508,33 @@ module VBlank
             # whose walk lands only on pixels has nothing to ask (+see_through+ false).
             return unless see_through
 
-            emit_number(TMP, bmp.transparent)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, skip, cond: :eq)
+            @emitter.emit_number(TMP, bmp.transparent)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
           end
 
           # One pixel of the strip. In the clipped copy of the rows its own column is tested,
           # since only part of the strip is on the screen.
           def emit_column_store(offset, clipped:)
-            return emit(ASM.store_halfword_offset(ACC, TMP, offset * 2)) unless clipped
+            return @emitter.emit(ASM.store_halfword_offset(ACC, TMP, offset * 2)) unless clipped
 
-            past = gensym
-            emit(ASM.add_imm(SPARE, COLUMN_X, offset))
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
-            emit_branch(:bcond, past, cond: :lt)
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
-            emit_branch(:bcond, past, cond: :ge)
-            emit(ASM.store_halfword_offset(ACC, TMP, offset * 2))
-            place_label(past)
+            past = @emitter.gensym
+            @emitter.emit(ASM.add_imm(SPARE, COLUMN_X, offset))
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, past, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, past, cond: :ge)
+            @emitter.emit(ASM.store_halfword_offset(ACC, TMP, offset * 2))
+            @emitter.place_label(past)
           end
 
           def emit_draw_rect_at(node)
             return @buffered.emit_draw_rect_at_buffered(node) if @lowering.mode == :buffered
 
-            x_const = const_int(node.x)
-            y_const = const_int(node.y)
-            width = const_int(node.w)
-            height = const_int(node.h)
+            x_const = @primitives.const_int(node.x)
+            y_const = @primitives.const_int(node.y)
+            width = @primitives.const_int(node.w)
+            height = @primitives.const_int(node.h)
             return if width && width < 1   # a rect with no width draws nothing
             return if height && height < 1 # ...or no height
 
@@ -1281,7 +1546,7 @@ module VBlank
             emit_draw_rect_at_computed(node, width, height)
           end
 
-          # A rect whose x, y, width and height are ALL known while building.
+          # A rect whose x, y, width and height are all known while building.
           def emit_draw_rect_at_fixed(x, y, width, height, color)
             left = [x, @framebuffer.clip_left].max
             right = [x + width, @framebuffer.clip_right].min
@@ -1304,7 +1569,7 @@ module VBlank
           #
           # x and width settle to one on-screen span before any row fires — a rect has
           # one x for its whole height, the same reason draw_column_at settles its
-          # column once instead of testing it every row. Every row THEN checks its own
+          # column once instead of testing it every row. Every row then checks its own
           # y against the area, because a run-time y or height means a run-time set of
           # rows survives: an unclipped row is what wrapped a rect onto its neighbor.
           def emit_draw_rect_at_computed(node, width, height)
@@ -1316,48 +1581,48 @@ module VBlank
             @framebuffer.eval_rect_position(node, x_reg: x_reg, y_reg: y_reg, rows_reg: rows_left,
                                                    width_reg: CONTROL_REG)
 
-            skip = gensym
+            skip = @emitter.gensym
 
             # right = x + width, unclipped, worked out before x itself is touched.
             if width
-              emit_add_const(ACC, x_reg, width, TMP)
+              @primitives.emit_add_const(ACC, x_reg, width, TMP)
             else
-              emit(ASM.add_reg(ACC, x_reg, CONTROL_REG)) # CONTROL_REG still holds the raw width here
+              @emitter.emit(ASM.add_reg(ACC, x_reg, CONTROL_REG)) # CONTROL_REG still holds the raw width here
             end
 
             # right := min(right, clip_right)
-            keep_right = gensym
-            emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
-            emit_branch(:bcond, keep_right, cond: :le)
-            emit_number(ACC, @framebuffer.clip_right)
-            place_label(keep_right)
+            keep_right = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, keep_right, cond: :le)
+            @emitter.emit_number(ACC, @framebuffer.clip_right)
+            @emitter.place_label(keep_right)
 
             # x_reg := max(x_reg, clip_left)
-            keep_left = gensym
-            emit(ASM.cmp_imm(x_reg, @framebuffer.clip_left))
-            emit_branch(:bcond, keep_left, cond: :ge)
-            emit_number(x_reg, @framebuffer.clip_left)
-            place_label(keep_left)
+            keep_left = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(x_reg, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+            @emitter.emit_number(x_reg, @framebuffer.clip_left)
+            @emitter.place_label(keep_left)
 
             # width := right - x_reg. Nothing left of the row to draw at all bails the
             # whole rect, the same way a width of zero already did — a rect the game
             # shrank to nothing, or slid entirely off the area, draws nothing either way.
-            emit(ASM.sub_reg(TMP, ACC, x_reg))
-            emit(ASM.cmp_imm(TMP, 0))
-            emit_branch(:bcond, skip, cond: :le)
-            emit(ASM.mov_reg(CONTROL_REG, TMP))
-            emit_number(ACC, @framebuffer.dma_fill_control_halfwords(0))
-            emit(ASM.orr_reg(CONTROL_REG, CONTROL_REG, ACC)) # ...now it is a control word
+            @emitter.emit(ASM.sub_reg(TMP, ACC, x_reg))
+            @emitter.emit(ASM.cmp_imm(TMP, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :le)
+            @emitter.emit(ASM.mov_reg(CONTROL_REG, TMP))
+            @emitter.emit_number(ACC, @framebuffer.dma_fill_control_halfwords(0))
+            @emitter.emit(ASM.orr_reg(CONTROL_REG, CONTROL_REG, ACC)) # ...now it is a control word
 
             if height
               height.times { |dy| emit_mode3_rect_row(dy, x_reg, y_reg, scratch) }
             else
-              emit_row_loop(rows_left) do
+              @primitives.emit_row_loop(rows_left) do
                 emit_mode3_rect_row(0, x_reg, y_reg, scratch)
-                emit(ASM.add_imm(y_reg, y_reg, 1)) # ...and on to the next row down
+                @emitter.emit(ASM.add_imm(y_reg, y_reg, 1)) # ...and on to the next row down
               end
             end
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # The register a computed width, and then the fill's control word built from
@@ -1365,35 +1630,35 @@ module VBlank
           CONTROL_REG = 7
 
           # One row of a run-time-positioned rect: skip it outright if its y falls
-          # outside the area (a row above or below it draws NOTHING, not a row wrapped
+          # outside the area (a row above or below it draws nothing, not a row wrapped
           # onto its neighbor), else work out where it lands in video memory and fire
           # the fill. +dy+ is how far below the rect's y this row is; the fill's control
           # word always lives in CONTROL_REG by the time this runs.
           def emit_mode3_rect_row(dy, x_reg, y_reg, scratch)
-            row_skip = gensym
+            row_skip = @emitter.gensym
 
             # r4 = y + dy, checked against the area before it becomes an address.
             if dy.zero?
-              emit(ASM.mov_reg(4, y_reg))
+              @emitter.emit(ASM.mov_reg(4, y_reg))
             else
-              emit(ASM.add_imm(4, y_reg, dy))
+              @emitter.emit(ASM.add_imm(4, y_reg, dy))
             end
-            emit(ASM.cmp_imm(4, @framebuffer.clip_top))
-            emit_branch(:bcond, row_skip, cond: :lt)
-            emit(ASM.cmp_imm(4, @framebuffer.clip_bottom))
-            emit_branch(:bcond, row_skip, cond: :ge)
+            @emitter.emit(ASM.cmp_imm(4, @framebuffer.clip_top))
+            @emitter.emit_branch(:bcond, row_skip, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(4, @framebuffer.clip_bottom))
+            @emitter.emit_branch(:bcond, row_skip, cond: :ge)
 
-            emit_number(5, SCREEN_WIDTH)
-            emit(ASM.mul(4, 5, 4))           # r4 = width * (y + dy)
-            emit(ASM.add_reg(4, 4, x_reg))   # + x
-            emit(ASM.lsl_imm(4, 4, 1))       # * 2 bytes per pixel
-            emit_number(5, VRAM_START)
-            emit(ASM.add_reg(4, 4, 5))       # + VRAM base
+            @emitter.emit_number(5, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(4, 5, 4))           # r4 = width * (y + dy)
+            @emitter.emit(ASM.add_reg(4, 4, x_reg))   # + x
+            @emitter.emit(ASM.lsl_imm(4, 4, 1))       # * 2 bytes per pixel
+            @emitter.emit_number(5, VRAM_START)
+            @emitter.emit(ASM.add_reg(4, 4, 5))       # + VRAM base
 
             # To the address just worked out.
-            emit_start_copy_engine(from: scratch, to: in_register(4), control: in_register(CONTROL_REG))
+            @primitives.emit_start_copy_engine(from: scratch, to: Primitives::InRegister.new(4), control: Primitives::InRegister.new(CONTROL_REG))
 
-            place_label(row_skip)
+            @emitter.place_label(row_skip)
           end
 
           # Draw a defined bitmap at a runtime (x, y). An opaque bitmap streams from
@@ -1430,6 +1695,9 @@ module VBlank
             # A background a scene owns goes up as that scene takes over (see
             # #emit_scene_scenery and IR::SceneHandover), not where it is written.
             return if scene_handover.on_arrival?(node)
+            # ...and one in a routine no run calls is on no screen (Stacking.scenery_reached): it
+            # has no layer, and its line never runs.
+            return unless @layout.screen.declared_background(node)
 
             @background_drawing.emit_background_hardware(node)
             emit_enable_late_layer(node)
@@ -1438,7 +1706,7 @@ module VBlank
 
           BAR_SHOWN_EARLY = :__bar_shown_early # Note that the bar shown early is up
 
-          # A STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS (IR::SceneHandover#bar_shown_early) goes up beside every
+          # A status bar shown before its own line runs (IR::SceneHandover#bar_shown_early) goes up beside every
           # background put up until it has gone up once, as Backends::SceneryWrites#emit_bar_beside puts it up on
           # the other cartridges, which the Advance's lowering does not mix in: the bar's own line notes it is up
           # (BAR_SHOWN_EARLY, cleared as the backgrounds' pictures go in, BackgroundDrawing#emit_boot_backgrounds,
@@ -1451,12 +1719,12 @@ module VBlank
             return @primitives.store_word_immediate(1, @primitives.var_addr(BAR_SHOWN_EARLY)) if node.equal?(bar)
             return if node&.bar?
 
-            up = gensym
-            load_var(ACC, BAR_SHOWN_EARLY)
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, up, cond: :ne)
+            up = @emitter.gensym
+            @primitives.load_var(ACC, BAR_SHOWN_EARLY)
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, up, cond: :ne)
             emit_background(bar)
-            place_label(up)
+            @emitter.place_label(up)
           end
 
           # Bitmap-mode background: no tile hardware, so stamp each non-empty cell with
@@ -1474,7 +1742,13 @@ module VBlank
                 picture = @layout.bitmaps.fetch(tiles[index]) do
                   raise LoweringError, "blit of undefined image #{tiles[index].inspect}"
                 end
-                emit_blit_of(Build.blit(tiles[index], c * tile_w, r * tile_h), picture.with_tile_see_through_marked)
+                stamp = Build.blit(tiles[index], c * tile_w, r * tile_h)
+                marked = picture.with_tile_see_through_marked
+                if @lowering.mode == :buffered && @buffered.stamp_by_pairs?(stamp, marked)
+                  @buffered.emit_stamp_tile_buffered(stamp, marked)
+                else
+                  emit_blit_of(stamp, marked)
+                end
               end
             end
           end
@@ -1502,16 +1776,16 @@ module VBlank
           # the other direction.
           def emit_save_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
-            info = backing_info(node.buffer)
-            emit_rect_row_dma(node.x, node.y, info[:width], info[:height], info[:base], vram: :src)
+            info = @lists.backing_info(node.buffer)
+            emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :src)
           end
 
           # Put a saved patch back on the screen: stream the RAM buffer INTO VRAM, just
           # like a blit but sourced from the backing store instead of a ROM image.
           def emit_restore_region(node)
             backing_region_unsupported_in_buffered! if @lowering.mode == :buffered
-            info = backing_info(node.buffer)
-            emit_rect_row_dma(node.x, node.y, info[:width], info[:height], info[:base], vram: :dest)
+            info = @lists.backing_info(node.buffer)
+            emit_rect_row_dma(node.x, node.y, info.width, info.height, info.base, vram: :dest)
           end
 
           # Copy the rows of a run-time-positioned width×height rectangle between the
@@ -1519,9 +1793,9 @@ module VBlank
           # clipping each row to the screen. This is the shared engine under blitting
           # an image and under a sprite's save/restore of what it covers.
           #
-          # +vram:+ picks the direction. `:dest` streams the buffer ONTO the screen —
+          # +vram:+ picks the direction. `:dest` streams the buffer onto the screen —
           # a blit, or a sprite putting back the pixels it had covered. `:src` reads
-          # the screen INTO the buffer — a sprite capturing what it is about to cover.
+          # the screen into the buffer — a sprite capturing what it is about to cover.
           # Everything else about a row is identical either way, which is the whole
           # reason this is one method.
           #
@@ -1540,75 +1814,89 @@ module VBlank
           #
           # r6 holds the buffer base and r7/r8 hold x/y across the whole copy; the
           # rest (r2–r5, r9–r11) are per-row scratch.
+          #
+          # ## One row, clipped
+          #
+          #   screen row:    0 ..................................... shown_columns
+          #   buffer row:        [x ............ x+width)          (here it hangs off the left)
+          #   copied:            [visible_left .. visible_right)
+          #                      |_ visible_width _|
+          #
+          # A row is a start in the buffer (r5), a start on the screen (r3) and a count (r4).
+          # Writing those three into the copy engine's registers, the count last with its enable
+          # bit set, starts the copy; the processor waits until it is done (GBATEK, "DMA
+          # Transfers").
           def emit_rect_row_dma(x_node, y_node, width, height, base, vram:)
             buf_reg = 6
             x_reg = 7
             y_reg = 8
             @lowering.value(x_node)
-            emit(ASM.mov_reg(x_reg, ACC))
+            @emitter.emit(ASM.mov_reg(x_reg, ACC))
             @lowering.value(y_node)
-            emit(ASM.mov_reg(y_reg, ACC))
+            @emitter.emit(ASM.mov_reg(y_reg, ACC))
             case base
-            when Symbol  then emit_load_data_address(buf_reg, base)    # r6 = ROM blob address
-            when Integer then emit_number(buf_reg, base)  # r6 = RAM buffer address
+            when Symbol  then @emitter.emit_load_data_address(buf_reg, base)    # r6 = ROM blob address
+            when Integer then @emitter.emit_number(buf_reg, base)  # r6 = RAM buffer address
             else raise LoweringError, "rect DMA base must be a blob name or a RAM address, got #{base.inspect}"
             end
 
             height.times do |row|
-              skip = gensym
+              skip = @emitter.gensym
 
               # screen_y = y + row; drop the whole row if it's above or below screen.
-              emit_add_const(9, y_reg, row, 2)          # r9 = screen_y
-              emit(ASM.cmp_imm(9, 0))
-              emit_branch(:bcond, skip, cond: :lt)
-              emit(ASM.cmp_imm(9, SCREEN_HEIGHT))
-              emit_branch(:bcond, skip, cond: :ge)
+              @primitives.emit_add_const(9, y_reg, row, 2)          # r9 = screen_y (r2 is the helper's scratch)
+              @emitter.emit(ASM.cmp_imm(9, 0))
+              @emitter.emit_branch(:bcond, skip, cond: :lt)
+              @emitter.emit(ASM.cmp_imm(9, @layout.shown_rows))
+              @emitter.emit_branch(:bcond, skip, cond: :ge)
 
               # visible_left = max(x, 0)  -> r10
-              emit(ASM.mov_reg(10, x_reg))
-              emit(ASM.cmp_imm(x_reg, 0))
-              keep_left = gensym
-              emit_branch(:bcond, keep_left, cond: :ge)
-              emit_number(10, 0)
-              place_label(keep_left)
+              @emitter.emit(ASM.mov_reg(10, x_reg))
+              @emitter.emit(ASM.cmp_imm(x_reg, 0))
+              keep_left = @emitter.gensym
+              @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+              @emitter.emit_number(10, 0)
+              @emitter.place_label(keep_left)
 
-              # visible_right = min(x + width, SCREEN_WIDTH)  -> r11
-              emit_add_const(11, x_reg, width, 2)
-              emit(ASM.cmp_imm(11, SCREEN_WIDTH))
-              keep_right = gensym
-              emit_branch(:bcond, keep_right, cond: :le)
-              emit_number(11, SCREEN_WIDTH)
-              place_label(keep_right)
+              # visible_right = min(x + width, the shown width)  -> r11
+              @primitives.emit_add_const(11, x_reg, width, 2)
+              @emitter.emit(ASM.cmp_imm(11, @layout.shown_columns))
+              keep_right = @emitter.gensym
+              @emitter.emit_branch(:bcond, keep_right, cond: :le)
+              @emitter.emit_number(11, @layout.shown_columns)
+              @emitter.place_label(keep_right)
 
               # visible_width = visible_right - visible_left  -> r4; if <= 0 the row
               # is entirely off to one side, so skip it.
-              emit(ASM.sub_reg(4, 11, 10))
-              emit(ASM.cmp_imm(4, 0))
-              emit_branch(:bcond, skip, cond: :le)
+              @emitter.emit(ASM.sub_reg(4, 11, 10))
+              @emitter.emit(ASM.cmp_imm(4, 0))
+              @emitter.emit_branch(:bcond, skip, cond: :le)
 
               # buffer span address = base + (row*width + left_skip) * 2  -> r5
-              emit(ASM.sub_reg(5, 10, x_reg))           # left_skip = visible_left - x
-              emit_add_const(5, 5, row * width, 2)      # + this row's start in the buffer
-              emit(ASM.lsl_imm(5, 5, 1))                # * 2 bytes/pixel
-              emit(ASM.add_reg(5, buf_reg, 5))
+              @emitter.emit(ASM.sub_reg(5, 10, x_reg))           # left_skip = visible_left - x
+              @primitives.emit_add_const(5, 5, row * width, 2)      # + this row's start in the buffer
+              @emitter.emit(ASM.lsl_imm(5, 5, 1))                # * 2 bytes/pixel
+              @emitter.emit(ASM.add_reg(5, buf_reg, 5))
 
               # screen span address = VRAM + (screen_y*SCREEN_WIDTH + visible_left) * 2 -> r3
-              emit_number(2, SCREEN_WIDTH)
-              emit(ASM.mul(3, 9, 2))                    # r3 = screen_y * width
-              emit(ASM.add_reg(3, 3, 10))               # + visible_left
-              emit(ASM.lsl_imm(3, 3, 1))
-              emit_number(2, VRAM_START)
-              emit(ASM.add_reg(3, 3, 2))
+              @emitter.emit_number(2, SCREEN_WIDTH)
+              @emitter.emit(ASM.mul(3, 9, 2))                    # r3 = screen_y * width
+              @emitter.emit(ASM.add_reg(3, 3, 10))               # + visible_left
+              @emitter.emit(ASM.lsl_imm(3, 3, 1))
+              @emitter.emit_number(2, VRAM_START)
+              @emitter.emit(ASM.add_reg(3, 3, 2))
 
-              # control = visible_width | DMA_ENABLE (16-bit, source+dest increment).
-              emit(ASM.orr_imm(4, 4, DMA_ENABLE))
+              # control = visible_width | DMA_ENABLE (16-bit, source+dest increment). The low
+              # bits of the control word are the count of halfwords and the enable bit is what
+              # makes the engine start once the word is written.
+              @emitter.emit(ASM.orr_imm(4, 4, DMA_ENABLE))
 
               # Direction decides which span is the source: :dest sends the buffer
               # (r5) to the screen (r3); :src reads the screen (r3) into the buffer (r5).
               sad, dad = vram == :dest ? [5, 3] : [3, 5]
-              emit_start_copy_engine(from: in_register(sad), to: in_register(dad), control: in_register(4))
+              @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(sad), to: Primitives::InRegister.new(dad), control: Primitives::InRegister.new(4))
 
-              place_label(skip)
+              @emitter.place_label(skip)
             end
           end
 
@@ -1624,6 +1912,18 @@ module VBlank
           #
           # r2/r3 hold x/y across the blit; r4/r6 are the per-row screen_y and row
           # base; r7/r8 are per-pixel scratch.
+          #
+          # ## What is written
+          #
+          # The picture's art is read now, while the game is built, so none of it is read as the
+          # game runs. For each row there is a guard on the row, then for each lit pixel a guard on
+          # its column and a store of its colour:
+          #
+          #   row 0:  [row guard] [px 0: guard, store] [px 3: guard, store] ...   (px 1, 2 see-through)
+          #   row 1:  [row guard] ...
+          #
+          # A store to video memory is the pixel itself, so a see-through pixel costs nothing: no
+          # code is written for it and the screen keeps what it showed.
           def emit_blit_transparent(node, bmp)
             width = bmp.width
             colors = bmp.pixels.unpack("v*")
@@ -1631,43 +1931,43 @@ module VBlank
             x_reg = 2
             y_reg = 3
             @lowering.value(node.x)
-            emit(ASM.mov_reg(x_reg, ACC))
+            @emitter.emit(ASM.mov_reg(x_reg, ACC))
             @lowering.value(node.y)
-            emit(ASM.mov_reg(y_reg, ACC))
+            @emitter.emit(ASM.mov_reg(y_reg, ACC))
 
             bmp.height.times do |row|
               lit = width.times.reject { |col| colors[(row * width) + col] == bmp.transparent }
               next if lit.empty? # a fully transparent row draws nothing
 
-              skip_row = gensym
-              emit_add_const(4, y_reg, row, 5)          # r4 = screen_y
-              emit(ASM.cmp_imm(4, 0))
-              emit_branch(:bcond, skip_row, cond: :lt)
-              emit(ASM.cmp_imm(4, SCREEN_HEIGHT))
-              emit_branch(:bcond, skip_row, cond: :ge)
-              emit_number(5, SCREEN_WIDTH)
-              emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base)
+              skip_row = @emitter.gensym
+              @primitives.emit_add_const(4, y_reg, row, 5)          # r4 = screen_y
+              @emitter.emit(ASM.cmp_imm(4, 0))
+              @emitter.emit_branch(:bcond, skip_row, cond: :lt)
+              @emitter.emit(ASM.cmp_imm(4, @layout.shown_rows))
+              @emitter.emit_branch(:bcond, skip_row, cond: :ge)
+              @emitter.emit_number(5, SCREEN_WIDTH)
+              @emitter.emit(ASM.mul(6, 4, 5))                    # r6 = screen_y * width (row base, in pixels)
 
               lit.each do |col|
                 color = colors[(row * width) + col]
-                skip_px = gensym
+                skip_px = @emitter.gensym
 
-                emit_add_const(7, x_reg, col, 8)        # r7 = screen_x
-                emit(ASM.cmp_imm(7, 0))
-                emit_branch(:bcond, skip_px, cond: :lt)
-                emit(ASM.cmp_imm(7, SCREEN_WIDTH))
-                emit_branch(:bcond, skip_px, cond: :ge)
+                @primitives.emit_add_const(7, x_reg, col, 8)        # r7 = screen_x
+                @emitter.emit(ASM.cmp_imm(7, 0))
+                @emitter.emit_branch(:bcond, skip_px, cond: :lt)
+                @emitter.emit(ASM.cmp_imm(7, @layout.shown_columns))
+                @emitter.emit_branch(:bcond, skip_px, cond: :ge)
 
-                emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x
-                emit(ASM.lsl_imm(7, 7, 1))              # * 2 bytes/pixel
-                emit_number(8, VRAM_START)
-                emit(ASM.add_reg(7, 7, 8))              # VRAM address
-                emit_number(8, color)
-                emit(ASM.store_halfword(8, 7))
+                @emitter.emit(ASM.add_reg(7, 6, 7))              # r7 = row_base + screen_x (pixels from the start)
+                @emitter.emit(ASM.lsl_imm(7, 7, 1))              # * 2 bytes/pixel
+                @emitter.emit_number(8, VRAM_START)
+                @emitter.emit(ASM.add_reg(7, 7, 8))              # VRAM address
+                @emitter.emit_number(8, color)
+                @emitter.emit(ASM.store_halfword(8, 7))          # the store is the pixel
 
-                place_label(skip_px)
+                @emitter.place_label(skip_px)
               end
-              place_label(skip_row)
+              @emitter.place_label(skip_row)
             end
           end
 
@@ -1677,47 +1977,47 @@ module VBlank
           def emit_draw_text(node)
             return @buffered.emit_draw_text_buffered(node) if @lowering.mode == :buffered
 
-            x, y = constant_ints!(node, x: node.x, y: node.y)
+            x, y = @primitives.constant_ints!(node, x: node.x, y: node.y)
             @framebuffer.emit_text_color(node, ACC) { |color| Graphics::Color.resolve(color) }
 
             points = @framebuffer.text_points(node, x, y)
             return emit_text_points_call(points) if points.length >= Framebuffer::TEXT_POINTS_LINE
 
             points.each do |point|
-              emit_number(TMP, VRAM_START + (point * 2))
-              emit(ASM.store_halfword(ACC, TMP))
+              @emitter.emit_number(TMP, VRAM_START + (point * 2))
+              @emitter.emit(ASM.store_halfword(ACC, TMP))
             end
           end
 
           # A line in a table: the colour already in r0, then the table and how many it holds.
           def emit_text_points_call(points)
-            emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
-            emit_number(SPARE, points.length)
+            @emitter.emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
+            @emitter.emit_number(SPARE, points.length)
             @text_points_used = true
-            emit_call_cold_routine(TEXT_POINTS)
+            @placement.emit_call_cold_routine(TEXT_POINTS)
           end
 
           TEXT_POINTS = Messages::MadeNames.make(:text_points_routine)
 
-          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS: r0 the colour, r1 the table, r2 how many.
+          # The routine that stamps a table of pixels: r0 the colour, r1 the table, r2 how many.
           # Only ever entered by a call, and made only for a game with such a line.
           def emit_text_points_routine
             return unless @text_points_used
 
-            pixel = gensym
-            emit(ASM.loop_forever) # fall-through guard
-            place_label(TEXT_POINTS)
-            emit_number(12, VRAM_START)
-            place_label(pixel)
-            emit(ASM.load_halfword(3, 1))
-            emit(ASM.add_imm(1, 1, 2))
-            emit(ASM.lsl_imm(3, 3, 1))              # two bytes a pixel
-            emit(ASM.add_reg(3, 3, 12))
-            emit(ASM.store_halfword(0, 3))
-            emit(ASM.subs_imm(2, 2, 1))
-            emit_branch(:bcond, pixel, cond: :ne)
-            emit(ASM.return)
-            place_label(DerivedNames.routine_end(TEXT_POINTS))
+            pixel = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard
+            @emitter.place_label(TEXT_POINTS)
+            @emitter.emit_number(12, VRAM_START)
+            @emitter.place_label(pixel)
+            @emitter.emit(ASM.load_halfword(3, 1))
+            @emitter.emit(ASM.add_imm(1, 1, 2))
+            @emitter.emit(ASM.lsl_imm(3, 3, 1))              # two bytes a pixel
+            @emitter.emit(ASM.add_reg(3, 3, 12))
+            @emitter.emit(ASM.store_halfword(0, 3))
+            @emitter.emit(ASM.subs_imm(2, 2, 1))
+            @emitter.emit_branch(:bcond, pixel, cond: :ne)
+            @emitter.emit(ASM.return)
+            @emitter.place_label(DerivedNames.routine_end(TEXT_POINTS))
           end
           # Draw the run-time digit held in +value+ (0..9). A font can't be indexed by a
           # run-time value the way an array is, so there are two ways to render it, and
@@ -1738,8 +2038,8 @@ module VBlank
           # and honors the screen mode.
           def emit_draw_digit(node)
             font = node.fonts.get(node.font)
-            x = const_int(node.x)
-            y = const_int(node.y)
+            x = @primitives.const_int(node.x)
+            y = @primitives.const_int(node.y)
             digit_w = @framebuffer.uniform_digit_width(font)
             if x && y && digit_w && @framebuffer.digit_cell_on_screen?(x, y, digit_w, font.height)
               if @lowering.mode == :buffered
@@ -1777,10 +2077,10 @@ module VBlank
           def emit_draw_digit_data(node, font, width, x, y)
             color = Graphics::Color.resolve(node.color)
             @lowering.value(node.value)             # r0 = the digit (0..9)
-            emit_number(1, x)
-            emit_number(2, y)
-            emit_number(3, color)
-            emit_call_cold_routine(digit_routine_label(node.font, font, width))
+            @emitter.emit_number(1, x)
+            @emitter.emit_number(2, y)
+            @emitter.emit_number(3, color)
+            @placement.emit_call_cold_routine(digit_routine_label(node.font, font, width))
           end
 
           # The shared routine's label for a font, reserved the first time a digit in
@@ -1810,23 +2110,23 @@ module VBlank
             return unless @pending_digit_routines
 
             @pending_digit_routines.each do |font_name, font, width|
-              emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
-              place_label(Messages::MadeNames.make(:digit_routine, font: font_name))
-              emit(ASM.push(14))
-              emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
-              emit(ASM.mov_reg(11, 2)) # r11 = y
-              emit(ASM.mov_reg(12, 3)) # r12 = the fill color
+              @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
+              @emitter.place_label(Messages::MadeNames.make(:digit_routine, font: font_name))
+              @emitter.emit(ASM.push(14))
+              @emitter.emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
+              @emitter.emit(ASM.mov_reg(11, 2)) # r11 = y
+              @emitter.emit(ASM.mov_reg(12, 3)) # r12 = the fill color
               @framebuffer.emit_digit_glyph_loop(font_name, font, width) do |phase|
                 case phase
-                when :hold then emit(ASM.mov_reg(8, 12)) # r8 = the fill color, held
+                when :hold then @emitter.emit(ASM.mov_reg(8, 12)) # r8 = the fill color, held
                 when :plot then emit_plot_digit_pixel(10, 11)
                 end
               end
-              emit(ASM.pop(15))
+              @emitter.emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can say how much of a frame
-              # went into drawing digits. A routine the LOWERING makes has no other record of
+              # went into drawing digits. A routine the lowering makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
-              place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
+              @emitter.place_label(DerivedNames.routine_end(Messages::MadeNames.make(:digit_routine, font: font_name)))
             end
           end
 
@@ -1835,15 +2135,15 @@ module VBlank
           # shared routine, not constants baked in here — and r5/r4 are the live
           # row/col. Uses r0–r3 as scratch and leaves the loop registers alone.
           def emit_plot_digit_pixel(x_reg, y_reg)
-            emit(ASM.add_reg(0, y_reg, 5))        # r0 = screen_y = y + row
-            emit_number(1, SCREEN_WIDTH)
-            emit(ASM.mul(2, 0, 1))                # r2 = screen_y * width
-            emit(ASM.add_reg(0, x_reg, 4))        # r0 = screen_x = x + col
-            emit(ASM.add_reg(2, 2, 0))            # r2 = screen_y*width + screen_x
-            emit(ASM.lsl_imm(2, 2, 1))            # * 2 bytes per pixel
-            emit_number(1, VRAM_START)
-            emit(ASM.add_reg(2, 2, 1))            # r2 = the pixel's VRAM address
-            emit(ASM.store_halfword(8, 2))        # write the color
+            @emitter.emit(ASM.add_reg(0, y_reg, 5))        # r0 = screen_y = y + row
+            @emitter.emit_number(1, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(2, 0, 1))                # r2 = screen_y * width
+            @emitter.emit(ASM.add_reg(0, x_reg, 4))        # r0 = screen_x = x + col
+            @emitter.emit(ASM.add_reg(2, 2, 0))            # r2 = screen_y*width + screen_x
+            @emitter.emit(ASM.lsl_imm(2, 2, 1))            # * 2 bytes per pixel
+            @emitter.emit_number(1, VRAM_START)
+            @emitter.emit(ASM.add_reg(2, 2, 1))            # r2 = the pixel's VRAM address
+            @emitter.emit(ASM.store_halfword(8, 2))        # write the color
           end
 
         end

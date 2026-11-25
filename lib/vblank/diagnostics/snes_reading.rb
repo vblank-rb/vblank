@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A READER OVER A RUNNING SUPER NINTENDO CARTRIDGE CAN BE ASKED that only the Super
+    # What a reader over a running Super Nintendo cartridge can be asked that only the Super
     # Nintendo's way of keeping things answers — the same questions an Advance reader answers its own
     # way (AdvanceReading).
     #
@@ -14,7 +14,7 @@ module VBlank
 
       private def list_layout = IR::Backends::SNES::Runtime::Lists
 
-      # A VARIABLE KEPT IN TWO BYTES (IR::Backends::SNES::HalfVariables), with the next variable
+      # A variable kept in two bytes (IR::Backends::SNES::HalfVariables), with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)
         return super unless @rom.built&.variable_bytes(name) == 2
@@ -26,7 +26,7 @@ module VBlank
       # Eight lists of sixteen colours for the backgrounds, then eight for the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 128, group: 16)
 
-      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures, as
+      # What the console makes its picture from, other than the tiles' pictures, as
       # AdvanceReading#video_memories gives it: the 256 colours, and the sprite table by its
       # bytes. The Super Nintendo's scroll and video registers cannot be read back on the
       # console, and bsnes does not hand them over here, so they are not among them.
@@ -36,22 +36,24 @@ module VBlank
           sprite_table: @probe.sprite_table.bytes.each_with_index.to_h { |byte, at| [at, byte] } }
       end
 
-      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each of the 128 entries that reaches the screen,
+      # The sprite table as boxes (SpriteBox), one for each of the 128 entries that reaches the screen,
       # in the table's order. Nothing here needs a build record, so it is how a cartridge with none
       # shows where its sprites are.
       #
-      # +sizes+ is [small, large], each [width, height]: the two sizes the game set the register
-      # OBSEL to, and an entry's bit in the upper table marks which of the two it is. bsnes here does
-      # not hand OBSEL over, so the game gives it ([[8, 8], [16, 16]] is OBSEL's sizes 0, and what
-      # VBlank's own build sets). An entry's across is nine bits, its top bit in the upper table, and
-      # wraps at 512; its down wraps at 256. The console draws a sprite a line below its down, and
-      # its picture starts a line down too, so the down kept is the row of the picture it is on. The
-      # tile number is nine bits, its top bit the low bit of the entry's fourth byte.
+      # A sprite comes in two sizes, small and large, which the game sets in the register OBSEL, and
+      # an entry's bit in the upper table marks which of the two it is. The console cannot read OBSEL
+      # back, so the emulator hands over what the game last wrote there (SNESProbe#sprite_sizes).
+      # +sizes+, [small, large] each [width, height], is used over those where given. An entry's
+      # across is nine bits, its top bit in the upper table, and wraps at 512; its down wraps at 256.
+      # The console draws a sprite a line below its down, and its picture starts a line down too, so
+      # the down kept is the row of the picture it is on. The tile number is nine bits, its top bit
+      # the low bit of the entry's fourth byte.
       #
       # @return [Array<SpriteBox>]
       def sprite_boxes(sizes: nil)
-        refuse_sprite_sizes_missing!(sizes)
+        refuse_unusable_sprite_sizes!(sizes) if sizes
         table = sprite_table
+        sizes ||= @probe.sprite_sizes
         upper = table.byteslice(SPRITE_ENTRIES * 4, SPRITE_ENTRIES / 4).bytes
         boxes = Array.new(SPRITE_ENTRIES) do |slot|
           across, down, tile, attributes = table.byteslice(slot * 4, 4).bytes
@@ -66,12 +68,12 @@ module VBlank
 
       SPRITE_ENTRIES = 128
 
-      private def refuse_sprite_sizes_missing!(sizes)
+      private def refuse_unusable_sprite_sizes!(sizes)
         return if sizes.is_a?(Array) && sizes.size == 2 && sizes.all? { |size| size.is_a?(Array) && size.size == 2 }
 
-        raise ArgumentError, "A Super Nintendo cartridge draws its sprites in two sizes that the game sets, and this " \
-                             "reader cannot read them. To fix this, give the two sizes, small then large, like " \
-                             "`sprite_boxes(sizes: [[8, 8], [16, 16]])`."
+        raise ArgumentError, "`sizes:` was #{sizes.inspect}. Give the two sizes of the sprites, small then large, " \
+                             "like `sprite_boxes(sizes: [[8, 8], [16, 16]])`. Or leave out `sizes:`, and the sizes " \
+                             "the game set are used."
       end
 
       # bsnes keeps a cartridge's battery-backed RAM in a .srm file of its own, nothing after it,
@@ -92,7 +94,7 @@ module VBlank
       # The layout of the save file of the cartridge whose bytes are +bytes+, read from its header.
       def self.save_file_of(bytes) = Cartridge::SNESROM.save_offset_of(bytes).zero? ? SAVE_FILE : SUPER_FX_SAVE_FILE
 
-      # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them (Reference#sprites),
+      # The sprites the game placed in its last pass, as the interpreter gives them (Reference#sprites),
       # from the list the runtime keeps of what it placed, which the checked run compares with the
       # interpreter after every pass. See ColorReading#sprites.
       #
@@ -106,7 +108,7 @@ module VBlank
         name ? @drawn.rows_named(rows, name) : rows
       end
 
-      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the two
+      # Which song is playing now, by its name, or nil for none (Reference#music_playing): the two
       # bytes the player keeps the song it is on in (SNES::Runtime::Music::PLAYING), its place in the
       # order declared (IR::Tunes.song_numbered), as the frames played so far left it. See
       # ColorReading#music_playing.
@@ -114,6 +116,21 @@ module VBlank
         refuse_missing_build_record!("which songs it plays")
         place = @rom.built.runtime[IR::Backends::SNES::Runtime::Music::PLAYING] or return nil
         IR::Tunes.song_numbered(@rom.source_program, mem16(place))
+      end
+
+      # The voices the game's sound effects hold now, by the names #channels gives them, as the
+      # frames played so far left the sound player (IR::Backends::SNES::Runtime::Effects::HeldVoices):
+      # empty when no effect sounds. The player puts an effect's notes on whichever voice is free or
+      # ranks lowest, so they move from note to note, and the tune's notes take the voices between.
+      # The player runs on the main processor, which hands each note to the sound unit through its
+      # four ports (fullsnes, "SNES APU Main CPU Communication Port"), so the chip sounds it a few
+      # samples after the player decided it.
+      #
+      # @return [Array<Symbol>]
+      def sound_effect_voices
+        refuse_missing_build_record!("which voices its sound effects hold")
+        ensure_rendered!
+        @rom.built.sound_effect_voices { |address| mem16(address) }.map { |voice| channels.fetch(voice) }
       end
     end
   end

@@ -4,20 +4,20 @@ require "test_helper"
 require "differential"
 require "see_through_scenery_tests"
 
-# THE TESTS OF vblank/builder/test_layer_transparency.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_layer_transparency.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file. The same
 # pictures read back from the Advance's cartridge in the emulator are in
 # test/lowering/gba/vblank/builder/test_layer_transparency_on_the_advance_cartridge.rb.
 #
-# SEEING THROUGH A LAYER TO WHAT IS BEHIND IT — water, glass, fog, a dimmed backdrop
+# Seeing through a layer to what is behind it — water, glass, fog, a dimmed backdrop
 # behind a menu.
 #
 # The author says it where the layer is opened (`layer :water, transparency: 40`) and
-# never learns which of the console's two mechanisms carried it. A layer of SCENERY is
-# blended by the display's own effect unit; a layer of SPRITES carries a bit in each
+# never learns which of the console's two mechanisms carried it. A layer of scenery is
+# blended by the display's own effect unit; a layer of sprites carries a bit in each
 # sprite's own table entry. Same keyword, and these prove the same picture.
 #
-# What it MEANS is what it looks like: whatever sits directly under the layer at a pixel
+# What it means is what it looks like: whatever sits directly under the layer at a pixel
 # shows through it, anything in front draws solid, and where the layer has a see-through
 # tile what is behind shows plain. Every one of those is what a reader guesses and also
 # what the console does, so the tests below read as the picture rather than as a rule.
@@ -64,7 +64,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # The same picture with the front layer a SPRITE instead — the other mechanism, and the
+  # The same picture with the front layer a sprite instead — the other mechanism, and the
   # author writes the same thing.
   private def sprite_program(amount)
     tile = SOLID_TILE
@@ -89,7 +89,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
 
   # --- the picture ---
 
-  # ONE SEE-THROUGH SPRITE IN A GAME THAT NAMES NO OTHER LAYER — a ghost, a shield bubble —
+  # One see-through sprite in a game that names no other layer — a ghost, a shield bubble —
   # needs no verb of its own: a stack of one layer holding it is two lines, and nothing else
   # in the game has to name a layer, since what names none keeps the place it had. The layer
   # and a per-sprite word would reach the same bit of the sprite's table entry and share the
@@ -110,7 +110,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # A SEE-THROUGH SPRITE SHOWS THE SCENERY UNDER IT, NEVER ANOTHER SPRITE. Of all the
+  # A see-through sprite shows the scenery under it, never another sprite. Of all the
   # sprites at a pixel the console draws the front one and no other, and only then mixes
   # it with the layer beneath, which is scenery or the backdrop. So a ghost passing over
   # the hero hides the hero where it covers them, and the floor shows through instead.
@@ -177,7 +177,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
   # --- an amount the game works out (fog that thickens) ---
   #
   # A number the author writes is sent to the display once at boot and never again. An
-  # amount the GAME works out has to be sent again before every frame — so the same
+  # amount the game works out has to be sent again before every frame — so the same
   # keyword covers fog that thickens, water that gets murkier as you go down, a menu
   # backdrop that dims in. The author writes a variable where they wrote a number.
 
@@ -216,11 +216,11 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
 
   # --- a fade takes the blend, and hands it back ---
   #
-  # Fading the screen and seeing through a layer are the display's ONE blend unit, told
+  # Fading the screen and seeing through a layer are the display's one blend unit, told
   # which of the two it is doing. So while a fade runs the layer is solid and darkens with
   # everything else — which is what a fade out is supposed to look like — and it comes
   # back the moment the fade lifts. The bug this exists to remove is the second half: a
-  # fade ends at ZERO, which is invisible but still a fade, so one hit flash used to turn
+  # fade ends at zero, which is invisible but still a fade, so one hit flash used to turn
   # the water solid for the rest of the game with nothing anywhere to say why.
 
   # The same picture, with a fade held at a fixed amount. `hold` of 0 is a lifted fade.
@@ -247,7 +247,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
 
   private def faded_xy(kind) = kind == :scenery ? SCENERY_XY : SPRITE_XY
 
-  # A FADE THE DISPLAY DOES, LEFT ON FROM A BITMAP SCREEN. A bitmap screen holds a whole
+  # A fade the display does, left on from a bitmap screen. A bitmap screen holds a whole
   # colour in every pixel, so a fade there is the display's own, and it stays until it is
   # lifted. The title is blue, faded half way to black; from the fifth pass a room takes
   # over, with mist over its floor and a walker in front of the mist. The display fades the
@@ -296,11 +296,9 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
       game_loop do
         pass += 1
         where = rooms == :hall ? 2 : 1 if pass == room_at
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :room
-          when_val 2, :hall if rooms
-        end
+        screens = { 0 => :title, 1 => :room }
+        screens[2] = :hall if rooms
+        call screens, number: :where
       end
     end
   end
@@ -320,7 +318,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
 
   private def seen_through_mist = game_player.run(scene_mist_with_no_fade, frames: 8).screen.pixel(200, 100)
 
-  # The same of a fade PLACED in the stack, which is the display's own on any screen: a tint
+  # The same of a fade placed in the stack, which is the display's own on any screen: a tint
   # said after it takes its place, and the mist it had made solid is seen through again.
   private def placed_fade_then_a_tint
     tile = SOLID_TILE
@@ -366,7 +364,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     end
   end
 
-  # A fade PLACED in the stack is still a fade — it takes the same blend unit, whatever it
+  # A fade placed in the stack is still a fade — it takes the same blend unit, whatever it
   # leaves alone — so the rule and the hand-back have to reach it too.
   private def placed_fade_program(amount, hold)
     tile = SOLID_TILE
@@ -427,7 +425,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
   end
 
 
-  # A PLAIN BITMAP TITLE AND A MISTY ROOM, in either order, with nothing faded until a block
+  # A plain bitmap title and a misty room, in either order, with nothing faded until a block
   # says so. +first+ is the scene the game starts in and +swap_at+ the pass the other takes
   # over on; +title+ and +room+ are what each says on its passes, handed the count.
   #
@@ -458,15 +456,12 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
       game_loop do
         pass += 1
         where = first == :title ? 1 : 0 if pass == swap_at
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :room
-        end
+        call({ 0 => :title, 1 => :room }, number: :where)
       end
     end
   end
 
-  # TWO ROOMS, EACH SEEING THROUGH A LAYER OF ITS OWN BY ITS OWN AMOUNT, taking turns. The
+  # Two rooms, each seeing through a layer of its own by its own amount, taking turns. The
   # display holds one pair of amounts, so each room has to tell it its own as it takes over —
   # on that frame, not the one after, or the room's first frame is mixed by the other room's
   # amounts.
@@ -506,11 +501,9 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
         where = 0 if title && pass == 3
         where = 1 if pass == (title ? 6 : 4)
         where = 0 if pass == (title ? 9 : 8)
-        case_var(:where) do
-          when_val 0, :misty
-          when_val 1, :foggy
-          when_val 2, :title if title
-        end
+        screens = { 0 => :misty, 1 => :foggy }
+        screens[2] = :title if title
+        call screens, number: :where
       end
     end
   end
@@ -576,7 +569,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     assert_equal seen.uniq, seen, "the amount was not re-read every frame"
   end
 
-  # An amount is a VALUE, not only a variable — so it can be worked out from the game's
+  # An amount is a value, not only a variable — so it can be worked out from the game's
   # own state on the spot. `100 - mist` is what an example actually writes.
   def test_the_amount_can_be_worked_out_on_the_spot
     from_a_sum = clearing_program(->(clear) { 100 - (100 - clear) })
@@ -588,7 +581,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
     assert_backends_agree(clearing_program, frames: 6, console_frames: 6 + CONSOLE_LAG)
   end
 
-  # A see-through layer under a fade does NOT show what a SOLID layer under the same fade
+  # A see-through layer under a fade does not show what a solid layer under the same fade
   # shows. Said that way round on purpose: it needs no number of its own, so it cannot be
   # satisfied by a wrong blend that happens to match a constant written beside it.
   def test_a_fade_leaves_the_layer_see_through
@@ -666,7 +659,7 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
                  "the mist is seen through again, at full brightness"
   end
 
-  # A TINT TAKES THE FADE'S PLACE as another fade would: a picture has one such effect at a
+  # A tint takes the fade's place as another fade would: a picture has one such effect at a
   # time, and the last one said is the one in force. So a room that tints, however little,
   # has ended the fade it arrived under, and its mist is seen through again from then on.
   def test_a_tint_said_in_the_room_ends_that_fade_and_the_layer_is_seen_through_again
@@ -817,17 +810,14 @@ class TestLayerTransparencyOnTheAdvance < Minitest::Test
         bars.call
         scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
         var :where, 0
-        game_loop { case_var(:where) { when_val 0, :haunted } }
+        game_loop { call({ 0 => :haunted }, number: :where) }
       when :other_scene
         scene(:barred, &bars)
         scene(:haunted) { layer(:glass) { sprite :ghost, at: [100, 16] } }
         where = var :where, 0
         game_loop do
           where.approach! 1, 1
-          case_var(:where) do
-            when_val 0, :barred
-            when_val 1, :haunted
-          end
+          call({ 0 => :barred, 1 => :haunted }, number: :where)
         end
       end
     end

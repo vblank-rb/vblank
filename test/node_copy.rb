@@ -2,7 +2,7 @@
 
 require "open3"
 
-# A COPY OF A GAME BUILT AS JAVASCRIPT, PLAYED BY NODE, TAKING PART IN A MATCH THE TEST CONTROLS. The copy
+# A copy of a game built as JavaScript, played by Node, taking part in a match the test controls. The copy
 # runs as a process of its own (JS#build_headless with `--match`), and cannot reach the test's network by
 # itself, so this carries its messages: what node says to the room it prints as a line, and what the room says
 # to it is handed over when it asks for one. The network is whatever gives the transport (a
@@ -17,10 +17,10 @@ require "open3"
 #   node -> test   net-leave       the copy leaves the match: the test closes its end of the link
 #   node -> test   pass N CRC PIC  pass N ended: the CRC of the game's state, and of the picture
 #   node -> test   event N KIND P  something that happened on pass N (a player left)
-#   node -> test   fingerprint CONSOLE DIGEST
-#   node -> test   chat FROM TEXT  a line of chat that came from another player
+#   node -> test   fingerprint console digest
+#   node -> test   chat from text  a line of chat that came from another player
 #
-# A copy that meets the others through a RELAY (relay_copy) is carried the same way, but what it says to the
+# A copy that meets the others through a relay (relay_copy) is carried the same way, but what it says to the
 # relay is text for a line: `relay-out TEXT`, `relay?` and `relay-in TEXT` / `relay-end` / `relay-closed`, and it
 # says `room CODE` when it has made a room. The line is a Network::InProcessLine to a StandInRelay, or anything
 # that answers send_text, receive_text, wait_for_text and closed?.

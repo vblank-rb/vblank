@@ -5,7 +5,7 @@ require "digest"
 require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
 require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s
 
-# THE PAC-MAN PORT'S MADE-UP ORIGINAL (test/fixtures/pacman_port/): pacman.gba, built once from
+# The Pac-Man port's made-up original (test/fixtures/pacman_port/): pacman.gba, built once from
 # examples/pacman.rb and checked in with its SHA-1, and the facts of where its data is. A real
 # cartridge never changes, so these hold the checked-in file to its facts and do not rebuild it.
 class TestPacmanFixture < Minitest::Test
@@ -27,7 +27,7 @@ class TestPacmanFixture < Minitest::Test
     assert_includes codecs, "rle"
   end
 
-  # THE PORT'S ROUTINE UNPACKS EVERY ASSET THE CARTRIDGE PACKS to the bytes the cartridge build
+  # The port's routine unpacks every asset the cartridge packs to the bytes the cartridge build
   # packed. The answer key is the build's own packer: each slot of the pack the port's all-in-one
   # build makes, packed again with the scheme the facts name, is the block in the cartridge.
   def test_the_ports_routine_unpacks_every_packed_asset_to_the_bytes_the_build_packed

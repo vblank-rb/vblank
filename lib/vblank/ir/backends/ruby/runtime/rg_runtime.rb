@@ -23,8 +23,10 @@ RG_CLOCK_WEEKDAY = 6
 RG_CLOCK_PRESENT = 7
 RG_CLOCK_SET = 8
 
-# The game's own state first, then each part of the runtime's.
+# The holders every field below is kept in (rg_fields_make, which the build writes: see
+# Ruby::FieldHolders), then each part of the runtime's state, then the game's own.
 def initialize
+  rg_fields_make
   rg_runtime_setup
   rg_screen_setup
   rg_sound_setup
@@ -36,6 +38,7 @@ def rg_runtime_setup
   @rg_held = [0]    # each connected player's buttons down now, a bit each
   @rg_seen = [0]    # ...and at the last frame boundary, to tell a press from a hold
   @rg_pressed = [0] # buttons that went down at the last frame boundary
+  @rg_pulls = [0]   # how far the triggers are part pulled, above the buttons' bits (IR::Buttons.pull_shift)
   # One timer each (RgTimer), and the timers in the order each was first started, which is the
   # order the interpreter walks them in.
   @rg_timers = Array.new(RG_MAX_TIMERS) { RgTimer.new }
@@ -88,13 +91,16 @@ end
 # the players connected already.
 def rg_players_buttons(now)
   held = @rg_held
+  pulls = @rg_pulls
   player = 0
   while player < now.length
     held[player] = now[player] & RG_ONE_PLAYERS_BUTTONS
+    pulls[player] = now[player] & ~RG_ONE_PLAYERS_BUTTONS
     player += 1
   end
   while player < held.length
     held[player] = 0
+    pulls[player] = 0
     player += 1
   end
   held
@@ -120,6 +126,17 @@ def rg_any_down_by(buttons, player, mask)
   return buttons.any? { |held| (held & mask) != 0 } ? 1 : 0 if player.zero?
 
   ((buttons[player - 1] || 0) & mask) != 0 ? 1 : 0
+end
+
+# How far a trigger is pulled: the part pull handed (seven bits from +shift+, nought for none), or all
+# or nothing as the button is held (rg_runtime.c's rg_pulled).
+def rg_pulled(button, shift, player)
+  return 0 if player < 1 || player > RG_MOST_PLAYERS
+
+  part = ((@rg_pulls[player - 1] || 0) >> shift) & ((1 << RG_PULL_BITS) - 1)
+  return part unless part.zero?
+
+  rg_button_down(@rg_held[player - 1] || 0, button) == 1 ? 100 : 0
 end
 
 # How many players are connected now: one for each number in the driver's list.
@@ -297,7 +314,7 @@ end
 RG_START_FILE_READS = Ractor.make_shareable([["c*", "C*", "s<*", "v*", "l<*"], ["c*", "C*", "s>*", "n*", "l>*"]])
 RG_START_FILE_ENTRY_BYTES = [1, 1, 2, 2, 4].freeze
 
-# A TABLE OF BYTES THE FILE FILLS IS KEPT AS BYTES: an RgBytes (an RgSignedBytes for signed ones), a
+# A table of bytes the file fills is kept as bytes: an RgBytes (an RgSignedBytes for signed ones), a
 # binary String whose table[i] gives a number, as an Array's does. An Array would keep each byte as a Ruby
 # number of eight bytes, and a data pack's unpacking reads the whole of the player's copy into one
 # such table: hundreds of megabytes, wanting gigabytes. An unsigned table's [] is getbyte itself, so
@@ -319,7 +336,7 @@ class RgSignedBytes < RgBytes
   end
 end
 
-# THE GAME'S ART AND SOUND ARE KEPT AS BYTES TOO: its pictures' and tiles' pixels, its maps' cells,
+# The game's art and sound are kept as bytes too: its pictures' and tiles' pixels, its maps' cells,
 # its songs' notes and its recordings' samples (Printer::KEPT_AS_BYTES), each a binary String in
 # the width the table is kept in, low byte first. A game's art is millions of numbers, and Ruby's
 # garbage collector, whenever it marks everything, reads every slot of every Array: held as Arrays
@@ -626,16 +643,16 @@ end
 # The number the two bytes from +at+ in the file hold, low byte first, 0 or more.
 def rg_start_file_half(at) = @rg_start_file.getbyte(at) | (@rg_start_file.getbyte(at + 1) << 8)
 
-# A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original:
+# A frame of a sprite in the file is a record of VBlank's own, one layout whatever the original:
 # lib/vblank/original/frame_record.rb (Original::FrameRecord) is where it is written down, and its
 # numbers (RG_FRAME_, RG_PIECE_) are written ahead of this file from there. Every number is low
 # byte first: a frame is the pieces it holds and the pieces the original names, two bytes each,
 # then RG_FRAME_PIECE_BYTES a piece.
 #
 # One piece of a pose's frame, its record from +at+ in the file, painted into +places+, behind what
-# is there already (rg_runtime.c's start_file_paint_piece). +tile_format+ is where that layout
-# starts in +rules+.
-def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+# is there already, each place it draws moved on by +shift+ (rg_runtime.c's start_file_paint_piece).
+# +tile_format+ is where that layout starts in +rules+.
+def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count, shift)
   left = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
   top = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
   first_tile = rg_start_file_half(at + RG_PIECE_TILE_AT)
@@ -664,9 +681,27 @@ def rg_start_file_paint_piece(places, width, height, at, rules, tile_format, ori
       tile = first_tile + (column * column_step) + (row * row_step)
       next if tile >= tile_count
 
-      places[(down * width) + along] = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
+      place = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, from_y % 8, from_x % 8)
+      places[(down * width) + along] = place.zero? ? 0 : place + shift
     end
   end
+end
+
+# Whether the piece whose record is at +at+ is painted (rg_runtime.c's start_file_piece_painted).
+def rg_start_file_piece_painted?(at, only_bank, banks_mask)
+  bank = rg_start_file_half(at + RG_PIECE_BANK_AT)
+  return false if !only_bank.negative? && bank != only_bank
+
+  banks_mask.zero? || (bank < 31 && banks_mask.anybits?(1 << bank))
+end
+
+# How far into a pose of several banks' colours a piece counts its places (rg_runtime.c's
+# start_file_piece_shift).
+def rg_start_file_piece_shift(at, banks_mask, bank_places)
+  return 0 if banks_mask.zero?
+
+  bank = rg_start_file_half(at + RG_PIECE_BANK_AT)
+  (0...[bank, 31].min).count { |named| banks_mask.anybits?(1 << named) } * bank_places
 end
 
 # How many pieces the frame whose entry is at +entry_at+ holds, and where the first of them is in
@@ -763,7 +798,7 @@ def rg_start_file_fill_tile_pose(pieces, rules)
   (kept...room).each { |left| pieces[3 * left, 3] = [0, 0, -1] }
 end
 
-# A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM (rg_runtime.c's start_file_pose_pieces
+# A pose's pieces as the console's sprite table holds them (rg_runtime.c's start_file_pose_pieces
 # and pose_listed_pieces, which say how).
 RG_PIECES_SQUARES = 2
 RG_PIECES_RECTANGLES = 3
@@ -832,14 +867,14 @@ def rg_pose_listed_pieces(blocks, columns, rows, shape, tall)
 end
 
 # rg_runtime.c's start_file_pose_pieces
-def rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+def rg_start_file_pose_pieces(first, count, only_bank, banks_mask, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
                               width, height, turn, shape, tall)
   blocks = []
   columns = Array.new(count, 0)
   rows = Array.new(count, 0)
   count.times do |piece|
     at = first + (piece * RG_FRAME_PIECE_BYTES)
-    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+    next unless rg_start_file_piece_painted?(at, only_bank, banks_mask)
 
     x = origin_x + ((rg_start_file_half(at + RG_PIECE_X_AT) ^ 0x8000) - 0x8000)
     y = origin_y + ((rg_start_file_half(at + RG_PIECE_Y_AT) ^ 0x8000) - 0x8000)
@@ -886,7 +921,7 @@ end
 # game's pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
 def rg_start_file_fill_pose(rules)
   kind, _total, copies, width, height, turn, colors_at, colors_count, entry_at, records_at, origin_x, origin_y,
-    tiles_at, tile_count, only_bank, piece_shape, piece_tall, place_count = rules
+    tiles_at, tile_count, only_bank, piece_shape, piece_tall, place_count, banks_mask, bank_places = rules
   tile_format = RG_FILL_POSE_HEADER_NUMBERS
   color_format = tile_format + RG_TILE_FORMAT_NUMBERS
   held_colors = color_format + RG_COLOR_FORMAT_NUMBERS
@@ -895,12 +930,13 @@ def rg_start_file_fill_pose(rules)
   places = Array.new(width * height, 0)
   count.times do |piece|
     at = first + (piece * RG_FRAME_PIECE_BYTES)
-    next if !only_bank.negative? && rg_start_file_half(at + RG_PIECE_BANK_AT) != only_bank
+    next unless rg_start_file_piece_painted?(at, only_bank, banks_mask)
 
-    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count)
+    rg_start_file_paint_piece(places, width, height, at, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+                              rg_start_file_piece_shift(at, banks_mask, bank_places))
   end
   unless kind == RG_FILL_TILE || piece_shape.zero?
-    pieces = rg_start_file_pose_pieces(first, count, only_bank, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
+    pieces = rg_start_file_pose_pieces(first, count, only_bank, banks_mask, rules, tile_format, origin_x, origin_y, tiles_at, tile_count,
                                        width, height, turn, piece_shape, piece_tall)
   end
   if kind == RG_FILL_TILE
@@ -989,27 +1025,25 @@ def rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   end
 end
 
-# Which tiles of a background whose map is in the file are drawn from one list it follows
+# Where the tile +down+ and +along+ of map cell +cell+ is among the places of such a map
+# (rg_runtime.c's start_file_map_place).
+def rg_start_file_map_place(cell, down, along, across, side)
+  ((((cell / across) * side) + down) * across * side) + ((cell % across) * side) + along
+end
+
+# The tiles as drawn of the background the runtime knows by +background+ (rg_runtime.h,
+# rg_drawn_tiles): an Array of records, or nil for a background with none.
+def rg_drawn_tiles(background) = @rg_drawn_tiles&.[](background)
+
+# The told cells' tiles drawn from one list a background whose map is in the file follows
 # (rg_runtime.h, rg_start_file_fill_followed_tiles). The game writes +followed+ unfrozen.
 def rg_start_file_fill_followed_tiles(followed, rules, banks)
-  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
+  map_high_byte_first = rules[6]
   bank_at, bank_bits = rules[10, 2]
   bank_count = rules[16]
-  held, cell_bytes = rules[19, 2]
-  columns = across * side
+  cell_bytes = rules[20]
   kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   count = followed[2]
-  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
-    bank = (word >> bank_at) & ((1 << bank_bits) - 1)
-    next if bank >= bank_count || bank > 30 || banks[bank].zero?
-
-    side.times do |down|
-      side.times do |along|
-        followed[3 + count] = held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along
-        count += 1
-      end
-    end
-  end
   told_at, told_count, told_first = rules[21, 3]
   @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
     bank = (word >> bank_at) & ((1 << bank_bits) - 1)
@@ -1021,40 +1055,23 @@ def rg_start_file_fill_followed_tiles(followed, rules, banks)
   followed[2] = count
 end
 
-# The cells of such a background naming a tile that takes turns through pictures (rg_runtime.h,
-# rg_start_file_fill_moving_cells).
+# The told cells of such a background naming a tile that takes turns through pictures
+# (rg_runtime.h, rg_start_file_fill_moving_cells).
 def rg_start_file_fill_moving_cells(painted, rules, moving, pointed)
-  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
-  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
-  columns = across * side
+  map_high_byte_first = rules[6]
+  cell_bytes, told_at, told_count, told_first = rules[20, 4]
   kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
-  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
-    side.times do |down|
-      side.times do |along|
-        rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, down, along,
-                                       held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along)
-      end
-    end
-  end
   @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
     rg_start_file_mark_moving_tile(painted, rules, moving, pointed, word, 0, 0, told_first + told)
   end
 end
 
-# Which tiles of such a background are in front of the sprites (rg_runtime.h,
+# Which told cells of such a background are in front of the sprites (rg_runtime.h,
 # rg_start_file_fill_front_tiles). The game writes +front+ unfrozen.
 def rg_start_file_fill_front_tiles(front, rules, start, front_bit)
-  map_at, cells, across, side, map_high_byte_first = rules[2, 5]
-  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
-  columns = across * side
+  map_high_byte_first = rules[6]
+  cell_bytes, told_at, told_count, told_first = rules[20, 4]
   kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
-  @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
-    side.times do |down|
-      side.times do |along|
-        front[start + held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along] = word[front_bit]
-      end
-    end
-  end
   @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
     front[start + told_first + told] = word[front_bit]
   end
@@ -1100,25 +1117,138 @@ end
 
 # The tiles of a background whose map is in the file (rg_runtime.h, rg_start_file_fill_background).
 # The game's tile pixels are frozen, so an unfrozen copy takes their place, as a picture's fill does.
-def rg_start_file_fill_background(rules)
+#
+# Each different tile as drawn is given its cell once in its pool (rg_runtime.c's pool_tiles), by the
+# number rg_start_file_tile_key gives it, from the pool's first map to its last.
+def rg_start_file_fill_background(rules, map_cells, moving, pointed)
   map_at, cells, across, side, map_high_byte_first = rules[2, 5]
-  held, cell_bytes, told_at, told_count, told_first = rules[19, 5]
-  columns = across * side
+  cell_bytes, told_at, told_count, told_first = rules[20, 4]
+  cells_at, _places, starts_pool, ends_pool = rules[25, 4]
   @rg_game_tile_pixels = @rg_game_tile_pixels.dup if @rg_game_tile_pixels.frozen?
+  if starts_pool == 1
+    @rg_start_file_pool_tiles = {}
+    rg_start_file_fill_pool_art(rules)
+  end
+  pool = @rg_start_file_pool_tiles
   kept_as = rg_start_file_cell_unpacking(cell_bytes, map_high_byte_first)
   @rg_start_file.byteslice(map_at, cells * cell_bytes).unpack(kept_as).each_with_index do |word, cell|
     side.times do |down|
       side.times do |along|
-        rg_start_file_paint_cell_tile(rules, word, down, along,
-                                      held + ((((cell / across) * side) + down) * columns) + ((cell % across) * side) + along)
+        key = rg_start_file_tile_key(rules, word, down, along)
+        shown = pool[key] ||= rg_start_file_drawn_cell(rules, moving, pointed, word, down, along)
+        map_cells[cells_at + rg_start_file_map_place(cell, down, along, across, side)] = shown
       end
     end
   end
+  @rg_start_file_pool_tiles = nil if ends_pool == 1
   return if told_count.zero?
 
   @rg_start_file.byteslice(told_at, told_count * cell_bytes).unpack(kept_as).each_with_index do |word, told|
     rg_start_file_paint_cell_tile(rules, word, 0, 0, told_first + told)
   end
+end
+
+# The number a tile as drawn is known by in its pool (rg_runtime.c's start_file_tile_key): a tile
+# past the file's is one number whatever else, and a bank past the colours one more bank.
+def rg_start_file_tile_key(rules, word, down, along)
+  side = rules[5]
+  tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[7, 6]
+  tile_count = rules[14]
+  bank_count = rules[16]
+  mirrored = word[mirror_bit]
+  upside_down = word[flip_bit]
+  banks = bank_count + 1
+  tile = (word & ((1 << tile_bits) - 1)) + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) +
+         (mirrored == 1 ? side - 1 - along : along)
+  return tile_count * banks * 8 if tile >= tile_count
+
+  bank = [(word >> bank_at) & ((1 << bank_bits) - 1), bank_count].min
+  (((((tile * banks) + bank) * 2) + mirrored) * 4) + (upside_down * 2) + word[rules[29]]
+end
+
+# A tile as drawn of a background read from the file (rg_runtime.h, RG_DRAWN_*).
+RG_DRAWN_PLACES_MASK = 0xFFFF
+RG_DRAWN_TABLE_SHIFT = 16
+RG_DRAWN_TABLE_MASK = 0xFFF
+RG_DRAWN_MIRRORED = 1 << 28
+RG_DRAWN_UPSIDE_DOWN = 1 << 29
+RG_DRAWN_IN_FRONT = 1 << 30
+RG_DRAWN_RUN = 1 << 31
+RG_MOST_DRAWN_CELL = 32_767
+
+# The slot's tiles as places, and the tables of colours of every bank in every set of colours, of
+# the pool whose first map's rules are +rules+ (rg_runtime.c's start_file_fill_pool_art).
+def rg_start_file_fill_pool_art(rules)
+  start = rules[1]
+  tiles_at, tile_count, colors_at, bank_count, bank_size, sets, held = rules[13, 7]
+  set_tiles = rules[24]
+  places = rules[26]
+  tiles_per_bank = rules[31]
+  tile_format = RG_FILL_BACKGROUND_HEADER_NUMBERS
+  color_format = tile_format + RG_TILE_FORMAT_NUMBERS
+  lists = color_format + RG_COLOR_FORMAT_NUMBERS
+  tile_bytes = rules[tile_format + RG_TILE_BYTES_AT]
+  pixels = @rg_game_tile_pixels
+  tile_count.times do |tile|
+    64.times { |at| pixels[places + (tile * 64) + at] = rg_start_file_place(tiles_at + (tile * tile_bytes), rules, tile_format, 1, at / 8, at % 8) }
+  end
+  sets.times do |set|
+    (bank_count + 1).times do |bank|
+      list = lists + (((set * bank_count) + bank) * (1 + bank_size))
+      table = start + (((set * set_tiles) + held + (bank * tiles_per_bank)) * 64)
+      bank_size.times do |place|
+        pixels[table + place] = if place.zero?
+                                  RG_SEE_THROUGH
+                                elsif bank >= bank_count
+                                  0
+                                elsif rules[list].negative?
+                                  rules[list + 1 + place]
+                                elsif rules[list] < bank_count
+                                  rg_start_file_color(colors_at + (rules[list] * bank_size * 2), rules, color_format, place)
+                                else
+                                  0
+                                end
+      end
+    end
+  end
+end
+
+# The cell of the map that shows the tile +down+ and +along+ of the cell +word+ (rg_runtime.c's
+# start_file_drawn_cell).
+def rg_start_file_drawn_cell(rules, moving, pointed, word, down, along)
+  side = rules[5]
+  tile_bits, mirror_bit, flip_bit, bank_at, bank_bits, row_tiles = rules[7, 6]
+  tile_count = rules[14]
+  bank_count = rules[16]
+  held = rules[19]
+  set_tiles = rules[24]
+  front_bit, background, tiles_per_bank, first_place, first_table = rules[29, 5]
+  mirrored = word[mirror_bit]
+  upside_down = word[flip_bit]
+  bank = (word >> bank_at) & ((1 << bank_bits) - 1)
+  tile = (word & ((1 << tile_bits) - 1)) + ((upside_down == 1 ? side - 1 - down : down) * row_tiles) +
+         (mirrored == 1 ? side - 1 - along : along)
+  return -1 if tile >= tile_count
+
+  entry = 1 + (bank_count * 8)
+  which = (0...moving[1]).find { |each| moving[2 + (each * entry)] == tile } if bank < bank_count
+  record = if which
+             shown = 2 + (which * entry) + 1 + (((bank * 4) + mirrored + (2 * upside_down)) * 2)
+             pointed[moving[shown]] = 1
+             RG_DRAWN_RUN | moving[shown] | (moving[shown + 1] << RG_DRAWN_TABLE_SHIFT)
+           else
+             table = held - first_table + ([bank, bank_count].min * tiles_per_bank)
+             (first_place + tile) | (table << RG_DRAWN_TABLE_SHIFT) | (mirrored * RG_DRAWN_MIRRORED) | (upside_down * RG_DRAWN_UPSIDE_DOWN)
+           end
+  record |= RG_DRAWN_IN_FRONT if word[front_bit] == 1
+  drawn = ((@rg_drawn_tiles ||= [])[background] ||= [])
+  number = set_tiles + drawn.length
+  drawn << record
+  if number > RG_MOST_DRAWN_CELL
+    rg_fault("a background read from the data pack names more different tiles than this build can draw " \
+             "(#{RG_MOST_DRAWN_CELL - set_tiles} at most). To fix this, build the game all-in-one")
+  end
+  number
 end
 
 # One tile of a cell of such a background, painted into tile +slot+ of each set of its tiles
@@ -1227,7 +1357,7 @@ def rg_timer_ticks_crossed(timer)
   timer.whole_ticks - before
 end
 
-# A HANDLER THAT WAITS: runtime/rg_runtime.c says how a boundary's walk through the timers stops
+# A handler that waits: runtime/rg_runtime.c says how a boundary's walk through the timers stops
 # where a handler waits and carries on later. The same numbers, and the same steps.
 RG_HANDLER_NONE_STOPPED = 0
 RG_HANDLER_STOPPED = 1
@@ -1295,7 +1425,7 @@ end
 # (RG_CONSOLE_TICKS_A_SECOND), and whether the clock was ever set. From then it moves on one of
 # the console's frames at each frame boundary.
 #
-# A CHIP THAT KEEPS NO DATE (RG_CLOCK_KEEPS_DATE false, the Color's; IR::Clock.undated) counts
+# A chip that keeps no date (RG_CLOCK_KEEPS_DATE false, the Color's; IR::Clock.undated) counts
 # only the days and the time of day since it started, taken as that many days on from 1 January
 # 2000: so it starts on that day, at the time of day it was started at.
 def rg_clock_starts_at(seconds, ticks, set)
@@ -1377,7 +1507,7 @@ def rg_clock_reading(reading, offset_days, offset_seconds)
   end
 end
 
-# SETTING THE CLOCK (Reference#exec_set_clock): how far the time set is from the clock's own, to
+# Setting the clock (Reference#exec_set_clock): how far the time set is from the clock's own, to
 # the whole second, in days and the seconds left over, kept until the game takes the two parts
 # into its saved numbers. The clock itself is never changed, and from then on it reads as set.
 def rg_clock_set_to(year, month, day, hour, minute, second)

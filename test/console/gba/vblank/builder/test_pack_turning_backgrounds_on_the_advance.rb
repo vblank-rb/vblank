@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_turning_background_games"
 
-# A BACKGROUND THAT TURNS AND RESIZES, DRAWN FROM THE DATA PACK: a map of one byte a cell over
+# A background that turns and resizes, drawn from the data pack: a map of one byte a cell over
 # tiles of a byte a pixel in a table of 256 colours, as a console keeps the layer it turns
 # (PackTurningBackgroundGames). It is the background a game makes from pictures it draws itself,
 # with its tiles, map and colours from the pack, so the answer key is that game: the same
@@ -62,7 +62,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_made_to_turn_and_left_upright_it_shows_as_the_drawn_one
     pictures = assert_shows_as_the_drawn_one("upright") do |layer|
-      layer.rotate(0)
+      layer.rotate!(0)
       game_loop { wait_vblank }
     end
 
@@ -91,7 +91,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_turned_about_a_point_it_shows_as_the_drawn_one
     pictures = assert_shows_as_the_drawn_one("turned") do |layer|
-      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate(90)
+      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate!(90)
       game_loop { wait_vblank }
     end
 
@@ -107,7 +107,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         layer.scale.approach! 1.0, 0.25
         spin += 7
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
 
@@ -130,7 +130,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
     assert_operator pictures.fetch(9).to_a.flatten.uniq.length, :>, 4, "shown, it is the layer"
   end
 
-  # WITH THE PACK LEFT OUT (`pack_at_start: true`) the program holds none of the map, the tiles or
+  # With the pack left out (`pack_at_start: true`) the program holds none of the map, the tiles or
   # the table, and reads them from the file it is handed as it starts. Only a build for a
   # computer leaves its pack out, so these are played by the interpreter and by the game as C,
   # JavaScript and Ruby built for the Advance. The answer key is still the background the game
@@ -179,7 +179,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         layer.scale.approach! 1.0, 0.25
         spin += 7
-        layer.rotate spin
+        layer.rotate! spin
       end
     end
   end
@@ -209,7 +209,7 @@ class TestPackTurningBackgroundsOnTheAdvance < Minitest::Test
 
   def test_read_at_start_a_map_that_is_a_run_of_a_slot_over_tiles_from_a_tile_on_shows_as_the_drawn_one
     assert_read_at_start_shows_as_the_drawn_one("from runs", from_runs: true) do |layer|
-      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate(30)
+      layer.turns_around(*PIVOT, map_point: MIDDLE).rotate!(30)
       game_loop { wait_vblank }
     end
   end

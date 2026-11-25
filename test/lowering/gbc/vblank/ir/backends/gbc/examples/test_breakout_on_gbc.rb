@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/breakout").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/breakout").to_s)
 
 # examples/breakout.rb built for the Game Boy Color, held to the interpreter after every pass of a
 # recorded run: the title, START, and the ball breaking bricks while the paddle moves. The wall is

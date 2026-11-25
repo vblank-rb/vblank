@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # ONE CELL OF A BACKGROUND'S MAP IN A DATA PACK, a record of VBlank's own, four bytes, the same
+    # One cell of a background's map in a data pack, a record of VBlank's own, four bytes, the same
     # whatever console the original ran on:
     #
     #   0-1   tile        which tile, counted from the first tile of the background's `tiles:`, low
@@ -22,7 +22,7 @@ module VBlank
     # only where it asks to (`cells_in_front: true`, Console::MapWordFormat#with_front_read), so a
     # map written without it, or read by a background that did not ask, draws every cell behind.
     #
-    # WHY A RECORD OF VBLANK'S OWN. Each console packs a cell into bits of its own (the Advance's
+    # Why a record of VBLANK's own. Each console packs a cell into bits of its own (the Advance's
     # tile in bits 0 to 9; the Color's in a map of its own, with its bank, turns and video bank in a
     # second map of attribute bytes), and a map read in the original's own layout makes VBlank learn
     # every console's. The port's unpacking routine (`slots.fill_from_copy`) already reads the
@@ -57,7 +57,7 @@ module VBlank
         [tile, tile >> 8, bank, turns]
       end
 
-      # THE RECORD AS ONE NUMBER, as FORMAT reads it: `tile | bank << 16 | turns << 24`. It fits a
+      # The record as one number, as FORMAT reads it: `tile | bank << 16 | turns << 24`. It fits a
       # game's number, so a game keeps a cell in a variable or works one out, and a background of
       # map cells takes it in `set_cells:` and `set_cell`. +tile+ may be a value the game works out
       # (a letter read from a table, plus the font's first tile), and the rest are then added to it;
@@ -95,7 +95,7 @@ module VBlank
       end
       private_class_method :turn_bit
 
-      # ONE CELL AS PLAIN NUMBERS, for .bytes_of, and for a cell a background of map cells is told
+      # One cell as plain numbers, for .bytes_of, and for a cell a background of map cells is told
       # (`set_cells:`) and written (`set_cell`).
       Cell = Data.define(:tile, :bank, :mirrored, :upside_down, :in_front) do
         def initialize(tile:, bank: 0, mirrored: false, upside_down: false, in_front: false) = super

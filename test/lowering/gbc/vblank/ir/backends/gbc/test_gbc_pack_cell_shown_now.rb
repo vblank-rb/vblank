@@ -5,7 +5,7 @@ require "digest"
 require "tmpdir"
 require "made_up_original_layouts"
 
-# A CELL OF A BACKGROUND FROM THE DATA PACK WRITTEN `now: true` SHOWS ON THE FRAME BEING DRAWN, on the
+# A cell of a background from the data pack written `now: true` shows on the frame being drawn, on the
 # Color's cartridge, as a cell of a background of the game's own tiles written with `set_tile ...,
 # now: true` does. The Color writes its grid only while the display is not reading it, so a cell
 # left for the gap between frames shows a frame later; a retail game that writes a light low on

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SETTING THAT CANNOT BE RIGHT STOPS THE GAME AT THE LINE THAT SAID IT, before anything is read
+# A setting that cannot be right stops the game at the line that said it, before anything is read
 # or built.
 class TestOptions < Minitest::Test
   # Every build names the console its cartridge is for; nothing is taken to be for the Advance.
@@ -23,6 +23,14 @@ class TestOptions < Minitest::Test
 
       assert_instance_of kind, rom, name
     end
+  end
+
+  # Chosen starts given in any order are one build, so a build cache keys them as one.
+  def test_chosen_starts_are_held_in_one_order
+    one = VBlank::Cartridge::Options.new(starts: { lives: 1, mode: :playing })
+    other = VBlank::Cartridge::Options.new(starts: { mode: :playing, lives: 1 })
+
+    assert_equal Marshal.dump(one.starts), Marshal.dump(other.starts)
   end
 
   def test_a_variant_without_a_console_is_refused

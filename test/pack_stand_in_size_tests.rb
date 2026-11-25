@@ -3,8 +3,9 @@
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 require "all/vblank/builder/test_pack_tile_pictures"
+require "all/vblank/builder/test_pack_background_areas"
 
-# WHAT A PICTURE THE BUILD DOES NOT HOLD COSTS THE WRITTEN GAME. A build that reads its pack as the
+# What a picture the build does not hold costs the written game. A build that reads its pack as the
 # game starts (a shell) knows a pose of the original's frames, or a background's tiles, only by its
 # size: every pixel is filled from the file as the game starts. So the written game holds none of
 # them, however many sprites, lists of colours, recolourings, banks or turns draw them: a bigger
@@ -45,6 +46,113 @@ module PackStandInSizeTests
   class Belts
     include PackTilePictureGames
   end
+
+  class Rooms
+    include PackBackgroundAreaGames
+
+    # The world of +rooms+ rooms, each +across+ by +down+ cells over one slot of four tiles, built
+    # with its pack left out.
+    def world_left_out(folder, rooms, across, down)
+      names = Array.new(rooms) { |at| :"room_#{at}" }
+      world_game_and_file(folder, PackBackgroundAreaGames.world_areas(names, across, down), across, options: LEFT_OUT).first
+    end
+
+    # The same over a slot of an original's size (PackBackgroundAreaGames::BIG_SLOT_TILES).
+    def big_world_left_out(folder, rooms, across, down)
+      names = Array.new(rooms) { |at| :"room_#{at}" }
+      world_game_and_file(folder, PackBackgroundAreaGames.world_areas(names, across, down, big: true), across, options: LEFT_OUT).first
+    end
+
+    # One room of that slot, +across+ by +down+ cells, scrolling every pass, built with its pack left
+    # out, and the pack its all-in-one build makes.
+    def scrolling_room_and_file(folder, across, down)
+      areas = PackBackgroundAreaGames.world_areas(%i[field], across, down, big: true)
+      _, file = world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new(for_computer: true), scrolling: true)
+      [world_game_and_file(folder, areas, across, options: LEFT_OUT, scrolling: true).first, file]
+    end
+
+    # One room of that slot whose every cell is a different tile as drawn, +across+ by +down+ cells,
+    # built with its pack left out, and its pack: made by a game declaring the slots alone, since a
+    # build holding the room all-in-one would hold a picture for each cell.
+    def different_room_and_file(folder, across, down)
+      areas = PackBackgroundAreaGames.world_areas(%i[field], across, down, different: true)
+      _, file = world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new(for_computer: true), scenery: false)
+      [world_game_and_file(folder, areas, across, options: LEFT_OUT).first, file]
+    end
+  end
+
+  # A tile as drawn is set up once for each tile's row it draws, never for each pixel: what the tile
+  # needs that is the same for all of its pixels (its record, its tile of places, its table in the
+  # set of colours drawn now) is worked out once, and a pixel is then a read of its place and a read
+  # of its colour. A room scrolling every pass is drawn again every pass; every row of the screen
+  # crosses at most the tiles of its width and one cut at each edge, on the screen of the console
+  # the run plays as. Counted by the runtime (drawn-tiles-set-up), exact where a time is not.
+  def test_a_tile_as_drawn_is_set_up_once_for_each_row_of_it_drawn
+    run = Dir.mktmpdir do |folder|
+      program, file = Rooms.new.scrolling_room_and_file(folder, 40, 30)
+      headless_run.hand_file(file).run(program_played(program), frames: 12)
+    end
+    screen = VBlank::Console.described(game_console)
+    tiles_a_row = (screen.screen_width / 8) + 2
+
+    assert_operator run.drawn_tiles_set_up, :>, 0, "tiles as drawn set up"
+    assert_operator run.drawn_tiles_set_up, :<=, run.repaints_painted * screen.screen_height * tiles_a_row,
+                    "tiles as drawn set up over #{run.repaints_painted} repaints of #{screen.screen_width}x#{screen.screen_height}"
+  end
+
+  # A map naming more different tiles as drawn than a cell can number stops the game as it starts, in
+  # plain words saying to build all-in-one. Which tiles a map names is in the player's file, which the
+  # build never sees, so it cannot refuse the game while it builds (Builder::PackBackgrounds
+  # #refuse_oversized_map_at_start!). A room of 200x170 cells over 1024 tiles in 16 banks, every cell
+  # different, names 34000.
+  def test_a_map_naming_more_tiles_as_drawn_than_fit_stops_the_game_in_plain_words
+    error = Dir.mktmpdir do |folder|
+      program, file = Rooms.new.different_room_and_file(folder, 200, 170)
+      assert_raises(VBlank::IR::ProgramError) { headless_run.hand_file(file).run(program_played(program), frames: 2) }
+    end
+
+    assert_match(/more different tiles/, error.message)
+    assert_match(/all-in-one/, error.message)
+  end
+
+  # ...AND A SLOT OF AN ORIGINAL'S SIZE IS HELD ONCE, ITS TILES AS PLACES: each cell names its tile,
+  # its bank and its turn, as the console's map does, so the room grows with the slot's tiles and
+  # not with its banks times its turns. Four rooms of 126x86 cells over 1024 tiles in 16 banks hold
+  # the 1024 tiles, a table of colours for each bank (and one for a bank past them), and a
+  # stand-in for each bank in each room.
+  def test_a_world_over_a_slot_of_an_originals_size_holds_the_slots_tiles_once
+    room = Dir.mktmpdir do |folder|
+      lowering_class.new(program_played(Rooms.new.big_world_left_out(folder, 4, 126, 86))).start_file_tile_room_bytes
+    end
+    tiles = PackBackgroundAreaGames::BIG_SLOT_TILES
+    banks = PackBackgroundAreaGames::BIG_SLOT_BANKS.length
+    most = (tiles + (banks + 1) + (4 * banks)) * TILE_PIXEL_BYTES
+
+    assert_operator room, :<=, most, "a world over a slot of #{tiles} tiles in #{banks} banks holds #{room} bytes of tiles"
+  end
+
+  # How many different tiles as drawn the world's slot can make: four tiles, in two banks or a bank
+  # past them, each turned four ways, and one for a tile past the slot.
+  WORLD_TILES_AS_DRAWN = (4 * 3 * 4) + 1
+  # How many bytes of pixels a tile is kept in as the game runs.
+  TILE_PIXEL_BYTES = 64 * PIXEL_BYTES
+
+  # A background read as the game starts holds the tiles its slot can draw, not a tile for every cell
+  # the cells name the tiles, as the console's map does. So rooms over one slot of tiles, however big
+  # and however many, take the room of what the slot can draw once.
+  def test_a_world_of_rooms_over_one_tile_slot_holds_what_the_slot_can_draw_once
+    one, three = [1, 3].map do |rooms|
+      Dir.mktmpdir { |folder| lowering_class.new(program_played(Rooms.new.world_left_out(folder, rooms, 40, 24))).start_file_tile_room_bytes }
+    end
+    most = (WORLD_TILES_AS_DRAWN + BANK_STAND_INS) * TILE_PIXEL_BYTES
+
+    assert_operator one, :<=, most, "one room of 960 cells holds #{one} bytes of tiles, more than its slot can draw"
+    assert_operator three - one, :<=, 2 * BANK_STAND_INS * TILE_PIXEL_BYTES,
+                    "three rooms over the same slot hold #{three} bytes of tiles, one holds #{one}: more than two rooms' stand-ins more"
+  end
+
+  # The stand-in tile the game holds for each bank of colours in each area, before the cells' tiles.
+  BANK_STAND_INS = 2
 
   def test_poses_read_at_start_made_bigger_cost_the_written_game_less_than_one_pose_of_pixels
     small, big = [SMALL_POSE, BIG_POSE].map do |size|
@@ -89,7 +197,7 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{their_pixels} bytes of pixels the cells added once"
   end
 
-  # A TILE TAKING TURNS THROUGH PICTURES, ITS SLOT OF COLOURS IN MORE BANKS: each bank has a run of
+  # A tile taking turns through pictures, its slot of colours in more banks: each bank has a run of
   # the tile of its own, and every run copies from one table of the pictures, read from the file
   # as the game starts. So what the game keeps of the file while it runs (#start_file_bytes) grows
   # by the banks' colours, never by the pictures again for each bank.
@@ -105,28 +213,37 @@ module PackStandInSizeTests
                     "from #{few} to #{many} bytes, more than the #{pictures} bytes of the belt's pictures held once"
   end
 
-  # ...and A SHOW COPIES THE PICTURE INTO THE RUNS OF THE BANKS THE MAP POINTS AT ALONE: which
-  # banks a cell names is in the file, so the game learns it as it starts. The map draws the belt
-  # in two banks of six, so two runs hold the belt's pictures, and the other four were never copied
-  # into at all, from power-on on. The runs are the framework's own lists, which only the lowered
-  # game is asked about: the interpreter copies into every run, and shows the same picture.
-  def test_a_show_copies_into_the_runs_of_the_banks_the_map_draws_from_alone
-    copied = Dir.mktmpdir do |folder|
-      words = PackTilePictureGames.title_belt_words(FEW_CELLS)
-      _, file = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS)
-      program, = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS, options: LEFT_OUT)
-      run = headless_run.hand_file(file).run(program_played(program), frames: SHOWS)
-      (0...MANY_BANKS).count { |bank| run.list(belt_run_list(bank)).any?(&:nonzero?) }
+  # ...and every bank's run shows from one list, which a show copies into only while a cell names the
+  # tile: each run shows the same bytes, the belt turned each way, so the belt's picture is in the
+  # game's memory once however many banks its slot has. Which cells name the tile is in the file, so
+  # the game learns it as it starts: a map that never names it leaves the list as it was at power-on,
+  # never copied into. The list is the framework's own, which only the lowered game is asked about:
+  # the interpreter copies into it always, and shows the same picture.
+  def test_every_banks_run_shows_from_one_list_copied_into_while_a_cell_names_the_tile
+    named, unnamed = [PackTilePictureGames.title_belt_words(FEW_CELLS), STILL_WORDS].map do |words|
+      Dir.mktmpdir do |folder|
+        _, file = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS)
+        program, = Belts.new.title_belt_game_and_file(folder, words: words, banks: MANY_BANKS, options: LEFT_OUT)
+        run = headless_run.hand_file(file).run(program_played(program), frames: SHOWS)
+        assert_raises(StandardError, "a list for the run of bank 1") { run.list(belt_run_list(1)) }
+        run.list(BELT_LIST)
+      end
     end
 
-    assert_equal FEW_BANKS, copied, "the runs a show copied the belt into, of #{MANY_BANKS}"
+    assert named.any?(&:nonzero?), "a map naming the belt shows it from the one list"
+    assert unnamed.all?(&:zero?), "a map never naming the belt copied it into the list"
   end
 
   # The passes the belt game plays: each shows a picture, the second one from the third pass on.
   SHOWS = 6
 
-  # The list the run of the belt for +bank+ shows its picture from (Builder::PackTilePictures
-  # names a background's runs in the order of its banks).
+  # A map naming only still tiles (1 and 3), never the belt's tile 2.
+  STILL_WORDS = Array.new(FEW_CELLS) { |at| PackBackgroundGames::GENESIS_CELL.(at.even? ? 1 : 3, bank: (at / 2) % 2) }.freeze
+
+  # The list every bank's run of the belt shows from (Builder::PackTilePictures#pictures_shown_at_start).
+  BELT_LIST = VBlank::Messages::MadeNames.make(:tile_pictures_part, group: :belt, part: :shown)
+
+  # The list a run of the belt for +bank+ would show from, had each run a list of its own.
   private def belt_run_list(bank) = VBlank::Messages::MadeNames.make(:tile_pictures_part, group: :"belt_run_#{bank}", part: :shown)
 
   # Each lowering here builds on Computer::Lowering, which counts what the game keeps of the file.

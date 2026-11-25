@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE COLOURS OF EACH SQUARE OF A PAINTED SCREEN, worked out while the game is built.
+        # The colours of each square of a painted screen, worked out while the game is built.
         #
         # A painted screen on a Game Boy Color is 360 tiles, an 8×8 square each (Runtime::Paint), and
         # a tile's pixels are two bits: each is one of four places in the list of colours its square

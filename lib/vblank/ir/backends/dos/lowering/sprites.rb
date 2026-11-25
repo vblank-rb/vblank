@@ -185,7 +185,7 @@ module VBlank
               images = sprite.poses.uniq.to_h { |pose| [pose, picture_image(pose)] }
               width, height = SpriteCut.canvas_of(images, sprite.poses)
               whole = sprite.poses.any? { |pose| tile_poses.key?(pose) }
-              SpriteCut.new(images).cut(sprite.poses, width: width, height: height, whole: whole)[:boxes]
+              SpriteCut.new(images).cut(sprite.poses, width: width, height: height, whole: whole).boxes
             end
 
             # The bytes of one set's rows in a sprite's table.

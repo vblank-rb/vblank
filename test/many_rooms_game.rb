@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME OF MANY ROOMS, shaped like an adventure game's play scene: one scene for the whole
+# A game of many rooms, shaped like an adventure game's play scene: one scene for the whole
 # world, laid out as a grid of rooms, and the player walking from room to room. Walking off an
 # edge slides the screen to the room across it, and while it slides both rooms are up: the
 # things of the room left behind slide off one side as the next room's slide in from the other.
@@ -150,7 +150,7 @@ module ManyRoomsGame
       end
       game_loop do
         tick += 1
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
   end

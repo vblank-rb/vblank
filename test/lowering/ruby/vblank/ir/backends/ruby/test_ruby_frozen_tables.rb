@@ -3,7 +3,7 @@
 require "test_helper"
 require "objspace"
 
-# WHAT A FULL COLLECTION WALKS OF A GAME'S PICTURES AND SOUND. Ruby's garbage collector, when it
+# What a full collection walks of a game's pictures and sound. Ruby's garbage collector, when it
 # marks everything, visits every slot of every Array it can reach, a number in each. A big game's
 # pictures, tiles, maps, songs and recordings are millions of numbers, so held as Arrays they made
 # each full collection several frames long, however little the game was doing. Held as binary

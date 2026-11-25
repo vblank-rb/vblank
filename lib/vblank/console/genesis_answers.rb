@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A SEGA GENESIS (Console::Answers says what an answer is).
+    # What every verb does on a Sega Genesis (Console::Answers says what an answer is).
     #
     # The Genesis is a 16-bit console of 1988 with a 68000 at its heart. Next to the Super Nintendo it
     # has a wider screen (320×224), fewer colours (512 to choose from, 61 on the screen at once: four
@@ -14,7 +14,7 @@ module VBlank
     # rows of tiles, and a sound chip of two kinds: square voices and a noise voice (the PSG), and
     # six voices of frequency-modulated sound (the YM2612).
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba genesis]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same game
     # fills each screen.
     #
@@ -35,8 +35,9 @@ module VBlank
       RECORDING_LOUDNESS = "A recording plays at full loudness, whatever its volume: the DAC has no volume of " \
                            "its own. To play it more quietly, the sound processor must scale each sample, about " \
                            "13300 times a second, through a table for each volume. This build does not do that " \
-                           "yet. Its sample loop takes about 204 of the 269 cycles it has for each sample, so the " \
-                           "look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music " \
+                           "yet. Its sample loop takes about 192 of the 269 cycles it has for each sample, and " \
+                           "copies the recording ahead in the rest, so the look-up fits, and 16 tables take 4 KB " \
+                           "of its 8 KB of memory. Until then, the music " \
                            "volume and a sound's volume are only in the sound log."
 
       ANSWERS = Ractor.make_shareable({
@@ -52,6 +53,7 @@ module VBlank
                       "`pixel_size: 2` is refused: a Genesis cannot show a pixel bigger. " \
                       "`shown_rows:` is refused: the build does not give up rows of the screen yet."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :genesis."),
         screen_width: works("320 on a Genesis."),
@@ -73,7 +75,6 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works,
         fill_rect: works,
-        dma_fill_rect: works,
         draw_rect_at: works,
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
@@ -90,9 +91,9 @@ module VBlank
                       "down, either way. If a game moves it further, the game stops and says so. To move " \
                       "over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the " \
                       "camera moves the backgrounds and the sprites together, with no such limit."),
-        keep_showing: works("a painted screen is copied to the console in the blank between frames, and only " \
-                            "the squares that changed. A blank holds about a tenth of the screen, so a pass " \
-                            "that changes all of it takes about eleven frames to show."),
+        redraw_on_change: works("a painted screen is copied to the console in the blank between frames, and " \
+                                "only the squares that changed. A blank holds about a tenth of the screen, so " \
+                                "a pass that changes all of it takes about eleven frames to show."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture: the colour " \
@@ -151,7 +152,10 @@ module VBlank
                        "A sprite whose pictures are drawn " \
                        "in the list's colours, and drawn with that list alone, keeps no list for its own colours. " \
                        "A sprite drawn with several lists " \
-                       "(`draw_with [...], showing:`) takes one of the four for each list."),
+                       "(`draw_with [...], showing:`) takes one of the four for each list. " \
+                       "If those lists do not fit, and the game does not change them, the build makes a copy of the " \
+                       "sprite's pictures for each list instead. The copies use the video memory of more pictures, " \
+                       "and they use one of the four together when all their colours fit in fifteen."),
         color_walk: works,
         colors_in_use: works,
         colors_name_of: works,
@@ -195,7 +199,8 @@ module VBlank
         # --- backgrounds and layers ---
         tiles: works("tiles of fifteen colours each and see-through, from one of the four lists."),
         background: works("two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` is " \
-                          "refused: this build does not make it yet. `show_only_inside` is refused: a Genesis " \
+                          "refused: this build does not make it yet. `hide` and `show` are refused: this build " \
+                          "does not make them yet. `show_only_inside` is refused: a Genesis " \
                           "cannot hide a background outside a box. Its window plane takes the place of one " \
                           "background in whole cells from an edge of the screen, and does not hide an " \
                           "ordinary background. A background is " \
@@ -237,16 +242,10 @@ module VBlank
         clock: refused("a Genesis cartridge has no clock chip. Ask the player for the time on a screen of " \
                        "the game's own, if the game needs it."),
         saves_keep_everything: works,
-        set: works, add: works, add_var: works,
-        sub: works, sub_var: works, copy: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on a Genesis, which runs all of its code alike."),
         call: works,
         scene: works("see `func` for `fast:`."),
-        case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
         shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
@@ -256,13 +255,21 @@ module VBlank
 
         # --- input ---
         held: works("the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has " \
-                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` or more " \
-                    "is refused, and `players:` more than 1 is refused too: this build reads the first pad only."),
+                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads " \
+                    "the second pad. `player: 3` and `player: 4` read the pads in a Sega Team Player in the " \
+                    "second port. `player: :any` reads all of them. The build refuses `player: 5` or more, " \
+                    "and `players:` more than 4, because it reads four pads. If no Team Player is " \
+                    "connected, players 3 and 4 hold no buttons."),
         pressed: works("see `held`."),
-        most_players: works,
+        pulled: works("0 or 100. Each button of a Genesis pad is on or off, so a button reads 100 while it is held " \
+                      "and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as `held` does."),
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
-        players_connected: works("always 1: this build reads the first pad only."),
+        players_connected: works("1 at the start. A player is connected from the first frame that one of their " \
+                                 "buttons is down. Then the player stays connected. Players 3 and 4 can connect " \
+                                 "only through a Sega Team Player in the second port. If no Team Player is " \
+                                 "connected, the count is 1 or 2."),
         rumble: works("nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same " \
                       "without it."),
         computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
@@ -304,7 +311,7 @@ module VBlank
         instrument: works("see `sample`.")
       })
 
-      # WHAT .claude/dsl/sega-genesis.md SAYS: every answer, in the order ANSWERS gives them, and what
+      # What .claude/dsl/sega-genesis.md says: every answer, in the order ANSWERS gives them, and what
       # the Genesis's build does not make yet — +not_yet+, the lowering's own list of the program's
       # kinds it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})

@@ -2,28 +2,29 @@
 
 require "digest"
 require "fileutils"
+require "json"
 
 module VBlank
   module Original
-    # WHAT A PORT'S UNPACKING ROUTINE WROTE, CACHED BETWEEN BUILDS. Built all-in-one, the routine
+    # What a port's unpacking routine wrote, cached between builds. Built all-in-one, the routine
     # runs as the game is built (Builder::DataPacks#play_unpacking), which for a big port is a long
     # wait every build, though neither the player's copy nor the routine changed. A game that names
     # a folder caches the pack file there and a later build hits:
     #
-    #   pack = data_pack(from: ORIGINAL, version: "1", cache: ".cache/packs") { |slots| ... }
+    #   pack = data_pack(from: original, version: "1", cache: ".cache/packs") { |slots| ... }
     #
-    # THE KEY is everything the bytes are made from: the unpacking program, which holds the routine,
-    # the slots and the copy's size, written out as IR::Dump writes a program, with the DEFAULTS of
-    # the record classes it holds, which the dump leaves out (#program_source), so a change to any of
-    # them misses; a digest of the copy's bytes themselves, worked out here rather than taken from
-    # what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
+    # The key is everything the bytes are made from: the unpacking program, which holds the routine,
+    # the slots and the copy's size, written out as IR::Dump writes a program, with the defaults of
+    # the record classes it holds, which the dump leaves out (#program_source), and digested
+    # (#program_digest), so a change to any of them misses; a digest of the copy's bytes
+    # themselves, worked out here rather than taken from what the copy says its SHA-1 is (the program reads the copy from a file, Original::Unpacking,
     # so a copy of many megabytes adds nothing to the key's text); the part of the library a pack is
     # built and played with, each file by its place under lib and its contents (PackLibrary, which
     # says which files and why), so a checkout and a worktree of it share entries; the Ruby; and the
     # SHA-1 and build version the pack's header names. The folder must be one git ignores, since
     # what is cached is the original's data.
     #
-    # AN ENTRY IS THE PACK FILE ITSELF (Original::Pack), which the routine's run writes straight
+    # An entry is the pack file itself (Original::Pack), which the routine's run writes straight
     # into the folder (Unpacking#write_pack_fastest), so a pack of hundreds of megabytes is never
     # held twice to be kept.
     #
@@ -34,10 +35,15 @@ module VBlank
     # so neither reads half of one, and an entry that cannot be read is made again. A PackCache
     # keeps only the digests of the library and the copies it has keyed, and is made for each build.
     #
+    # The key needs the program, which a build makes by building the routine, so a build that holds
+    # the routine unbuilt (RoutineBuild) asks #pack_of_routine, which finds the program's digest in
+    # an index entry kept beside the pack, from the files the routine was built from.
+    #
     # A routine the game gives in parts (`slots.fill_from_copy :music do ... end`) is kept a part
     # at a time, so a change to one part plays that part again and not the rest (#pack_by_parts).
     class PackCache
       ENTRY_EXTENSION = ".pack"
+      INDEX_EXTENSION = ".routine"
       PARTIAL_EXTENSION = ".part"
       EXPIRE_DAYS = 7
       SECONDS_A_DAY = 86_400
@@ -59,8 +65,33 @@ module VBlank
       def pack(unpacking, sha1:, build_version:, parts: nil, &write)
         return pack_by_parts(unpacking, parts, sha1, build_version, &write) if parts
 
-        path = File.join(@folder, "#{key(unpacking, sha1, build_version)}#{ENTRY_EXTENSION}")
-        read(path) || store(path) { |temporary| yield temporary, unpacking, nil }
+        pack_of_program(unpacking, PackCache.program_digest(unpacking.program), sha1, build_version, &write)
+      end
+
+      # The pack of a routine not built yet, +routine+ (a RoutineBuild): as #pack makes it, but
+      # without building the routine where the pack is kept already. Working out #pack's key builds
+      # the routine, which for a big port takes longer than reading the pack back, so the routine's
+      # index entry is kept beside the pack. It is keyed on what the routine is declared from
+      # (RoutineBuild#source) and on the key's other parts (#key_digest), and holds the files the
+      # routine was built from with their digests (RoutineFiles) and the digest of the program it
+      # built. A later build whose index entry's files all hash the same reads the pack under that
+      # program's key, and builds nothing.
+      #
+      # Where a file changed, or there is no entry, the routine is built and the pack made or read as
+      # #pack does, and the entry written again: a change that builds the same program still reads
+      # the pack kept for it.
+      def pack_of_routine(routine, sha1:, build_version:, &write)
+        index_path = File.join(@folder, "#{index_key(routine, sha1, build_version)}#{INDEX_EXTENSION}")
+        indexed = read_index(index_path)
+        if indexed&.files&.unchanged?
+          kept = read(entry_path(routine.copy_bytes, indexed.program_digest, sha1, build_version))
+          return kept if kept
+        end
+        unpacking = routine.unpacking
+        program_digest = PackCache.program_digest(unpacking.program)
+        made = pack_of_program(unpacking, program_digest, sha1, build_version, &write)
+        store_index(index_path, RoutineIndexEntry.new(program_digest: program_digest, files: routine.files))
+        made
       end
 
       # What a pack that only keeps slots names in its header, where there is no copy's SHA-1 or
@@ -68,10 +99,13 @@ module VBlank
       SLOTS_ONLY_SHA1 = ("0" * 40).freeze
       SLOTS_ONLY_VERSION = "slots"
 
-      # What a key holds of +program+: the program as IR::Dump writes it, and the DEFAULTS of the
+      # What a key holds of +program+: the program as IR::Dump writes it, and the defaults of the
       # record classes it holds, which the dump leaves out (IR::Dump.record_defaults_source), so the
       # key changes with what the program means. UnpackingParts keys a part's program the same way.
       def self.program_source(program) = "#{IR::Dump.source(program)}\0#{IR::Dump.record_defaults_source(program)}"
+
+      # The digest of #program_source, which a key holds in its place.
+      def self.program_digest(program) = Digest::SHA256.hexdigest(program_source(program))
 
       # Each slot's bytes for +unpacking+, by name: the cached entry's on a hit, else the block's
       # (a Hash of them, as Unpacking#slot_bytes_in gives), which are then stored. For a game's own
@@ -90,7 +124,7 @@ module VBlank
 
       private
 
-      # A ROUTINE IN PARTS (UnpackingParts) is cached a part at a time. A part's entry is a pack
+      # A routine in parts (UnpackingParts) is cached a part at a time. A part's entry is a pack
       # holding the slots it is the last part to write (UnpackingParts#slots_of). Its key is the
       # whole routine's, with the programs of that part and every part it needs
       # (UnpackingParts#inputs_of), each built alone (UnpackingParts#key_source), in place of the
@@ -150,34 +184,84 @@ module VBlank
       end
 
       def part_entry_path(unpacking, parts, name, sha1, build_version)
-        digest = key_digest(unpacking, sha1, build_version)
+        digest = key_digest(unpacking.copy_bytes, sha1, build_version)
         digest << "part " << name.to_s << "\0" << parts.slots_of(name).join(" ") << "\0" << parts.key_source(name)
         File.join(@folder, "#{digest.hexdigest}#{ENTRY_EXTENSION}")
       end
 
-      def key(unpacking, sha1, build_version)
-        digest = key_digest(unpacking, sha1, build_version)
-        digest << PackCache.program_source(unpacking.program)
+      # The pack +unpacking+ makes, its program's digest +program_digest+: kept, or made by the block.
+      def pack_of_program(unpacking, program_digest, sha1, build_version)
+        path = entry_path(unpacking.copy_bytes, program_digest, sha1, build_version)
+        read(path) || store(path) { |temporary| yield temporary, unpacking, nil }
+      end
+
+      def entry_path(copy_bytes, program_digest, sha1, build_version)
+        digest = key_digest(copy_bytes, sha1, build_version)
+        digest << program_digest
+        File.join(@folder, "#{digest.hexdigest}#{ENTRY_EXTENSION}")
+      end
+
+      # The key of a routine's index entry (#pack_of_routine).
+      def index_key(routine, sha1, build_version)
+        digest = key_digest(routine.copy_bytes, sha1, build_version)
+        digest << "routine\0" << routine.source
         digest.hexdigest
       end
 
-      # The key's digest of everything but the program: the library, the Ruby, the copy, and the
-      # SHA-1 and build version the pack's header names.
+      # The key's digest of everything but the program: the library, the Ruby, the copy (its bytes,
+      # +copy_bytes+), and the SHA-1 and build version the pack's header names.
       # Worked out once for every part's key, since the library and the copy can be many megabytes.
-      def key_digest(unpacking, sha1, build_version)
+      def key_digest(copy_bytes, sha1, build_version)
         library = @library_digest ||= @library.digest
-        copy = (@copy_digests ||= {}.compare_by_identity)[unpacking.copy_bytes] ||= Digest::SHA256.hexdigest(unpacking.copy_bytes)
+        copy = (@copy_digests ||= {}.compare_by_identity)[copy_bytes] ||= Digest::SHA256.hexdigest(copy_bytes)
         digest = Digest::SHA256.new
         digest << library << "\0" << RUBY_VERSION << " " << RUBY_PLATFORM << "\0"
         digest << copy << "\0"
         digest << sha1.to_s << "\0" << build_version.to_s << "\0"
       end
 
+      # What a routine's index entry holds (#pack_of_routine): the digest of the program the routine
+      # built (#program_digest), and the files it was built from (RoutineFiles). Kept as JSON, so a
+      # person can read which files a routine was built from.
+      RoutineIndexEntry = Data.define(:program_digest, :files) do
+        def to_json_text = JSON.generate({ "program" => program_digest, "files" => files.digests })
+
+        def self.from_json_text(text)
+          read = JSON.parse(text)
+          new(program_digest: read.fetch("program"), files: RoutineFiles.new(read.fetch("files")))
+        end
+      end
+
+      # The index entry at +path+, its use marked so pruning keeps it; nil where there is none or it
+      # cannot be read.
+      def read_index(path)
+        return unless File.file?(path)
+
+        entry = RoutineIndexEntry.from_json_text(FilesRead.unrecorded { File.read(path) })
+        File.utime(Time.now, Time.now, path)
+        entry
+      rescue JSON::ParserError, KeyError, TypeError, NoMethodError, SystemCallError
+        nil
+      end
+
+      # +entry+ kept at +path+, written under a name of its own and renamed once whole, as #store
+      # keeps a pack. A folder that cannot be written loses the entry, and #store has said so.
+      def store_index(path, entry)
+        temporary = "#{path}.#{Process.pid}.#{Thread.current.object_id}#{PARTIAL_EXTENSION}"
+        FileUtils.mkdir_p(@folder)
+        File.write(temporary, entry.to_json_text)
+        File.rename(temporary, path)
+      rescue SystemCallError
+        nil
+      ensure
+        File.delete(temporary) if temporary && File.exist?(temporary)
+      end
+
       # A hit's pack, its use marked so pruning keeps it; nil on a miss or an entry that cannot be read.
       def read(path)
         return unless File.file?(path)
 
-        cached = Pack.read(path)
+        cached = FilesRead.unrecorded { Pack.read(path) }
         File.utime(Time.now, Time.now, path)
         cached
       rescue WrongPack, ArgumentError, Errno::ENOENT
@@ -197,10 +281,10 @@ module VBlank
           File.binwrite(temporary, "")
         rescue SystemCallError => e
           warn_not_cached(e)
-          return Pack.read_from_temporary_file { |elsewhere| yield elsewhere }
+          return FilesRead.unrecorded { Pack.read_from_temporary_file { |elsewhere| yield elsewhere } }
         end
-        yield temporary
-        made = Pack.read(temporary)
+        FilesRead.unrecorded { yield temporary }
+        made = FilesRead.unrecorded { Pack.read(temporary) }
         store_entry(temporary, path)
         made
       ensure
@@ -221,7 +305,7 @@ module VBlank
 
       def prune
         expired = Time.now - (EXPIRE_DAYS * SECONDS_A_DAY)
-        Dir.glob(File.join(@folder, "*{#{ENTRY_EXTENSION},#{PARTIAL_EXTENSION}}")).each do |path|
+        Dir.glob(File.join(@folder, "*{#{ENTRY_EXTENSION},#{INDEX_EXTENSION},#{PARTIAL_EXTENSION}}")).each do |path|
           File.delete(path) if File.mtime(path) < expired
         rescue Errno::ENOENT
           next

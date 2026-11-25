@@ -58,14 +58,14 @@ module VBlank
       #
       # A whole number can't hold a fraction, so a program that needs one stores the
       # value multiplied up by a fixed amount: with 16 fraction bits, 1.5 is kept as
-      # 1.5 * 65536. Adding two of those works unchanged. MULTIPLYING two of them
-      # does not: the answer comes out multiplied up TWICE, so it has to be divided
+      # 1.5 * 65536. Adding two of those works unchanged. Multiplying two of them
+      # does not: the answer comes out multiplied up twice, so it has to be divided
       # back down once. That would be fine, except the doubled-up product needs more
       # than 32 bits to exist before it can be divided down — 1.5 * 1.5 in 16 fraction
       # bits multiplies 98304 by 98304, which is 9,663,676,416, twice over the wrap
       # point. Plain `mul` wraps there and returns nonsense.
       #
-      # So the product is formed at full width FIRST and only then brought back down.
+      # So the product is formed at full width first and only then brought back down.
       # The final result is still a 32-bit value and still wraps if it doesn't fit —
       # what changes is that the intermediate no longer has to.
       def mul_fix(a, b, bits)
@@ -81,7 +81,7 @@ module VBlank
       # fraction bits is 196608, and multiplying it up once more needs 48 bits before
       # anything is divided.
       #
-      # So the numerator is widened FIRST and only then divided. +bits+ is how far it is
+      # So the numerator is widened first and only then divided. +bits+ is how far it is
       # widened, which is what decides the answer's own scale. It truncates toward zero,
       # like every other `/` here.
       #
@@ -92,7 +92,7 @@ module VBlank
       # "as tall as a number goes" is the one that still looks like a wall. Wrapping
       # would make it negative, which looks like nothing at all.
       #
-      # Dividing by nought is NOT that case, and is not held anywhere: it gives the same
+      # Dividing by nought is not that case, and is not held anywhere: it gives the same
       # bare 1 or -1 a plain divide by nought does (see #quotient_by_zero), which a number
       # carrying a fraction reads as the smallest fraction there is rather than as one.
       def div_fix(a, b, bits)
@@ -129,13 +129,13 @@ module VBlank
         wrap(~wrap(a))
       end
 
-      # A SHIFT COUNT OUTSIDE 0...32 EMPTIES THE NUMBER, and that is a decision rather
+      # A shift count outside 0...32 empties the number, and that is a decision rather
       # than something that fell out. Moving every bit of a 32-bit number 32 places
       # puts all of them off the end, so what is left is nothing: zero going left, and
       # going right whatever was filling in behind — 0 for a number that was positive
       # and -1 for one that was negative.
       #
-      # A NEGATIVE count does the same, rather than turning round and shifting the
+      # A negative count does the same, rather than turning round and shifting the
       # other way. Ruby does turn round (8 >> -2 is 32), and this is the one place the
       # framework declines to follow it: a negative shift count in a game is a mistake,
       # and quietly reversing direction hides the mistake instead of showing it. Going
@@ -194,7 +194,7 @@ module VBlank
         wrap(quotient)
       end
 
-      # WHAT DIVIDING BY NOUGHT GIVES, which is a decision, because there is no answer to
+      # What dividing by nought gives, which is a decision, because there is no answer to
       # find: 1, or -1 for a numerator below nought. Nought itself is not below nought, so
       # nought over nought is 1.
       #

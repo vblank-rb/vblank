@@ -73,7 +73,7 @@ module VBlank
             exe
           end
 
-          # WHERE ZIG KEEPS WHAT IT COMPILES. Left to itself, zig cc writes every object file into
+          # Where Zig keeps what it compiles. Left to itself, zig cc writes every object file into
           # ~/.cache/zig, which every zig project on the machine shares and nothing ever prunes, and
           # since every test writes new C every compile adds files nobody reads again. zig splits
           # what it keeps in two: the libraries every compile links (compiler_rt and the
@@ -127,14 +127,14 @@ module VBlank
           # So the flags are written from here, from the same list a compile is handed (WARNINGS;
           # build/build.zig keeps a copy for the desktop build, which a test holds to it). The
           # file names folders on this machine, so it is written rather than checked
-          # in — and NOBODY RUNS ANYTHING TO GET IT: every build looks at it and writes it again
+          # in — and nobody runs anything to get it: every build looks at it and writes it again
           # when it is out of date (#refresh_checker_flags_in_checkout). A fresh checkout has it after its
           # first build, the build that fetches SDL adds SDL's folder to it, and a change to the
           # build's flags reaches it on the next build. It sits one folder above the runtime and
           # not in it, because every file in the runtime's folder is part of what a compile is
           # remembered by (#cache_key).
           #
-          # WHAT THE FLAGS DO NOT CURE. A checker keeps its reading of a header between edits.
+          # What the flags do not cure. A checker keeps its reading of a header between edits.
           # When a header changes and it has not caught up, it reads the file's new text at the
           # old positions and reports nonsense from the middle of a comment ("invalid suffix on
           # integer constant", on a line that only names a number the header defines). That

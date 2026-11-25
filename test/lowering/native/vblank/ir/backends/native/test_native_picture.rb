@@ -108,17 +108,14 @@ class TestNativePicture < Minitest::Test
       end
       scene(:walled) { background :wall, tiles: :wall, map: ["#" * 30] * 20 }
       game_loop do
-        case_var :state do
-          when_val 0, :waiting
-          when_val 1, :walled
-        end
+        call({ 0 => :waiting, 1 => :walled }, number: :state)
       end
     end
 
     assert_native_matches_reference program, frames: 6
   end
 
-  # Two sprites cross: a hit is only where their DRAWN pixels meet, so the dot passes through the
+  # Two sprites cross: a hit is only where their drawn pixels meet, so the dot passes through the
   # hollow ring's middle untouched for a few frames.
   def test_sprites_collide_only_where_their_drawn_pixels_meet
     program = program_of do
@@ -198,7 +195,7 @@ class TestNativePicture < Minitest::Test
     %i[red blue green].each { |name| assert_includes seen, Color.resolve(name), "#{name} should have been drawn" }
   end
 
-  # A stack of named layers on a picture that stays: the background declared second sits BEHIND
+  # A stack of named layers on a picture that stays: the background declared second sits behind
   # the first, and the sprite declared first is drawn over the one declared after it.
   def test_named_layers_decide_what_is_in_front
     program = program_of do
@@ -227,7 +224,7 @@ class TestNativePicture < Minitest::Test
     assert_equal Color.resolve(:cyan), top_row[3], "and the sky should show between its slats"
   end
 
-  # Scenery a named layer puts in FRONT of a sprite: the whole view is rebuilt from its layers,
+  # Scenery a named layer puts in front of a sprite: the whole view is rebuilt from its layers,
   # and the sprite shows only between the slats.
   def test_scenery_in_front_of_a_sprite
     program = program_of do
@@ -284,11 +281,7 @@ class TestNativePicture < Minitest::Test
         state = 0 if ticks == 11
       end
       game_loop do
-        case_var :state do
-          when_val 0, :nowhere
-          when_val 1, :indoors
-          when_val 2, :outdoors
-        end
+        call({ 0 => :nowhere, 1 => :indoors, 2 => :outdoors }, number: :state)
       end
     end
 
@@ -321,10 +314,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:without) { ticks += 1 }
       game_loop do
-        case_var :state do
-          when_val 0, :with_scenery
-          when_val 1, :without
-        end
+        call({ 0 => :with_scenery, 1 => :without }, number: :state)
       end
     end
 
@@ -483,7 +473,7 @@ class TestNativePicture < Minitest::Test
   end
 
   # Art given as numbers into its list of colors, the list holding one color at two places: drawn
-  # with another list, each pixel takes the color at ITS place, which its color alone cannot say.
+  # with another list, each pixel takes the color at its place, which its color alone cannot say.
   def test_a_sprite_given_as_places_is_recolored_by_place
     program = program_of do
       screen :tiled
@@ -643,11 +633,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = ticks / 4 % 3
-        case_var :state do
-          when_val 0, :tear_free
-          when_val 1, :plain
-          when_val 2, :tiled
-        end
+        call({ 0 => :tear_free, 1 => :plain, 2 => :tiled }, number: :state)
       end
     end
 
@@ -705,14 +691,14 @@ class TestNativePicture < Minitest::Test
 
   # A picture drawn when it changes and then left alone, on one page and on two: the tear-free
   # screen has to be painted once for each of its pages, or the two show different scores.
-  def test_a_picture_kept_showing_on_one_page_and_on_two
+  def test_a_picture_redrawn_on_change_on_one_page_and_on_two
     [false, true].each do |tear_free|
       program = program_of do
         screen :bitmap, tear_free: tear_free
         score = 0
         n = 0
         clear_screen :black
-        bar = keep_showing(:bar) { draw_rect_at 10, 10, score * 4, 6, :green }
+        bar = redraw_on_change(:bar) { draw_rect_at 10, 10, score * 4, 6, :green }
         game_loop do
           score = 5 if n == 2
           bar.changed if n == 2
@@ -792,7 +778,7 @@ class TestNativePicture < Minitest::Test
       room = background :room, tiles: :room, map: ["#..#...#" * 4] * 32
       n = 0
       game_loop do
-        room.rotate 30
+        room.rotate! 30
         record_statement(VBlank::IR::Build.scroll_background(:room, x: VBlank::IR::Build.var_ref(:n), y: VBlank::IR::Build.int(5)))
         n += 7
       end
@@ -908,11 +894,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :room
-          when_val 1, :bare
-          when_val 2, :painted
-        end
+        call({ 0 => :room, 1 => :bare, 2 => :painted }, number: :state)
       end
     end
 
@@ -955,10 +937,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -992,10 +971,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1030,10 +1006,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1069,10 +1042,7 @@ class TestNativePicture < Minitest::Test
       game_loop do
         ticks += 1
         state = order[ticks]
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 
@@ -1466,7 +1436,7 @@ class TestNativePicture < Minitest::Test
                  "under solid mist the hero shows only in its gaps, two columns of him; with none, all of him"
   end
 
-  # Mist over a picture that STAYS, with a sprite in front of it drawn straight onto the picture:
+  # Mist over a picture that stays, with a sprite in front of it drawn straight onto the picture:
   # nothing scrolls and no scenery is in front of a sprite, so only the amount changing, on some
   # frames and not on others, has the picture built again.
   def test_a_see_through_amount_changes_over_a_picture_that_stays
@@ -1586,10 +1556,7 @@ class TestNativePicture < Minitest::Test
         fade :black, 0 if n == 8
       end
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :pool
-        end
+        call({ 0 => :title, 1 => :pool }, number: :state)
         state = 1 if n == 3
         n += 1
       end
@@ -1741,8 +1708,8 @@ class TestNativePicture < Minitest::Test
 
   # The line falling in the middle of the stack, with no scenery at all: the backdrop and the
   # sprite behind the line fade, and the sprite in the line's own layer and the one in front of
-  # it do not. A sprite put in the front layer as the game runs is still reached, since the line
-  # goes by the layer a thing was declared in. Then the fade is placed under the front layer
+  # it do not. A sprite put in the front layer as the game runs is left alone, since the line
+  # goes by the layer a thing is in now. Then the fade is placed under the front layer
   # instead, and reaches the middle one too.
   def test_a_fade_placed_under_a_middle_layer_over_the_bare_backdrop
     block = "########\n" * 8
@@ -1777,12 +1744,12 @@ class TestNativePicture < Minitest::Test
     assert_equal 31 | (15 << 5) | (15 << 10), at.(under_middle, 24, 24), "and so should the sprite behind the line"
     assert_equal Color.resolve(:green), at.(under_middle, 64, 24), "the sprite in the line's own layer is as drawn"
     assert_equal Color.resolve(:blue), at.(under_middle, 104, 24), "and so is the one in front of it"
-    refute_equal Color.resolve(:orange), at.(under_middle, 144, 24), "one declared behind the line fades wherever it is put"
+    assert_equal Color.resolve(:orange), at.(under_middle, 144, 24), "one put in front of the line is as drawn, wherever it was declared"
     assert_equal 15 | (31 << 5) | (15 << 10), at.(moments.last, 64, 24), "under the front layer the middle sprite fades too"
     assert_equal Color.resolve(:blue), at.(moments.last, 104, 24), "and the front one still does not"
   end
 
-  # What a placed fade leaves as drawn, the interpreter knows by NAME, and a background can be
+  # What a placed fade leaves as drawn, the interpreter knows by name, and a background can be
   # given the name the build made for a sprite. The two then stand or fall together: here the
   # floor is behind the line, and is left as drawn because the score sharing its name is in front.
   def test_a_placed_fade_leaves_a_background_that_shares_a_kept_sprites_name
@@ -1896,7 +1863,8 @@ class TestNativePicture < Minitest::Test
     assert_native_matches_reference program, frames: 14
 
     # The sky, the sea and the sand, each read at one pixel, as they change over the run.
-    seen = moments.map { |moment| [[4, 4], [4, 60], [4, 150]].map { |x, y| moment.picture[(y * WIDTH) + x] } }
+    spots = [[4, 4], [4, 60], [4, 150]]
+    seen = moments.map { |moment| spots.map { |x, y| moment.picture[(y * WIDTH) + x] } }
     as_named = ->(*names) { names.map { |name| Color.resolve(name) } }
     darkened = ->(*names) { as_named.(*names).map { |color| half_way_to_black(color) } }
     assert_equal [as_named.(:cyan, :blue, :yellow), as_named.(:orange, :red, :yellow),
@@ -1940,10 +1908,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:inside) { n += 0 }
       game_loop do
-        case_var :state do
-          when_val 0, :outside
-          when_val 1, :inside
-        end
+        call({ 0 => :outside, 1 => :inside }, number: :state)
         state = 1 if n == 5
         state = 0 if n == 7
         n += 1
@@ -1982,10 +1947,7 @@ class TestNativePicture < Minitest::Test
       scene(:pool) { layer(:water, transparency: 50) { background :waves, tiles: :waves, map: ["~" * 30] * 20 } }
       scene(:shrine) { layer(:glow, shows: 20 + (n * 5), shows_behind: 100) { background :rays, tiles: :rays, map: ["r" * 30] * 20 } }
       game_loop do
-        case_var :state do
-          when_val 0, :pool
-          when_val 1, :shrine
-        end
+        call({ 0 => :pool, 1 => :shrine }, number: :state)
         state = 1 if n == 3
         state = 0 if n == 7
         n += 1
@@ -2100,10 +2062,7 @@ class TestNativePicture < Minitest::Test
       end
       scene(:shore) { background :ground, tiles: :ground, map: ["# ##"] * 20 }
       game_loop do
-        case_var :state do
-          when_val 0, :lake
-          when_val 1, :shore
-        end
+        call({ 0 => :lake, 1 => :shore }, number: :state)
         ball.move :right, by: 3
         state = 1 if n == 3
         state = 0 if n == 6
@@ -2202,7 +2161,7 @@ class TestNativePicture < Minitest::Test
     assert_operator rows_unlike_the_one_above.max, :>=, 150, "each row should sit further across than the one above: #{rows_unlike_the_one_above.inspect}"
   end
 
-  # TILES THE GAME PAINTS AS IT RUNS, in a scene's own background that scrolls. Nothing shows
+  # Tiles the game paints as it runs, in a scene's own background that scrolls. Nothing shows
   # until the game says its list changed; what it paints shows the frame after; a write it never
   # says does not; drawn with another list the same pixels change color by place; and the scene
   # coming back shows the list as it is by then, the unsaid write included.
@@ -2233,7 +2192,7 @@ class TestNativePicture < Minitest::Test
       scene(:hall) { state = 0 if n == 11 }
       game_loop do
         n += 1
-        case_var(:state) { when_val 0, :room; when_val 1, :hall }
+        call({ 0 => :room, 1 => :hall }, number: :state)
       end
     end
 
@@ -2249,7 +2208,7 @@ class TestNativePicture < Minitest::Test
     refute_equal moments[5].picture, moments[14].picture, "the scene came back with the write the game never said"
   end
 
-  # A SPRITE'S PICTURE THE GAME PAINTS, and a canvas drawn into with its words. The picture is
+  # A sprite's picture the game paints, and a canvas drawn into with its words. The picture is
   # shown by two sprites, one of them drawn with another list of colors, and is see-through all
   # over until its first copy. The canvas is cleared, filled, lettered and dotted on different
   # frames, a sprite's picture too.
@@ -2296,7 +2255,7 @@ class TestNativePicture < Minitest::Test
     assert_operator moments[10].picture.count(Color.resolve(:blue)), :>=, 32 * 16, "and the canvas cleared to one color"
   end
 
-  # A LIST OF COLORS THAT HOLDS OTHER COLORS AS THE GAME RUNS. Two sprites are drawn with the
+  # A list of colors that holds other colors as the game runs. Two sprites are drawn with the
   # slot and a third with a plain list beside it; the slot is told each of its sets by number,
   # then a number that names none, which is the colors it was declared with.
   def test_a_list_of_colors_told_to_hold_others_recolors_what_is_drawn_with_it

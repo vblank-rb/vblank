@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # A GAME'S SONGS AND SOUND EFFECTS, AS THE GENESIS'S PLAYER READS THEM (Runtime::Music): the table
+        # A game's songs and sound effects, as the Genesis's player reads them (Runtime::Music): the table
         # is SongTable's, and what is the Genesis's is here. A chip write is a write to one of its two
         # sound chips (ChipWrites), and every place in the table is a word.
         class Music < SongTable

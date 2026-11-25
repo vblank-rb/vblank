@@ -4,7 +4,7 @@ require "test_helper"
 require "dsl_verbs"
 require "prism"
 
-# THE GOLDEN PATH SEES WHAT THE EXAMPLES SHOW (test_every_example_plays.rb), so a verb no example
+# The golden path sees what the examples show (test_every_example_plays.rb), so a verb no example
 # calls is a verb a day's testing never builds. Each verb is held to a call in one.
 #
 # A call is what Ruby's own parser (Prism) reads as one, on any receiver: `fade :black, 50`,
@@ -14,13 +14,7 @@ require "prism"
 class TestExamplesUseEveryVerb < Minitest::Test
   include DslVerbs
 
-  # The flat spellings of what a variable's own handle does (`set :x, 5`, `flip :dx`, `add :x, 1`):
-  # each exists only to refuse with a friendly error naming the word to write instead, so an
-  # example calling one would not build. Builder::Variables makes them, from these lists.
-  FLAT_REFUSALS = (VBlank::Builder::Variables::CHANGING_HANDLE_WORDS.keys +
-                   VBlank::Builder::Variables::CHANGING_OPERATOR_WORDS.keys + %i[set copy]).freeze
-
-  # What a game has no reason to show, besides those: tools for finding a fault.
+  # What a game has no reason to show: tools for finding a fault.
   # `entry` is raw ARM for the Advance's processor, refused by every other console's build; a game
   # reaches for it only for what the verbs cannot say, and an example is for what they can.
   # `built_for_computer?` is a Ruby true or false read while the game is built and makes nothing
@@ -30,8 +24,13 @@ class TestExamplesUseEveryVerb < Minitest::Test
   # data pack left out, so it needs one too.
   # colors_name_of gives the name of the list a picture is drawn from, which a game needs only
   # for a pose that takes its colours from a data pack's frame; elsewhere the game wrote the name.
-  NOT_FOR_AN_EXAMPLE = (%i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?] +
-                        FLAT_REFUSALS).uniq.freeze
+  # `pulled` reads a trigger pulled part of the way, which varies only on a computer's gamepad, and
+  # L2 and R2 are on no console's pad but the PlayStation's, so an example built for several
+  # consoles could call it only behind a branch for one console. .claude/dsl/input.md shows it.
+  # `pool` is what an Array of Structs is built as, and the examples write that Array
+  # (examples/sparks.rb, dive, shmup), which builds a pool on the golden path all the same.
+  NOT_FOR_AN_EXAMPLE = %i[debug_halt dump_func entry data_pack shell_screen colors_name_of built_for_computer?
+                          pulled pool].freeze
 
   def test_every_verb_is_called_in_an_example
     called = Dir[VBlank.root.join("examples/**/*.rb").to_s].each_with_object(Set.new) do |path, names|

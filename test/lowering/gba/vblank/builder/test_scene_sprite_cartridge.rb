@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_scene_sprite"
 
-# A painted-screen sprite declared ABOVE the loop, while a tiled scene is up, on the Advance's
+# A painted-screen sprite declared above the loop, while a tiled scene is up, on the Advance's
 # own cartridge: a tiled screen keeps its tile pictures in the same video memory a painted screen
 # keeps its pixels in, so a sprite painted then would write into the tiles. That memory is read
 # in the emulator here. What every run's picture shows is in

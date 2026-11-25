@@ -3,7 +3,7 @@
 require "test_helper"
 require "many_rooms_game"
 
-# A SCENE'S PICTURE GROUPS IN THE MAP OF SPRITE MEMORY. A grouped picture has one place there,
+# A scene's picture groups in the map of sprite memory. A grouped picture has one place there,
 # shared with pictures whose groups are never up with its own, and is copied in as one of its
 # groups comes up. So what a scene needs for its groups is what the worst set of groups up
 # together needs, and that set is the one to make smaller when the scene does not fit. The map
@@ -50,7 +50,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
         rooms.show room
         gulls.each { |gull| gull.face PICTURES[1..6], showing: gull.look }
       end
-      game_loop { case_var(:state) { when_val 0, :harbor } }
+      game_loop { call({ 0 => :harbor }, number: :state) }
     end
   end
 
@@ -146,7 +146,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
     assert_match(/picture_groups :rooms/, error.sprite_memory.to_s)
   end
 
-  # A GRID OF ROOMS (see ManyRoomsGame): every room's pictures come to several times what the
+  # A grid of rooms (see ManyRoomsGame): every room's pictures come to several times what the
   # console holds, and the busiest set up together is two rooms across an edge. The rooms are
   # placed like a chessboard's squares, those of one colour sharing places, so the room the
   # groups take is the pair's and the scene is the pair with the hero and the heart.
@@ -171,7 +171,7 @@ class TestPictureGroupsMemoryMap < Minitest::Test
         PICTURES.each_with_index { |name, n| image name, width: 64, height: 64, data: art.call(n) }
         var :state, 0
         instance_exec(&block)
-        game_loop { case_var(:state) { when_val 0, :gallery } }
+        game_loop { call({ 0 => :gallery }, number: :state) }
       end
     end.message
   end

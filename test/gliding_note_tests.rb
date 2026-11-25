@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# ONE RECORDED NOTE MOVING THROUGH EXACT PITCHES, struck once, on every console whose build glides a
+# One recorded note moving through exact pitches, struck once, on every console whose build glides a
 # recorded note (Console::Description#glides_recordings): the Advance, the Super Nintendo, the Genesis
 # and the PlayStation. Each console's folder has a test file that includes these (GlidingShapedNoteTests
 # where the console shapes a recording, every one but the Genesis):

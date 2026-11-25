@@ -3,7 +3,7 @@
  * method it was ported from, in backends/reference.rb or reference/framebuffer.rb, because that
  * is what decides what is right here.
  *
- * What is NOT here is refused when the game is built rather than drawn wrongly (see
+ * What is not here is refused when the game is built rather than drawn wrongly (see
  * Picture#refuse_unsupported_picture!, which is the whole list): more of anything than there is
  * room for.
  *
@@ -25,7 +25,7 @@ enum { CELLS = RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT };
  * feature leaves it unused, and -Werror counts an unused static function as a fault. */
 #define FEATURE_ONLY __attribute__((unused))
 
-/* TWO PAGES, OR ONE (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
+/* Two pages, or one (Framebuffer#paged=). A tear-free screen is two pictures: the display shows
  * one while the game draws into the other, and they trade places between frames, so nobody ever
  * sees a half-drawn picture. Drawing always lands on +pixels+ and the viewer always reads
  * +viewed+; with one page those are the same picture. */
@@ -50,6 +50,10 @@ static int32_t areas_deep;
  * drawn at (camera_x, camera_y). Nothing drawn moves. */
 static int32_t camera_x, camera_y;
 
+/* How much of the top left of the picture the window shows (rg_screen_show_size): the whole of it
+ * but where a scene of a game with a screen of its own asks a smaller one. */
+static int32_t shown_width = RG_SCREEN_WIDTH, shown_height = RG_SCREEN_HEIGHT;
+
 /* The patches of picture saved under bitmap sprites, by buffer number (Reference @backing): each
  * cell a color, or NO_CELL where the patch hung off what could be read. Nothing until the first
  * save. */
@@ -57,7 +61,7 @@ enum { NO_CELL = -1 };
 static int32_t **saved_patches;
 static int32_t patches_room;
 
-/* THE SCENERY WITH NOTHING ON IT (Reference @scene_fb): the backdrop and every background up,
+/* The scenery with nothing on it (Reference @scene_fb): the backdrop and every background up,
  * painted once and kept. A sprite on a picture that is not rebuilt every frame is drawn straight
  * onto it, so before it is drawn somewhere new the patch it covered is put back from here. Made
  * again whenever the scenery changes. */
@@ -136,6 +140,7 @@ static int32_t frames_begun;    /* a frame boundary has been reached (Reference 
 static int32_t kind = -1;       /* the kind of screen up; none before the first `screen` */
 static int32_t owed;            /* a rebuild of the whole view is owed (Reference#request_repaint) */
 static int32_t repaints_painted;   /* how many times the whole view was built again (rg_screen_repaints_painted) */
+static int64_t drawn_tiles_set_up; /* rows of tiles as drawn set up (rg_screen_drawn_tiles_set_up) */
 /* The interpreter asks for a rebuild every time the scroll or the sprites are set. Here a setting
  * that moved nothing asks for nothing and only notes that it would have (rebuild_skipped), since
  * the picture is the one a rebuild would paint. That stops being so once the picture is touched:
@@ -146,12 +151,12 @@ static int32_t picture_touched;
 static int32_t backdrop;        /* the colour shown wherever nothing is drawn (Reference @backdrop) */
 static int32_t current_scene = -1;
 
-/* WHAT IS PAINTED FROM HERE ON IS FADED on its way in (Framebuffer @paint_toward), by the placed
+/* What is painted from here on is faded on its way in (Framebuffer @paint_toward), by the placed
  * fade in force: the colour table each colour goes through, or NULL to paint as drawn. Set only
  * while the view is rebuilt, for the things that fade reaches (fade_unless_left_as_drawn). */
 static const uint16_t *paint_fade;
 
-/* WHAT IS PAINTED FROM HERE ON IS MIXED with what is already in the cell (Framebuffer @through):
+/* What is painted from here on is mixed with what is already in the cell (Framebuffer @through):
  * so many sixteenths of what is painted, so many of what is under it. On only while one thing in
  * a see-through layer is being painted. The picture is painted back to front, so "what is
  * already there" is what the display would find directly behind the layer. */
@@ -159,7 +164,7 @@ typedef struct { int32_t painted, under; } shares;
 static int32_t mixing;
 static shares mixed_by;
 
-/* THE TWO COLORS EACH MIXED CELL WAS MIXED FROM (Framebuffer @mixed_tops), for a tint that moves
+/* The two colors each mixed cell was mixed from (Framebuffer @mixed_tops), for a tint that moves
  * the color table, which reaches each side before the mix (see shown_color). +is_mixed+ is nought
  * for a cell painted solid. Kept for the picture, and for the scenery kept apart to put back
  * behind a sprite (keep_scenery), so a cell put back is still a mix. A screen has one see-through
@@ -171,7 +176,7 @@ typedef struct {
 static mixed_sides picture_mixes, scenery_mixes;
 static shares mixed_cells_by;
 
-/* THE PICTURE WITH NO SPRITES ON IT, kept beside the picture (Framebuffer @scenery) in a game
+/* The picture with no sprites on it, kept beside the picture (Framebuffer @scenery) in a game
  * with a sprite in a see-through layer. "Mix with what is already there" is wrong for a sprite
  * over another sprite: a display puts all its sprites into one layer before it mixes anything,
  * so a see-through one is mixed with the scenery or the backdrop under it and never with a
@@ -181,7 +186,7 @@ static uint16_t picture_without_sprites[CELLS];
 static int32_t painting_sprite; /* what is painted from here on is a sprite's (Framebuffer @painting_sprite) */
 
 
-/* A FILTER THE PICTURE IS READ THROUGH, handed over by a feature once a read (rg_hook_fade_filter,
+/* A filter the picture is read through, handed over by a feature once a read (rg_hook_fade_filter,
  * rg_hook_dim_filter), so no feature is asked about a pixel. +table+ is the colour shown for each
  * of the 65536 values a cell can hold, indexed by its sixteen bits. It applies to every pixel when
  * +everywhere+; otherwise +rows+ has for each screen row [from, to, inverted], and a pixel is
@@ -330,7 +335,7 @@ static int32_t sprites_seen_through(void) {
  * of its own, which keeps none. */
 static int32_t keeps_picture_without_sprites(void) { return target != scenery && sprites_seen_through(); }
 
-/* A LAYER A FEATURE PAINTS INTO AS IT IS, while one is handed over (paint_onto_plain_layer, NULL to
+/* A layer a feature paints into as it is, while one is handed over (paint_onto_plain_layer, NULL to
  * give it back): a screen's worth of cells, each painted pixel stored whole there and nowhere else,
  * with no area, mix or fade. NULL while drawing goes to the picture, so a pixel painted then costs
  * one test. */
@@ -408,6 +413,13 @@ void rg_screen_inside_ended(void) { area = outer_areas[--areas_deep]; }
 void rg_screen_camera(int32_t x, int32_t y) {
   camera_x = x;
   camera_y = y;
+}
+
+/* A screen line's size shown (IR::Nodes::Screen#shown_size). The game keeps the same number in a
+ * variable of the framework's, which is what a check reads; this is what the window shows. */
+void rg_screen_show_size(int32_t width, int32_t height) {
+  shown_width = width;
+  shown_height = height;
 }
 
 int32_t rg_screen_camera_x(void) { return camera_x; }
@@ -566,7 +578,7 @@ static void mix_nothing(void) {
   painting_sprite = 0;
 }
 
-/* WHAT THE GAME HAS PAINTED (Reference @bitmaps, for the tiles and pictures of a run): every
+/* What the game has painted (Reference @bitmaps, for the tiles and pictures of a run): every
  * run's pixels as places in its colors, one after another, place 0 being see-through. All nought
  * until a run's first copy, which is a run that shows nothing. Made the first time it is asked
  * for. */
@@ -803,7 +815,7 @@ rg_drawn_sprite rg_screen_drawn_sprite(int32_t place) { return rg_hook_drawn_spr
 /* The fade half of Reference#set_blend_for, for the thing about to be painted: what is painted from
  * here on goes through the colour table a placed fade in force asks for it (rg_hook_paint_fade_for),
  * or as drawn where there is none. +fade_place+ is how far forward the thing's layer is
- * (RG_BG_FADE_PLACE, rg_game_sprite_fade_places), or RG_NO_LAYER for a thing every placed fade
+ * (RG_BG_FADE_PLACE, a sprite's fade_place), or RG_NO_LAYER for a thing every placed fade
  * reaches and for the backdrop, which is behind everything. */
 static void fade_unless_left_as_drawn(int32_t fade_place) { paint_fade = rg_hook_paint_fade_for(fade_place); }
 
@@ -946,8 +958,9 @@ void rg_scene_redraw_sprites(int32_t brings_scenery) {
 int32_t rg_screen_two_pages(void) { return pixels != viewed; }
 
 int32_t rg_screen_repaints_painted(void) { return repaints_painted; }
+int64_t rg_screen_drawn_tiles_set_up(void) { return drawn_tiles_set_up; }
 
-/* Framebuffer#to_a: the page a viewer is looking at as it is STORED, with no window moved over
+/* Framebuffer#to_a: the page a viewer is looking at as it is stored, with no window moved over
  * it and no fade or tint mixed in. */
 const uint16_t *rg_screen_stored(void) {
   rg_screen_paint_owed_rebuild();
@@ -1067,7 +1080,7 @@ const uint16_t *rg_screen_shown(void) {
   return shown;
 }
 
-/* A GAME'S SCREEN IN A BORDER: the cartridge shows the game's screen in the middle of the console's
+/* A game's screen in a border: the cartridge shows the game's screen in the middle of the console's
  * and draws the border round it in front of everything (GBA::BorderSprites), so what the game draws
  * past its own edges never shows and a fade leaves the border as it is. Here the border is the
  * picture of the whole screen, and the picture as shown is copied over its middle. */
@@ -1085,7 +1098,17 @@ const uint16_t *rg_screen_framed(void) {
            RG_SCREEN_WIDTH * sizeof framed[0]);
   return framed;
 #else
-  return rg_screen_shown();
+  const uint16_t *picture = rg_screen_shown();
+  if (shown_width >= RG_SCREEN_WIDTH && shown_height >= RG_SCREEN_HEIGHT) return picture;
+  /* A scene's smaller screen, the top left of the picture, at its own size in the middle of the
+   * window and black round it: shown as it is drawn, every pixel one of the window's, as a console
+   * shows a smaller game's screen inside its own. */
+  static uint16_t framed[RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT];
+  memset(framed, 0, sizeof framed);
+  int32_t left = (RG_SCREEN_WIDTH - shown_width) / 2, top = (RG_SCREEN_HEIGHT - shown_height) / 2;
+  for (int32_t y = 0; y < shown_height; y++)
+    memcpy(&framed[(y + top) * RG_SCREEN_WIDTH + left], &picture[y * RG_SCREEN_WIDTH], (size_t)shown_width * sizeof framed[0]);
+  return framed;
 #endif
 }
 
@@ -1227,6 +1250,12 @@ void rg_screen_visit_state(void) {
   placing_at_pass_end = (int32_t)numbers[13], scenery_taken_down = (int32_t)numbers[14];
   camera_x = (int32_t)numbers[15], camera_y = (int32_t)numbers[16];
   mixed_cells_by = (shares){(int32_t)numbers[17], (int32_t)numbers[18]};
+#if RG_SCREEN_OF_ITS_OWN
+  /* Kept only by a game given a screen of its own, so every other game's states read as before. */
+  int64_t shown_size[] = {shown_width, shown_height};
+  rg_state_numbers("screen.shown_size", shown_size, 2);
+  shown_width = (int32_t)shown_size[0], shown_height = (int32_t)shown_size[1];
+#endif
   visit_cells16("screen.page.first", first_page, CELLS);
   visit_cells16("screen.page.second", second_page, CELLS);
   visit_cells16("screen.scenery", scenery, CELLS);

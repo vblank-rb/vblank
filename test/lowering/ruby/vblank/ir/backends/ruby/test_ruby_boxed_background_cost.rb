@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BACKGROUND HELD TO A BOX, PAINTED BY THE RUBY RUNTIME. A Super Nintendo stage keeps its arena
+# A background held to a box, painted by the Ruby runtime. A Super Nintendo stage keeps its arena
 # under a bar shown alone above a row, which holds the arena to the rows below it, and a game on the
 # Advance can hold a background to a box it moves (`show_only_inside`). Either way the runtime used
 # to paint the whole background onto a sheet and then lay each pixel inside the box through a

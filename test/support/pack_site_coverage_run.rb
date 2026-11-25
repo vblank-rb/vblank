@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHICH REGISTERED PACK GAME REACHES WHICH LINE OF THE BUILDER, measured (PackSiteCoverage,
+# Which registered pack game reaches which line of the builder, measured (PackSiteCoverage,
 # test/pack_site_coverage.rb, starts this and reads its last line). Ruby counts only the files it
 # loads after the counting starts, so this is a Ruby of its own that starts counting first, then
 # loads the library, builds every registered game all-in-one and with its pack left out, and

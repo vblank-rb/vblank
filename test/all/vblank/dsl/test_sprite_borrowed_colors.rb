@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE CONSOLE LENDS ITS GROUPS OF SPRITE COLOURS to the lists things on screen are wearing.
+# The console lends its groups of sprite colours to the lists things on screen are wearing.
 # A game whose things between them wear more lists than the console has groups still fits,
 # so long as no more are worn at once than the groups left over: a list is given a group the
 # frame something on screen first wears it, and the group goes back once nothing does. Only
@@ -121,22 +121,22 @@ class TestSpriteBorrowedColors < Minitest::Test
         tick += 1
         state = (tick / 7) % 2
         things.each { |thing| thing.draw_with KIND_LISTS, showing: thing.kind }
-        case_var(:state) do
-          when_val 0, :plain
-          when_val 1, :dotted
-        end
+        call({ 0 => :plain, 1 => :dotted }, number: :state)
       end
     end
 
     [5, 9, 16, 23].each { |frames| assert_backends_agree(switching, frames: frames) }
   end
 
-  # EIGHT SPRITES EACH STEPPING THROUGH LISTS OF THEIR OWN, a list a frame, the way a fade done with
+  # Eight sprites each stepping through lists of their own, a list a frame, the way a fade done with
   # lists steps: every group is worn on every frame, and each sprite takes the group it wore the
   # frame before, so each wears its own colours on every frame.
   def test_eight_sprites_stepping_their_own_lists_every_frame_wear_their_own
     skip_on_snes "the build gives each list a sprite is drawn with a sprite palette of its own for the whole " \
                  "game, rather than lending its eight as the Color's build does, so 64 lists do not fit"
+    skip_on_genesis "the build keeps each sprite's lists in a palette of their own for the whole game, rather than " \
+                    "lending a palette's places to the list each sprite wears this frame, so eight sprites of " \
+                    "eight lists do not fit in four palettes"
     stepping = built do
       balls = (0...8).map do |n|
         8.times do |s|

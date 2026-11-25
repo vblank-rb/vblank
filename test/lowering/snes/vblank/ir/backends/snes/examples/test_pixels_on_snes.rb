@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pixels").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pixels").to_s)
 
 # examples/pixels.rb on a Super Nintendo: placed from the screen's own size, so the flag is in the
 # middle of its 256×224 screen and a marker is in each of its corners — held to the interpreter,
@@ -10,7 +10,7 @@ class TestPixelsOnSNES < Minitest::Test
   Color = VBlank::Graphics::Color
 
   def test_the_flag_is_in_the_middle_and_the_markers_in_the_corners
-    run = game_player.run(Pixels.program(console: game_console), frames: 4)
+    run = game_player.run(Pixels::GAME.program(console: game_console), frames: 4)
     screen = run.screen
     width = screen.width
     height = screen.height

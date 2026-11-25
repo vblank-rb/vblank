@@ -17,7 +17,7 @@ module LayerAllocationGames
 
   # Four backgrounds and a layer of sprites behind all of them needs five levels: the
   # sprites cannot share the backmost background's level, because on that level a sprite
-  # is drawn in FRONT.
+  # is drawn in front.
   private def deep_stack
     program do
       screen :tiled
@@ -67,7 +67,7 @@ end
 # is loud about, and the report that says what the framework picked, are in
 # test/lowering/gba/vblank/ir/test_layer_allocation_cartridge.rb.
 #
-# The arrangement is a background IN FRONT OF a sprite — a fence the hero walks behind,
+# The arrangement is a background in front of a sprite — a fence the hero walks behind,
 # grass that passes over their feet. Ordering sprites among sprites and backgrounds among
 # backgrounds is one thing; putting one between two of the other is what needs the
 # console's own stacking hardware, and what a picture can never fall into by accident.
@@ -179,7 +179,7 @@ class TestLayerAllocation < Minitest::Test
   # --- where "it named no layer" stops having an answer ---
 
   # A picture is normally scenery at the back and everything that moves in front, and
-  # something that named no layer is left in that arrangement. Put a background in FRONT
+  # something that named no layer is left in that arrangement. Put a background in front
   # of a sprite and that arrangement is gone, so there is nowhere to leave it.
   def test_a_thing_with_no_layer_is_refused_once_a_background_goes_in_front
     error = assert_raises(ArgumentError) do

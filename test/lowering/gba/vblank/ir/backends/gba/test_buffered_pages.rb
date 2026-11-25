@@ -3,20 +3,20 @@
 require "test_helper"
 require "differential"
 
-# THE TWO PAGES OF A TEAR-FREE SCREEN, and what a program can see of them.
+# The two pages of a tear-free screen, and what a program can see of them.
 #
 # `screen :bitmap, tear_free: true` is not one picture but two. The display shows
 # one of them while the program draws into the other, and they trade places at the
 # frame boundary — which is exactly why the player never catches a half-drawn
 # picture, since nothing is ever drawn into the page being looked at.
 #
-# The price is that a frame's drawing lands on ONE of the two. A program that
+# The price is that a frame's drawing lands on one of the two. A program that
 # repaints everything every frame never notices, because both pages come out
-# holding a complete picture; a program that ADDS to what is already there puts
+# holding a complete picture; a program that adds to what is already there puts
 # half its additions on each page. That difference is invisible in the source and
 # obvious on the console, which is what makes it worth a test file of its own.
 #
-# Every expectation here was measured on the console FIRST and the interpreter made
+# Every expectation here was measured on the console first and the interpreter made
 # to agree, not the other way round — including which half of the bars survive.
 class TestBufferedPages < Minitest::Test
   include Differential
@@ -49,7 +49,7 @@ class TestBufferedPages < Minitest::Test
     (0...BARS).select { |k| pixels[(BAR_ROW * 240) + (k * 20) + 3] == red }
   end
 
-  # THE ONE THAT MATTERS. Ten frames, ten bars drawn, and only five on screen —
+  # The one that matters. Ten frames, ten bars drawn, and only five on screen —
   # because the other five are sitting on the page nobody is looking at. Before the
   # interpreter modelled the pages it said all ten, so a test asserting ten passed
   # while the cartridge showed five.
@@ -88,7 +88,7 @@ class TestBufferedPages < Minitest::Test
     assert_backends_agree(prog, frames: BARS)
   end
 
-  # A program that draws and never reaches a frame boundary shows NOTHING: the
+  # A program that draws and never reaches a frame boundary shows nothing: the
   # console boots showing page 0 and hands the program page 1, so without a flip
   # the drawing is all on the hidden page. Measured on the console, where this
   # program is a black screen.

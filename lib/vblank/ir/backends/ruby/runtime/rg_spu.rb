@@ -1,4 +1,4 @@
-# THE PLAYSTATION'S SOUND CHIP, for a game built as a console whose voices read loops out of sound
+# The PlayStation's sound chip, for a game built as a console whose voices read loops out of sound
 # memory (RG_VOICES_READ_SOUND_MEMORY). The rules are native/runtime/rg_spu.c's, rule for rule; that
 # file says how the chip plays the game's four voices, what Beetle PSX and psx-spx each rule comes from,
 # and the layout of @rg_game_spu_rules, @rg_game_spu_loops and @rg_game_spu_memory, which this one reads

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # The buffered-bounce example (examples/buffered_bounce.rb) on the Advance's cartridge, read in
 # the emulator. That it builds clean and draws its balls is in

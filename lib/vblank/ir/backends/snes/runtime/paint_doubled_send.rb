@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE COPY OF A SCREEN OF BIG PIXELS TO VIDEO RAM (PaintDoubled), and the second copy that
+          # The copy of a screen of big pixels to video RAM (PaintDoubled), and the second copy that
           # lets the game paint on while it goes.
           #
           # What a pass changed is sent in the blank with the screen on, as many bytes as the blank
@@ -13,21 +13,21 @@ module VBlank
           # DIRTY_TOP and DIRTY_BOTTOM), a column's run joined to the one before where it carries
           # straight on from it. A whole picture is 14336 bytes, three blanks' worth.
           #
-          # WITH ONE COPY the game waits, at the end of its pass, until all of it has arrived, as it
+          # With one copy the game waits, at the end of its pass, until all of it has arrived, as it
           # must not paint over a picture still being sent: three frames of a whole repaint spent
           # waiting. The console's own 3D games kept two pictures in work RAM instead, and painted
           # the next while the last was sent. So does this, where nothing else has to arrive after
           # the picture (#behind?):
           #
-          # - TWO COPIES, one after the other in the last bank, PAINT_OFFSET saying which one the
+          # - Two copies, one after the other in the last bank, PAINT_OFFSET saying which one the
           #   game paints (rt_paint_doubled_at adds it). As a pass ends the two swap
           #   (rt_paint_doubled_swap): the copy just painted is sent, and the other is painted next.
-          # - SENT BEHIND THE GAME. What the pass's own blank cannot hold is sent by the blank's
+          # - Sent behind the game. What the pass's own blank cannot hold is sent by the blank's
           #   interrupt in the blanks after (rt_paint_doubled_behind), while the next pass is
           #   painted; with the last piece there, SHOWN is set to that pass. A pass ending while the last
           #   picture is still going sends the rest itself first, and then waits for a blank of its
           #   own, so every picture is on the screen whole for a frame at least.
-          # - STALE ROWS. The copy about to be painted is behind the other where the last pass
+          # - Stale rows. The copy about to be painted is behind the other where the last pass
           #   changed it (STALE_TOP and STALE_BOTTOM, for each column of tiles). Before a column of
           #   tiles is painted where that reaches its stale rows, they are copied across from the
           #   other copy (rt_paint_doubled_freshen, MVN); a fill that covers a column of tiles from
@@ -38,7 +38,7 @@ module VBlank
           #
           # A copy at a time needs only the arrays of what is being sent.
           module PaintDoubledSend
-            # The rows of each column of tiles still to send (a word each, as DIRTY), the column
+            # The rows of each column of tiles still to send (a word each, as dirty), the column
             # looked at next (two bytes a column), and the run being sent: its first byte, which is
             # its word in video RAM too, and its bytes, nought for none.
             SEND_TOP = "rt paint doubled send top"
@@ -567,9 +567,9 @@ module VBlank
             end
 
             # rt_paint_doubled_swap (JSR, as a pass's copy has begun): the copy painted next is the
-            # other. It is first brought up to this one where it was still behind (RESTING); this
-            # one is behind it where it was not brought up this pass (STALE), and it is behind this
-            # one where this pass changed it (DIRTY), which is nothing now.
+            # other. It is first brought up to this one where it was still behind (resting); this
+            # one is behind it where it was not brought up this pass (stale), and it is behind this
+            # one where this pass changed it (dirty), which is nothing now.
             def emit_swap(asm, memory, shown)
               at = ->(name) { asm.abs_x(memory[name]) }
               frame = ->(name) { asm.abs(memory[name]) }

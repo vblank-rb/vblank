@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # THE CELLS A BACKGROUND FROM THE DATA PACK MAY BE WRITTEN LATER, each as a cell number in the
+    # The cells a background from the data pack may be written later, each as a cell number in the
     # map's layout (`background ..., set_cells:`, then Background#set_cell): the original's own on
     # a map in its console's layout, or the record's (Original::MapCell) on a map of map cells.
     #
@@ -18,10 +18,10 @@ module VBlank
     # numbers that differ only in a bit the console keeps for itself (the Genesis's priority) are
     # one cell.
     #
-    # CELLS TOLD BY A SLOT OF THE PACK (`set_cells: pack[:changes]`) are named by their place in it,
+    # Cells told by a slot of the pack (`set_cells: pack[:changes]`) are named by their place in it,
     # 0 first: +place_tiles+ holds, for each place, its cell's tiles' keys, and `set_cell`'s number
     # is a place (#write_place). nil for cells told by number.
-    PackCells = Data.define(:format, :side, :tiles_by_word, :place_tiles) do
+    PackCells = Data.define(:format, :side, :tiles_by_word, :place_tiles) do # :nodoc:
       def initialize(place_tiles: nil, **) = super
 
       # The same cells, told by a slot whose places hold +place_tiles+.
@@ -32,6 +32,10 @@ module VBlank
 
       # The tileset keys of the cell +word+ stands for, or nil for a number not told.
       def tiles_of(word) = tiles_by_word[read_part(word)]
+
+      # Is +told+, a number written in the game, one `set_cell` can write here: a place of the slot
+      # where a slot told the cells, or else a told cell number?
+      def writes?(told) = place_tiles ? told.between?(0, place_tiles.length - 1) : !tiles_of(told).nil?
 
       # Is the layout VBlank's own record (Original::MapCell), a map of map cells?
       def map_cells? = format.without_front_read == Original::MapCell::FORMAT
@@ -56,7 +60,7 @@ module VBlank
         cell.number
       end
 
-      # WRITE THE CELL at +col+ and +row+ of +background+ as +word+, a number in the layout or an
+      # Write the cell at +col+ and +row+ of +background+ as +word+, a number in the layout or an
       # Original::MapCell::Cell on a map of map cells (#number_of!). A cell is +side+ tiles each
       # way of the map the build made, so it is that many `set_tile`s: a changed cell as any other.
       # +now+ is each `set_tile`'s (Background#set_cell).
@@ -72,12 +76,12 @@ module VBlank
         write_tiles(background, col, row, tiles, now)
       end
 
-      # WHAT A BLOCK OF CELLS EACH WRITTEN AS +cell+ PUTS IN EACH, for cells of one tile
+      # What a block of cells each written as +cell+ puts in each, for cells of one tile
       # (Background#fill_cells): the tileset key of the one tile, or the number it is +picked_by+, the
       # keys +picks+ of the numbers from +from+ on, nil where a number stands for none. +cell+ is what
       # `set_cell` takes. Nil for a number worked out as the game runs among told numbers too far
       # apart for one list, which the block then writes a cell at a time.
-      CellBlock = Data.define(:tile, :picked_by, :picks, :from)
+      CellBlock = Data.define(:tile, :picked_by, :picks, :from) # :nodoc:
 
       def cell_block_tiles(name, cell)
         if place_tiles
@@ -114,7 +118,7 @@ module VBlank
         place_tiles.fetch(place)
       end
 
-      # WRITE THE CELL AT +place+ OF THE SLOT THAT TOLD THEM. A place written in the game is its
+      # Write the cell at +place+ of the slot that told them. A place written in the game is its
       # cell's tiles, and one past the slot is refused here. A place worked out as the game runs
       # picks its tile from the list of every place's (Background#set_tile_picked), one step of the
       # game however many cells the slot holds, and a place past the slot leaves the cell alone. The
@@ -162,7 +166,7 @@ module VBlank
         end
       end
 
-      # A NUMBER THE GAME WORKS OUT, as the original works its text out: a letter read from a
+      # A number the game works out, as the original works its text out: a letter read from a
       # table, plus a base. Which picture a number stands for was settled when the game was built,
       # and the told numbers are mostly a run (a font's cells, one after another), so the number
       # is kept once and picks its tile from the run's list (Background#set_tile_picked): what a

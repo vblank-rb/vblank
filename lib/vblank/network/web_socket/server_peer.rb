@@ -3,7 +3,7 @@
 module VBlank
   module Network
     module WebSocket
-      # A CLIENT OF A WEBSOCKET SERVER, as the server sees it: the other end of a Client. It does the server's
+      # A client of a WebSocket server, as the server sees it: the other end of a Client. It does the server's
       # half of the handshake and then turns bytes into messages and messages into frames. The stand-in
       # relay's server (StandInRelayServer) is made of these, and so are the tests of Client.
       #

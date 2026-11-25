@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE FILE A PROGRAM IS HANDED AS IT STARTS (IR::StartFile), written as C: a game built
+        # The file a program is handed as it starts (IR::StartFile), written as C: a game built
         # with its data pack left out, or its unpacking, which reads the player's copy. Mixed into
         # Lowering.
         #
@@ -16,7 +16,7 @@ module VBlank
         # tile into the tile pixels, and the picture a sprite, a blit or a face draws, in the colours
         # it is drawn in, into the image pixels (a pose that is a frame of the original's is such a
         # picture, its pieces painted in, #start_file_pose_rules); and each background whose map is read from it, a
-        # tile for every cell; and each colour that is no part of a picture read from it, a screen's
+        # different tile as drawn once, each cell naming it; and each colour that is no part of a picture read from it, a screen's
         # backdrop and the colours of each list declared from the pack, into an array of the
         # game's own, from which a pixel drawn in such a colour is filled (#start_file_colors);
         # and each number worked out from a recording's rate, the
@@ -33,8 +33,12 @@ module VBlank
         # game's (known), and a turned picture is read turned.
         module StartFileFills
           # How many places a pose read from the file (IR::StartFile::Pose) can draw: one for each
-          # number its tiles' planes can hold, so the colours of its places are that many long.
-          def self.pose_places(where) = 1 << where.tile_format.plane_bits.length
+          # number its tiles' planes can hold, so the colours of its places are that many long; that
+          # many for each bank of a pose of several (IR::StartFile::Pose#banks).
+          def self.pose_places(where) = bank_places(where) * (where.banks&.length || 1)
+
+          # How many places one bank of a pose's colours is: as many as a tile can draw.
+          def self.bank_places(where) = 1 << where.tile_format.plane_bits.length
 
           private
 
@@ -70,7 +74,7 @@ module VBlank
                                             start_file_shading_fills + start_file_tile_pose_fills)]
           end
 
-          # A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE A FRAME OF THE FILE (IR::StartFile::TilePose):
+          # A pose of a set of sprite tiles whose pieces are a frame of the file (IR::StartFile::TilePose):
           # +array+ is the pieces a load of the set hands the runtime, written with stand-ins
           # (IR::StartFile.tile_pose_stand_ins) where the routine can write, and the routine writes
           # the frame's pieces over them, those the pose can draw, and a piece that draws nothing in
@@ -96,7 +100,7 @@ module VBlank
             end
           end
 
-          # A TILE POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM, for a console that draws
+          # A tile pose's pieces as the console's sprite table holds them, for a console that draws
           # only so many (Picture#image_pieces_array, which lists the pose's stand-ins): how tall a
           # piece is (8, or 16 where a Color is told 8x16 and pairs a tile with the next one under
           # it), then how many images show the pose and each one's number. The runtime then lists
@@ -111,7 +115,7 @@ module VBlank
             [(@program.sprite_piece_size_on(console.name) || [SpritePieces::SIZE] * 2).last, images.length, *images]
           end
 
-          # A SHADING READ FROM THE FILE (IR::StartFile::Shading), in the array a lit fill hands the
+          # A shading read from the file (IR::StartFile::Shading), in the array a lit fill hands the
           # runtime (Picture#shading_array): written with zeros where its colours and its levels'
           # places go, where the routine can write, and filled from the file as the game starts.
           # Each lit fill has an array of its own, so each is filled. A place past the colours is
@@ -134,7 +138,7 @@ module VBlank
 
           attr_reader :start_file_shading_fills
 
-          # THE LIST A FOLLOWING SPRITE'S POSE IS DRAWN FROM, WHERE ITS FRAME PICKS IT
+          # The list a following sprite's pose is drawn from, where its frame picks it
           # (Picture#lists_chosen_by_frame). +chosen+ is, for each pose of +obj+, that pose's
           # followed list of each bank or nil; +starts+ where each pose's pictures start, and +lists+
           # the lists the sprite follows, in the order +pose_lists+ numbers them. The routine reading
@@ -166,7 +170,7 @@ module VBlank
 
           def start_file_pose_list_choices = @start_file_pose_list_choices ||= []
 
-          # COLOURS READ FROM THE FILE THAT ARE NO PART OF A PICTURE READ FROM IT: a screen's
+          # Colours read from the file that are no part of a picture read from it: a screen's
           # backdrop (IR::StartFile::Color), and every colour of a list of colours the game
           # declared from the pack, with the colours each walk of one is made of
           # (IR::StartFile#colors). The game keeps one array of them, written as its size alone,
@@ -176,7 +180,7 @@ module VBlank
           # read at each statement, so a colour is read from the file once however often a scene
           # arrives.
           #
-          # A LIST'S COLOURS ARE IN THE PROGRAM AS MARKERS (IR::StartFile, "MARKERS"), each naming
+          # A list's colours are in the program as markers (IR::StartFile, "MARKERS"), each naming
           # its entry of this array: the program's colours are the first entries, in its order,
           # so a marker's entry is the array's. The art is worked out here as it is for any game,
           # so a pixel drawn in such a colour is written as its marker, and the routine's last
@@ -273,7 +277,7 @@ module VBlank
           # How many bytes of the file a colour is.
           START_FILE_COLOR_BYTES = 2
 
-          # PIXELS WRITTEN AS MARKERS, put in their colours as the game starts: +count+ pixels from
+          # Pixels written as markers, put in their colours as the game starts: +count+ pixels from
           # +start+ in the +kind+ of pixels (:tile or :image).
           MarkedPixels = Data.define(:kind, :start, :count)
 
@@ -311,7 +315,7 @@ module VBlank
           # set, is the number below zero of the same bits.
           def image_pixel_kept(pixel) = IR::StartFile.marker?(pixel) ? pixel - 0x1_0000 : pixel
 
-          # NUMBERS OF A TABLE OF COLOURS WRITTEN AS MARKERS, put in their colours as the game starts:
+          # Numbers of a table of colours written as markers, put in their colours as the game starts:
           # +count+ numbers from +start+ in +table+. What the game paints from a list as it runs is
           # drawn through tables of the colour each place shows, which the art writes (:run_images
           # for a painted picture a sprite shows, :run_colors for painted tiles on a background),
@@ -338,7 +342,8 @@ module VBlank
 
           def marked_table_defines
             [*MARKED_TABLES.filter_map { |table, kept| Statements::Define.new(kept.define) if marked_numbers_in?(table) },
-             *(Statements::Define.new("RG_PAINTED_TILES_WRITABLE") if paints_moving_cells?)]
+             *(Statements::Define.new("RG_PAINTED_TILES_WRITABLE") if paints_moving_cells?),
+             *(Statements::Define.new("RG_MAP_CELLS_WRITABLE") if writes_map_cells?)]
           end
 
           def build_start_file_marked_number_fills
@@ -349,13 +354,30 @@ module VBlank
             end
           end
 
-          # A BACKGROUND WHOSE MAP, TILES AND COLOURS ARE READ FROM THE FILE (IR::StartFile::Background).
-          # Which tiles its map names is known only once the file is read, so the art lays out a
-          # tile of its own for every cell, see-through until the routine fills it, and a map that
-          # names them in order. The tiles are written again for each step of other colours the
-          # background can be told, as any background's are.
+          # A background whose map, tiles and colours are read from the file (IR::StartFile::Background),
+          # kept as the console keeps it. Which tiles its map names, in which bank and turned how, is
+          # known only once the file is read. So the art lays out each tile of its slot once, as its
+          # places, after its tiles in every set of colours (+places_start+), and a table of colours
+          # for each bank among its tiles, written again for each step of other colours the
+          # background can be told as any tile of it is (Nodes::Background#cell_tile_pools). The
+          # routine fills both, and then gives each different tile as drawn the maps name (a tile,
+          # its bank, its turn, its mark for being in front) a number after the background's tiles,
+          # in the order the maps first name it, and writes each cell of each map to name it
+          # (rg_start_file_fill_background). The runtime keeps, for each such number, which tile of
+          # places and which table it is drawn from and how it is turned, and applies them as the
+          # cell is drawn (rg_tiled's tile_pixel and paint_map_row), as a console's map cell names
+          # a tile of video memory, a palette and a turn. Maps drawn from the same art share the
+          # slot's places and tables, so a world of rooms over one slot keeps the slot once.
           #
-          # THE TILES THE GAME HOLDS FOR IT COME FIRST in each step's tiles, laid out as any
+          # A cell naming a tile that takes turns through pictures (IR::StartFile::MovingTile) is
+          # given a number of its own that shows the run's tile for its bank and turn (+moving+, the
+          # set's StartFileMovingCells), as the tiles the game paints are shown.
+          #
+          # The routine reads the maps of one pool one after another, so it keeps which number it gave
+          # each tile as drawn from the pool's first map (+starts_pool+) to its last (+ends_pool+).
+          # +set+ is the record's number among the background's.
+          #
+          # The tiles the game holds for it come first in each step's tiles, laid out as any
           # background's (Picture#background_arrays): a stand-in for each bank, and the tiles of
           # the cells it was told it may be written later, each a picture read from the file
           # itself (#record_start_file_fill). A `set_tile` names one of those by its number, so
@@ -370,24 +392,37 @@ module VBlank
           # and put in their colours with every other marker (#record_marked_pixels).
           # +entry+ is the number the runtime knows the background by (Picture#entry_of).
           #
-          # A BACKGROUND THAT WALKS BETWEEN SETS OF TILES has a fill for each set, each painting its
-          # own map's cells into its own run of tiles in every step: +held+ is then where the set's
-          # first cell tile is among the background's tiles (Nodes::Background#first_tiles_from_file),
-          # and +stride+ how many tiles one step of the whole background is, every set's together.
-          StartFileBackgroundFill = Data.define(:entry, :start, :held, :stride, :from, :lists)
+          # A background that walks between sets of tiles has a fill for each set, each writing its
+          # own map's cells: +held+ is then where its pool's first table is among the background's
+          # tiles (Nodes::Background#first_tiles_from_file), +places+ where its pool's first tile of
+          # places is in the tile pixels, and +stride+ how many tiles one step of the whole
+          # background is, every set's together.
+          # +first_place+ is the pool's first tile of places counted among the background's, and
+          # +first_table+ the background's first table among its tiles (Nodes::Background#tiles), which
+          # a tile as drawn counts its own from (rg_runtime.h, RG_DRAWN_TABLE_SHIFT).
+          StartFileBackgroundFill = Data.define(:entry, :start, :held, :stride, :places, :from, :lists, :set, :starts_pool, :ends_pool,
+                                                :first_place, :first_table)
           BankFromFile = Data.define(:bank)
 
-          def record_start_file_background_fill(start, bg, steps)
+          def record_start_file_background_fill(start, places_start, bg, steps)
             stride = bg.tiles.length + bg.tiles_drawn_from_file
-            fills = bg.from_file.zip(bg.first_tiles_from_file).map do |from, first|
-              lists = [nil, *steps].map do |swaps|
-                Array.new(from.bank_count) do |bank|
-                  # The list of a bank is found by its name: its colours here are markers.
-                  _, drawn_with = swaps&.find { |(name, _), _| name == from.bank_names[bank] }
-                  drawn_with || BankFromFile.new(bank: bank)
+            firsts = bg.first_tiles_from_file
+            places = bg.first_places_of_pools
+            fills = bg.cell_tile_pools.each_with_index.flat_map do |pool, number|
+              pool.sets.map do |set|
+                from = bg.from_file.fetch(set)
+                lists = [nil, *steps].map do |swaps|
+                  Array.new(from.bank_count) do |bank|
+                    # The list of a bank is found by its name: its colours here are markers.
+                    _, drawn_with = swaps&.find { |(name, _), _| name == from.bank_names[bank] }
+                    drawn_with || BankFromFile.new(bank: bank)
+                  end
                 end
+                StartFileBackgroundFill.new(entry: entry_of(bg), start: start, held: firsts.fetch(set), stride: stride,
+                                            places: places_start + (places.fetch(number) * Picture::RUN_TILE_PIXELS), from: from,
+                                            lists: lists, set: set, starts_pool: set == pool.sets.first, ends_pool: set == pool.sets.last,
+                                            first_place: places.fetch(number), first_table: bg.tiles.length)
               end
-              StartFileBackgroundFill.new(entry: entry_of(bg), start: start, held: first, stride: stride, from: from, lists: lists)
             end
             @start_file_background_fills.concat(fills)
             return unless fills.any? { |fill| fill.lists.flatten.any? { |color| IR::StartFile.marker?(color) } }
@@ -395,11 +430,42 @@ module VBlank
             @start_file_marked_pixels << MarkedPixels.new(kind: :tile, start: start, count: stride * Picture::RUN_TILE_PIXELS * (steps.length + 1))
           end
 
-          # Each background's fills, and then, for each list a background read from the file
-          # follows beside others, the tiles of its map that are drawn from that list.
+          # The tables of colours of the banks +banks+ of the pool +set+ draws from, as tiles of +bg+
+          # (Nodes::Background#first_tiles_from_file): what a list +bg+ follows copies from the set of
+          # colours it names (rg_background_follow).
+          def start_file_table_tiles(bg, set, banks)
+            from = bg.from_file.fetch(set)
+            first = bg.first_tiles_from_file.fetch(set)
+            banks.flat_map { |bank| Array.new(from.tiles_per_bank) { |at| first + (bank * from.tiles_per_bank) + at } }
+          end
+
+          # Where each map read from the file starts in the map cells, by the background's entry
+          # and the map's record (Picture#background_arrays). A map is read once, so a record names
+          # one map.
+          def record_start_file_map_cells(bg, number, at)
+            set = bg.map_sets ? bg.map_sets.fetch(number) : 0
+            cells_at = (@start_file_map_cells_at ||= {})
+            key = [entry_of(bg), set]
+            raise LoweringError, "The background #{bg.name.inspect} has two maps read from one record of the file." if cells_at.key?(key)
+
+            cells_at[key] = at
+          end
+
+          # Whether the routine reading the file writes the map cells, which are then declared as
+          # written (RG_MAP_CELLS_WRITABLE).
+          def writes_map_cells? = !@start_file_background_fills.empty?
+
+          # Each background's fills, a pool's maps one after another, and then, for each list a
+          # background read from the file follows beside others, the told cells' tiles drawn from
+          # that list; the told cells' tiles taking turns; the told cells' tiles in front. The maps'
+          # own are each a tile as drawn the background's fill numbers, which names its table, its
+          # run and its mark.
           def build_start_file_background_fills
+            return [] if @start_file_background_fills.empty?
+
+            map_cells = @names.own("map_cells")
             rules = @start_file_background_fills.group_by(&:entry).transform_values do |fills|
-              fills.map { |fill| drawing_array("start_file_background", "int32_t", start_file_background_rules(fill)) }
+              fills.to_h { |fill| [fill.set, drawing_array("start_file_background", "int32_t", start_file_background_rules(fill))] }
             end
             followed = @start_file_followed_tiles.map do |tiles|
               eval_call("rg_start_file_fill_followed_tiles", tiles.rules, rules.fetch(tiles.entry).fetch(tiles.set), Statements::Int.new(tiles.banks))
@@ -412,15 +478,24 @@ module VBlank
               eval_call("rg_start_file_fill_front_tiles", @names.own("tiles_in_front"), rules.fetch(front.entry).fetch(front.set),
                         Statements::Int.new(front.start), Statements::Int.new(front.front_bit))
             end
-            rules.values.flatten.map { |background| eval_call("rg_start_file_fill_background", background) } + followed + moving + in_front
+            backgrounds = @start_file_background_fills.map do |fill|
+              turning = @start_file_moving_cells.find { |cells| cells.entry == fill.entry && cells.set == fill.set }
+              eval_call("rg_start_file_fill_background", rules.fetch(fill.entry).fetch(fill.set), map_cells,
+                        turning ? turning.rules : no_moving_tiles_array, turning ? runs_pointed_array : no_moving_tiles_array)
+            end
+            backgrounds + followed + moving + in_front
           end
 
-          # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE IN FRONT OF THE SPRITES
-          # (Picture#tiles_in_front_of). Which cells the file marks is known only as it is read, and
-          # each cell has a tile of its own, so the routine reading the file sets each such cell's
-          # tile's byte, from +start+ in the table, reading the mark at bit +front_bit+ of each cell
-          # of set +set+'s map (rg_start_file_fill_front_tiles). The tiles the game holds keep what
-          # the build set.
+          # The rules of a set with no tile taking turns, as rg_start_file_fill_background reads them:
+          # no painted tiles, and none moving.
+          def no_moving_tiles_array = @no_moving_tiles_array ||= drawing_array("no_moving_tiles", "int32_t", [0, 0], writable: true)
+
+          # The tiles of a background read from the file that are in front of the sprites
+          # (Picture#tiles_in_front_of). Which cells the file marks is known only as it is read. A map's
+          # cell keeps its mark in its tile as drawn (#record_start_file_background_fill); the routine
+          # reading the file sets the byte of each tile of the cells a slot told it, from +start+ in
+          # the table, reading the mark at bit +front_bit+ (rg_start_file_fill_front_tiles). The tiles
+          # the game holds keep what the build set.
           StartFileTilesInFront = Data.define(:entry, :set, :start, :front_bit)
 
           def record_start_file_tiles_in_front(bg, start)
@@ -430,12 +505,13 @@ module VBlank
             end
           end
 
-          # THE CELLS OF A BACKGROUND READ FROM THE FILE THAT NAME A TILE TAKING TURNS THROUGH
-          # PICTURES (IR::StartFile::MovingTile). The game holds a tile of a run for each bank and
+          # The cells of a background read from the file that name a tile taking turns through
+          # pictures (IR::StartFile::MovingTile). The game holds a tile of a run for each bank and
           # turn of such a tile (Builder::PackTilePictures), and which cells name it, in which bank
-          # and turn, is in the file. So the background's painted tiles are written with a place
-          # for every cell, where the routine can write (Picture#painted_tiles_of), and the routine
-          # marks each such cell's tile as painted by the run's tile (rg_start_file_fill_moving_cells).
+          # and turn, is in the file. A map's cell naming one is a tile as drawn showing the run's tile
+          # (#record_start_file_background_fill, which reads these rules too); the cells a slot told
+          # the background are tiles the game holds, which the routine marks as painted by the run's
+          # tile (rg_start_file_fill_moving_cells), the painted tiles written where it can write.
           #
           # Its rules: where the background's painted tiles start, how many moving tiles, and for
           # each its tile as a cell names it and then, for each bank and each turn
@@ -464,7 +540,7 @@ module VBlank
             end
           end
 
-          # THE RUNS A CELL OF THE FILE CAN BE POINTED AT, and nothing else shows: the run of each
+          # The runs a cell of the file can be pointed at, and nothing else shows: the run of each
           # bank of a background read from the file, for each tile of it taking turns through
           # pictures. Which banks the map names is in the file, so a run no cell names is learnt as
           # the game starts, and its copies are left out: the group's `show` copies its picture into
@@ -474,7 +550,7 @@ module VBlank
           # #runs_pointed_array); a copy into the list of such a run (Lowering#lower_list_copy) and
           # from it into its tiles (Picture#tile_copy) is made only where its mark is set.
           #
-          # A RUN THE GAME'S OWN `set_cell` CAN PUT ON THE MAP is left out: a cell written as the game
+          # A run the game's own `set_cell` can put on the map is left out: a cell written as the game
           # runs names the run's tile directly (PackBackgrounds#pack_run_tile_read_at_start), and the
           # file does not say it. Every tile a `set_tile` can write is known as the game is built
           # (Nodes::SetTile#tiles_named), a tile picked as it runs among them.
@@ -504,31 +580,47 @@ module VBlank
 
           # +statement+, made only where the run +name+ is one a cell of the file is pointed at, or
           # always for a run every game shows (#runs_pointed_by_file).
-          def made_where_run_pointed(name, statement)
-            return statement unless runs_pointed_by_file.include?(name)
+          def made_where_run_pointed(name, statement) = made_where_any_run_pointed([name], statement)
 
-            pointed = Statements::Index.new(runs_pointed_array, Statements::Int.new(@run_numbers.fetch(name)))
-            Statements::If.new(condition: call("rg_eq", pointed, Statements::Int.new(1)), body: [statement])
+          # +statement+, made only where one of the runs +names+ (the runs showing from one list) is
+          # pointed at, or always where one of them is a run every game shows. The runs of a group
+          # read at start share one list (Builder::PackTilePictures#pictures_shown_at_start), so a
+          # copy into it is wanted while any of them shows.
+          def made_where_any_run_pointed(names, statement)
+            return statement unless names.all? { |name| runs_pointed_by_file.include?(name) }
+
+            tests = names.map do |name|
+              call("rg_eq", Statements::Index.new(runs_pointed_array, Statements::Int.new(@run_numbers.fetch(name))), Statements::Int.new(1))
+            end
+            Statements::If.new(condition: either_of(tests), body: [statement])
+          end
+
+          # Whether any of +tests+ holds, paired up as a balanced tree, so a list shown by many runs
+          # nests its test a few calls deep rather than one call for each run (a C compiler holds
+          # brackets to a depth of a few hundred).
+          def either_of(tests)
+            tests = tests.each_slice(2).map { |pair| pair.length == 2 ? call("rg_either", *pair) : pair.first } while tests.length > 1
+            tests.first
           end
 
           # Whether the routine reading the file writes the painted tiles, which are then declared
           # as written (RG_PAINTED_TILES_WRITABLE).
           def paints_moving_cells? = !@start_file_moving_cells.empty?
 
-          # THE TILES OF A BACKGROUND READ FROM THE FILE THAT ARE DRAWN FROM ONE LIST IT FOLLOWS
+          # The tiles of a background read from the file that are drawn from one list it follows
           # (Picture#followed_tile_rules). When the game tells a list what to hold, the tiles drawn
           # from that list alone are copied from the set it names (rg_background_follow), so the
           # runtime needs which tiles those are. For the tiles the game holds, the build knows:
           # +tiles+, and +known+ is the rules for them ([how many tile pixels, the background, how
-          # many tiles, the tiles]). For the map's, the file says: each cell names its bank. A
-          # bank's list is found by the bank's stand-in tile, which is tile number +bank+ of those
-          # the game holds, so the banks drawn from the list are the stand-ins among +tiles+.
-          #
-          # So the rules are written with room for every tile of the map, where the routine can
-          # write, and the routine adds each cell's tiles whose bank is one of +banks+, a bit for
-          # each bank, and counts them in (rg_start_file_fill_followed_tiles). It reads the map
-          # by the rules the background's own fill is handed. Hands back the rules, or :none
-          # where no tile can be drawn from the list.
+          # many tiles, the tiles]). A bank's list is found by the bank's stand-in tile, which is
+          # tile number +bank+ of those the game holds, so the banks drawn from the list are the
+          # stand-ins among +tiles+. The map's cells are drawn through their bank's table of colours
+          # (#record_start_file_background_fill), so the tables of those banks are added here, and
+          # a follow copies the table. The cells told by a slot are tiles of their own whose bank
+          # the file says, so the rules are written with room for each, where the routine can write,
+          # and the routine adds each told cell's tile whose bank is one of +banks+, a bit for each
+          # bank, and counts them in (rg_start_file_fill_followed_tiles). Hands back the rules, or
+          # :none where no tile can be drawn from the list.
           #
           # A background that walks between sets of tiles holds each set's stand-ins from the set's
           # first tile (Nodes::Background#set_starts), so each set's banks are found among its own,
@@ -544,8 +636,13 @@ module VBlank
             return drawing_array("followed_tiles", "int32_t", known) if banks_by_set.all?(&:empty?)
 
             refuse_bank_past_followed_banks!(bg, banks_by_set.flatten.max)
-            room = bg.tiles_drawn_from_file + bg.from_file.sum(&:told_count)
-            rules = drawing_array("followed_tiles", "int32_t", [*known, *Array.new(room, 0)], writable: true)
+            # The maps' tiles are drawn through their banks' tables of colours, which the build
+            # knows; only the told cells' banks are in the file.
+            tables = banks_by_set.each_with_index.flat_map { |banks, set| start_file_table_tiles(bg, set, banks) }.uniq
+            pixels, entry, count, *held = known
+            room = bg.from_file.sum(&:told_count)
+            rules = drawing_array("followed_tiles", "int32_t", [pixels, entry, count + tables.length, *held, *tables, *Array.new(room, 0)],
+                                  writable: true)
             banks_by_set.each_with_index do |banks, set|
               next if banks.empty?
 
@@ -577,7 +674,9 @@ module VBlank
                       from.number_format.high_byte_first ? 1 : 0, words.tile_bits, words.mirror_bit || words.unset_bit,
                       words.flip_bit || words.unset_bit, words.bank_at, words.bank_bits, words.row_tiles || 0,
                       from.tiles_at, from.tile_count, from.colors_at, from.bank_count, from.bank_size, fill.lists.length,
-                      fill.held, words.cell_bytes, from.told_at, from.told_count, from.told_first, fill.stride]
+                      fill.held, words.cell_bytes, from.told_at, from.told_count, from.told_first, fill.stride,
+                      @start_file_map_cells_at.fetch([fill.entry, fill.set]), fill.places, fill.starts_pool ? 1 : 0, fill.ends_pool ? 1 : 0,
+                      words.front_bit_read, fill.entry, from.tiles_per_bank, fill.first_place, fill.first_table]
             unless header.length == StartFileNumbers::BACKGROUND_HEADER_NUMBERS
               raise ArgumentError, "A background fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "BACKGROUND_HEADER_NUMBERS says #{StartFileNumbers::BACKGROUND_HEADER_NUMBERS}. Change both together."
@@ -611,7 +710,7 @@ module VBlank
             end
           end
 
-          # ROOM FOR THE PIXELS THE PROGRAM IS WRITTEN WITHOUT. A picture read from the file, and
+          # Room for the pixels the program is written without. A picture read from the file, and
           # every tile of a background whose map is, is filled whole as the game starts, so the
           # program holds none of their pixels: they come after those it holds (Picture#image_arrays,
           # Picture#lay_out_background_tiles), and the routine's first work is to make that room,
@@ -629,7 +728,7 @@ module VBlank
             room + build_start_file_tile_writes
           end
 
-          # A TILE OF A BACKGROUND READ FROM THE FILE THAT THE GAME HOLDS AND THE FILE DOES NOT FILL
+          # A tile of a background read from the file that the game holds and the file does not fill
           # (a Picture::TileChunk): a bank's stand-in, drawn in that bank's colours. Its pixels are
           # put into the room as the game starts; one that is see-through all over is the room as it
           # is made, and is not written at all.
@@ -697,7 +796,7 @@ module VBlank
             end
           end
 
-          # A POSE WHOSE PIECES ARE READ FROM THE FILE (IR::StartFile::Pose) is a picture like any
+          # A pose whose pieces are read from the file (IR::StartFile::Pose) is a picture like any
           # other read from it: zeros of the size the game gave, laid out wherever the picture is
           # drawn and in each list of colours it is drawn with, and filled by the routine. Only
           # what fills it differs, since its places are not tiles side by side but the pieces of
@@ -705,7 +804,7 @@ module VBlank
           # (Original::FrameRecord), so the runtime is told where it is and nothing of how an
           # original keeps one.
           #
-          # THE FRAME IS PAINTED ONCE, however many lists of colours the pose is drawn in. +copies+
+          # The frame is painted once, however many lists of colours the pose is drawn in. +copies+
           # are the pose's fills that differ only in where their pixels start and the list they are
           # drawn in instead (StartFileFill#start and #swapped); a title's pose followed through
           # sixty sets of colours is one painting and sixty copies. A copy held once
@@ -720,7 +819,7 @@ module VBlank
             header = [FILL_KINDS.fetch(fill.kind), total, copies.length, fill.width, fill.height, turn,
                       where.colors_at || -1, where.colors_count, where.entry_at, where.records_at,
                       where.origin_x, where.origin_y, where.tiles_at, where.tile_count, where.bank || -1,
-                      *pose_piece_rules, StartFileFills.pose_places(where)]
+                      *pose_piece_rules, StartFileFills.pose_places(where), where.banks_mask, StartFileFills.bank_places(where)]
             unless header.length == StartFileNumbers::POSE_HEADER_NUMBERS
               raise ArgumentError, "A pose fill's rules header has #{header.length} numbers, and StartFileNumbers::" \
                                    "POSE_HEADER_NUMBERS says #{StartFileNumbers::POSE_HEADER_NUMBERS}. Change both together."
@@ -738,7 +837,7 @@ module VBlank
           # (Console::Description#sprite_piece_shape), 0 where the runtime lists no pieces.
           PIECE_SHAPES = Ractor.make_shareable({ small: 1, squares: 2, rectangles: 3 })
 
-          # A POSE'S PIECES AS THE CONSOLE'S SPRITE TABLE HOLDS THEM, for a console that draws only
+          # A pose's pieces as the console's sprite table holds them, for a console that draws only
           # so many (Picture#image_pieces_array): how its entries are shaped and how tall a piece is
           # where they are small (8x16 on a Color told so). The runtime then lists the frame's pieces
           # for each copy of the pose as the interpreter does (SpriteLines.picture_places of the

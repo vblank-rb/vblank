@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A DRAW ORDER COSTS A FRAME, for each console's own cost test: a game of seven things — four
+# What a draw order costs a frame, for each console's own cost test: a game of seven things — four
 # sprites walking up and down, passing each other, and a pool of three — put in order every pass
 # by the bottom of each one's box, and the same game with no order. What the order costs is how
 # much less of the frame the first leaves spare. A console's own games sort their sprites by

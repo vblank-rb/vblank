@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# STOPPING A RUNNING CARTRIDGE AT A ROUTINE AND READING THE PROCESSOR THERE — for somebody
+# Stopping a running cartridge at a routine and reading the processor there — for somebody
 # debugging what the lowering emitted, where the question is what a register held at an
 # instruction rather than what came out on screen. The routine is named the way the program
 # named it; where it landed is the build's business.

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # A MAP BIGGER THAN THE COLOR'S GRID. The console draws its background from a grid of
+          # A map bigger than the color's grid. The console draws its background from a grid of
           # 32×32 cells that wraps round, 256 pixels each way, and its screen shows 20×18 of them —
           # 21×19 once the view is part way across a cell. So a bigger map is kept whole in the
           # cartridge (GBC::Art#big_map: each cell's tile and its colours, a row to a section), and
@@ -176,7 +176,7 @@ module VBlank
               asm.label("rt_big_wraps_done")
             end
 
-            # A BIG MAP THE GAME CHANGES (`set_tile`) is kept in work memory while it is up, so a cell
+            # A big map the game changes (`set_tile`) is kept in work memory while it is up, so a cell
             # changed stays changed as the view moves away and back; put up again it is as declared.
             #
             # rt_big_copy_in(map, to): big map +map+ of the table, from the cartridge, a row after
@@ -610,7 +610,7 @@ module VBlank
               asm.label("rt_big_cell_round")
             end
 
-            # rt_big_whole: THE WHOLE VIEW INTO THE COPY OF THE GRID, a row of the map at a time, as a
+            # rt_big_whole: the whole view into the copy of the grid, a row of the map at a time, as a
             # map just put up or a jump of the view wants. Worked out a cell at a time (rt_big_cells),
             # each cell asks whether it is on the map, finds its row in the map's table, puts the
             # row's bank in view and back, and works out its place in the grid: some seventy
@@ -620,7 +620,7 @@ module VBlank
             # cells copied with sixteen instructions each and three more where the grid's row comes round.
             #
             # Which of the view's columns are left of the map, on it and right of it is the same for
-            # every row, so it is worked out first (LEAD, RUN, TRAIL, from START): a cell off the map
+            # every row, so it is worked out first (lead, run, trail, from START): a cell off the map
             # is nothing, the backdrop, as rt_big_cells makes it. A row off the map is all nothing.
             # A map that comes round has its columns worked out round the grid instead
             # (#emit_whole_columns_round), and its rows brought round as each is found.

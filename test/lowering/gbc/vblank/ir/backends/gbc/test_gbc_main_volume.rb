@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MAIN VOLUME (`enable_sound main_volume:`) AS THE COLOR'S CARTRIDGE WRITES IT: NR50, a level for
+# The main volume (`enable_sound main_volume:`) as the color's cartridge writes it: NR50, a level for
 # each speaker from an eighth to eight eighths (GameBoySound.speaker_level says how a number of 127ths
 # is taken to it), read in the emulator and heard from its speaker.
 class TestGBCMainVolume < Minitest::Test

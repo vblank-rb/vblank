@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # HOW MANY BYTES A RUN OF STATEMENTS COMES TO, made on copies of what the lowering holds and
+      # How many bytes a run of statements comes to, made on copies of what the lowering holds and
       # thrown away: the #bytes_of RoutineCuts asks a lowering for when a routine is too big for a
       # bank. Mixed into a cartridge lowering that makes each statement with #statement into the
       # assembler in @asm, numbers its labels from @labels and names the routine it is making in

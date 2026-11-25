@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PICTURE PAINTED BY THE SUPER FX: rt_paint_blit on a cartridge with that chip, and so
+          # A picture painted by the super FX: rt_paint_blit on a cartridge with that chip, and so
           # text too, which is pictures on a painted screen there. The console works out what is
           # quick to work out (Paint's rt_paint_blit, up to the tiles across: the rows inside the
           # area and the tiles across them) and hands it over; the chip makes the tiles ready and
           # paints the picture's rows into them, as Paint's rows and ChipFill's tiles are painted.
           #
-          # THE PICTURE IS IN THE CARTRIDGE, where SNES::PaintedArt keeps it: a table of where each
+          # The picture is in the cartridge, where SNES::PaintedArt keeps it: a table of where each
           # of its rows is (four bytes a row, its address and bank), and each row its runs, one for
           # each place across modulo eight it can be painted at, of a COLUMN of ten bytes for each tile across:
           # the mask of the pixels it draws in both bytes of a word, then its four pairs of planes,
@@ -19,7 +19,7 @@ module VBlank
           # the cartridge a byte at a time: R14 holds where, ROMB which bank, and GETB takes the byte
           # a few cycles after R14 was written, so the reads go one after another down a column.
           #
-          # HOW IT PAINTS. A band at a time, a band being the picture's rows inside one row of tiles:
+          # How it paints. A band at a time, a band being the picture's rows inside one row of tiles:
           # first each tile of the band across is made ready (ChipFill#emit_tile_ready_if_old, every
           # one filled with the clear colour, since a picture can leave pixels as they were), then
           # each row: where it is in the cartridge, then each tile's column of it, its mask held to

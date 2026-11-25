@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# WHAT A POOL'S EMPTY SLOTS COST THE FRAME. A pool that draws has a sprite for every thing it can
+# What a pool's empty slots cost the frame. A pool that draws has a sprite for every thing it can
 # hold, and before each frame the framework writes the console's table row for each: where a live
 # thing stands, or "hidden" for a place with nothing in it. A game sized for its biggest room keeps
 # pools mostly empty in every other room, so what an empty place costs is what every room pays for
@@ -27,7 +27,7 @@ class TestPoolEmptySlotCost < Minitest::Test
         end
         rocks.each { |r| r.x += 1 }
       end
-      game_loop { case_var(:where) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :where) }
     end
   end
 
@@ -38,7 +38,7 @@ class TestPoolEmptySlotCost < Minitest::Test
     VBlank::Diagnostics::Profiler.work_in(result).fetch(ROUTINE)
   end
 
-  # ...AND IT IS STILL HIDDEN. Three things come, one goes, two more come: the console draws the
+  # ...AND it is still hidden. Three things come, one goes, two more come: the console draws the
   # four left where the interpreter does, and nothing at the places with nothing in them.
   def test_the_places_with_nothing_in_them_show_nothing
     require_emulator!

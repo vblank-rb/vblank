@@ -6,12 +6,30 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # `inside` clips what it draws, but only what it draws DIRECTLY. A `call` to
+        # An error for a `call` inside an `inside` block, to a routine that draws:
+        #
+        # > `inside` clips what it draws, but <how the routine is called>, outside any area.
+        # > `:<routine>` draws with `<verb>`, directly or through another routine it calls, so that
+        # > drawing will not stay inside this area on the <console>. The interpreter clips it here;
+        # > the <console> does not.
+        #
+        # The part about how the routine is called reads "`call :<routine>` calls a routine built
+        # once", or, for a call that picks one routine from several, "this `call` can pick
+        # `:<routine>`, a routine built once".
+        #
+        # On some consoles a routine is built once, apart from every place that calls it, so an
+        # area round the call cannot reach the drawing inside the routine. The game would draw
+        # outside the area there and inside it everywhere else. To fix this, put
+        # `inside x, y, w, h do ... end` inside the routine itself. Then the area holds wherever
+        # the routine runs. Consoles that keep the area as the game runs are not refused.
+        #
+        #--
+        # `inside` clips what it draws, but only what it draws directly. A `call` to
         # a routine is a branch to code built once, outside any area — so a routine
         # that draws, called from inside an `inside` block, stays clipped in the
         # reference interpreter (which re-checks the area every time it runs the
         # routine) but not on the console (which bakes the clip into the routine's
-        # own instructions wherever THAT routine happens to be lowered, never at the
+        # own instructions wherever that routine happens to be lowered, never at the
         # call site). The two backends would show a different picture, and nothing
         # crashes to say so.
         #
@@ -24,6 +42,7 @@ module VBlank
         # reads wherever it was built (a Super FX routine is handed them too), so a
         # routine called inside an area is clipped there exactly as the interpreter clips
         # it (Console::Description#area_clips_called_routines). Their builds are not refused.
+        #++
         class CallInsideArea
           NAME = :call_inside_area
           PLAIN_NAME = "a routine called inside an area"
@@ -33,7 +52,7 @@ module VBlank
           # feeds. Kept apart from TiledDisplay::BITMAP_DRAWS, which means a different
           # thing (what a tiled screen never shows), though today the two hold the same
           # draws.
-          CLIPPED_DRAWS = %i[pixel fill_rect dma_fill_rect draw_rect_at draw_column_at
+          CLIPPED_DRAWS = %i[pixel fill_rect draw_rect_at draw_column_at
                               blit blit_pose clear_screen draw_text draw_digit].freeze
 
           # The two ways of calling a routine: by its name, and picked by number from a list.
@@ -76,7 +95,7 @@ module VBlank
             calls + node.statement_bodies.flat_map { |child| find_calls(child) }
           end
 
-          # Does the func named +name+ draw on the bitmap screen OUTSIDE any area of its
+          # Does the func named +name+ draw on the bitmap screen outside any area of its
           # own — directly, or through a routine it calls, however many hops away?
           # Returns the draw node (for the message), or nil. +seen+ stops a call
           # cycle.

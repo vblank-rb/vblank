@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE ORIGINAL A GAME IS MADE FROM. A port of a retail game reads the player's own copy of it, which
+# The original a game is made from. A port of a retail game reads the player's own copy of it, which
 # no game may ship, and is checked against it:
 #
 #   ORIGINAL = VBlank::Original::Game.new(title: "Space Pinball", setting: "SPACE_PINBALL_ROM",
@@ -34,15 +34,21 @@ require_relative "original/unpacking"      # The routine that fills the pack, as
 require_relative "original/unpacking_parts"  # The routine's parts, which the pack cache keeps apart
 require_relative "original/pieced_unpacking"  # The routine split for several workers, a piece each
 require_relative "original/pack_library"   # The part of VBlank a kept pack is keyed on
+require_relative "original/files_read"     # The files a block read, by their full paths
+require_relative "original/routine_files"  # The files an unpacking routine was built from, each hashed
+require_relative "original/routine_declaration"  # What an unpacking routine is declared from, as text
+require_relative "original/routine_build"  # The whole routine, built when first asked for, once a process
 require_relative "original/pack_cache"     # What the routine wrote, kept between builds
 # Must load before original/copy_reader, which mixes in each console's packed formats.
 require_relative "original/packing"        # The packed formats an unpacking routine reads, by console
+require_relative "original/step_tables"    # An unpacking routine's steps, kept as rows of tables
 # The unpacking routine's handles do their work in game words, so they come in as a part of a game does.
 VBlank.require_game_file "original/copy_reader"  # The copy and the pack as the unpacking routine sees them
 VBlank.require_game_file "original/frame_rewrite"  # Each frame a game names, written again as a record of VBlank's own
 VBlank.require_game_file "original/unpacking_progress"  # The bar a shell shows while it unpacks
 require_relative "original/shell_facts"    # What every runtime is told about a shell
 require_relative "original/shell"          # A port built with no data, which makes its pack on the player's machine
+require_relative "original/whole_game_check"  # A shell's game held to its all-in-one build over a whole tape, as C
 require_relative "original/data_guard"     # The pre-commit check keeping the original's data out of the port's history
 # Its rake tasks, data_guard_tasks.rb, are a Rakefile's and are not required here.
 # Nor are labels.rb, symbol_file.rb and manifest.rb (the original's labels, the readers of each

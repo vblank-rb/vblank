@@ -83,7 +83,7 @@ class TestEmittedAttribution < Minitest::Test
   end
 
   # A node knows the line of the game that asked for it, and the DSL block below is
-  # in THIS file — so the attribution should name this file and the line the
+  # in this file — so the attribution should name this file and the line the
   # fill_rect is written on.
   def test_bytes_are_charged_to_the_line_of_the_game_that_asked_for_them
     here = nil

@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT A BUILD WORKS OUT FROM A PICTURE ALONE, kept for the next build on the same core.
+    # What a build works out from a picture alone, kept for the next build on the same core.
     #
     # A game's test suite builds the same game many times over, a room or two at a time, and
     # nearly every one of those cartridges carries the same few hundred pictures of the hero.
@@ -11,11 +11,11 @@ module VBlank
     # find them out was most of what a build did with its pictures. So each answer is kept
     # here, by what was asked and the picture's own contents, and a later build reads it back.
     #
-    # BY CONTENTS, never by name: two games may call different art :hero, and one game may
+    # By contents, never by name: two games may call different art :hero, and one game may
     # give the same art two names. A picture is a value (see Assets::Image), so two that hold
     # the same pixels are the same key.
     #
-    # ONE STORE PER CORE. A suite builds on several cores at once, and a store they all shared
+    # One store per core. A suite builds on several cores at once, and a store they all shared
     # would need a lock every build waited on. Each core keeps its own, so the first build on
     # each core works the answers out and the rest read them. What is kept is frozen, so a
     # caller cannot change an answer another build will be handed.

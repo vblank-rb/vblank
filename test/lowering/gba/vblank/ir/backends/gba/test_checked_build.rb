@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A CARTRIDGE BUILT TO BE CHECKED AGAINST THE INTERPRETER (GBA.new(checked: true)) keeps how its run
+# A cartridge built to be checked against the interpreter (GBA.new(checked: true)) keeps how its run
 # stands where a reader of it looks (GBA::Runtime::Frame, by the names every console's reader asks
 # for): how many passes have ended, which one the screen shows, whether the game waits, the frames
 # each pass took, how it stands and what went wrong. Read back here in the emulator, a frame at a
@@ -78,6 +78,27 @@ class TestCheckedBuild < Minitest::Test
       assert_equal [Frame::INDEX_OUT_OF_RANGE, 5, 3],
                    [core.bus_read32(fault), core.bus_read32(fault + 8), core.bus_read32(fault + 12)]
       assert_predicate core.bus_read32(fault + 4), :positive?, "where the list is kept"
+      assert_equal Frame::END_SHOWN, core.bus_read32(at.fetch(Frame::SHOWN))
+    end
+  end
+
+  # A list of three pushed onto a fourth time stops it as the interpreter stops it: the number for a
+  # full list, the list's place and its capacity.
+  def test_a_push_onto_a_full_list_stops_the_game_and_keeps_what_went_wrong
+    rom = checked_cartridge do
+      screen :bitmap
+      items = list :items, capacity: 3
+      count = 0
+      game_loop do
+        count += 1
+        items.push count
+      end
+    end
+    play(rom, 10) do |core, at|
+      fault = at.fetch(Frame::FAULT)
+      assert_equal Frame::WENT_WRONG, core.bus_read32(at.fetch(Frame::STATE))
+      assert_equal [Frame::LIST_FULL, 3], [core.bus_read32(fault), core.bus_read32(fault + 8)]
+      assert_equal rom.built.lists.fetch(:items).base, core.bus_read32(fault + 4)
       assert_equal Frame::END_SHOWN, core.bus_read32(at.fetch(Frame::SHOWN))
     end
   end

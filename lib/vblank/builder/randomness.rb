@@ -2,22 +2,28 @@
 
 module VBlank
   class Builder
-    # The randomness verbs: a deterministic pseudo-random number stream.
+    # Random numbers
     #
-    # There's no dice in the console — "random" is really a hidden number the game
-    # keeps churning, so we own it completely: the same seed always replays the
-    # same sequence, on every boot and on every backend (the churn is plain
-    # multiply-and-add, which the interpreter and the console agree on to the bit).
-    # That determinism is a feature — a game can seed a constant and play out
-    # identically every time (handy for tests and attract-mode demos), and only opt
-    # in to unpredictability by seeding from something the player can't predict.
+    # A console has no dice. A game's "random" numbers come from a hidden number that it keeps
+    # churning, and the same starting point, called a seed, always gives the same numbers in the
+    # same order. That is useful: a game seeded with a constant plays out the same every time,
+    # which suits tests and demo screens. To make each playthrough differ, seed from something the
+    # player decides, such as how long they waited before pressing Start.
     #
-    # A concern of {Builder}: mixed in, so seed/roll/rand/chance are flat DSL verbs.
-    # It leans on the builder core (record, ensure_var, at_boot) for everything else.
+    # ```ruby
+    # roll :enemy_x, 0..239            # a random place across the screen
+    # beep :powerup if chance(30)      # a 30% drop
+    # dx = rand(1..2)                  # a random number to use right away
+    # ```
+    #--
+    # The churn is plain multiply-and-add, which the interpreter and the console agree on to the
+    # bit. A concern of Builder: mixed in, so seed, roll, rand and chance are flat DSL verbs. It
+    # leans on the builder core (record, ensure_var, at_boot) for everything else.
+    #++
     module Randomness
       # The hidden variable holding the stream's state. Every draw churns it; the
       # game never sees it (underscore-prefixed, like the other machinery vars).
-      RNG_STATE = :__rng
+      RNG_STATE = :__rng  # :nodoc:
 
       # How the stream churns: state = state * MULT + INC, which overflows past a
       # 32-bit number and wraps around — and that wraparound *is* the trick that
@@ -25,75 +31,89 @@ module VBlank
       # wrap is pinned so every backend churns the number identically). These
       # particular constants (from Numerical Recipes) make it cycle through every
       # possible 32-bit value before repeating, so the stream never gets stuck.
-      RNG_MULT = 1_664_525
-      RNG_INC  = 1_013_904_223
+      RNG_MULT = 1_664_525  # :nodoc:
+      RNG_INC  = 1_013_904_223  # :nodoc:
 
       # A draw reads the *top* of the state, not the bottom: churned this way, the
       # low bits fall into a short, obvious rhythm (a coin flip off the last bit
       # would just go 0,1,0,1…), while the high bits look random. Dividing by 2**16
       # brings the top 16 bits down to where we can use them.
-      RNG_HIGH_DIV = 65_536
+      RNG_HIGH_DIV = 65_536  # :nodoc:
 
       # The most values a single draw can span. Because a draw comes from the top 16
       # bits, it only distinguishes about this many outcomes — ask for a wider spread
       # and the top of the range would never come up. It comfortably covers the whole
       # screen (240x160) and every 15-bit color, so real game ranges never hit it.
-      MAX_ROLL_SPAN = RNG_HIGH_DIV / 2
+      MAX_ROLL_SPAN = RNG_HIGH_DIV / 2  # :nodoc:
 
       # Where the stream starts when a game never calls +seed+. Any fixed value keeps
       # an unseeded game reproducible; it has to be written explicitly at boot because
       # console memory isn't reliably zero when the machine powers on (the same reason
       # the input snapshots are cleared up front).
-      DEFAULT_SEED = 0x2545_F491
+      DEFAULT_SEED = 0x2545_F491  # :nodoc:
 
-      # Seed the random stream. The same seed replays the exact same sequence every
-      # time — so `seed 42` makes a game deterministic (great for a test or a demo
-      # that must play out identically). +n+ may be a number, a variable, or an
-      # expression Value; seeding from a value the player influences (say, how long
-      # they waited before pressing START) is how you make each playthrough differ.
+      # Sets the starting point of the random numbers.
       #
-      # @param n [Integer, Symbol, Value] the stream's new starting point
+      # The same seed replays the same numbers in the same order every time, so `seed 42` makes a
+      # game play out identically, which suits a test or a demo screen. Seeding from a value the
+      # player influences makes each playthrough differ.
+      #
+      # ```ruby
+      # seed 42
+      # seed waited   # how long the player waited before pressing Start
+      # ```
+      #
+      # * `n` - the new starting point: a number, a variable or a calculation.
       def seed(n)
         mark_rng_used
         record(Build.set(RNG_STATE, DSL::Value.node_for(n)))
         ensure_var(n)
       end
 
-      # Stir the stream by one step — the way to make a game unpredictable. The
-      # console has no true randomness, so the entropy has to come from the one thing
-      # nobody can predict: *when* the player acts. Call this every frame while you
-      # wait for them, and the stream keeps moving; whatever spot it lands on when
-      # they finally press the button is decided by their reaction time, so each
-      # playthrough differs. A game that never calls it stays perfectly reproducible.
+      # Moves the random numbers on by one step, to make a game unpredictable.
       #
-      #   scene :title do
-      #     draw_text "PRESS START", 76, 100, :gray
-      #     randomize                              # keep stirring while we wait
-      #     call :new_game if pressed(:start)      # start from wherever it landed
-      #   end
+      # The console has no true randomness, so the surprise has to come from the one thing nobody
+      # can predict: when the player acts. Call this every frame while you wait for them. Where
+      # the numbers have got to when they press the button depends on their timing, so each
+      # playthrough differs. A game that never calls it is perfectly repeatable.
+      #
+      # ```ruby
+      # scene :title do
+      #   draw_text "PRESS START", 76, 100, :gray
+      #   randomize                              # keep stirring while we wait
+      #   call :new_game if pressed(:start)      # start from wherever it landed
+      # end
+      # ```
       def randomize
         mark_rng_used
         emit_rng_step
       end
 
-      # The stream itself, for a save_data record to keep: `keep hearts, random_numbers`.
-      # A load then puts the stream back where the save found it, so the rolls after a load
-      # are the rolls there would have been. See DSL::RandomNumbers.
+      # Gives the random numbers themselves, for a `save_data` record to keep.
+      #
+      # A load then puts them back where the save found them, so the rolls after a load are the
+      # rolls there would have been.
+      #
+      # ```ruby
+      # save_data :slot do
+      #   keep hearts, random_numbers
+      # end
+      # ```
       def random_numbers
         mark_rng_used
         DSL::RandomNumbers.new(RNG_STATE)
       end
 
-      # Draw a random whole number in +range+ into the variable +name+, churning the
-      # stream. +range+ is an ordinary Ruby range:
+      # Draws a random whole number from a range into a variable, and returns the variable.
       #
-      #   roll :enemy_x, 0..239      # somewhere across the screen
-      #   roll :dir, 0..1            # a coin flip
-      #   roll :dx, -2..2            # a nudge left or right
+      # ```ruby
+      # roll :enemy_x, 0..239      # somewhere across the screen
+      # roll :dir, 0..1            # a coin flip
+      # roll :dx, -2..2            # a nudge left or right
+      # ```
       #
-      # @param name [Symbol] the variable to store the draw in
-      # @param range [Range] the inclusive/exclusive range to draw from
-      # @return [Value] a handle to the variable, so calls can chain
+      # * `name` - the variable to store the draw in.
+      # * `range` - an ordinary Ruby range to draw from, such as `0..239` or `0...100`.
       def roll(name, range)
         lo, width = range_bounds(range)
         mark_rng_used
@@ -107,25 +127,30 @@ module VBlank
         DSL::Value.new(self, Build.var_ref(name), name: name)
       end
 
-      # Draw a random number in +range+ and hand back a {Value} — for assigning it
-      # (`set :dx, rand(1..2)`) or building an expression from it (`rand(0..9) * 10`).
-      # Churns the stream. Each call draws into its own hidden variable, so two draws
-      # in one expression are independent.
+      # Draws a random number from a range and gives it back as a value to use right away.
       #
-      # @param range [Range] the range to draw from
-      # @return [Value] the drawn value
+      # Assign it (`dx = rand(1..2)`) or build a calculation from it (`rand(0..9) * 10`). Each call
+      # draws into a variable of its own, so two draws in one calculation are independent.
+      #
+      # ```ruby
+      # dx = rand(1..2)              # a speed of 1 or 2
+      # star_x = rand(0..23) * 10    # a column ten pixels apart
+      # ```
+      #
+      # * `range` - an ordinary Ruby range to draw from.
       def rand(range)
         roll(next_rng_var, range)
       end
 
-      # A {Condition} that is true +percent+% of the time (0–100) — branch on it with
-      # `if`, join it with `&&` / `||`, exactly like a comparison. Churns the
-      # stream.
+      # Asks a question that holds a given percent of the time.
       #
-      #   beep :powerup if chance(30)   # a 30% drop
+      # Use it with `if`, and join it with `&&` and `||` as you would a comparison.
       #
-      # @param percent [Integer] how often it holds, 0 (never) to 100 (always)
-      # @return [Condition] the yes/no test
+      # ```ruby
+      # beep :powerup if chance(30)   # a 30% drop
+      # ```
+      #
+      # * `percent` - how often it holds, as a whole number from 0 (never) to 100 (always).
       def chance(percent)
         unless percent.is_a?(Integer) && (0..100).cover?(percent)
           raise ArgumentError, "chance needs a whole percent from 0 to 100. You gave #{Messages::PlainWords.words_for_given(percent)}."

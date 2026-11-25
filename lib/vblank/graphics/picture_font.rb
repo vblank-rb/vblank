@@ -2,7 +2,7 @@
 
 module VBlank
   module Graphics
-    # A FONT WHOSE CHARACTERS ARE THE GAME'S OWN PICTURES: a score in a game's own numerals, a
+    # A font whose characters are the game's own pictures: a score in a game's own numerals, a
     # word in letters lifted off a cartridge. Each character is a picture the game declared with
     # `image` — in as many colours as the picture has — rather than a one-colour glyph, so the
     # font holds only names and sizes, and drawing a character is drawing that picture.

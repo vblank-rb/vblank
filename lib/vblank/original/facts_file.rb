@@ -5,7 +5,7 @@ require "yaml"
 
 module VBlank
   module Original
-    # ONE FACTS FILE AS TEXT: its values written by a tool, its comments by hand (see Facts).
+    # One facts file as text: its values written by a tool, its comments by hand (see Facts).
     #
     #   FactsFile.merge(text, values)   # the file with +values+, every comment kept
     #   FactsFile.parse(text)           # its header, each key's comment, and its measured section
@@ -19,7 +19,7 @@ module VBlank
     # have goes with its comment, a new key comes in with none, and the measured section is copied as
     # it is.
     #
-    # WHAT A MERGE DOES NOT KEEP, by design: a comment with a blank line between it and its key (a
+    # What a merge does not keep, by design: a comment with a blank line between it and its key (a
     # comment belongs to the key right below it), and a comment inside an item of a list of mappings
     # (the list's key names what each item holds, so the items' keys carry no comments of their own).
     # A key with a capital letter in it is a label of the original's (a table keyed by the

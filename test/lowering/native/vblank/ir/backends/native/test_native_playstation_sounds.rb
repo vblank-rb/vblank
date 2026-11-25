@@ -2,13 +2,13 @@
 
 require "test_helper"
 
-# THE DESKTOP BUILD MADE AS THE PLAYSTATION SOUNDS LIKE THE PLAYSTATION PROGRAM: the C build's speaker
+# The desktop build made as the PlayStation sounds like the PlayStation program: the C build's speaker
 # against the program played in Beetle PSX, frame by frame. The desktop build plays the game's voices the
 # way the PlayStation's sound chip does (runtime/rg_spu.c: the same loops, read at the same pitch, through
 # the same envelope, interpolation and volumes), so the two are held close: each frame as loud, each held
 # note at the same pitch, each hiss as bright.
 #
-# HOW THE TWO ARE SET SIDE BY SIDE. Beetle hands its sound over at the chip's own 44100 samples a second,
+# How the two are set side by side. Beetle hands its sound over at the chip's own 44100 samples a second,
 # three quarters as loud as the chip makes it (spu.c, "75% attenuation for resampling headroom"); the
 # desktop build's is at 48000, each of its samples holding the chip's newest. So a frame is read from each
 # at its own rate, and Beetle's loudness taken back up by four thirds. A frame's loudness is how much
@@ -21,14 +21,14 @@ require "test_helper"
 # voices sound together how their waves lie against each other is decided by where in a frame the
 # program wrote each, which the desktop build does not keep.
 #
-# WHAT BEETLE DOES THAT THE DESKTOP BUILD DOES NOT: the first time a voice is started in a run, it is
+# What Beetle does that the desktop build does not: the first time a voice is started in a run, it is
 # heard a frame later than every time after (a voice struck at pass 30 and again every 30 passes is heard
 # a frame short of 30 apart the first time, and 30 after, unless a silent note struck it before). Nothing
 # in the program's writes says why, so the desktop build does not copy it: a test whose first sound is the
 # game's own strikes its voice silently first, and a frame here is held to Beetle's frame before it, the
 # same frame and the frame after.
 #
-# THE TOLERANCES, measured on the programs below (the commit that made this says by how much): a square
+# The tolerances, measured on the programs below (the commit that made this says by how much): a square
 # or wave voice's frame came within half of LOUDNESS_SLACK of Beetle's, and a hiss's within it, since a
 # frame of a hiss holds a different stretch of its pattern on each; a held note's pitch within half of
 # PITCH_SLACK, which is what reading a square wave's edges at two sample rates leaves; and a hiss's rises
@@ -204,7 +204,7 @@ class TestNativePlaystationSounds < Minitest::Test
     end
   end
 
-  # A RECORDING plays on a voice of the chip's own, read out of sound memory as the program's (twelve
+  # A recording plays on a voice of the chip's own, read out of sound memory as the program's (twelve
   # samples a wave, so near the filters' guess that the blocks come back close to the recording).
   CHIME = [0, 40, 80, 110, 80, 40, 0, -40, -80, -110, -80, -40].freeze
 

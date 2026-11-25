@@ -1,11 +1,11 @@
-# THE STATE IMAGE: everything a game and its runtime keep between two frames, written as text by
+# The state image: everything a game and its runtime keep between two frames, written as text by
 # name, and read back into the same build so the game plays on from there. This is
 # native/runtime/rg_state.h in Ruby, line for line, and the text is the same: one line a field, its
 # name, a tab, how many numbers it holds, and the numbers, all as decimal whole numbers, a run of one
 # number as one word "times*number". So an image
 # written by the C or the JavaScript runtime reads here, and the other way round.
 #
-# EACH FIELD IS NAMED ONCE AND USED BOTH WAYS. A part hands a field to rg_state_numbers (or the
+# Each field is named once and used both ways. A part hands a field to rg_state_numbers (or the
 # game's own calls, rg_state_number and rg_state_list, which the build writes into
 # rg_game_visit_state); writing the image adds the field as a line, and reading it stores what the
 # image holds under that name into the field. Writing and reading cannot disagree about what a field

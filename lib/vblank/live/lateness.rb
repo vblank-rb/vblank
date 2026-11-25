@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # HOW MANY OF A PLAY'S PASSES RAN LATE, AND HOW MUCH OF THAT WAS RUBY COLLECTING GARBAGE, as the
+    # How many of a play's passes ran late, and how much of that was Ruby collecting garbage, as the
     # play ends (LatenessTally counts it as the play goes).
     #
     # A pass is late when the game's own work over it — from the buttons handed to it to the picture

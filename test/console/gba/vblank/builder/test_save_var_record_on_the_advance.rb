@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/builder/test_save_var_record.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_save_var_record.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A `save_var` ON 64K OR 128K OF SAVE MEMORY, which is flash: the save_vars are kept in a
+# A `save_var` ON 64K OR 128K of save memory, which is flash: the save_vars are kept in a
 # record of their own that saves itself a pass after one of them changes, rather than written
 # in place as they are on 32K.
 class TestSaveVarRecordOnTheAdvance < Minitest::Test

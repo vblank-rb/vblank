@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE ROOM IN A BLANK, for copying to video RAM with the screen on.
+          # The room in a blank, for copying to video RAM with the screen on.
           #
           # Video RAM, the colour memory and the sprite table can only be written in the vertical
           # blank or with the screen switched off; written while the picture is being drawn, the
@@ -26,8 +26,8 @@ module VBlank
           #
           # What decides whether a piece goes is the line the picture is on, read as it is asked, so
           # the interrupt's time and the setting up so far are already counted. BLANK_BYTES is what a
-          # blank holds counted from where its copying starts, a few lines in, once the interrupt has
-          # read the controller: the whole lines from there, the rest of that line standing for the
+          # blank holds counted from where its copying starts, a few lines in, once the interrupt and
+          # the wait have ended: the whole lines from there, the rest of that line standing for the
           # edge. A piece that big goes in a blank of its own: rt_blank_room sends a piece it finds
           # no room for at once if the blank's copying has only just started, as no blank has more,
           # and else waits for the next. With the screen still off, before the first pass is shown,
@@ -38,7 +38,7 @@ module VBlank
           #   rt_blank_room_with_registers (JSR): the same, AFTER_LUMP_LINES more
           #   rt_blank_time   before a write that is not a copy (JSR): returns once the blank has a
           #                   line left for it
-          #   rt_blank_time_for_cells (JSR): the same, for CELLS_A_LOOK cells of a map
+          #   rt_blank_time_for_cells (JSR): the same, for a piece of a map's changed cells
           #   rt_blank_left   (JSR) A = the bytes this blank still has time for, 0 for none, so a
           #                   run of pieces can be sent together
           #   rt_blank_next   (JSR): the next blank waited for
@@ -54,13 +54,12 @@ module VBlank
             LINES = 262
             FIRST_BLANK_LINE = 225
             LAST_BLANK_LINE = LINES - 1
-            # The line a blank's copying starts on: the interrupt has read the controller and the
+            # The line a blank's copying starts on: the interrupt has ended, and the
             # pass's wait has ended.
             COPY_START_LINE = 228
-            # How many cells of a map go on one look at the line, and the lines left that asks for:
-            # a cell is about fifty of the processor's cycles and a line about 190, so eight take
-            # about two lines, and one more is kept for the look itself.
-            CELLS_A_LOOK = 8
+            # The lines left that one look asks for before a piece of a map's changed cells
+            # (Picture::CELL_PIECE_BYTES): the copying engine's 165 bytes a line, so 256 bytes and the
+            # setting up take under two lines, and one more is kept for the look itself.
             LINES_FOR_CELLS = 4
             # The lines rt_blank_room keeps after a piece for the few writes that follow it without
             # asking, and rt_blank_room_with_registers for a tiled screen's lump of the sprite table
@@ -124,7 +123,7 @@ module VBlank
               asm.label("rt_blank_time_there")
               asm.rts
 
-              # The same, for CELLS_A_LOOK cells of a map, written one after another.
+              # The same, for a piece of a map's changed cells (Picture::CELL_PIECE_BYTES).
               asm.label("rt_blank_time_for_cells")
               asm.lda(asm.abs(memory[Frame::DISPLAY_ON]))
               asm.beq("rt_blank_cells_there")
@@ -183,8 +182,8 @@ module VBlank
               asm.rts
             end
 
-            # THE SAME ROUTINES WHERE THE SCREEN IS OFF ABOVE AND BELOW THE PICTURE (Letterbox). The
-            # time for copying is then the WINDOW: from the line after the last one shown (LAST),
+            # The same routines where the screen is off above and below the picture (Letterbox). The
+            # time for copying is then the window: from the line after the last one shown (LAST),
             # round through the blank, to the line before the first one shown (FIRST). With the
             # whole screen on, FIRST is 1 and LAST 224, and every count here comes to what the
             # routines above count. The line just before FIRST is never counted: the screen comes
@@ -245,12 +244,14 @@ module VBlank
               asm.bcc("rt_blank_lines_above")
               asm.beq("rt_blank_lines_above")
               # Before the blank, its interrupt is still to come and takes its lines out of the
-              # window while a copy waits: they are counted as gone already. It reads a controller
-              # by hand, which is most of its time, and a game that reads two reads two.
+              # window while a copy waits: they are counted as gone already, a few for each
+              # controller the game reads. That is what the interrupt took when it read each
+              # controller by hand; while a copy waits it now only marks the console's own read due
+              # (Frame#emit_auto_read), so the count is more than it needs.
               asm.cmp(FIRST_BLANK_LINE)
               asm.bcs("rt_blank_lines_interrupt_counted")
               interrupt_lines = COPY_START_LINE - FIRST_BLANK_LINE + 1
-              asm.adc(memory.reserved?(Frame::SECOND_HELD) ? interrupt_lines * 2 : interrupt_lines) # the carry is clear
+              asm.adc(interrupt_lines * Frame.controllers_reserved(memory)) # the carry is clear
               asm.label("rt_blank_lines_interrupt_counted")
               asm.eor(0xFFFF)
               asm.sec

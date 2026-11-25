@@ -132,7 +132,7 @@ class TestSNESSPC700 < Minitest::Test
   end
 
   def test_a_branch_counts_from_the_byte_after_it
-    # BNE back to itself is D0 FE; BRA over one NOP is 2F 01.
+    # BNE back to itself is D0 fe; bra over one NOP is 2F 01.
     assert_equal [0xD0, 0xFE, 0x2F, 0x01, 0x00], bytes_of { label "spin"; bne "spin"; bra "over"; nop; label "over" }
   end
 

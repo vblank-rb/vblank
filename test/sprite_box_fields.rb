@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# SMALL TILED GAMES FOR `ignoring_sprites:`, built for any console: a hollow 16 by 16 box sprite
+# Small tiled games for `ignoring_sprites:`, built for any console: a hollow 16 by 16 box sprite
 # that steps one pixel right a frame from column 32 to 40 and back, over a field of sea, with one
 # cell of rock where a test puts it; and the same sea with no sprite at all, the port whose
 # characters are not made yet. The box covers the cell [5, 7] on every frame, and its middle shows

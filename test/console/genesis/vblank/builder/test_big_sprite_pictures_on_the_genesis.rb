@@ -46,7 +46,7 @@ module BigSpritePictureGames
   def self.mirrored_game = game { |b| b.sprite b.mirror(:big), at: [8, 16] }
 end
 
-# A PICTURE BIGGER THAN ONE PIECE OF THE CONSOLE'S. A Genesis draws a sprite entry up to 32×32, and its
+# A picture bigger than one piece of the console's. A Genesis draws a sprite entry up to 32×32, and its
 # table holds 80 entries, 20 on a row of the screen. Pictures this big take every piece they need only when
 # the build covers each with the fewest big pieces, so every sprite here shows whole.
 class TestBigSpritePicturesOnTheGenesis < Minitest::Test

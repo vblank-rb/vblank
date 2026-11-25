@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# SAVING ON A SUPER NINTENDO CARTRIDGE. Its battery-backed RAM holds the same bytes the
+# Saving on a Super Nintendo cartridge. Its battery-backed RAM holds the same bytes the
 # interpreter's IR::SaveImage holds, so a save made by either starts the game on the other, and a
 # save survives the console going off: two runs handed the same image are a power cycle.
 class TestSNESSaves < Minitest::Test
@@ -84,7 +84,7 @@ class TestSNESSaves < Minitest::Test
     assert_equal 5, rom.bytes.getbyte(0x7FD8), "2^5 kilobytes"
   end
 
-  # HOW BSNES TAKES THE CARTRIDGE, the ground truth for what the header asks of real hardware: the
+  # How bsnes takes the cartridge, the ground truth for what the header asks of real hardware: the
   # board its heuristics pick from the header (type $02, RAM size 5: LoROM with RAM, and for a
   # cartridge of 2MB or less the "#A" board, whose RAM fills both halves of its banks), the save RAM
   # it gives the cartridge, and the reader's idea of the save file, all one size, the header's.
@@ -98,7 +98,7 @@ class TestSNESSaves < Minitest::Test
     assert_equal save_bytes, VBlank::Diagnostics::SNESReading::SAVE_FILE.whole
   end
 
-  # WHERE BSNES PUTS THE RAM: banks $70 to $7D, the same 32K in each. A byte the processor stores at
+  # Where bsnes puts the RAM: banks $70 to $7D, the same 32K in each. A byte the processor stores at
   # $70:7FFF is the save RAM's last, and one stored at $7D:0001 its second. On a cartridge of 2MB or
   # less (LOROM-RAM#A) the banks' upper halves are the same RAM again, so $70:8000 is its first byte;
   # on a bigger one (LOROM-RAM) they are the cartridge's ROM, and a byte stored there goes nowhere.
@@ -224,7 +224,7 @@ class TestSNESSaves < Minitest::Test
     assert_match(/32K of battery-backed RAM/, error.message)
   end
 
-  # SAVING ON A SUPER FX CARTRIDGE, while the chip paints the screen every pass: the chip's RAM at
+  # Saving on a super FX cartridge, while the chip paints the screen every pass: the chip's RAM at
   # $70 holds the painted screen, and the save is in a bank of its own past it
   # (Cartridge::SNESROM::SUPER_FX). A rectangle the chip paints moves with the saved number, so a
   # save landing in the picture, or the picture in the save, shows on the pass it happens.
@@ -305,7 +305,7 @@ class TestSNESSaves < Minitest::Test
     assert ram.byteslice(0, 0x10000).bytes.any?(&:positive?), "the painted screen is in the first 64K"
   end
 
-  # SAVES OF MORE THAN 32K ON A SUPER FX CARTRIDGE. The save is the whole of the chip's second
+  # Saves of more than 32K on a super FX cartridge. The save is the whole of the chip's second
   # bank, $71, 64K of it: a record of a list of 3600 words is 14424 bytes a half, and its two
   # halves end past 32K. Saved twice, so both halves are written, then emptied and loaded back.
   FX_BIG_RECORDS = VBlank.game("FX BIG SAVES", consoles: %i[gba snes], variants: { snes: :superfx }) do

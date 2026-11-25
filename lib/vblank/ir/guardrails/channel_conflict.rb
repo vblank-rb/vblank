@@ -4,7 +4,29 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A SOUND EFFECT AND A SONG PART THAT SHARE ONE OF THE CONSOLE'S VOICES.
+        # A warning about a sound effect and a song part that play on the same voice of the
+        # console. With `beep`:
+        #
+        # > <The song> plays in two parts. Its second part uses the same sound voice as your
+        # > beeps. The console has only a few voices. While the song plays, a beep and its
+        # > lower part interrupt each other. To use beeps and this music together, make it a
+        # > one-part song, just the melody. Or play the beeps only while the song does not play.
+        #
+        # With `wave` or `noise` (<voice> is "the wave voice" or "the noise voice", <effects> is
+        # "wave tones" or "noise hits"):
+        #
+        # > <The song> has a part that plays <voice>. Your <effects> play <voice> too, and the
+        # > console has one of it. While the song plays, a `<verb>` and this part interrupt each
+        # > other. To use both together, remove this part from the song. Or play the <effects>
+        # > only while the song does not play.
+        #
+        # The console has a few voices, and each plays one sound at a time. When a sound effect
+        # and a song part share one, each cuts the other off: the effect breaks into the tune,
+        # and the tune's next note stops the effect. The build goes on, since a game can accept
+        # that. A song part that plays a recorded instrument does not share these voices.
+        #
+        #--
+        # A sound effect and a song part that share one of the console's voices.
         #
         # The console has a small, fixed set of voices, and a sound effect plays on one of them
         # directly. So does a song part that names one of them. When a game does both, the two
@@ -14,7 +36,7 @@ module VBlank
         #
         # Three pairs, one per voice the console plays itself:
         #
-        #   * `beep` and a song's SECOND square part. A one-part song leaves the beep's voice
+        #   * `beep` and a song's second square part. A one-part song leaves the beep's voice
         #     free; a second part is the only voice left.
         #   * `wave` and a song part on the wave voice. There is one, so any such part collides.
         #   * `noise` and a song part on the noise voice. Likewise.
@@ -22,6 +44,7 @@ module VBlank
         # Advisory — the build still produces a ROM, and the two really can share a voice if you
         # do not mind them interrupting each other. A part that plays a recorded instrument
         # sounds through the mixer instead, so it never reaches any of these.
+        #++
         class ChannelConflict
           NAME = :channel_conflict
           PLAIN_NAME = "a sound effect and a song that share a voice"
@@ -42,7 +65,7 @@ module VBlank
 
           private
 
-          # A beep shares the SECOND square voice, so one square part is fine. A wave tone or a
+          # A beep shares the second square voice, so one square part is fine. A wave tone or a
           # noise hit shares the only voice of its kind, so one part is already a collision.
           def collides?(song, verb)
             return Tunes.parts_on(song, :square) >= Audio::Music::MAX_SQUARE_PARTS if verb == :beep

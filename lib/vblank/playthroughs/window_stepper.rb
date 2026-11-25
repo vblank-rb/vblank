@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # A PLAYTHROUGH A PERSON CAN WATCH: any running game a playthrough plays on, stepped through a
+    # A playthrough a person can watch: any running game a playthrough plays on, stepped through a
     # Live::Session as `vblank run` plays one, so the window does all it does there: the menu,
     # pause, a frame at a time, fast forward, scale, fullscreen, volume. Only where the buttons come
     # from differs. The script presses them, and what the window's keys and gamepads hold is
@@ -14,7 +14,7 @@ module VBlank
     # The sound is the game's own on the emulator and the computer builds. The interpreter makes
     # none a speaker can play, so it hands the speaker silence, which paces it the same.
     #
-    # THE FRAME RATE SHOWS HOW OFTEN THE GAME MAKES A NEW PICTURE. The emulator is stepped a screen
+    # The frame rate shows how often the game makes a new picture. The emulator is stepped a screen
     # refresh at a time, sixty a second whatever the game does, and a game whose pass takes two
     # frames shows the same picture for two of them. So each refresh that finished no pass of the
     # game is told to the device as a repeat (+repeating_picture=+, the one thing asked of a device
@@ -79,12 +79,19 @@ module VBlank
         nil
       end
 
-      # The two speakers' sound of the frame just played, or silence.
+      # The two speakers' sound of the frame just played, or silence: a game with none, or one whose
+      # reader refuses to give samples (a PlayStation program's, PS1Reading), is played silent.
       def sound_of_frame
         return [@silence, @silence] unless @game.respond_to?(:last_frame_samples)
 
-        left, right = @game.last_frame_samples.each_slice(2).to_a.transpose
+        left, right = frame_samples.each_slice(2).to_a.transpose
         left ? [left, right] : [@silence, @silence]
+      end
+
+      def frame_samples
+        @game.last_frame_samples
+      rescue ArgumentError
+        []
       end
     end
   end

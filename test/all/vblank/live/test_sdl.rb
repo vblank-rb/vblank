@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "timeout"
 require "tmpdir"
 require "vblank/live"
 
@@ -255,6 +256,59 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A game whose variables a window reads, counting how often it is asked.
+  class CountedVariables
+    attr_reader :asked
+
+    def initialize = @asked = 0
+
+    def vars
+      @asked += 1
+      { "score" => 120, "lives" => 3 }
+    end
+  end
+
+  # Developer, Game variables: the window reads the game's variables each time it draws while the
+  # window of them is open, and never while it is shut. The keys that type a name are the window's
+  # then, and do nothing else: P, the pause's key, types a P and pauses nothing.
+  def test_game_variables_are_read_while_their_window_is_open_and_its_letters_are_the_windows
+    window = open_window
+    game = CountedVariables.new
+    window.read_variables_from(game)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_equal 0, game.asked, "a window that is shut reads nothing"
+
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    %i[left down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+    window.hold_while_paused
+    press_key(SDL::PAUSE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert_operator game.asked, :>=, 1
+    refute window.hold_while_paused, "the game plays on under the window, and P was typed into it"
+  ensure
+    window&.close
+  end
+
+  # Developer, Show frame time is a setting the settings file keeps.
+  def test_show_frame_time_is_written_to_the_settings_file
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      window = open_window(settings_file: path)
+      press_key(SDL::MENU)
+      window.show(Array.new(240 * 160, 0), 240, 160)
+      %i[left down down enter].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
+      press_key(SDL::MENU)
+      window.hold_while_paused
+      window.close
+
+      assert_includes File.read(path), "frame_time = on\n"
+    ensure
+      window&.close
+    end
+  end
+
   # Quit in the menu stops the play.
   def test_quit_in_the_menu_stops_the_play
     window = open_window
@@ -483,6 +537,146 @@ class TestSDL < Minitest::Test
     end
   end
 
+  # Why a play ended is told in a box over the last picture, and the window waits there until a
+  # console button answers it (X, the A button's key to begin with) or the window is closed. On SDL's
+  # stand-in display nobody can see the box, so telling why the play ended waits for nothing there.
+  # The timeouts only catch a hang.
+  def test_why_the_play_ended_waits_in_a_box_until_answered
+    window = open_window
+    window.show(Array.new(240 * 160, 0x001F), 240, 160)
+    told = Timeout.timeout(10) { window.tell_why_play_ended(VBlank::IR::ProgramError.new("list :q is full")) }
+    assert_nil told, "nobody can see this window, so nothing is waited for"
+
+    press_key(27)
+    Timeout.timeout(10) { window.tell_until_answered("The game went wrong.", title: "The game stopped") }
+    refute window.stop?, "a button answers the box and closes nothing"
+
+    push_event([SDL::EVENT_QUIT].pack("L"))
+    Timeout.timeout(10) { window.tell_until_answered("The game went wrong.", title: "The game stopped") }
+    assert window.stop?, "closing the window ends the wait too"
+  ensure
+    window&.close
+  end
+
+  # A line about the match goes after the window's own title, the caption it opened with, and over the
+  # picture, where a player in fullscreen sees it. A second line takes the first's place, and after
+  # NOTICE_SECONDS the window says only its own title again.
+  def test_a_notice_is_shown_in_the_title_and_over_the_picture_for_a_while
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", caption: "TEST (watched)", scale: 1)
+    clock = window.now
+    window.define_singleton_method(:now) { clock }
+
+    window.notice("Player 2 left the match.")
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_equal "TEST (watched) - Player 2 left the match.", window.window_title
+    assert_equal "Player 2 left the match.", window.notice_shown
+
+    window.notice("Player 3 left the match.")
+    assert_equal "TEST (watched) - Player 3 left the match.", window.window_title
+
+    clock += SDL::NOTICE_SECONDS
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_nil window.notice_shown
+    assert_equal "TEST (watched)", window.window_title
+  ensure
+    window&.close
+  end
+
+  # A play told how many pictures to show ends after them even with the menu left open: a picture drawn
+  # while the game is held counts. The timeout only catches a hang.
+  def test_a_play_with_a_picture_limit_ends_with_the_menu_left_open
+    window = open_window
+    window.picture_limit = 5
+    press_key(SDL::MENU)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert Timeout.timeout(10) { window.hold_while_paused }
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
+  # A match chosen in the menu ends the play, so the window can start the game again as the match,
+  # and is handed over once.
+  def test_a_match_chosen_in_the_menu_stops_the_play_and_is_handed_over_once
+    window = open_window
+    window.offer_match(4)
+    [SDL::MENU, SDL::KEY_CODES[:right], SDL::KEY_CODES[:down], SDL::KEY_CODES[:down], SDL::KEY_CODES[:enter]].each do |key|
+      press_key(key)
+      press_key(key, down: false)
+    end
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    assert window.stop?
+    assert_equal VBlank::Live::WindowMenu::MatchRequest.new(does: :host, text: nil, players: 2), window.take_match_request
+    refute window.stop?
+  ensure
+    window&.close
+  end
+
+  # Escape stops the play, and a waiting match chosen in the menu takes it back (#take_escape) so the
+  # game plays on; a window closed is closed whatever was pressed before.
+  def test_escape_can_be_taken_back_and_a_closed_window_cannot
+    window = open_window
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert window.stop?
+    assert window.take_escape
+    refute window.stop?
+
+    press_key(SDL::ESCAPE)
+    push_event([SDL::EVENT_QUIT].pack("L"))
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    refute window.take_escape
+    assert window.stop?
+  ensure
+    window&.close
+  end
+
+  # Escape while an address is typed gives up the typing, not the play; the letters typed are the
+  # menu's, never the game's.
+  def test_escape_while_typing_an_address_gives_up_the_typing
+    window = open_window
+    window.offer_match(4)
+    [SDL::MENU, SDL::KEY_CODES[:right], *[SDL::KEY_CODES[:down]] * 4, SDL::KEY_CODES[:enter], 4].each do |key|
+      press_key(key)
+      press_key(key, down: false) unless key == 4
+    end
+    window.show(Array.new(240 * 160, 0), 240, 160)
+    assert_empty window.held_buttons(1), "the letter typed is not the game's"
+
+    press_key(SDL::ESCAPE)
+    window.show(Array.new(240 * 160, 0), 240, 160)
+
+    refute window.stop?
+    assert_nil window.take_match_request
+  ensure
+    window&.close
+  end
+
+  # A box too big for the window makes the window bigger, a whole number of times the picture, as the
+  # desktop build's does: a Color game's window at the least scale is its 160 by 144 screen, too small
+  # for what is wrong with a settings file. Answered, the window goes back to the player's size.
+  def test_a_box_too_big_for_the_window_makes_the_window_bigger
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "settings.txt")
+      File.write(path, "scale = 1\nvolume = loud\nkey.a = Nonesuch\n")
+      window = SDL.new(title: "TEST", width: 160, height: 144, settings_file: path)
+      window.show(Array.new(160 * 144, 0), 160, 144)
+      wide, high = window.window_size
+
+      assert_operator wide, :>, 160, "the window grew for the box"
+      assert_equal [wide / 160, 0, 0], [high / 144, wide % 160, high % 144], "a whole number of times the screen"
+      press_key(27) # X, the A button's key to begin with, answers the box
+      window.show(Array.new(160 * 144, 0), 160, 144)
+      assert_equal [160, 144], window.window_size
+    ensure
+      window&.close
+    end
+  end
+
   # What a settings file says that cannot be used is kept for the window's player to be told.
   def test_a_settings_file_that_cannot_all_be_used_says_what
     Dir.mktmpdir do |dir|
@@ -536,6 +730,23 @@ class TestSDL < Minitest::Test
     window&.close
   end
 
+  # A window opened before its game is built (vblank run opens it at the console's size while a
+  # helper builds the game) takes the game's picture once it is known: words while it waits, then
+  # the game's size, at the scale it was opened at, and a picture of the old size is refused.
+  def test_a_window_waits_in_words_then_fits_the_game
+    flunk "SDL3 is not installed: #{SDL::INSTALL_LINE}" unless SDL.available?
+    window = SDL.new(title: "TEST", scale: 2, width: 240, height: 160)
+    window.show_waiting(["Building TEST", "Checking for mistakes  3/9"])
+    problems = window.fit_game(width: 160, height: 144, pixel_size: 1)
+    window.show(Array.new(160 * 144, 0), 160, 144)
+
+    assert_nil problems
+    assert_equal [320, 288], window.window_size
+    assert_raises(ArgumentError) { window.show(Array.new(240 * 160, 0), 240, 160) }
+  ensure
+    window&.close
+  end
+
   # The menu's size of a window of big pixels is the console's whole screen times the scale, as for
   # any game.
   def test_the_menu_sizes_a_window_of_big_pixels_as_the_consoles_screen
@@ -568,7 +779,17 @@ class TestSDL < Minitest::Test
     error = assert_raises(SDL::Missing) { SDL.new(title: "TEST", scale: 1, library: "/nowhere/libSDL3.dylib") }
 
     assert_match(%r{cannot open SDL3 at /nowhere/libSDL3.dylib}, error.message)
-    assert_match(/brew install sdl3/, error.message)
+    assert_match(/brew install sdl3/, error.message) unless Gem.win_platform?
+  end
+
+  # Windows is told its own way to install SDL3 and looks for SDL3.dll, never a Mac or Linux file.
+  def test_windows_is_told_its_own_way_to_install_sdl3
+    assert_match(/mingw-w64-ucrt-x86_64-sdl3/, SDL.install_line(windows: true))
+    assert_match(/SDL3\.dll/, SDL.install_line(windows: true))
+    refute_match(/brew/, SDL.install_line(windows: true))
+    assert_equal "SDL3.dll", SDL.libraries(windows: true).first
+    assert(SDL.libraries(windows: true).all? { |name| name.end_with?("SDL3.dll") })
+    refute_includes SDL.libraries(windows: false), "SDL3.dll"
   end
 
   private

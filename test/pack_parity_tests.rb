@@ -3,7 +3,7 @@
 require "tmpdir"
 require "pack_games"
 
-# EVERY REGISTERED PACK GAME (PackGames, test/pack_games.rb) BUILT BOTH WAYS AND HELD TO ONE
+# Every registered pack game (PackGames, test/pack_games.rb) BUILT BOTH WAYS AND HELD TO ONE
 # ANSWER: built with its pack left out and handed the pack file its all-in-one build made, it shows
 # and sounds what the all-in-one build does on every pass, or the build refuses in plain words
 # that name the fix. A game that names frames of its original is handed instead the file its
@@ -74,7 +74,7 @@ module PackParityTests
     end
   end
 
-  # THE PACK FILE THE BUILD WITH ITS PACK LEFT OUT IS HANDED. Where the game names frames of its
+  # The pack file the build with its pack left out is handed. Where the game names frames of its
   # original's, that is the file its pack's unpacking writes from the copy, played on this run's
   # player, as a shell makes it on the player's machine: the unpacking reads each frame through its
   # layout as game code (Original::FrameRewrite), a reader the game wrote among it, while the
@@ -96,7 +96,7 @@ module PackParityTests
   # How long an unpacking may play: the largest registered copy's tiles take a few dozen frames.
   UNPACKING_FRAMES = 400
 
-  # PLAYED AS A SHELL PLAYS IT: as the game's console, and not held to that console's memory.
+  # Played as a shell plays it: as the game's console, and not held to that console's memory.
   #
   # A real shell builds the unpacking for the console the game is built for, with
   # `for_computer: true` (Builder::DataPacks#unpacking_options), so its screen, clock and frame are
@@ -204,7 +204,7 @@ module PackParityTests
                            "(#{game.differs.what}), and they now play alike. Take `differs:` off its line in test/pack_games.rb."
   end
 
-  # THE BUILD WITH ITS PACK LEFT OUT, WRITTEN OUT, HOLDS NONE OF THE NUMBERS THE FILE PUTS INTO IT.
+  # The build with its pack left out, written out, holds none of the numbers the file puts into it
   # The interpreter plays such a program with the file's numbers in place (IR::StartFile.filled),
   # so what the file adds is every table, picture and recording that differs between the program
   # and the filled one. A run of those numbers in the written-out code is the original's data
@@ -222,7 +222,7 @@ module PackParityTests
     end
   end
 
-  # THE SEARCH FINDS WHAT IT LOOKS FOR: the all-in-one build of each of +names+, written out, holds
+  # The search finds what it looks for: the all-in-one build of each of +names+, written out, holds
   # runs of the numbers its pack file puts into the build with the pack left out. Without this
   # the search above could pass by never finding anything. A lowering's test file calls this.
   private def assert_search_finds_the_packs_numbers_all_in_one(*names)

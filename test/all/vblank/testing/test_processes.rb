@@ -4,7 +4,7 @@ require "test_helper"
 require "open3"
 require "tmpdir"
 
-# THE NATIVE RUN SPREADS ITS TESTS OVER PROCESSES, and has to report them as one run: the same
+# The native run spreads its tests over processes, and has to report them as one run: the same
 # totals, the same failures, the same skips by reason and the same class counts as one process
 # playing every test itself. Each case runs a small fixture suite both ways and compares what
 # they print.

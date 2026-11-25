@@ -4,6 +4,18 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a song or a sound effect in a game that never waits for the screen:
+        #
+        # > This game plays a song or a sound effect, but it never waits for the screen. A song
+        # > or a sound effect moves one step on every frame, so it needs frames to play on. A
+        # > frame ends when the game waits for the screen. With no wait there are no frames, and
+        # > the song or sound effect never plays. To fix this, put the game in a `game_loop`. A
+        # > `game_loop` waits for the screen on each pass.
+        #
+        # The game builds and runs, and the `play_song` line looks right, but nothing is heard.
+        # Put the game in a `game_loop`, or write `wait_vblank` where the game waits.
+        #
+        #--
         # A song in a program that never waits for the screen.
         #
         # `play_song` names the tune that is playing; the tune itself is moved on a frame at
@@ -11,6 +23,7 @@ module VBlank
         # moment `wait_vblank` wakes up at. A program that never waits has no such moments.
         # Nothing moves the tune on, and the cartridge stays silent: no crash, and the call
         # looks right where it is written.
+        #++
         class SongNeedsFrames
           NAME = :song_needs_frames
           PLAIN_NAME = "a song with no frames to play on"

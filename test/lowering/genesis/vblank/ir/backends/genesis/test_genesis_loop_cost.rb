@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE GENESIS, measured in the emulator: a `repeat`, and a game's `while i < n`
+# A turn of a loop on the Genesis, measured in the emulator: a `repeat`, and a game's `while i < n`
 # with `i += 1` last, which the build lowers as a counted loop (LoopForm#counted_while). The 68000's
 # own way is a count in a data register, ADDQ and CMP on it and a branch, or DBF, 10 cycles a turn
 # taken (68000 timing tables, "Miscellaneous Instruction Execution Times"). A turn here keeps its count
@@ -16,8 +16,20 @@ class TestGenesisLoopCost < Minitest::Test
 
   # Measured: a repeat 57 a turn setting, 87 reading. A counted while was 118 and 181 while it was
   # written as it reads (its hidden count kept, `i` read and added to in work RAM each turn); counted,
-  # 58 and 88.
-  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95 }.freeze
+  # 58 and 88. A search asking each turn whether to `break` or go to its `next` round was 398 and 290
+  # while a jump set a hidden number the loop's test and the rest of the turn read; 158 and 266 with a
+  # jump that is a branch, the count in work RAM; 120 and 239 with the count in a data register (the
+  # `next` loop is a while that is not counted).
+  #
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn (`k * 3 + 1`,
+  # `k * 5 + 2`, `k + 7`, `100 - k`, LoopCostGames :steps): 270 a turn while each sum read its variable
+  # into D0, added the number kept in D2 and wrote it back; 223 with the number added to the variable
+  # where it is (Genesis::Lowering#emit_sum, #emit_set_in_place); 195 with `k * 3` and `k * 5` each kept
+  # in a data register stepped by ADDQ as the turn ends, where they were multiplied every turn
+  # (Genesis::Lowering#held_steps). The same rounds written out are 142 a round, each an ADDQ or ADDI of
+  # the number to the variable where it is.
+  BOUNDS = { repeat_set: 62, repeat_read: 95, while_set: 62, while_read: 95, while_break: 130, while_next: 255,
+             steps: 205 }.freeze
 
   BOUNDS.each do |loop, bound|
     define_method(:"test_a_turn_of_#{loop}_costs_under_#{bound}_cycles") do

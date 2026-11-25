@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A TEST OF SMALL NUMBERS COSTS, for each console's own cost test: four tests a pass of one
+# What a test of small numbers costs, for each console's own cost test: four tests a pass of one
 # shape, against the same game counting the same hits with no test. Every number in these tests
 # stays small, and the build can tell: a byte or half slot of a list, a variable masked into ten
 # bits, a table of bytes. A console's own games keep such numbers in 8 or 16 bits and test them with

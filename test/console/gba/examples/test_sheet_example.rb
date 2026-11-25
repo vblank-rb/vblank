@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/sheet").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sheet").to_s)
 require VBlank.root.join("tools/make_example_assets").to_s # the art's colors, so expectations track the source
 
 # The art's colours and where to look for them, shared with the cartridge's tests

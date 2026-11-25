@@ -4,10 +4,10 @@ require "test_helper"
 
 require "stringio"
 
-# THE TESTS OF vblank/audio/test_song_parts.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/audio/test_song_parts.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A SONG OF MANY PARTS. The console has two square-wave voices for music, and a song's other
+# A song of many parts. The console has two square-wave voices for music, and a song's other
 # parts play recorded instruments through the mixer — so a tune is not held to two parts, it is
 # held to two square-wave parts and as many recorded ones as the mixer has voices. The music a
 # game being built on the framework reads out of a retail cartridge wants seven to nine, and
@@ -57,12 +57,12 @@ class TestSongPartsOnTheAdvance < Minitest::Test
     assert_equal [:hum] + ([:organ] * 12), i.active_samples, "the game's sound, and twelve recorded parts at once"
   end
 
-  # --- a recorded part on its own, with NOTHING sounding beside it ---
+  # --- a recorded part on its own, with nothing sounding beside it ---
 
-  # THE TEST THAT WAS MISSING, and the reason a real bug lived here unnoticed: every hardware
-  # test above has something ELSE making a noise at the same time — two square-wave parts and a
+  # The test that was missing, and the reason a real bug lived here unnoticed: every hardware
+  # test above has something else making a noise at the same time — two square-wave parts and a
   # looping hum — so `sound?` was satisfied by the square wave while the recorded parts put out
-  # nothing at all, and the twelve voices were read off the voice TABLE, which is bookkeeping
+  # nothing at all, and the twelve voices were read off the voice table, which is bookkeeping
   # rather than audio. A tune whose melody is silent passes every one of them.
   #
   # So this is four parts on one instrument, no square part, no sound of the game's: if the

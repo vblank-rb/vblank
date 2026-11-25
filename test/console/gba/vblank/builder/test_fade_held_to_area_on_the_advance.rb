@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/builder/test_fade_held_to_area.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_fade_held_to_area.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # A fade held to part of the screen: `fade :black, 75, inside: [x, y, w, h]` darkens that
@@ -181,7 +181,7 @@ class TestFadeHeldToAreaOnTheAdvance < Minitest::Test
       screen :rotozoom
       image(:white_tile, "#" => :white) { (["#" * 8] * 8).join("\n") }
       tiles :set, "#" => :white_tile
-      background(:room, tiles: :set, map: ["#" * 32] * 32).rotate(10)
+      background(:room, tiles: :set, map: ["#" * 32] * 32).rotate!(10)
       fade :black, 75, inside: [0, 0, 240, 100]
       game_loop {}
     end
@@ -228,10 +228,7 @@ class TestFadeHeldToAreaOnTheAdvance < Minitest::Test
         step += 1
         mode = 1 if step == 4
         mode = 0 if step == 10
-        case_var(:mode) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :mode)
       end
     end
     [2, 6, 9, 14].each { |frames| assert_backends_agree(game, frames: frames, console_frames: frames + 2) }

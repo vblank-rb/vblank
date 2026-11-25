@@ -8,25 +8,9 @@
 # in normal Ruby: a name that holds a variable is changed by assigning to it, and `if` on a test
 # the game makes records that test.
 
-module VBlank
-  # Must come before the concerns: a game file among them runs its `while` loops as it loads, and
-  # a loop asks which builder is in use (PlainRuby::Steps::LoopTest).
-  class Builder
-    # The builder of the game being built here, for a part of a game that makes a variable with
-    # no `var` of its own to call.
-    def self.in_use = Ractor.current[:vblank_builder_in_use]
-
-    # Run the block, then put back the builder that was in use before it, whatever the block made.
-    # Builder.new makes each new builder the one in use, so a builder made to build a program
-    # beside the game (Builder::DataPacks#unpacking_program) would otherwise keep the game's parts.
-    def self.keeping_builder_in_use
-      was = Ractor.current[:vblank_builder_in_use]
-      yield
-    ensure
-      Ractor.current[:vblank_builder_in_use] = was
-    end
-  end
-end
+# Must come before the concerns: a game file among them runs its `while` loops as it loads, and a
+# loop asks which game is being built (PlainRuby::Steps::LoopTest).
+require_relative "builder/session"
 
 require_relative "builder/randomness"
 require_relative "builder/sound"
@@ -59,6 +43,8 @@ require_relative "builder/sampled_audio"
 require_relative "builder/layers"
 require_relative "builder/draw_order"
 require_relative "builder/settings"
+require_relative "builder/features"
+require_relative "builder/chosen_starts"
 require_relative "builder/parts"
 require_relative "builder/save_program"
 require_relative "builder/save_records"
@@ -78,26 +64,29 @@ require_relative "builder/pack_places"         # place, shading, viewer from pac
 require_relative "builder/shell_screens"       # shell_screen: a shell's first screen, made the game's own
 
 module VBlank
-  # DSL context for building a GBA ROM.
+  # The verbs of a game
   #
-  # Each DSL method builds a node in an IR tree — an in-memory description of what
-  # the program does — and returns. {VBlank.build} lowers the finished tree to a
-  # ROM once the block ends. Building the whole tree before lowering any of it is
-  # what lets a {#call} refer to a {#func} defined later in the block.
+  # Every verb a game block can write, such as `screen`, `sprite`, `game_loop` and `beep`, is a
+  # method of Builder. Each one describes part of the game and returns, and the finished
+  # description is turned into a cartridge once the block ends. Because the whole game is
+  # described before any of it is built, a `call` can name a `func` that is written later in
+  # the block.
   #
-  # @example Minimal ROM
-  #   rom = VBlank.build("MYGAME", console: :gba) do
-  #     entry { loop_forever }
-  #   end
-  #
-  # @example Draw pixels
-  #   rom = VBlank.build("PIXELS", console: :gba) do
-  #     screen :bitmap
-  #     pixel 120, 80, :red
-  #     pixel 121, 80, color("#00FF00")
-  #     fill_rect 50, 50, 30, 20, rgb(31, 31, 0)
-  #     halt
-  #   end
+  # ```ruby picture=still
+  # VBlank.game "PIXELS", consoles: %i[gba] do
+  #   screen :bitmap
+  #   clear_screen rgb(3, 4, 7)
+  #   fill_rect 96, 56, 32, 32, :red
+  #   amber = color("#FFA000")
+  #   fill_rect 112, 72, 32, 32, amber
+  #   pixel 120, 80, :white
+  #   halt
+  # end
+  # ```
+  #--
+  # Each DSL method builds a node in an IR tree, an in-memory description of what the program
+  # does, and returns. VBlank.build lowers the finished tree once the block ends.
+  #++
   class Builder
     include Randomness # seed, randomize, roll, rand, chance
     include Sound      # enable_sound, define_sound, beep
@@ -111,11 +100,11 @@ module VBlank
     include SpriteImport # sprite art adapters (sheets, Aseprite) feeding the sprite builder
     include Input      # held, pressed, players_connected, rumble
     include LocalView  # drawing_for_local_player (what only this machine's person sees, in a networked match)
-    include Drawing    # screen, pixel, fill_rect, clear_screen, dma_fill_rect, draw_rect_at
+    include Drawing    # screen, pixel, fill_rect, clear_screen, draw_rect_at
     include Places     # place, viewer, draw_place (a first-person view of a place made of flat faces)
     include Variables  # set/var, add, sub, negate/flip, copy, abs, negate_abs, clamp, variables
     include ControlFlow # game_loop, wait_vblank, repeat, every, after, halt, debug_halt
-    include Scenes     # func, call, scene, case_var, dump_func
+    include Scenes     # func, call, scene, dump_func
     include Collision  # box (overlaps? lives on the shape — Box/Sprite via Bounds)
     include Tiled      # tiles, background (tiled-graphics surface; hardware lowering to follow)
     include TileRuns   # tiles from: a list — tiles the game paints as it runs
@@ -129,6 +118,8 @@ module VBlank
     include Layers     # layers, layer (a named place in the stack: what sits in front of what)
     include DrawOrder  # draw_in_order (sprites drawn in an order the game works out)
     include Settings   # setting (what this build was told: which floors, which screen it boots on)
+    include Features   # feature? (whether this build has a part of the game a build can leave out)
+    include ChosenStarts # the starts a build started in a chosen state gives variables and lists
     include SaveData   # save_data (records of the game's state, saved when the game asks for it; see Saves)
     include Parts      # part, start_over (a new game: a part of the game's state back as declared)
     include GameEffects # uses (a game's own effect packs, for its build alone)
@@ -160,9 +151,17 @@ module VBlank
     #   pacing and the save memory it named
     # @param progress [VBlank::Messages::Progress] what a build says it is doing (see {#progress})
     # @param settings [Hash] what this build was told, read by the game with `setting` (see {Settings})
-    def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {})
+    # @param screen_as_asked [Boolean] whether this build gives the game the screen size it asks for
+    #   (`screen :bitmap, size:`; see Drawing#apply_screen_size!): a computer's build that makes no
+    #   cartridge. False for a console's, whose screen is fixed.
+    # @param screen_size [Array, nil] a screen size already given, [width, height]: a program the
+    #   library makes to show in a game's window (a shell's menu, its unpacking) takes the screen the
+    #   game was given (Program#screen_size), so the window is never handed a picture of another size.
+    def initialize(options: Cartridge::Options.new, progress: Messages::Progress.silent, settings: {},
+                   screen_as_asked: false, screen_size: nil)
       @frame_sync = options.frame_sync
       @for_computer = options.for_computer
+      @screen_as_asked = screen_as_asked
       @build_options = options # the console, variant and consoles `built_for?` answers from
       @save_memory = options.save_memory # kilobytes the game named, or nil to let its records decide
       @settings = settings.to_h.transform_keys(&:to_sym)
@@ -170,13 +169,14 @@ module VBlank
       @progress = progress
       @has_paced_loop = false  # set once a game_loop is pacing the program
       @dropped_syncs = 0       # `wait_vblank` calls the game loop already covers
-      @estimate_lines = []     # where an `estimate:` was given, which nothing reads (see #record_estimate_line)
       @variables = Set.new     # every variable's name, in the order the game first named it
       @fraction_vars = {}      # name → fraction bits, for variables that hold a fraction (see Fraction)
       @fraction_lists = {}     # ...and the same for lists, from what `holds:` showed
       @name_vars = {}          # name → the NameSet, for variables that hold one of a set of names
       @var_declarations = {}   # name → what its first `var` started it at, and where (see Variables#var)
       @plain_locals = {}       # [source, local's name] → its PlainLocal (see #plain_local_variable)
+      @list_owners = {}        # list name → the ListOwner that declared it (see #claim_list_name!)
+      @collections_from_arrays = {} # list or pool name → the local of the Array that made it
       @name_dispatches = []    # [dispatch node, NameSet] — filled in at finalize, once every name is known
       @scene_name_sets = []    # the NameSet of each `call` that picks a scene, checked once every name is known
       @functions = {}          # name → deferred body block (evaluated at emit time)
@@ -201,6 +201,8 @@ module VBlank
       @hidden_variables = 0    # counts the variables a picked value keeps its answer in
       @unique_names = Set.new  # variable names this build made unique (#unique_names)
       @hidden_variable_notes = []
+      @placed_at_marks = {}.compare_by_identity # a statement #record_at put at an earlier place → that place
+      @counted_loop_notes = []
       @step_variables = {}.compare_by_identity # routine body → why → its shared hidden variable (#step_variable)
       @held_expressions = {}   # variable name → the value node it was set to (#register_held_expression)
       @value_statements = {}.compare_by_identity # value node → the statements it needs (#register_statements_for_value)
@@ -210,7 +212,6 @@ module VBlank
       @variables_with_no_var_line = []
       @unsaved_variables = Set.new # named `game_variables ..., saved: false` (Builder::SaveData)
       @instance_variable_uses = DSL::PlainRuby::InstanceVariables::Uses.new
-      Ractor.current[:vblank_builder_in_use] = self
       @boolean_variables = {}   # the variables started with `true` or `false`
       @timer_seq = 0           # counts every/after timers, to name each one's hidden counter var
       @rng_seq = 0             # counts anonymous random draws, to name each one's hidden var
@@ -229,7 +230,7 @@ module VBlank
       @sprite_recolors = []    # every sprite's and pool's other colours, to find who draws with a changing list
       @lists_in_use = []       # each set of lists `colors_in_use` named, in the order the game counts them
       @lists_backgrounds_draw_with = {} # `colors` name → the backgrounds drawn with it, which follow it if it changes
-      @tilesets = {}           # tileset name → { by_key:, by_number:, tile_w:, tile_h:, solid_images: } — a tile-image map addressable by the tileset's own keys or by number (a sheet cell)
+      @tilesets = {}           # tileset name → its Tiled::Tileset
       @screen_mode = nil       # the current display mode (set by `screen`), so `sprite` picks its backend
       @sprites = []            # live software sprites, repainted after every wait_vblank
       @sprite_repaints = []    # [wait node, the software sprites declared by then], one per frame boundary
@@ -268,8 +269,8 @@ module VBlank
       @per_pass_routines = []    # func names the framework calls once a pass, after the frame boundary
       @pass_jobs = {}            # each_pass jobs by name (or their routine's, when unnamed)
       @each_frame_seq = 0        # counts once_a_frame bodies, to name each one's hidden routine
-      @scene_gates = {}        # scene func name → [state_var, value] it's dispatched on (from case_var), for gating its presentation
-      @current_scene_gate = nil # while a scene func's body is being built: the [state_var, value] its declarations belong to
+      @scene_gates = {}        # scene func name → [state_var, values] it's dispatched on (from the scene dispatch), for gating its presentation
+      @current_scene_gate = nil # while a scene func's body is being built: the [state_var, values] its declarations belong to
       @building_scene = nil    # the scene func name currently being built (lets its presentation be declared inside it)
       @layer_stack = []        # the layers the program declared, back to front (see Builder::Layers)
       @shared_levels = []      # the neighbouring layers in it that share one level, each back to front
@@ -293,44 +294,53 @@ module VBlank
                                                                                     console: options.console,
                                                                                     for_computer: options.for_computer),
                                for_computer: options.for_computer)
+      @program.screen_size = screen_size if screen_size
       @console = @program.described_console
       @container_stack = [@program]
-      @shown_while = []        # the conditions open right here, for a declaration that is only presented under them
+      @shown_while = []       # the conditions open right here, for a declaration that is only presented under them
 
       # Persisted variables (from `save_var`), in declaration order — each is
       # { name:, default:, slot: }, the slot being its place in save memory. Drives
       # the one boot-time save_init and the auto-save after each change.
       @persisted = []
       @saves = nil             # the save_data records and what saves them (see Saves), made with the first
+      # Must come last: plain Ruby asks the session's builder whether it records game code, and a
+      # builder whose making stopped part way could not answer. A builder made by hand is made
+      # the thread's current game; one a build makes is its session's already (Session.building).
+      Session.make_current(self)
     end
 
     # The IR tree built so far (the whole program). Lets tests assert the DSL
     # constructs the right tree without lowering it to a ROM.
     attr_reader :program
 
+    # The Session this builder builds in, which says whether its game has ended
+    # (Session#take sets it).
+    attr_accessor :build_session # :nodoc:
+
     # The console this game is being built for (a Console::Description): the screen the DSL
     # lays things out on, clamps them to and checks them against.
     attr_reader :console
 
-    # WHAT THIS BUILD SAYS IT IS DOING, for whoever is doing real work while it runs.
+    # What this build says it is doing, for whoever is doing real work while it runs.
     #
     #   progress.step "reading the six episodes"
     #   floors.each_with_index { |floor, n| progress.report_count n + 1, floors.length, floor.name; ... }
     #
     # A build is already a run of named phases saying how far each has got (see
     # {VBlank::Messages::Progress}). Anything a game or an effect pack does while the block runs
-    # happens INSIDE one of those phases, and without this it happens namelessly — the
+    # happens inside one of those phases, and without this it happens namelessly — the
     # build stands there saying "reading the game" for a minute with no clue which minute
     # of it belongs to whom. This is the seam: a pack's verbs are mixed into this class,
     # and a game's block is evaluated on it, so `progress` resolves here for both, with no
     # plumbing to pass round. A game split across plain Ruby objects hands it on like any
     # other dependency.
     #
-    # IT IS A NOUN, NOT A VERB, and that distinction is deliberate. `blit` and `sprite` are
-    # things a GAME does and belong on the teaching-facing verb surface; progress is a thing
-    # the BUILD has, and the surface a person learns should not grow a build-time member.
+    # It is a noun, not a verb, and that distinction is deliberate. `blit` and `sprite` are
+    # things a game does and belong on the teaching-facing verb surface; progress is a thing
+    # the build has, and the surface a person learns should not grow a build-time member.
     #
-    # THE DEFAULT SAYS NOTHING, so nobody has to ask whether anybody is listening, and
+    # The default says nothing, so nobody has to ask whether anybody is listening, and
     # nothing reported here may change what gets built: this is an observation. A pack that
     # behaved differently when somebody was watching would be a bug that only shows up in
     # the mode nobody tests.
@@ -341,79 +351,137 @@ module VBlank
 
     # --- Lists ---
 
-    # Declare a named list — a bounded, ordered collection whose length changes as
-    # the game runs (a snake's body, a queue of shots). Returns a {List} handle you
-    # push onto, drop from, index into, and iterate.
+    # Declares a list: a bounded, ordered collection whose length changes as the game runs, such as
+    # a snake's body or a queue of shots. It returns a handle that you push onto, drop from, index
+    # into and go through.
     #
-    #   body = list :body, capacity: 256
-    #   body.push head_cell
-    #   body.shift unless growing
+    # ```ruby
+    # body = list :body, capacity: 256
+    # body.push head_cell
+    # body.shift unless growing
+    # ```
     #
-    # `capacity` is the most it can ever hold; it's rounded up to a power of two so
-    # the hardware can wrap an index cheaply, and every backend enforces that same
-    # ceiling, so a program overflows at the same point everywhere.
+    # `capacity` is the most it can ever hold. It is rounded up to a power of two, so that an index
+    # wraps cheaply, and every build enforces that same ceiling, so a program overflows at the same
+    # point everywhere.
     #
-    # `estimate:` does nothing but earn a warning (see #record_estimate_line). The build
-    # measures each scene with the list held at its capacity instead
-    # (VBlank.warn_of_collections_that_fill).
+    # `holds:` sets what kind of number the list keeps, by showing one. Write a Float and the list
+    # holds numbers with a fraction, exactly as writing one makes a variable hold them. A game with
+    # many of something that moves in halves and quarters never has to pick a scale and carry it by
+    # hand. The number is only an example, and a list still starts empty.
     #
-    # `holds:` sets what KIND of number the list keeps, by showing one. Write a Float and
-    # the list holds numbers with a fraction, exactly as writing one makes a variable hold
-    # them: `list :speeds, capacity: 8, holds: 0.0`. Every value read out then carries the
-    # scale and every value put in is checked against it, so a game with many of something
-    # that moves in halves and quarters never has to pick a scale and carry it by hand. The
-    # number itself is only an example — a list still starts empty.
+    # `width:` sets how big one slot is, and it is the difference between a list that fits in the
+    # console's fast memory and one that does not. A slot is a whole 32-bit number unless you set
+    # another, and most lists do not hold anything like that much. `:byte` holds -128 to 127 and
+    # `:half` holds -32768 to 32767, at a quarter and a half of the memory. A list of flags,
+    # directions, which picture is showing, hit points or countdowns is a list of bytes.
     #
-    # `width:` sets HOW BIG ONE SLOT IS, and it is the difference between a list that fits in
-    # the console's fast memory and one that does not. A slot is a whole 32-bit number unless
-    # you set another, and most lists do not hold anything like that much: `:byte` holds
-    # -128..127 and `:half` holds -32768..32767, at a quarter and a half of the memory. A list
-    # of flags, of directions, of which-picture-is-showing, of hit points, of countdowns —
-    # every one of those is a byte, and a game with many of them gets that memory back for
-    # other things.
+    # ```ruby
+    # list :hurt, capacity: 64, width: :byte   # 64 bytes, not 256
+    # list :speeds, capacity: 8, holds: 0.0    # numbers with a fraction
+    # ```
     #
-    #   list :hurt, capacity: 64, width: :byte   # 64 bytes, not 256
+    # A narrow slot always goes below nothing, so a `:byte` holds -128 to 127 and a number that has
+    # to reach past 127 asks for `:half`. A number too big for its slot keeps the low bits that fit,
+    # exactly as the console does, so 200 in a `:byte` reads back as -56 on every build. Reading and
+    # writing a narrow slot costs the same as a wide one. Only the memory differs.
     #
-    # A NARROW SLOT ALWAYS GOES BELOW NOTHING, and there is nothing to say about that — it is
-    # not a choice you are given, because there is no way to make it correctly. The case that
-    # decides it is a countdown: `wait -= 7` followed by `wait <= 0` really does hold -4
-    # while that test runs, and a slot that could not go below nothing would read -4 back as
-    # 252 and the test would never fire — a game that quietly stops working. Nothing at build
-    # time can see that coming, since the value is worked out as the game runs. So a `:byte`
-    # holds -128..127, and a number that has to reach past 127 asks for `:half`.
-    #
-    # A number too big for its slot keeps the low bits that fit, exactly as the console does,
-    # and both backends drop the same bits — 200 in a `:byte` reads back as -56 on each.
-    # Reading and writing a narrow slot costs the same as a wide one; only the memory differs.
-    #
-    # @param name [Symbol] the list's name
-    # @param capacity [Integer] the most items it can hold
-    # @param estimate [Object] does nothing but earn a warning
-    # @param holds [Numeric] an example of what it holds; a Float means it holds fractions
-    # WHERE IT LIVES is a question you almost never have to answer. The console has two
-    # work memories — a small quick one and a large one that makes it wait — and the
-    # framework puts what a frame touches in the quick one and lets the rest fall into
-    # the roomy one, so a game with a lot of state builds where it used to fail. Set
-    # `fast: false` on one you know is cold (a world state read when a menu opens) to
-    # give the quick memory back to the things that are walked every frame, or `fast:
-    # true` to insist on one the framework did not pick. It is the same word `func`
-    # already uses for the same question about code, and it changes nothing the program
-    # does — only how long a read takes. `rom.profile` says where everything went.
-    #
-    # @param width [Symbol] how big one slot is — :byte, :half or :word (the default)
-    # @param fast [Boolean, nil] insist on the quick memory (true) or give it up (false)
-    # @param full_of [Numeric, nil] start holding +capacity+ items of this, rather than none.
-    #   The loop it replaces, a push for each item, finds each item's place and stores the
-    #   length again every time; this is one fill, done the moment the declaration runs.
-    # @return [List] a handle to the list
-    def list(name, capacity:, estimate: nil, holds: nil, width: :word, fast: nil, full_of: nil)
-      record_estimate_line(estimate)
+    # * `name` - the list's name, as a symbol.
+    # * `capacity:` - the most items it can hold.
+    # * `holds:` - an example of what it holds. A Float means it holds fractions.
+    # * `width:` - how big one slot is: `:byte`, `:half` or `:word` (the default).
+    # * `fast:` - where the list lives. The framework puts what a frame touches in the quick memory
+    #   and lets the rest fall into the roomy one, so you almost never answer this. `false` on a
+    #   list you know is cold, such as a world state read when a menu opens, gives the quick memory
+    #   back to the things that are walked every frame, and `true` insists on a list the framework
+    #   did not pick. It changes nothing the program does, only how long a read takes. It is the
+    #   same word `func` uses for the same question about code.
+    # * `full_of:` - start holding `capacity` items of this value, rather than none. It is one fill,
+    #   done the moment the declaration runs, in place of a loop that pushes each item.
+    #--
+    # The build measures each scene with the list held at its capacity instead
+    # (VBlank.warn_of_collections_that_fill). A narrow slot always goes below nothing because there
+    # is no way to make it correctly: a countdown `wait -= 7` followed by `wait <= 0` really does
+    # hold -4 while that test runs, and a slot that could not go below nothing would read -4 back
+    # as 252 and the test would never fire. Nothing at build time can see that coming, since the
+    # value is worked out as the game runs. `rom.profile` says where everything went.
+    #++
+    def list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil)
+      claim_list_name!(name, ListOwner.new(owner: :verb, at: Messages::AuthorSource.author_file_and_line))
+      declare_list(name, capacity: capacity, holds: holds, width: width, fast: fast, full_of: full_of)
+    end
+
+    # Who declared a list's name, and where, as a message names a place (`game.rb:12`): the
+    # `list` verb, or a plain Ruby Array (DSL::PlainRuby::Arrays) by what it belongs to.
+    ListOwner = Data.define(:owner, :at)
+
+    # Gives +name+ to +owner+, refusing a name another owner has: one list for each name, so a
+    # `list :trail` and an Array `trail` would be one list, whichever line ran first.
+    def claim_list_name!(name, owner)
+      held = (@list_owners[name] ||= owner)
+      return if held.owner == owner.owner
+
+      raise ArgumentError, "The list name `#{name}` is used two times: at #{held.at} and at #{owner.at}. A game keeps " \
+                           "one list for each name, so the two would be one list. To fix this, give one of them " \
+                           "another name.#{Messages::AuthorSource.at_author_line}"
+    end
+
+    # The name of the list a plain Ruby Array is (DSL::PlainRuby::Arrays), given +name+ and
+    # +owner+: +name+ itself for an Array a line of game code makes, which a line reached again
+    # makes again, and the first free one of `name`, `name_2` ... for one an object holds, as an
+    # object's variables are named.
+    def plain_array_list_name(name, owner)
+      return name.tap { claim_list_name!(name, owner) } unless owner.owner.first == :object
+
+      free = [name, *(2..).lazy.map { |number| :"#{name}_#{number}" }.first(@list_owners.size + 1)]
+                 .find { |each_name| [nil, owner.owner].include?(@list_owners[each_name]&.owner) }
+      free.tap { claim_list_name!(free, owner) }
+    end
+
+    # Records that the list or pool +name+ is a plain Ruby Array the game wrote as the local
+    # +local+ (DSL::PlainRuby::Arrays, DSL::StructArray), so a message names the Array.
+    def record_collection_from_array(name, local) # :nodoc:
+      @collections_from_arrays[name] = local
+    end
+
+    # Each list or pool a plain Ruby Array made, by name, with the local the game wrote, for the
+    # checks that run once the program is made (IR::Guardrails::BuildFacts).
+    def collections_from_arrays = @collections_from_arrays.dup.freeze # :nodoc:
+
+    # How a message names the list or pool +name+ to the author: the Array the game wrote
+    # (the Array `trail`), or the line of +verb+ that declared it (`list :trail`). +opening+ is
+    # for the start of a sentence (The Array `trail`).
+    def collection_words(name, verb: :list, opening: false) # :nodoc:
+      local = @collections_from_arrays[name]
+      return "`#{verb} :#{name}`" unless local
+
+      "#{opening ? 'The' : 'the'} Array `#{local}`"
+    end
+
+    # ...and a call of +method+ on it: `trail.fill`, or `list :trail.fill` for a `list` line.
+    def collection_call_words(name, method, verb: :list) # :nodoc:
+      local = @collections_from_arrays[name]
+      local ? "`#{local}.#{method}`" : "#{verb} :#{name}.#{method}"
+    end
+
+    # The list itself, for `list` and for what declares one in its place (a plain Ruby Array).
+    def declare_list(name, capacity:, holds: nil, width: :word, fast: nil, full_of: nil) # :nodoc:
+      width = kept_unsigned_halves({ name => width }) { name }.fetch(name)
       # A fraction given as what the list starts full of marks it as holding fractions, as `holds:` would.
       example = holds
       example = full_of if holds.nil? && full_of.is_a?(Numeric)
       bits = list_fraction_bits(name, example)
-      record(Build.list_new(name, capacity, width: width, fast: fast,
-                                            full_of: list_starting_item(name, full_of, bits)))
+      refuse_unsigned_half_fractions!(name, bits)
+      # A build started in a chosen state makes it empty and then holds the items given (Game#starting_with).
+      chosen = chosen_list_pushes(name, capacity, bits) if chosen_start?(name)
+      full_of = nil if chosen
+      # A part made by game code makes its list once, as it fills it once (#once_for_part).
+      note_made_in_part(name)
+      once_for_part(name) do
+        record(Build.list_new(name, capacity, width: width, fast: fast,
+                                              full_of: list_starting_item(name, full_of, bits)))
+        chosen&.each { |push| record(push.copy) }
+      end
       @fraction_lists[name] = bits if bits
       add_part_member(:list, name)
       DSL::List.new(self, name, fraction_bits: bits)
@@ -448,20 +516,6 @@ module VBlank
 
       DSL::Fraction.bits_of(holds)
     end
-
-    # AN `estimate:` DOES NOTHING, whatever it gives, except have its line kept. A list, a pool, a `repeat`, a
-    # a test and a stretched rectangle or column once took one — `{ usually: N }`, how big or
-    # how often the thing normally was — for a cost estimate that worked a frame's time out from
-    # the program. That estimate is gone: the build measures a game by running it. A game
-    # written while the hint meant something still writes it, so it is not refused; the line is
-    # kept, and one warning names every such line (Guardrails::Checks::EstimateDoesNothing).
-    # Nothing about it reaches the program.
-    def record_estimate_line(estimate)
-      @estimate_lines << caller_source_location unless estimate.nil?
-    end
-
-    # The lines that gave an `estimate:`, for the warning.
-    attr_reader :estimate_lines
 
     # Ship a build-time array as a read-only ROM table, read at run time by a Value
     # index. The array is plain Ruby, evaluated as the program is built, so work the
@@ -514,7 +568,7 @@ module VBlank
       DSL::Table.new(self, name, values.length, fraction_bits: bits, width: width)
     end
 
-    # A RUN OF A TABLE COPIED INTO A LIST AT ONCE (see List#copy_from). The loop it replaces —
+    # A run of a table copied into a list at once (see List#copy_from). The loop it replaces —
     # `list[i] = table[start + i]` for each i — works out an address and makes a read and a
     # write for every entry, which is most of a frame for a few hundred of them. This is one
     # statement, so the console copies the run as a block. The list then holds exactly
@@ -529,16 +583,16 @@ module VBlank
       ensure_var(at)
     end
 
-    # A LIST SET TO ONE VALUE IN ONE STEP (see List#fill): the whole list as it is now, or
+    # A list set to one value in one step (see List#fill): the whole list as it is now, or
     # +count+ items from +from+. The loop it replaces sets an item at a time and works out an
     # address for each; the console sets the run a whole word at a time instead, and a byte
     # at a time only at its ends. On the console a run is held to the list's capacity; a run
     # written past that, or from before the first item, is refused here.
     def fill_list_run(list, value_node, from:, count:)
-      what = "list :#{list.name}.fill"
+      what = collection_call_words(list.name, :fill)
       if from.nil? != count.nil?
         raise ArgumentError, "#{what} was given #{from.nil? ? 'count:' : 'from:'} alone. To fill a run, give both " \
-                             "from: and count:. To fill the whole list, give neither."
+                             "from: and count:. To fill all the items, give neither."
       end
       from, count = from.nil? ? [0, list.length] : [from, count]
       refuse_fill_outside_list!(what, declared_list_node(list.name), from, count)
@@ -548,7 +602,7 @@ module VBlank
       ensure_var(count)
     end
 
-    # A LIST THE GAME SHIFTS CANNOT BE FILLED. Dropping the front item makes the list a ring
+    # A list the game shifts cannot be filled. Dropping the front item makes the list a ring
     # that wraps round its own memory, so a run of its items is not a run of memory to set in
     # one step. Refused once every routine is built, so a `shift` anywhere in the game is seen,
     # and both backends refuse it alike.
@@ -558,10 +612,10 @@ module VBlank
 
       shifted = @program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }
       name = filled.find { |list| shifted.include?(list) } or return
-      raise ArgumentError, "list :#{name} is filled with `fill`, and the game also uses `shift` on it. A shift moves " \
-                           "the first item, so the items are no longer one run in memory and `fill` cannot set " \
-                           "them at once. To fix this, set the items one at a time with `[]=`, or do not use " \
-                           "`shift` on list :#{name}."
+      raise ArgumentError, "#{collection_words(name, opening: true)} is filled with `fill`, and the game also uses " \
+                           "`shift` on it. A shift moves the first item, so the items are no longer one run in " \
+                           "memory and `fill` cannot set them at once. To fix this, set the items one at a time " \
+                           "with `[]=`, or do not use `shift` on #{collection_words(name)}."
     end
 
     def refuse_fill_outside_list!(what, made, from, count)
@@ -572,8 +626,8 @@ module VBlank
       size = DSL::Value.fixed_number(count)
       return unless made && start && size && start + size > made.capacity
 
-      raise ArgumentError, "#{what} sets items #{start} to #{start + size - 1}, and the list holds #{made.capacity}. " \
-                           "Give a run that ends inside the list, or give the list a bigger capacity."
+      raise ArgumentError, "#{what} sets items #{start} to #{start + size - 1}, and there is room for " \
+                           "#{made.capacity} items. Give a run that ends inside that room, or give a bigger capacity."
     end
 
     def declared_list_node(name)
@@ -581,7 +635,7 @@ module VBlank
     end
 
     def refuse_unfit_table_copy!(list, made, table, count, at)
-      what = "list :#{list.name}.copy_from"
+      what = collection_call_words(list.name, :copy_from)
       unless made
         raise ArgumentError, "#{what} copies into a list that is not declared. Declare it first with " \
                              "`list :#{list.name}, capacity: ...`."
@@ -602,8 +656,8 @@ module VBlank
                              "Give a count of #{table.length} or less."
       end
       if count > made.capacity
-        raise ArgumentError, "#{what} copies #{count} entries, and the list holds #{made.capacity}. " \
-                             "Give the list a capacity of #{count} or more."
+        raise ArgumentError, "#{what} copies #{count} entries, and there is room for #{made.capacity}. " \
+                             "Give a capacity of #{count} or more."
       end
       refuse_mismatched_table_copy!(what, list, made, table, count)
     end
@@ -615,7 +669,8 @@ module VBlank
       list_width = made.width || :word
       unless table.width == list_width
         raise ArgumentError, "#{what} copies from table :#{table.name}, which keeps each entry in a " \
-                             "#{table.width}. The list keeps each item in a #{list_width}. A copy moves " \
+                             "#{table.width}. #{collection_words(list.name, opening: true)} keeps each " \
+                             "item in a #{list_width}. A copy moves " \
                              "the entries as they are, so give both the same `width:`."
       end
       bytes = count * Build::ELEMENT_BYTES.fetch(list_width)
@@ -626,14 +681,27 @@ module VBlank
       return if table.fraction_bits == list.fraction_bits
 
       table_holds, list_holds = table.fraction_bits ? ["numbers with a fraction", "whole numbers"] : ["whole numbers", "numbers with a fraction"]
-      raise ArgumentError, "#{what} copies from table :#{table.name}, which holds #{table_holds}. The list holds " \
-                           "#{list_holds}. A copy moves the numbers as they are, so give both the same kind of number."
+      raise ArgumentError, "#{what} copies from table :#{table.name}, which holds #{table_holds}. " \
+                           "#{collection_words(list.name, opening: true)} holds #{list_holds}. A copy moves the numbers as they are, so give both the same kind of number."
     end
-
-    # Define an entry point of raw ARM instructions — the escape hatch for
-    # patterns the DSL can't express. The block runs in an {EntryContext} that
-    # collects the emitted bytes into a raw IR node, which the backend appends to
-    # the code verbatim.
+    # Defines an entry point of raw machine instructions, as an escape hatch for what the verbs
+    # cannot say.
+    #
+    # The block collects the instructions you emit, and they are placed in the cartridge exactly as
+    # written. They are the Game Boy Advance's own (ARM) instructions, so it is for people who know
+    # that processor. The block offers `nop`, an instruction that does nothing, and
+    # `loop_forever`, one that branches to itself.
+    #
+    # ```ruby
+    # entry do
+    #   nop
+    #   loop_forever      # the processor stays here
+    # end
+    # ```
+    #--
+    # The block runs in an EntryContext that collects the emitted bytes into a raw IR node, which
+    # the backend appends to the code verbatim.
+    #++
     def entry(&block)
       ctx = EntryContext.new
       ctx.instance_eval(&block)
@@ -652,12 +720,13 @@ module VBlank
     # call and case target names a function that exists. Called automatically by
     # VBlank.build after the DSL block.
     def finalize_program
-      convert_scene_name_dispatches # `call mode` over scene names is a case_var over them
-      @scene_gates = scan_scene_gates # which state value each scene is shown for (from case_var)
+      resolve_hash_dispatches! # a Hash given to `call` is a scene dispatch or a call by number
+      convert_scene_name_dispatches # `call mode` over scene names is a scene dispatch over them
+      @scene_gates = scan_scene_gates # which state value each scene is shown for (from the scene dispatch)
 
       # The program's default display mode — whatever the top-level `screen` left set.
       # Each scene starts from this, so one scene's `screen` (a tiled game) can't leak
-      # into the next (a bitmap title): a scene is bitmap or tiled by what IT declares,
+      # into the next (a bitmap title): a scene is bitmap or tiled by what it declares,
       # or the default, never by which scene happened to be built before it. That's what
       # lets `sprite`/`draw_text`/`draw_number` pick software vs hardware per scene.
       default_screen_mode = @screen_mode
@@ -665,6 +734,7 @@ module VBlank
 
       emitted = {}
       emit_bodies(emitted, default_screen_mode, holding_back: true)
+      number_chosen_name_starts! # every name a variable is given is known, before start_over copies its start
       refuse_parts_named_like_scenes! # every scene is declared by now
       # Every routine the game wrote is built, so nothing more can be kept in a save_data
       # record: the records are laid out now, and the routines that read them built after —
@@ -673,8 +743,12 @@ module VBlank
       check_saves_keep_everything!
       lay_out_save_records
       emit_bodies(emitted, default_screen_mode)
+      refuse_scene_without_screen_line! # every scene's body is built by now
+      refuse_starts_not_declared! # ...and so is every `var` and `list` a start can name
       # Every line of game code is recorded, so each plain flag's tests and changes are known.
       @instance_variable_uses.refuse_game_flags!
+      drop_unwritten_handed_copies # ...and so is every line that gives a handed copy a number
+      drop_unneeded_field_copies # ...and every timer's handler and bend that could change a field's number
 
       finalize_scene_sprite_handover # first: it settles what each sprite waits for before it is painted
       finalize_sprite_repaints
@@ -704,6 +778,8 @@ module VBlank
       finalize_per_frame_routines
       finalize_per_pass_routines
       refuse_non_scenes_in_scene_dispatch!
+      refuse_func_named_like_case_scene!
+      refuse_scene_declared_after_hash!
       finalize_name_dispatches
       finalize_pool_walks
       finalize_pool_colors
@@ -717,6 +793,7 @@ module VBlank
       resolve_save_data_peeks
       swap_save_stores_for_change_flags
       finalize_kept_widths
+      finalize_unsigned_halves
       finalize_fractions
       finalize_sprite_readings
       finalize_background_readings
@@ -745,19 +822,30 @@ module VBlank
           # scopes what it presents to when the scene is active.
           @building_scene = name if @scene_gates.key?(name)
           @current_scene_gate = @scene_gates[name]
-          # ...and if this routine was WRITTEN inside a `layer` block, remember which, so
+          # ...and if this routine was written inside a `layer` block, remember which, so
           # anything it declares that wants a depth can be refused rather than quietly
           # getting none (see Layers#refuse_deferred_layer!).
           @deferred_layer = @routine_layer[name]
           @screen_mode = default_screen_mode
           @building_routine = name
+          # Each routine is laid out on the game's screen until a scene's own screen line gives it
+          # another (Drawing#apply_scene_screen_size!), and what one read of the size does not reach
+          # the next: the game's lines have all run by now.
+          laid_out = @console
+          @console = @routine_screens[name] if @routine_screens&.key?(name)
+          @screen_size_read = nil
+          @scene_screen_line_written = false
+          @scene_laid_out = @scene_routines&.[](name) # the scene this body is, by its name, or nil
           push_container(Build.func(name, fast: @func_fast[name], loads_first: @scene_loads_first[name],
                                           on_chip: @func_on_chip[name],
                                           measure_holding: @scene_measure_holding[name])) do
             with_part_owners_of_routine(name) { run_block(&block) }
           end
           @scene_screens[name] = @screen_mode if @building_scene
+          (@scenes_without_screen_line ||= []) << @scene_laid_out if @scene_laid_out && !@scene_screen_line_written
         ensure
+          @console = laid_out if laid_out
+          @scene_laid_out = nil
           @building_scene = nil
           @current_scene_gate = nil
           @deferred_layer = nil
@@ -794,11 +882,14 @@ module VBlank
       @inline_bar_nodes << node
     end
 
-    # THE VARIABLES A BOX THE BACKGROUND +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
+    # The variables a box the background +name+ IS HELD TO IS KEPT IN (Background#show_only_inside),
     # made the first time the game sets one: a background nobody holds to a box keeps none, and
-    # its game builds as it did. All five start at 0, which is everywhere.
-    def hold_background_to_box(name)
+    # its game builds as it did. All five start at 0, which is everywhere. +in_part+ is a box of
+    # some size (`show_only_inside`), +whole+ one of nothing (`hide`).
+    def hold_background_to_box(name, in_part: false, whole: false)
       declared = declared_background(name)
+      declared.boxed_in_part = true if in_part
+      declared.hidden_whole = true if whole
       declared.box ||= IR::Nodes::Background.box_vars(name).each do |var|
         at_boot(Build.set(var, Build.int(0)))
         ensure_var(var)
@@ -877,7 +968,7 @@ module VBlank
     # program that reaches into the angle/scale {Value}s directly (`bg.scale.approach!`)
     # rather than through those two verbs.
     #
-    # Also captures the CURRENT scene gate (whatever scene this first `rotate`/`scale`/
+    # Also captures the current scene gate (whatever scene this first `rotate`/`scale`/
     # `angle` call happens inside, if any — see #gated_by_scene), so a background declared
     # and turned only inside one scene writes its matrix only while that scene is
     # active. Without this, the write would land at every frame boundary in the whole
@@ -895,7 +986,7 @@ module VBlank
 
     # Does :+name+ turn and resize rather than scroll? True from the line that declares
     # it on `screen :rotozoom`, where that is the only kind of layer there is, and from
-    # the first `.rotate`/`.scale` anywhere else. A {Background} handle asks this rather
+    # the first `.rotate!`/`.scale` anywhere else. A {Background} handle asks this rather
     # than keeping an answer of its own, because the fact is settled in two places at two
     # moments and a copy on the handle was a second answer to keep in step.
     def background_turns?(name)
@@ -910,7 +1001,7 @@ module VBlank
       @inline_affine_nodes << node
     end
 
-    # THE SIZE OR ANGLE A BACKGROUND IS DECLARED AT, which is a different thing from one
+    # The size or angle a background is declared at, which is a different thing from one
     # written each frame and has to run in a different place.
     #
     # `background(:sword, ...).scale(16.0)` sets how big the picture STARTS. At the top of
@@ -936,7 +1027,7 @@ module VBlank
     end
 
     # The last statement recorded into the block being built, or nil where nothing has been
-    # recorded into it yet. What it answers is whether a call CONTINUES a declaration or
+    # recorded into it yet. What it answers is whether a call continues a declaration or
     # comes after it — `background(...).scale(16.0)` is one line and one declaration, where
     # a `scale` further down the same scene is a write that frame makes.
     def last_statement
@@ -1055,6 +1146,17 @@ module VBlank
       @expressions.delete_if { |each_value| each_value.equal?(value) }
     end
 
+    # Runs the block, then forgets every expression it built. For a block of the game's that the
+    # build calls once on stand-ins, only to read what it gives (the key of `sort_by!`, the
+    # comparison of a Struct's `<=>`): what it works out is read and then left out of the program
+    # on purpose, so it is not a number the author threw away.
+    def with_expressions_untracked
+      known = @expressions.to_set(&:object_id)
+      yield
+    ensure
+      @expressions.select! { |value| known.include?(value.object_id) }
+    end
+
     # The expressions built during this build, for the orphaned-expression guardrail.
     def expressions
       @expressions
@@ -1074,7 +1176,7 @@ module VBlank
       else_node = Build.else_
       @container_stack.push(else_node)
       # The other side of the same test: what is declared here is shown when the `if`'s
-      # condition is FALSE. A copy of that condition, because a node belongs to one place
+      # condition is false. A copy of that condition, because a node belongs to one place
       # in the tree and this one already belongs to the `if`.
       @shown_while.push(Build.binop(:==, if_node.cond.copy, Build.int(0)))
       begin
@@ -1105,6 +1207,10 @@ module VBlank
       @shown_while.pop
       @container_stack.pop
     end
+
+    # A `break` (+word+ :break) or `next` in a loop the game runs (PlainRuby::Jumps), recorded as
+    # the jump out of the innermost loop being recorded, or to its next round.
+    def record_loop_jump(word) = record(word == :break ? Build.break_repeat : Build.next_repeat) # :nodoc:
 
     def take_back_branch(if_node)
       @container_stack.last.children.delete_at(-1) if @container_stack.last.children.last.equal?(if_node)
@@ -1138,6 +1244,54 @@ module VBlank
       end
 
       children.slice!((start + 1)..)
+    end
+
+    # The statements recorded since +mark+, taken out as #take_statements_since takes them, but for
+    # those #record_at put at +mark+ itself, which belong before it and stay (PlainRuby::Jumps: a
+    # round of `loop do` taken back, whose field copies were placed where the field was given).
+    def take_round_since(mark) # :nodoc:
+      placed, round = take_statements_since(mark).partition do |statement|
+        at = @placed_at_marks[statement]
+        at && at.container.equal?(mark.container) && at.last.equal?(mark.last)
+      end
+      mark.container.children.push(*placed)
+      round
+    end
+
+    # How many variables the build has named so far, for #forget_unnamed_variables_since.
+    def variables_named = @variables.size # :nodoc:
+
+    # The variables the build made for itself (`__...`) since it had named +count+, that no statement
+    # names now: those of statements taken back (#take_round_since), which take no memory and are
+    # not reported.
+    def forget_unnamed_variables_since(count) # :nodoc:
+      made = @variables.to_a.drop(count).select { |name| name.start_with?("__") }
+      return if made.empty?
+
+      named = Set.new
+      @program.walk { |node| node.named_operands.each { |_field, held| named.merge(Array(held).flatten.grep(Symbol)) } }
+      (made - named.to_a).each do |name|
+        @hidden_variable_notes.reject! { |note| note.name == name }
+        @variables.delete(name)
+        @unique_names.delete(name)
+        @fraction_vars.delete(name)
+      end
+    end
+
+    # Records what the block records at +mark+, an earlier place, rather than where the builder
+    # records now: just after the statement +mark+ names, in its container, however much was
+    # recorded there since. Returns what the block returns.
+    def record_at(mark) # :nodoc:
+      now = statement_mark
+      answer = yield
+      made = take_statements_since(now)
+      children = mark.container.children
+      start = mark.last ? children.index { |statement| statement.equal?(mark.last) } : -1
+      raise IR::InvariantError, "statements were put back at a place that is no longer recorded" unless start
+
+      children.insert(start + 1, *made)
+      made.each { |statement| @placed_at_marks[statement] = mark }
+      answer
     end
 
     # A `repeat` with a stop test, likewise opened and closed rather than given a block.
@@ -1185,7 +1339,7 @@ module VBlank
       value_handle_for(name)
     end
 
-    # A HIDDEN VARIABLE FOR A NUMBER ONE STEP STORES AND READS BACK BEFORE IT ENDS, one for each
+    # A hidden variable for a number one step stores and reads back before it ends, one for each
     # +why+ in the routine being recorded (outside every routine, the outermost body being recorded,
     # #recorded_routine_body), however many of its steps keep one (DSL::Value#step_copy). A step that
     # stores it reaches no other such step before its last read, so the steps of one routine can
@@ -1251,7 +1405,7 @@ module VBlank
     # #unique_names from now on.
     def reserve_free_variable_name(name) = free_variable_name(name).tap { |free| @unique_names << free }
 
-    # THE VARIABLE NAMES THIS BUILD MADE UNIQUE, by a counter (a `repeat`'s index, a hidden copy, an
+    # The variable names this build made unique, by a counter (a `repeat`'s index, a hidden copy, an
     # approach's step) or by taking a free name (#reserve_free_variable_name: a plain-Ruby local's
     # variable, an object's instance variable's). Another build of other code makes the same names
     # for variables of its own, so two builds that each made a name never mean one variable by it:
@@ -1330,13 +1484,269 @@ module VBlank
 
     def unsaved_variable?(name) = @unsaved_variables.include?(name)
 
+    # A hidden variable that keeps the number a Struct's field was given
+    # (PlainRuby::InstanceVariables#own_field_variable), noted so that #drop_unneeded_field_copies
+    # can leave it out once the whole game is known.
+    def field_copy_variable(like:)
+      hidden_variable(:field, like: like).tap { |copy| (@field_copies ||= []) << copy.name }
+    end
+
+    # Each field copy whose number cannot change before its reads is left out, its reads given the
+    # working-out it copied (IR::UnneededCopies). Run once every line of game code is recorded, so
+    # every timer's handler and bend is known.
+    def drop_unneeded_field_copies
+      return if @field_copies.nil?
+
+      outside = IR::UnneededCopies.names_outside_main_flow(@program)
+      @field_copies.each { |name| forget_hidden_variable(name) if IR::UnneededCopies.drop!(@program, name, outside) }
+    end
+
+    # A hidden variable an instance variable keeps of its own, holding the number of the variable
+    # +like+ it was handed (PlainRuby::Writes.handed_copy), noted so that
+    # #drop_unwritten_handed_copies can leave it out where no line gives it a number.
+    def handed_copy_variable(like:)
+      hidden_variable(:handed_copy, like: like).tap { |copy| (@handed_copies ||= []) << copy.name }
+    end
+
+    # Each handed copy that only its first line writes is left out, its reads reading the variable
+    # it copied (IR::UnneededCopies.drop_unwritten!). Run once every line of game code is recorded.
+    def drop_unwritten_handed_copies
+      return if @handed_copies.nil?
+
+      IR::UnneededCopies.drop_unwritten!(@program, @handed_copies).each do |name|
+        forget_hidden_variable(name)
+        @unique_names.delete(name)
+        @fraction_vars.delete(name)
+      end
+    end
+
     # A hidden variable nothing came to need, which then takes no memory and is not reported.
     def forget_hidden_variable(name)
       @variables.delete(name) if @hidden_variable_notes.reject! { |note| note.name == name }
     end
 
+    # A hidden variable for a loop to count in, declared and named: a `repeat`'s, the one a step
+    # that stands for a loop is handed (IR save_load_list, save_store_list, list_pack), and the one
+    # a counted Ruby loop made a loop counts in (PlainRuby::Counts::KnownRounds).
+    def declare_loop_counter
+      @repeat_seq += 1
+      :"__repeat_#{@repeat_seq}".tap do |index|
+        ensure_var(index)
+        @unique_names << index
+      end
+    end
+
+    # A loop counter whose loop was dropped, which then takes no memory: the rounds after the first
+    # of a counted Ruby loop the build made a loop (PlainRuby::Counts::KnownRounds).
+    def forget_loop_counter(name) = @variables.delete(name)
+
+    # One counted Ruby loop of game code whose count was known while building, and what the build
+    # made of it (PlainRuby::Counts::KnownRounds): +rounds+ times round, +written_size+ the IR nodes
+    # its rounds hold written out, +choice+ :written_out, :loop or :rounds_differ, and +worked_out+
+    # how many numbers a loop works out from its count in each round.
+    CountedLoopNote = Data.define(:source, :rounds, :written_size, :choice, :worked_out) do
+      def initialize(source:, rounds:, written_size:, choice:, worked_out: 0) = super
+    end
+
+    # The counted loops of game code, for `rom.profile` (Diagnostics::CountedLoops).
+    attr_reader :counted_loop_notes
+
+    def record_counted_loop(note) = @counted_loop_notes << note
+
+    # The notes of counted loops recorded after the first +count+, which were inside rounds of
+    # a counted loop that the build dropped, making the first round a loop.
+    def drop_counted_loops_after(count) = @counted_loop_notes.slice!(count..)
+
     # Is what is recorded now code the game runs as it plays, rather than setting up?
     def recording_game_code? = @container_stack.length > 1
+
+    # The test, loop or routine body game code is being recorded into now: what runs on the same
+    # passes as the line being recorded. DSL::PlainRuby::InstanceVariables notes where a Struct
+    # is made with it.
+    def recording_container = @container_stack.last # :nodoc:
+
+    # Is +container+ (a #recording_container) open around what is recorded now, so a line recorded
+    # now runs only on passes where +container+'s lines run too?
+    def recording_inside?(container) = @container_stack.any? { |open| open.equal?(container) } # :nodoc:
+
+    # Is what is recorded now game code under a test the game makes, inside the routine or loop
+    # being recorded? Only some passes run it. DSL::PlainRuby::InstanceVariables::Uses asks, since a
+    # number a method sets there is one Ruby cannot know after it.
+    def recording_under_game_test? = @container_stack.drop(2).any? { |node| %i[if else].include?(node.kind) } # :nodoc:
+
+    # Runs a part's `initialize` (PlainRuby's rewrite wraps each in a game file). A part game code
+    # keeps (`@part ||= Part.new`, #keeping_part), in a scene or the game loop, is made the first
+    # time the line runs, as its numbers start once
+    # (InstanceVariables.first_number_set_where_reached?), though the line making it plays on
+    # every pass: what it puts into its Arrays goes in on the first pass alone (#once_for_part).
+    # Made while setting up, it runs once anyway, and nothing changes.
+    def making_part # :nodoc:
+      return yield unless recording_game_code?
+
+      (@part_starts ||= []).push(PartStart.new(depth: @container_stack.length, made: Set.new, kept: keeping_parts?,
+                                               keeper: @keeper_made_every_pass))
+      keeper = @keeper_made_every_pass
+      @keeper_made_every_pass = nil # what this part's `initialize` makes is kept, if at all, by this part
+      begin
+        yield
+      ensure
+        @keeper_made_every_pass = keeper
+        close_part_start(@part_starts.pop)
+      end
+    end
+
+    # Runs the block, a line of game code keeping a part with `||=` (#keeping_part) in a part of
+    # the class named +keeper+, which is itself made again on every pass: in Ruby the part kept is
+    # new on every pass too, so it is made every pass (#made_every_pass?), and the refusal of a
+    # changing one names +keeper+ (#keeper_made_every_pass).
+    def keeping_in_part_made_every_pass(keeper) # :nodoc:
+      outer = @keeper_made_every_pass
+      @keeper_made_every_pass = keeper
+      yield
+    ensure
+      @keeper_made_every_pass = outer
+    end
+
+    # The class name of the part made every pass whose `||=` is making a part now, if one is.
+    attr_reader :keeper_made_every_pass # :nodoc:
+
+    # Runs the block, a line of game code that keeps the part it makes (`@part ||= Part.new`), so
+    # that part and the parts its `initialize` makes are made one time (#made_every_pass?).
+    def keeping_part # :nodoc:
+      @keeping_parts = (@keeping_parts || 0) + 1
+      yield
+    ensure
+      @keeping_parts -= 1
+    end
+
+    def keeping_parts? = (@keeping_parts || 0).positive?
+    private :keeping_parts?
+
+    # Is a part made now made again on every pass in Ruby: made by game code, and not kept
+    # (#keeping_part)? DSL::PlainRuby::InstanceVariables refuses one whose numbers change.
+    def made_every_pass? = recording_game_code? && !keeping_parts? # :nodoc:
+
+    # Runs the block with what it records (a list made and filled) set to run once at program
+    # start (#at_boot), wherever the build is recording, and returns what the block returns. A
+    # part's Array made the game's in game code (DSL::PlainRuby::InstanceVariables.indexed) is
+    # made this way, since the game must make it once, not on every pass of the line.
+    def recording_at_boot # :nodoc:
+      holder = IR::Build.loop_
+      @container_stack.push(holder)
+      made = begin
+        yield
+      ensure
+        @container_stack.pop
+      end
+      holder.children.dup.each { |node| at_boot(node) }
+      made
+    end
+
+    # The part's things are in: its hidden number holds 1 from here on. Set inside the test the
+    # last push recorded, where that ends the `initialize`, so a pass after the first sets nothing.
+    def close_part_start(start)
+      return unless start.started
+
+      branch = start.branch
+      return start.started.store!(1) unless branch && @container_stack.last.children.last.equal?(branch)
+
+      open_container(branch, branch.cond)
+      begin
+        start.started.store!(1)
+      ensure
+        close_branch
+      end
+    end
+    private :close_part_start
+
+    # A part being made in game code (#making_part): where its `initialize` records, the Arrays it
+    # made there, its hidden number, whether a #once_for_part is open, and the last test one made.
+    PartStart = Struct.new(:depth, :made, :started, :once_open, :branch, :kept, :keeper, keyword_init: true)
+
+    # The Array +name+ (a list, or the pool an Array of Structs is) is made while a part is being
+    # made, so what that part's `initialize` puts into it goes in once (#once_for_part). Every part
+    # being made takes note: one made inside another's `initialize` is made once with it, and an
+    # object Ruby makes while the Array is declared opens a #making_part of its own.
+    #
+    # A part game code makes without keeping it (#keeping_part) is a new one on every pass in Ruby,
+    # with its Arrays made and filled again, so making one there is refused.
+    def note_made_in_part(name) # :nodoc:
+      (@part_starts || []).each do |start|
+        next unless part_start_code?(start)
+
+        refuse_array_in_repeated_part!(name, start.keeper) unless start.kept
+        start.made << name
+      end
+    end
+
+    def refuse_array_in_repeated_part!(name, keeper)
+      if keeper
+        raise DSL::PlainRuby::Refused,
+              "This line makes a new object and keeps it in a `#{keeper}`, and its `initialize` makes the Array " \
+              "`#{name}`. But the `#{keeper}` is made in code that runs every frame, so in Ruby a new `#{keeper}` " \
+              "is made on every pass, and it makes and fills a new Array. To fix this, make the `#{keeper}` " \
+              "above the game loop, or keep it in an instance variable too, like `@part ||= #{keeper}.new(...)`." \
+              "#{Messages::AuthorSource.at_author_line}"
+      end
+      raise DSL::PlainRuby::Refused,
+            "This line makes a new object in code that runs every frame, and its `initialize` makes the Array " \
+            "`#{name}`. In Ruby each new object makes and fills its Array again. To fix this, make the object " \
+            "above the game loop, or keep it in an instance variable, like `@part ||= Part.new(...)`, so it is " \
+            "made one time.#{Messages::AuthorSource.at_author_line}"
+    end
+    private :refuse_array_in_repeated_part!
+
+    # Records what the block records (a push into the Array +name+, or its making) so it runs only
+    # on the first pass of the part being made, where #making_part is open, the part made +name+
+    # in its `initialize` (#note_made_in_part), and the block is in that `initialize`'s
+    # straight-line code or a test there. A push into an Array handed in, and anything in a
+    # routine, loop or timer the `initialize` opens, plays every time, as written.
+    def once_for_part(name) # :nodoc:
+      start = @part_starts&.last
+      return yield unless start && start.made.include?(name) && !start.once_open && part_start_code?(start)
+
+      start.started ||= hidden_variable(:part_started)
+      (@part_started_by_array ||= {})[name] = start.started.name
+      start.once_open = true
+      # Pushes one after another (a Ruby loop filling the Array) share one test.
+      if (branch = start.branch) && @container_stack.last.children.last.equal?(branch)
+        open_container(branch, branch.cond)
+      else
+        start.branch = open_branch(Build.binop(:==, DSL::Value.node_for(start.started), Build.int(0)))
+      end
+      begin
+        yield
+      ensure
+        close_branch
+        start.once_open = false
+      end
+    end
+
+    # The hidden number that keeps the Array +name+ (a list, or a pool's name) to one filling by its
+    # part's `initialize` (#once_for_part), or nil. A save that keeps the Array keeps it too.
+    def part_started_for(name) = @part_started_by_array&.fetch(name, nil) # :nodoc:
+
+    # Is the builder recording the straight-line code of the `initialize` of a part game code keeps
+    # (`@part ||= Part.new`, #keeping_part), or of a part that `initialize` makes? Ruby runs that
+    # code once, so a change it makes to another object's plain Ruby Array happens once, while the
+    # game is built, as in Ruby. Not under a test there: Ruby would run both sides of it while
+    # building, where the game runs one. DSL::PlainRuby::InstanceVariables.refuse_unkept_change!
+    # asks.
+    def recording_kept_part_start? # :nodoc:
+      start = @part_starts&.last
+      !start.nil? && start.kept && @container_stack.length == start.depth
+    end
+
+    # Is the builder recording in +start+'s `initialize` itself, under nothing but tests?
+    def part_start_code?(start)
+      @container_stack.length >= start.depth &&
+        @container_stack.drop(start.depth).all? { |node| %i[if else].include?(node.kind) }
+    end
+    private :part_start_code?
+
+    # Is the body being built now a routine's that is not a scene's? It runs wherever it is
+    # called, inside a walk of a pool among them. DSL::StructArray#shift asks.
+    def building_callable_routine? = !@building_routine.nil? && @building_scene.nil? # :nodoc:
 
     # The outermost body of game code being recorded now: the routine, scene or loop it is in,
     # nil while setting up. DSL::PlainRuby::InstanceVariables::Uses tells two routines apart by it.
@@ -1520,18 +1930,23 @@ module VBlank
       @persisted.any? { |v| v.name == name }
     end
 
-    # Which scenes are shown for which state, read from the case_var dispatch(es):
+    # Which scenes are shown for which state, read from the scene dispatch (case nodes):
     # a scene func named as a case target is presented only while the dispatched
-    # variable holds that clause's value. Maps a scene func name → [state_var, value],
-    # so a sprite/HUD declared inside that scene can be gated to when the scene is live.
+    # variable holds a value of a clause naming it. Maps a scene func name → [state_var,
+    # values], so a sprite/HUD declared inside that scene can be gated to when the scene is
+    # live. A scene picked by several values (`when 1, 2 then call :over`) is up for each.
     def scan_scene_gates
-      gates = {}
+      values = Hash.new { |hash, target| hash[target] = [] }
+      vars = {}
       @program.walk do |node|
         next unless node.kind == :case
 
-        node.clauses.each { |value, target| gates[target] ||= [node.var, value] }
+        node.clauses.each do |value, target|
+          vars[target] ||= node.var
+          values[target] |= [value] if vars[target] == node.var
+        end
       end
-      gates
+      vars.to_h { |target, var| [target, [var, values[target].freeze].freeze] }
     end
 
     # Gate an object's visibility to its scene: a scene-owned object is shown only when
@@ -1540,7 +1955,7 @@ module VBlank
     # call, and no per-draw flag in game code. Outside a scene, visibility is unchanged.
     # Which game state a declaration belongs to, or nil where it belongs to none and is
     # always there. The gate above gives the same thing as a run-time test; this gives it
-    # as a NAME, which is what something deciding what has to be in memory at once needs.
+    # as a name, which is what something deciding what has to be in memory at once needs.
     def declaring_scene = @building_scene
 
     def gated_by_scene(active_node)
@@ -1550,8 +1965,11 @@ module VBlank
     end
 
     # "The scene +gate+ names is the one up": the variable the game picks its scenes with holds
-    # the value that picks it. A gate is that variable and that value.
-    def scene_up((state_var, value)) = Build.binop(:==, Build.var_ref(state_var), Build.int(value))
+    # a value that picks it. A gate is that variable and those values.
+    def scene_up((state_var, values))
+      values.map { |value| Build.binop(:==, Build.var_ref(state_var), Build.int(value)) }
+            .reduce { |either, other| Build.binop(:or, either, other) }
+    end
 
     # +node+, run only while the scene +gate+ names is up — or as it is, for a nil gate: a
     # thing declared outside every scene is there in all of them.
@@ -1566,7 +1984,7 @@ module VBlank
       Build.if_(gates.map { |gate| scene_up(gate) }.reduce { |either, other| Build.binop(:or, either, other) }, node)
     end
 
-    # Gate a declaration's visibility on the conditions it was WRITTEN under, so a
+    # Gate a declaration's visibility on the conditions it was written under, so a
     # blinking prompt is the plain thing an author would write:
     #
     #   draw_text "PRESS START", 76, 100, :gray if blink == 1
@@ -1648,8 +2066,8 @@ module VBlank
     # were called — nothing is pacing it, so there is no gap to move them to.
     #
     # Each write is gated to its owning scene, the same as a scene-owned sprite, HUD glyph
-    # or turning background (see #finalize_background_affine). WHERE A BACKGROUND SITS IS A
-    # PROPERTY OF THE LAYER rather than of the background, and scenes take turns with the
+    # or turning background (see #finalize_background_affine). Where a background sits is a
+    # property of the layer rather than of the background, and scenes take turns with the
     # layers — so two backgrounds that share one both write its position every frame, and
     # the one declared later wins wherever they disagree. A title screen of drifting
     # scenery handing over to a game that starts at the top of its map was pinned still by
@@ -1677,15 +2095,21 @@ module VBlank
     # the reason a scroll is written there: the display reads which layers show where as it draws
     # each line, so a box moved while it draws would show two boxes on one picture. Every
     # declaration of the name carries the variable that holds whether it is held, which goes back to
-    # everywhere as its scene takes over (IR::SceneHandover).
+    # everywhere as its scene takes over (IR::SceneHandover). A background the game hides
+    # (`hide`) and never holds to a box of some size has every write marked whole
+    # (Nodes::BoxBackground), the ones left where the game set them in a program with no frame
+    # boundary too. One only ever shown everywhere is not marked, and builds as it did.
     def finalize_background_boxes
       boxed = backgrounds_that(&:held_to_box?)
       held = boxed.to_h { |name, background| [name, background.box.last] }
       @program.walk.each { |node| node.boxed = held[node.name] if node.kind == :background && held.key?(node.name) }
+      whole = boxed.select { |_, background| background.hidden_whole && !background.boxed_in_part }.keys
+      @inline_box_nodes.each { |node| node.whole = true if whole.include?(node.name) }
       write_between_frames(@inline_box_nodes, boxed) do |name, background|
         x, y, width, height, on = background.box.map { |var| Build.var_ref(var) }
         while_any_scene_up(background.scene_gates,
-                           Build.box_background(name, x: x, y: y, width: width, height: height, held: on))
+                           Build.box_background(name, x: x, y: y, width: width, height: height, held: on,
+                                                      whole: whole.include?(name) || nil))
       end
     end
 
@@ -1706,7 +2130,7 @@ module VBlank
       @backgrounds.select { |_name, background| yield(background) }
     end
 
-    # PUT A WRITE PER THING IN THE GAP BETWEEN FRAMES, at every frame boundary there is — the
+    # Put a write per thing in the gap between frames, at every frame boundary there is — the
     # shared half of the passes above and below, which differ only in what they are about
     # (the backgrounds that scroll, the ones handed a map, the lists of colours that change)
     # and what each one writes. +things+ is those, by name; the block is handed each
@@ -1737,7 +2161,7 @@ module VBlank
       end
     end
 
-    # A WRITE MADE ONLY ON A FRAME WHERE THE ANSWER CHANGED. +requested+ is the variable
+    # A write made only on a frame where the answer changed. +requested+ is the variable
     # holding what the game last set, and +in_force+ the one holding what the write last put
     # in place; they differ exactly on the frame to write on, and the write then makes them
     # agree. See #finalize_background_maps for why it is two variables and not a write
@@ -1749,7 +2173,7 @@ module VBlank
                 Build.set(in_force, Build.var_ref(requested)))
     end
 
-    # COPY A WHOLE MAP INTO A BACKGROUND'S CELLS, in the gap between frames, and only on a
+    # Copy a whole map into a background's cells, in the gap between frames, and only on a
     # frame where the answer changed.
     #
     # A cell of a map is one half-word, so `set_tile` can write it wherever the game
@@ -1758,11 +2182,11 @@ module VBlank
     # and there the same write really would show half of the old room and half of the new.
     # So the copy waits for the gap, which is the one moment the display is not reading.
     #
-    # WHY TWO VARIABLES rather than a copy where `show_map` was called. `show_map` sets
+    # Why two variables rather than a copy where `show_map` was called. `show_map` sets
     # which map is showing — a statement about the world, the same shape as a scroll
     # position — so a game may call it every frame, from inside a branch, from a scene. What
     # the console must not do is copy thousands of cells every frame. Holding what the game
-    # SET apart from what is really IN the cells turns that into one comparison: they
+    # SET apart from what is really in the cells turns that into one comparison: they
     # differ exactly on the frame the answer changed, which is the frame to copy on.
     def finalize_background_maps
       write_between_frames(@inline_map_nodes, backgrounds_that(&:swaps_maps?)) do |name, background|
@@ -1773,7 +2197,7 @@ module VBlank
       end
     end
 
-    # SHOW THE CELLS A HELD BACKGROUND'S PASS CHANGED, all at once, at each frame boundary.
+    # Show the cells a held background's pass changed, all at once, at each frame boundary.
     #
     # One write for the whole program, however many backgrounds are held: the changes wait in
     # one queue, in the order they were made (see IR::Nodes::ShowHeldTiles). It goes in the gap
@@ -1789,7 +2213,7 @@ module VBlank
       write_between_frames([], { held: true }) { Build.show_held_tiles }
     end
 
-    # WRITE A LAYER'S COLOURS INTO THE DISPLAY'S TABLE, in the gap between frames, and only
+    # Write a layer's colours into the display's table, in the gap between frames, and only
     # on a frame where the answer changed — the colour twin of the map copy above, and held
     # apart the same way and for the same reasons.
     #
@@ -1834,7 +2258,7 @@ module VBlank
       end
     end
 
-    # WRITE THE TURN ONLY ON A FRAME WHERE IT CHANGED — the same two-variables trick
+    # Write the turn only on a frame where it changed — the same two-variables trick
     # {#finalize_background_maps} plays on a map, and here it buys something the map's
     # version does not.
     #
@@ -1842,14 +2266,14 @@ module VBlank
     # the display holds it: the numbers that set how the layer is turned and where it is
     # pinned stay where they were put. So writing them again every frame is not only work
     # nobody asked for — a divide and two table lookups before the write itself — it is
-    # A RISK THE STILL PICTURE HAS NO REASON TO RUN. The display reads where the layer is
+    # a risk the still picture has no reason to run. The display reads where the layer is
     # pinned as it draws, so a write landing after the drawing has started moves the layer
     # for the rest of that picture: one frame showing the layer somewhere else, and then it
     # snaps back. Every game has frames that start late, and on those frames this write
     # lands there. A scroll written late is invisible, which is why the scroll registers
     # beside it have never needed this.
     #
-    # Holding what the display was TOLD apart from what the program has SINCE SET turns
+    # Holding what the display was told apart from what the program has SINCE SET turns
     # all of that into two comparisons: they differ exactly on the frame the answer moved,
     # which is the frame worth writing on.
     def affine_write_if_changed(name, background)
@@ -1897,7 +2321,7 @@ module VBlank
     #
     # It goes at the frame boundary for the reason the scroll writes do: that gap is the
     # one moment the display is not reading, so the whole picture is drawn at one amount
-    # rather than half at each. And it goes FIRST, before the sprites are put where they
+    # rather than half at each. And it goes first, before the sprites are put where they
     # go, so the frame that is about to be drawn is drawn at the amount this frame has.
     def finalize_layer_blend
       return if @frame_boundaries.empty? || @layers_node.nil?
@@ -1928,13 +2352,13 @@ module VBlank
       [layer.shows, layer.behind].all? { |amount| DSL::Value.fixed_number(amount) }
     end
 
-    # Run every per-frame routine at each frame boundary — ONCE PER FRAME THAT REALLY
-    # PASSED, which on a program keeping up is once, and on one that overran its frame
+    # Run every per-frame routine at each frame boundary — once per frame that really
+    # passed, which on a program keeping up is once, and on one that overran its frame
     # is twice or three times.
     #
-    # THAT REPEAT IS THE WHOLE OF THE PROMISE. A pass of the game loop is not a frame;
+    # That repeat is the whole of the promise. A pass of the game loop is not a frame;
     # it is a frame on a program that fits and two frames on one that does not. So a
-    # body called once per PASS and described as running every frame quietly runs at
+    # body called once per pass and described as running every frame quietly runs at
     # half speed on a heavy game, and a fade told to take half a second takes a second
     # and a half. Counting the frames instead is what makes the word mean what it says.
     #
@@ -1947,7 +2371,7 @@ module VBlank
     # change takes effect on the whole picture rather than half of it. And they go in
     # here rather than where `once_a_frame` was called because such a routine is
     # normally set off by an event — a brick breaking, a life lost — while what it
-    # produces has to be applied on EVERY frame after that, including the frames the
+    # produces has to be applied on every frame after that, including the frames the
     # triggering code does not run on.
     #
     # A program with no frame boundary (no game loop) never calls them at all. That
@@ -1971,8 +2395,8 @@ module VBlank
       end
     end
 
-    # ROUTINES CALLED ONCE A PASS, straight after each frame boundary: work the framework spreads
-    # over a game's passes, such as writing a save a piece at a time. Once a PASS and not once a
+    # Routines called once a pass, straight after each frame boundary: work the framework spreads
+    # over a game's passes, such as writing a save a piece at a time. Once a pass and not once a
     # frame like the ones above, because what they leave for the game to read — a save that has
     # just finished — has to hold for one whole pass of the game's own code, and a late pass
     # that replayed them would clear it again before the game got to look.
@@ -1995,7 +2419,7 @@ module VBlank
     # Give every "call the routine this variable names" its list of routines: the names that
     # variable can hold, in the order they were numbered.
     #
-    # IT HAS TO BE NOW rather than where the call was written, and the reason is ordinary
+    # It has to be now rather than where the call was written, and the reason is ordinary
     # program order: a name is one of the set from the first time anything uses it, and a
     # routine's body is built at finalize — so a state set only inside another routine was not
     # known yet. By here every body has been built and the set cannot grow again.
@@ -2003,14 +2427,14 @@ module VBlank
       @name_dispatches.each { |node, held| node.targets = held.names }
     end
 
-    # A NAME THAT PICKS A SCENE. `call mode` runs the routine its variable names, and when
-    # those names are scenes it is exactly a `case_var` over them — so it is made one, here,
+    # A name that picks a scene. `call mode` runs the routine its variable names, and when
+    # those names are scenes it is exactly a scene dispatch (a case node) over them — so it is made one, here,
     # before any scene's body is built. Everything that asks which scene a thing belongs to
     # reads case dispatches (a scene's text, sprites and scenery are shown only while it
     # runs; the display is told its layers as it takes over), and it all then works for
     # scenes picked by name with nothing else knowing the difference.
     #
-    # EVERY SCENE THE GAME DECLARES IS GIVEN A NUMBER NOW. A name normally gets one the first
+    # Every scene the game declares is given a number now. A name normally gets one the first
     # time it is used, and a scene first named deep inside another scene's body — the walk
     # a menu hands over to — would get one only as that body is built, after this dispatch
     # was fixed. Numbering them all first costs nothing: a number the variable never holds
@@ -2104,7 +2528,7 @@ module VBlank
     # looked. (Resolving against the current directory alone is a classic footgun:
     # it works when you run from the project root and mysteriously fails otherwise.)
     def resolve_asset_path(path)
-      return path if File.absolute_path?(path)
+      return path if File.absolute_path?(path) || path.start_with?("/") # "/x" is rooted on Windows too
 
       dir = caller_script_dir
       if dir
@@ -2162,7 +2586,7 @@ module VBlank
       end
     end
 
-    # A TABLE GIVEN A SLOT OF THE DATA PACK takes the slot's width and sign. A width or sign the
+    # A table given a slot of the data pack takes the slot's width and sign. A width or sign the
     # line gives as well must be the slot's, since two answers to one question are a mistake.
     def refuse_table_unlike_slot!(name, handle, width, signed)
       layout = handle.layout
@@ -2246,30 +2670,47 @@ module VBlank
     # Build a container node, attach it, and keep it open while the block runs so
     # nested statements land inside it — then close it. The block-taking control
     # methods (loops, conditionals, func bodies) use this.
+    #
+    # A block that raises can leave a test it opened a step at a time (#open_branch, the rewritten
+    # `if`) open inside this one, so the stacks go back to how they were before this container.
+    # A builder made by hand stays the thread's current game after the error (Builder::Session),
+    # and with a container left open it would record whatever plain Ruby later runs on that thread
+    # as game code.
     def push_container(node)
       record(node)
+      depth = @container_stack.length
+      shown_depth = @shown_while.length
       @container_stack.push(node)
-      # A test the block is written under is also a test anything DECLARED in the block is
+      # A test the block is written under is also a test anything declared in the block is
       # only shown under (see #gated_by_open_conditions) — the same statement reads both ways, and a
       # thing the framework redraws for you every frame has no other way to hear about it.
       @shown_while.push(node.cond) if node.kind == :if
-      yield
-    ensure
-      @shown_while.pop if node.kind == :if
-      @container_stack.pop
+      begin
+        yield
+      rescue Exception # rubocop:disable Lint/RescueException -- put the stacks back for any error, then raise it again
+        @container_stack.slice!(depth..)
+        @shown_while.slice!(shown_depth..)
+        raise
+      ensure
+        # The block's end, a `throw` or a `break` closes this container alone.
+        unless @container_stack.length == depth
+          @shown_while.pop if node.kind == :if
+          @container_stack.pop
+        end
+      end
     end
 
     # Run a DSL block (a game loop body, a func body…) at the current build
-    # point. It runs in the block's OWN context, not instance_eval'd onto the builder,
+    # point. It runs in the block's own context, not instance_eval'd onto the builder,
     # so its `self` stays wherever the block was written: this builder at the top level
     # (where these blocks live inside VBlank.build's instance_eval, so `self` already
     # is the builder), or a plain Ruby object when a game is split across files — there
     # the block still sees that object's @ivars, while its bare verbs resolve against the
     # build it was handed (see examples/shmup). +args+ pass through to a block that takes them (a loop
-    # index). Sub-DSLs with their own vocabulary — `entry`, `case_var`, `font`, `song` —
+    # index). Sub-DSLs with their own vocabulary — `entry`, `font`, `song` —
     # keep instance_eval instead, since their blocks speak a different verb set.
-    def run_block(*args, &block)
-      block.call(*args)
+    def run_block(*args)
+      yield(*args)
     end
 
     # Low-level entry context for raw instruction emission.

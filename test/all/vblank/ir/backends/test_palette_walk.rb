@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW FAR A WALK OF THE COLOURS GOES (Backends::PaletteWalk), held once for every console: a fade or
+# How far a walk of the colours goes (Backends::PaletteWalk), held once for every console: a fade or
 # tint the game works out past either end goes all the way or none of it. Played through
 # game_player, so each run's console walks them its own way and is checked against the interpreter
 # on every pass. What only a console's own build shows, the cost and the refusals, is in

@@ -8,7 +8,7 @@ require "test_helper"
 # (see TestConstantDivision and TestPowerOfTwoMath).
 #
 # It no longer traps into the console's divide routine. A routine of our own does the
-# same long division, so what these tests care about is that the ANSWERS are unchanged
+# same long division, so what these tests care about is that the answers are unchanged
 # across every sign and both ends of the range, that dividing by zero gives the one
 # answer both backends are held to, and that a program which never needs the routine does
 # not carry it.

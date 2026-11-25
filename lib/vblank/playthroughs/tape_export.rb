@@ -5,11 +5,11 @@ require "zlib"
 
 module VBlank
   module Playthroughs
-    # A TAPE WRITTEN OUT FOR ANOTHER EMULATOR, so a run can be shown in one people already use. The
+    # A tape written out for another emulator, so a run can be shown in one people already use. The
     # tape stays the master: it holds named moments and plays on every console and computer build,
     # and these hold a list of frames for one exact cartridge.
     #
-    # WHAT EACH ONE ASSUMES, since one frame of difference ruins a run. Frame 1 is the first frame
+    # What each one assumes, since one frame of difference ruins a run. Frame 1 is the first frame
     # after power-on, with no BIOS screen first, so the emulator is set to skip the BIOS or has none.
     # The cartridge is the exact one the export was given. Save memory is empty, so a tape that
     # starts from a save or after a lead-in is refused rather than written out to play another game.

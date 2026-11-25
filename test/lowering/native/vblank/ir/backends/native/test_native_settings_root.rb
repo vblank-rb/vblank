@@ -3,7 +3,7 @@
 require "test_helper"
 require "settings_root_cases"
 
-# WHERE A PLAYER'S SETTINGS FOLDERS ARE (runtime/rg_settings_root.h). A built game and `vblank run`
+# Where a player's settings folders are (runtime/rg_settings_root.h). A built game and `vblank run`
 # share these files, so the C rule answers the same table as the Ruby one.
 class TestNativeSettingsRoot < Minitest::Test
   include SettingsRootCases

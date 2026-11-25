@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S OWN LAYOUT, read by IR::FormatReading, held to what the Color's lowering writes.
+# The color's own layout, read by IR::FormatReading, held to what the Color's lowering writes.
 class TestGBCFormatReading < Minitest::Test
   GBC = VBlank::IR::Backends::GBC
   Reading = VBlank::IR::FormatReading

@@ -4,6 +4,32 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a fade held to a rectangle (`fade ..., inside:` or `outside:`) in a game
+        # that also asks for something the fade needs the same part of the display for. Beside
+        # a light:
+        #
+        # > This game fades `<inside>:` a rectangle, and it has a light (a `spotlight` or an
+        # > `iris_out`). The console has one window for both, and a light cuts it into a circle.
+        # > To fix this, remove `inside:` or `outside:` from the fade, or remove the light.
+        #
+        # Beside a see-through layer:
+        #
+        # > This game fades `<inside>:` a rectangle, and the layer :<layer> is see-through.
+        # > Both use the one part of the console that mixes the picture, and it can do one of
+        # > the two. To fix this, remove `transparency:` (or `shows:`) from :<layer>, or remove
+        # > `inside:` or `outside:` from the fade.
+        #
+        # Beside a fade placed in the stack:
+        #
+        # > This game fades `<inside>:` a rectangle, and it fades under the layer :<layer>.
+        # > Both need the console's windows, and they need them set two different ways. To fix
+        # > this, remove `under: :<layer>`, or remove `inside:` and `outside:` from every fade.
+        #
+        # Each line looks right where it is written, but the console has one of what both
+        # need, so the build stops and names both. A plain fade or a tint beside a held fade
+        # is fine.
+        #
+        #--
         # A fade held to a rectangle beside something it cannot share the display with.
         #
         # A held fade is the display's darkening, switched on in one part of its first window
@@ -19,6 +45,7 @@ module VBlank
         #
         # A console that blends nothing (Console::Description#blends) holds no fade to a
         # rectangle: Checks::ConsoleAnswers refuses the held fade itself.
+        #++
         class HeldFadeCannotShare
           NAME = :held_fade_cannot_share
           PLAIN_NAME = "a fade held to a rectangle beside something that needs the same part of the display"

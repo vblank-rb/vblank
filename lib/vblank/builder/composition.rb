@@ -2,23 +2,31 @@
 
 module VBlank
   class Builder
-    # The composition verb: `pool` — declare a component (named fields) and a
-    # fixed-capacity set of instances of it in one call, the DSL's unit for
-    # "many of a thing that has state and behaves." A concern of {Builder}, mixed in
-    # so `pool` stays a flat DSL verb; the {Pool} handle it returns does the rest.
+    # Many of a thing
     #
-    # A pool desugars entirely onto what already exists — one {List} per field, an
-    # `active` column, a `free`-slot stack, and a `repeat` for iteration — so there's no
-    # new IR and every backend runs it. This module just sets that storage up (once, at
-    # boot) and hands back the handle.
+    # A pool declares a kind of thing with named fields, and room for a fixed number of them, in one
+    # call. It is the unit for many of a thing that has state and behaves, such as bullets, enemies
+    # or sparks. The handle `pool` returns spawns instances, goes through the live ones with `each`,
+    # and answers `count` and `full?`.
+    #
+    # ```ruby
+    # bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+    # ```
+    #--
+    # A concern of Builder, mixed in so `pool` stays a flat DSL verb; the Pool handle it returns
+    # does the rest. A pool desugars entirely onto what already exists, one List per field, an
+    # `active` column, a `free`-slot stack, and a `repeat` for iteration, so there is no new IR and
+    # every backend runs it. This module just sets that storage up (once, at boot) and hands back
+    # the handle.
+    #++
     module Composition
-      Build = IR::Build
+      Build = IR::Build  # :nodoc:
 
       # What spawn does when the pool is full: :drop ignores it (a safe no-op),
       # :recycle_oldest reuses the longest-lived instance so a new one always appears.
-      POOL_FULL_POLICIES = %i[drop recycle_oldest].freeze
+      POOL_FULL_POLICIES = %i[drop recycle_oldest stop].freeze  # :nodoc:
 
-      # THE MOST OF THE QUICK MEMORY ONE POOL MAY TAKE. The console has 32KB of it, and it is
+      # The most of the quick memory one pool may take. The console has 32KB of it, and it is
       # also where the code a frame spends its time in is kept, so a pool that took most of
       # it would push that code out to the cartridge and slow the whole game, with nothing
       # in the program to say why. A pool bigger than this is kept in the console's other
@@ -27,76 +35,105 @@ module VBlank
       # not fit the two memories together, or whose cold ones (these pools among them) do not
       # fit the roomier one, is refused by the whole-program check
       # (IR::Guardrails::Checks::IwramBudget), which adds up everything it declares.
-      POOL_MAX_QUICK_BYTES = 16 * 1024
+      POOL_MAX_QUICK_BYTES = 16 * 1024  # :nodoc:
 
-      # Declare a pool of a component. Name the fields with their defaults and give a
-      # capacity (the most instances live at once):
+      # Declares a pool: many of one kind of thing that has state and behaves, such as bullets,
+      # enemies or sparks, with room for a fixed number of them.
       #
-      #   bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+      # Name the fields with their starting values and give a `capacity`, the most instances that
+      # are live at once. It returns a handle to spawn instances, to go through the live ones with
+      # `each`, and to ask its `count` and `full?`.
       #
-      # Returns a {Pool} handle — spawn instances, iterate the live ones with `each`,
-      # ask its `count` / `full?`.
+      # ```ruby
+      # bullets = pool :bullet, x: 0, y: 0, vy: 0, capacity: 64
+      # ```
       #
-      # Give the pool an `image:` and each live instance draws itself as a hardware
-      # sprite at its x/y (spawn shows one, remove hides it) and gains a collision box:
+      # Give the pool an `image:` and each live instance draws itself as a sprite at its `x` and
+      # `y`. Spawning one shows it, removing one hides it, and each gains a collision box. A pool
+      # with pictures needs `x:` and `y:` fields and a `screen :tiled`. Without an image it is a
+      # pure data pool, and you draw it yourself in `each`.
       #
-      #   enemies = pool :enemy, x: 0, y: 0, hp: 3, capacity: 16, image: :ufo
-      #   enemies.each { |e| e.y += 1; e.remove if bullet.overlaps?(e) }
+      # ```ruby
+      # enemies = pool :enemy, x: 0, y: 0, hp: 3, capacity: 16, image: :ufo
+      # enemies.each { |e| e.y += 1; e.remove if bullet.overlaps?(e) }
+      # ```
       #
-      # A spriteful pool needs x: and y: fields and a `screen :tiled` (its instances are
-      # hardware sprites). Without an image it's a pure-data pool (draw it yourself in
-      # `each`).
+      # By default a spawn onto a full pool does nothing. Pass `on_full: :recycle_oldest`, the usual
+      # choice for particles and effects, so that a new spawn reuses the longest-lived instance and
+      # a new one always appears.
       #
-      # By default a spawn onto a full pool is a safe no-op. Pass `on_full: :recycle_oldest`
-      # (the usual choice for particles and effects) so a new spawn instead reuses the
-      # longest-lived instance — a new one always appears:
+      # ```ruby
+      # sparks = pool :spark, x: 0, y: 0, life: 0, capacity: 32, on_full: :recycle_oldest
+      # ```
       #
-      #   sparks = pool :spark, x: 0, y: 0, life: 0, capacity: 32, on_full: :recycle_oldest
+      # A pooled thing faces and animates the way a sprite does, spelled the same way. Give the
+      # pool `facing:` or `frames:` instead of `image:`, with `rate:` for either animated form. Each
+      # instance holds its own direction and its own place in the cycle, so ten guards face ten ways
+      # and do not march in step.
       #
-      # `estimate:` does nothing but earn a warning (see Builder#record_estimate_line).
+      # ```ruby
+      # guards = pool :guard, x: 0, y: 0, capacity: 32, rate: 6,
+      #               facing: { left: [:walk_l1, :walk_l2], right: [:walk_r1, :walk_r2] }
+      # guards.each { |g| g.face :left; g.x -= 1 }
+      # ```
       #
-      # A pooled thing FACES AND ANIMATES the way a sprite does, spelled the same way.
-      # Give the pool `facing:` (a picture per direction, or a list of frames per
-      # direction) or `frames:` (a flipbook) instead of `image:`, with `rate:` for
-      # either animated form:
+      # A pool is one list for each field, and a field left at its full width costs four bytes a
+      # slot to keep a direction or a flag. Name the narrow fields with `widths:` to make a big
+      # pool much smaller.
       #
-      #   guards = pool :guard, x: 0, y: 0, capacity: 32, rate: 6,
-      #                 facing: { left: [:walk_l1, :walk_l2], right: [:walk_r1, :walk_r2] }
-      #   guards.each { |g| g.face :left; g.x -= 1 }
+      # ```ruby
+      # guards = pool :guard, dir: 0, hp: 0, capacity: 145, widths: { dir: :byte, hp: :byte }
+      # ```
       #
-      # Each instance holds its own direction and its own place in the cycle, so ten
-      # guards face ten ways and do not march in step. That is the pool's own
-      # bookkeeping — a hidden slot beside the fields, not something to declare.
-      #
-      # WHICH OF THE CONSOLE'S TWO WORK MEMORIES A POOL IS KEPT IN is the build's to decide,
-      # as it is for a list: the quick one for what a frame touches while there is room, the
-      # roomier one for the rest. `fast: false` marks the pool as cold and gives the quick
-      # memory back; `fast: true` insists on it. A pool bigger than POOL_MAX_QUICK_BYTES cannot
-      # share the quick memory, so it is kept in the roomier one whatever a frame does with
-      # it, and `fast: true` on such a pool is a friendly error.
-      #
-      # @param name [Symbol] the pool's name
-      # @param capacity [Integer] the most instances that can be live at once
-      # @param fast [Boolean, nil] false to keep it out of the quick memory, true to insist on it
-      # @param image [Symbol, nil] the sprite image each live instance draws
-      # @param facing [Hash{Symbol=>Symbol,Array}, nil] direction => picture, or => frames
-      # @param frames [Array<Symbol>, nil] same-size pictures to cycle as an animation
-      # @param rate [Integer, nil] game-frames per animation step (needed with an animation)
-      # @param on_full [Symbol] :drop (default) or :recycle_oldest — see above
-      # @param estimate [Object] does nothing but earn a warning
-      # @param fields [Hash{Symbol=>Object}] field name => default value
-      # @return [Pool]
+      # * `name` - the pool's name, as a symbol.
+      # * `capacity:` - the most instances that can be live at once.
+      # * `fields` - the pool's fields, written as keywords: each field's name and its starting
+      #   value.
+      # * `image:` - the picture each live instance draws.
+      # * `facing:` - a map from a direction to a picture, or to a list of frames.
+      # * `frames:` - same-size pictures to cycle as an animation.
+      # * `rate:` - how many game frames each animation step lasts. It is needed with an animation.
+      # * `on_full:` - `:drop` (the default), `:recycle_oldest`, or `:stop`, which stops the game
+      #   naming the pool, as a push onto a full list does. An Array of Structs is a pool that stops.
+      # * `widths:` - a map from a field to how much room it takes, `:byte`, `:half` or `:word`, as
+      #   a list's `width:` is. `:unsigned_half` keeps a place in 256ths of a pixel.
+      # * `fast:` - `false` keeps the pool out of the quick memory, and `true` insists on it.
+      # * `layout:` - how the pool sits in the console's memory: `:lists`, `:tables` or `:records`.
+      #   A game names none to get the build's choice. A console has only the layouts its build
+      #   makes, and naming one it lacks is an error that names the console and its layouts. The
+      #   layout never changes what the game does or what a field holds.
+      #--
+      # Which of the console's two work memories a pool is kept in is the build's to decide, as it is
+      # for a list: the quick one for what a frame touches while there is room, the roomier one for
+      # the rest. A pool bigger than POOL_MAX_QUICK_BYTES cannot share the quick memory, so it is
+      # kept in the roomier one whatever a frame does with it, and `fast: true` on such a pool is a
+      # friendly error. The direction and the place in the cycle are a hidden slot beside the
+      # fields.
+      #++
       def pool(name, capacity:, image: nil, facing: nil, frames: nil, rate: nil,
-               on_full: :drop, estimate: nil, widths: {}, fast: nil, layout: nil, **fields)
-        validate_pool!(name, capacity, fields)
+               on_full: :drop, widths: {}, fast: nil, layout: nil, **fields)
+        declare_pool(name, fields, capacity: capacity, image: image, facing: facing, frames: frames, rate: rate,
+                                   on_full: on_full, widths: widths, fast: fast, layout: layout)
+      end
+
+      # The pool itself, for `pool` and for an Array of Structs kept as one (DSL::StructArray),
+      # which hands its fields as a Hash, so a field may share a name with one of `pool`'s own
+      # words (`capacity`, `rate`). +struct_fields+ marks such an Array: its things read each
+      # field through the field's own handle, never as a method of Pool::Instance, so a field may
+      # share a name with one of those too (`index`, `left`), as a Struct member may in Ruby.
+      def declare_pool(name, fields, capacity:, image: nil, facing: nil, frames: nil, rate: nil,  # :nodoc:
+                       on_full: :drop, widths: {}, fast: nil, layout: nil, struct_fields: false)
+        validate_pool!(name, capacity, fields, struct_fields: struct_fields)
         validate_on_full!(name, on_full)
         validate_pool_widths!(name, fields, widths)
+        fields.each { |field, default| check_width_holds_fractions!(name, field, default, widths.fetch(field, :word)) }
+        widths = kept_unsigned_halves(widths) { |field| DSL::Pool.field_list(name, field) }
         refuse_pool_layout_not_kept!(name, layout)
         refuse_field_spelled_as_pool_word!(name, facing: facing, frames: frames, rate: rate, fast: fast)
         art = pool_art!(name, image: image, facing: facing, frames: frames, rate: rate, fields: fields)
-        record_estimate_line(estimate)
         handle = DSL::Pool.new(self, name, fields, capacity, image: image, hitbox: art&.hitbox, on_full: on_full,
                                                         art: art)
+        note_made_in_part(name) # what a part's `initialize` puts in goes in once (Builder#once_for_part)
         # A pool too big to share the quick memory is kept out of it, as though the game had
         # set `fast: false` — unless it set `fast: true`, which is then a friendly error.
         bytes = pool_bytes(handle, fields, widths)
@@ -122,7 +159,8 @@ module VBlank
       # Declare +name+ as a routine of +pool+, working on one instance at a time. Its body is
       # built at the end like any routine's, and is handed the instance the pool is walking
       # when it runs — a routine is emitted once, so that is the only instance it can mean.
-      def declare_instance_routine(pool, name, &block)
+      # Seam between a Pool and the build, behind `pool.func`: declares one of its routines. Documented on `pool.func`.
+      def declare_instance_routine(pool, name, &block)  # :nodoc:
         pool.instance_routines << name
         instance_routines[name] = pool
         declare_func(name, wrote: "#{pool.name}.func :#{name}") do
@@ -134,12 +172,14 @@ module VBlank
       # A walk of +pool+ wrote down which instance it is on. Kept so the writes can be taken
       # out again if no routine of that pool ever reads them, and so the calls inside the walk
       # can be told from the calls outside it.
-      def record_walk_instance_writes(pool, *nodes)
+      # Seam between a Pool and the build, behind `pool.func`: remembers where a walk is. Documented on `pool.func`.
+      def record_walk_instance_writes(pool, *nodes)  # :nodoc:
         (@pool_walks ||= []) << [pool, nodes]
       end
 
       # A fresh variable for one walk to keep the instance the walk around it was on.
-      def pool_walk_scratch_var
+      # Seam between a Pool and the build, behind `pool.func`: tells a routine which instance it ran for. Documented on `pool.func`.
+      def pool_walk_scratch_var  # :nodoc:
         @pool_walk_seq = @pool_walk_seq.to_i + 1
         :"__pool_walk_#{@pool_walk_seq}"
       end
@@ -147,7 +187,8 @@ module VBlank
       # Give +pool+ a hidden slot per instance holding which other list of colours it is drawn
       # with, the first time one is told to draw with one (see Pool#draw_with). Every slot
       # starts in its own colours.
-      def make_pool_recolorable(pool)
+      # Hook behind `draw_with` on a pool: gives it somewhere to keep its choice of colours. Documented on `colors` and `draw_with`.
+      def make_pool_recolorable(pool)  # :nodoc:
         at_boot(Build.list_new(pool.colors_list, pool.capacity, width: :byte, fast: pool.fast,
                                                                 full_of: Build::NO_RECOLOR))
         # ...and each of the pool's sprites reads the colours copied for its place in the
@@ -164,6 +205,87 @@ module VBlank
       # Every pool the game declared, in the order it declared them.
       def declared_pools = @declared_pools ||= []
 
+      # A slot of two bytes read back with no sign, 0 to 65535: `width: :unsigned_half`, for a
+      # place kept in 256ths of a pixel, which reaches past the 32767 a `:half` holds and never
+      # goes below nought. Nothing in a backend knows this width. The list is a list of whole words,
+      # and once the game is written every number put into it is ANDed with 65535 first
+      # (#finalize_unsigned_halves): the low sixteen bits, which is what the slot keeps, in the
+      # arithmetic every backend already does. So the interpreter and each lowering agree with no
+      # work of their own, and a console that can keep such a list in two bytes finds it proven to
+      # hold 0..65535 (Backends::NumberRanges#unsigned_half_lists) and does (the Super Nintendo,
+      # the Color).
+      UNSIGNED_HALF = :unsigned_half  # :nodoc:
+
+      # The lists declared to hold 0..65535, by name.
+      def unsigned_half_lists = @unsigned_half_lists ||= Set.new
+
+      # +widths+ ({key => width}) with each :unsigned_half a whole word, and the list the block names
+      # for its key noted as one (#finalize_unsigned_halves).
+      def kept_unsigned_halves(widths)
+        widths.to_h do |key, width|
+          next [key, width] unless width == UNSIGNED_HALF
+
+          unsigned_half_lists << yield(key)
+          [key, :word]
+        end
+      end
+
+      # Every number put into a list declared :unsigned_half ANDed with 65535: what it starts full
+      # of, each item written or pushed, what a fill writes, and each item a load from save memory
+      # put in, since a save holds whatever was written to its bytes. A copy of a table into one is
+      # refused, since a table keeps its entries as they are.
+      def finalize_unsigned_halves
+        return if unsigned_half_lists.empty?
+
+        @program.walk.to_a.each do |node|
+          next unless node.respond_to?(:name) && unsigned_half_lists.include?(node.name)
+
+          case node.kind
+          when :list_new then node.set_operand(:full_of, node.full_of & 0xFFFF) if node.full_of.is_a?(Integer)
+          when :list_set, :list_push, :list_fill then node.set_operand(:value, low_sixteen_bits(node.value))
+          when :list_copy then refuse_unsigned_half_copy!(node.name)
+          when :save_load_list then add_after(node, unsigned_half_mask_loop(node))
+          end
+        end
+      end
+
+      def low_sixteen_bits(value) = Build.binop(:&, value, Build.int(0xFFFF))
+
+      # Each item of the list +load+ (a save_load_list) filled ANDed with 65535, counted in the
+      # load's own counter and leaving it at nought, as the load does.
+      def unsigned_half_mask_loop(load)
+        item = Build.list_get(load.name, Build.var_ref(load.index))
+        [Build.repeat(Build.list_len(load.name), load.index, Build.list_set(load.name, Build.var_ref(load.index), low_sixteen_bits(item))),
+         Build.set(load.index, 0)]
+      end
+
+      # +statements+ put straight after +node+ in its parent.
+      def add_after(node, statements)
+        parent = node.parent
+        statements.each do |statement|
+          statement.parent = parent
+          statement.default_source!(node.source)
+        end
+        at = parent.children.index { |child| child.equal?(node) }
+        parent.children.insert(at + 1, *statements)
+      end
+
+      def refuse_unsigned_half_copy!(name)
+        raise ArgumentError, "The list #{name.inspect} holds numbers from 0 to 65535 (width: :unsigned_half). A copy " \
+                             "from a table cannot go into it. To fix this, give the list the width of the table."
+      end
+
+      # A fraction is kept as a whole number of its smallest steps, and below nought too, so 0..65535
+      # of those steps is a range no game means. A pool's field is refused where the pool is
+      # declared (#check_width_holds_fractions!).
+      def refuse_unsigned_half_fractions!(name, bits)
+        return unless bits && unsigned_half_lists.include?(name)
+
+        raise ArgumentError, "The list #{name.inspect} holds fractions, and width: :unsigned_half is only for whole numbers " \
+                             "from 0 to 65535. To fix this, keep whole numbers in it (a place in 256ths of a pixel, " \
+                             "for example), or give it the width :word."
+      end
+
       # A spriteful pool never told to draw with other colours takes back the writes its
       # spawns made in case it was (see Pool#drop_unused_color_resets).
       def finalize_pool_colors
@@ -173,7 +295,7 @@ module VBlank
       # Which pool each instance routine belongs to.
       def instance_routines = @instance_routines ||= {}
 
-      # A WALK THAT NOBODY ASKED TO BE TOLD ABOUT COSTS NOTHING. Writing down which instance a
+      # A walk that nobody asked to be told about costs nothing. Writing down which instance a
       # walk is on is only worth anything to a routine that reads it, so a pool with no routine
       # of its own has those writes taken out again here — a pool of sixty bullets drawn inline
       # is left exactly as it was before any of this.
@@ -243,7 +365,7 @@ module VBlank
           "routine of `pool :#{pool.name}`."
       end
 
-      # WHAT A POOL'S INSTANCES LOOK LIKE, worked out once for the whole pool: the
+      # What a pool's instances look like, worked out once for the whole pool: the
       # pictures they can show, how a slot's own number picks one of them, and the
       # collision box they all share. Nil for a pure-data pool.
       #
@@ -251,7 +373,7 @@ module VBlank
       # +per_dir+ is how many frames each direction has (1 for a still pose). Those three
       # are exactly what a `sprite` works out for itself — this is the same answer for
       # many of a thing at once.
-      PoolArt = Data.define(:poses, :dirs, :per_dir, :rate, :hitbox) do
+      PoolArt = Data.define(:poses, :dirs, :per_dir, :rate, :hitbox) do  # :nodoc:
         # A pool faces when it was given a direction per picture, and animates when a slot
         # has more than one picture to run through — the frames of its direction for a
         # directional animation, or the whole flipbook where there are no directions.
@@ -280,15 +402,15 @@ module VBlank
         return if given.length < 2
 
         raise ArgumentError,
-              "pool :#{name} was given #{given.join(' and ')}. They all say which pictures the instances " \
-              "show. Use only one."
+              "#{pool_words(name, opening: true)} was given #{given.join(' and ')}. They all say which pictures " \
+              "its things show. Use only one."
       end
 
       def single_picture_art(name, image)
         size = @images[image] or
           raise ArgumentError,
-                "pool :#{name} draws image :#{image}, but no `image :#{image}` is defined yet. Define the " \
-                "image before the pool."
+                "#{pool_words(name, opening: true)} draws image :#{image}, but no `image :#{image}` is made " \
+                "yet. To fix this, make the image above the line that makes #{pool_words(name)}."
 
         PoolArt.new(poses: [image], dirs: nil, per_dir: 1, rate: nil,
                     hitbox: collision_box(name: image, images: [image], width: size[0], height: size[1],
@@ -310,20 +432,30 @@ module VBlank
         unknown = widths.keys - fields.keys
         unless unknown.empty?
           raise ArgumentError,
-                "pool :#{name} gives a width for :#{unknown.first}, which is not one of its fields. " \
-                "Its fields are #{fields.keys.join(', ')}."
+                "#{pool_words(name, opening: true)} gives a width for :#{unknown.first}, which is not one of " \
+                "its fields. Its fields are #{fields.keys.join(', ')}."
         end
-        bad = widths.find { |_, width| !Build::ELEMENT_BYTES.key?(width) }
+        bad = widths.find { |_, width| !Build::ELEMENT_BYTES.key?(width) && width != UNSIGNED_HALF }
         return if bad.nil?
 
         raise ArgumentError,
-              "pool :#{name} gives field :#{bad.first} the width #{bad.last.inspect}. A width must be " \
-              ":byte (0..255), :half (0..65535) or :word."
+              "#{pool_words(name, opening: true)} gives field :#{bad.first} the width #{bad.last.inspect}. A " \
+              "width must be :byte (-128..127), :half (-32768..32767), :unsigned_half (0..65535) or :word."
+      end
+
+      # How a message names the pool +name+: the Array of Structs the game wrote, or its `pool`
+      # line (Builder#collection_words).
+      def pool_words(name, opening: false) = collection_words(name, verb: :pool, opening: opening)
+
+      # How the game makes a field narrower: `narrow` in its Struct's block, or `widths:` on a
+      # `pool` line.
+      def narrow_field_words(name, field = :hp)
+        collections_from_arrays.key?(name) ? "`narrow #{field}: :byte` in the Struct's block" : "`widths: { #{field}: :byte }`"
       end
 
       # The ways a console can keep a pool in memory (Console::Description#pool_layouts): as a list
       # for each field, as tables side by side read with one index, or as a record for each thing.
-      POOL_LAYOUTS = %i[lists tables records].freeze
+      POOL_LAYOUTS = %i[lists tables records].freeze  # :nodoc:
 
       # `layout:` names how the console keeps the pool. A game that names none builds as the
       # console's build chooses, so it only needs one to insist; a console that has no such way
@@ -362,23 +494,29 @@ module VBlank
       def check_width_holds_fractions!(name, field, default, width)
         return if width == :word || DSL::Fraction.bits_of(default).nil?
 
+        if collections_from_arrays.key?(name)
+          raise ArgumentError,
+                "#{pool_words(name, opening: true)} keeps :#{field} in a #{width}, and a line puts a fraction " \
+                "into :#{field}. A fraction needs a whole word. To fix this, remove :#{field} from `narrow`, " \
+                "or keep only whole numbers in it."
+        end
         raise ArgumentError,
               "pool :#{name} gives field :#{field} the width :#{width}, but it was declared with " \
               "#{default.inspect}, so it holds a fraction. A fraction needs a whole word. Remove the " \
               "width, or declare the field with a whole number."
       end
 
-      def validate_pool!(name, capacity, fields)
+      def validate_pool!(name, capacity, fields, struct_fields: false)
         raise ArgumentError, "A pool needs a name that is a Symbol. Got #{name.inspect}." unless name.is_a?(Symbol)
         unless DSL::Whole.positive?(capacity)
           raise ArgumentError, "pool :#{name} needs a positive capacity. Got #{Messages::PlainWords.words_for_given(capacity)}."
         end
 
         refuse_pool_name_with_stray_underscores!(name)
-        refuse_field_named_like_instance_method!(name, fields)
+        refuse_field_named_like_instance_method!(name, fields) unless struct_fields
       end
 
-      # HOW MUCH MEMORY A POOL TAKES, counted AS IT IS BUILT: every list it is made from, each
+      # How much memory a pool takes, counted as it is built: every list it is made from, each
       # exactly `capacity` slots long and as wide as it was declared. Those are the lists
       # #pool_lists and #pool_stacking_lists hand to the build, read here rather than added up
       # a second way — a count kept on its own had drifted until it refused a pool a third the
@@ -393,7 +531,7 @@ module VBlank
         pool.capacity * lists.sum { |_, width| Build::ELEMENT_BYTES.fetch(width) }
       end
 
-      # A POOL BIGGER THAN THE ROOMIEST MEMORY FITS NOWHERE. A pool is kept whole in one
+      # A pool bigger than the roomiest memory fits nowhere. A pool is kept whole in one
       # memory (on the Advance, one over the quick memory's ceiling goes in the roomier one),
       # so this is the most one pool can be, whatever else the game declares. It is refused
       # here, at the line that wrote it and by its own name: the whole-program check asks only
@@ -404,32 +542,33 @@ module VBlank
       # (Console::Description#largest_memory_bytes).
       def refuse_pool_no_memory_holds!(pool, field_count, bytes)
         raise ArgumentError,
-              "pool :#{pool.name} has #{pool.capacity} instances of #{field_count} fields each. It needs about " \
-              "#{bytes / 1024}KB. A pool is kept whole in one memory. The largest memory of a #{console.title} " \
-              "holds #{console.largest_memory_bytes / 1024}KB. To fix this, use a smaller capacity. Or use fewer " \
-              "fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
+              "#{pool_words(pool.name, opening: true)} has room for #{pool.capacity} things of #{field_count} " \
+              "fields each. It needs about #{bytes / 1024}KB. It is kept whole in one memory. The largest memory " \
+              "of a #{console.title} holds #{console.largest_memory_bytes / 1024}KB. To fix this, use a smaller " \
+              "capacity. Or use fewer fields. Or keep fields in less memory, like #{narrow_field_words(pool.name)}."
       end
 
-      # A POOL THAT INSISTS ON THE QUICK MEMORY AND IS TOO BIG TO SHARE IT. `fast: true` is
+      # A pool that insists on the quick memory and is too big to share it. `fast: true` is
       # the game declaring it knows better than the build where the pool goes, so the build does
       # not quietly put it somewhere else: it says why not, and what gives the pool room.
       def refuse_oversized_fast_pool!(pool, field_count, bytes)
         quick = Messages::PlainWords::QUICK_MEMORY
         raise ArgumentError,
-              "pool :#{pool.name} has #{pool.capacity} instances of #{field_count} fields each. It needs about " \
-              "#{bytes / 1024}KB. `fast: true` keeps a pool in the console's #{quick}, and a pool there can use " \
-              "#{POOL_MAX_QUICK_BYTES / 1024}KB at most. The console has only 32KB of #{quick} in total, and " \
-              "the game's code is kept there too. To fix this, remove `fast: true`. Then the build keeps the " \
-              "pool in the roomier memory of the console, which is slower to read. Or use a smaller capacity. " \
-              "Or use fewer fields. Or give fields a smaller width, like `widths: { hp: :byte }`."
+              "#{pool_words(pool.name, opening: true)} has room for #{pool.capacity} things of #{field_count} " \
+              "fields each. It needs about #{bytes / 1024}KB. `fast: true` keeps it in the console's #{quick}, " \
+              "and a pool there can use #{POOL_MAX_QUICK_BYTES / 1024}KB at most. The console has only 32KB of " \
+              "#{quick} in total, and the game's code is kept there too. To fix this, remove `fast: true`. Then " \
+              "the build keeps it in the roomier memory of the console, which is slower to read. Or use a " \
+              "smaller capacity. Or use fewer fields. Or keep fields in less memory, like " \
+              "#{narrow_field_words(pool.name)}."
       end
 
-      # EVERY LIST A POOL KEEPS ITS INSTANCES IN, and how wide a slot of each is, in the
+      # Every list a pool keeps its instances in, and how wide a slot of each is, in the
       # order they are made: list => width.
       #
       # A field is as wide as the game declared, a whole word unless `widths:` narrowed it.
       #
-      # THE POOL'S OWN BOOKKEEPING IS NARROWED WITHOUT BEING ASKED, because unlike a field
+      # The pool's own bookkeeping is narrowed without being asked, because unlike a field
       # the framework knows exactly what these hold. The active column is a yes or a no, so
       # it is a byte whatever the pool is; the free stack holds slot numbers, so it is as
       # wide as the largest slot number needs and no wider. Together they are two of a
@@ -451,7 +590,7 @@ module VBlank
         lists
       end
 
-      # WHAT EACH OF A POOL'S LISTS HOLDS AT POWER-ON, for the ones made full of one value: a
+      # What each of a pool's lists holds at power-on, for the ones made full of one value: a
       # nought in every field, the active column and the poses, and "no slot" in both links of
       # the chain. The free stack is full of the slot numbers, a different one each, so it is
       # filled a slot at a time (see #build_pool_fill); the removals not yet taken out of the
@@ -465,7 +604,7 @@ module VBlank
         starts
       end
 
-      # THE LISTS A DRAWN POOL'S THINGS ARE COPIED INTO EACH FRAME, in the order they are
+      # The lists a drawn pool's things are copied into each frame, in the order they are
       # drawn, as list => width: where each is, at the width its x and y fields have, and
       # which picture when there is a choice.
       def pool_stacking_lists(pool, widths)
@@ -498,7 +637,7 @@ module VBlank
               "Use a different name for the field."
       end
 
-      # `pool` HAS WORDS OF ITS OWN — facing:, rate:, fast: and the rest — and a field is written
+      # `pool` has words of its own — facing:, rate:, fast: and the rest — and a field is written
       # the same way, so a field spelled like one of them is taken for the pool's word. Most of
       # them say so where they are checked. These three did not: a number for facing: stopped
       # the build inside the framework, and a rate: with no pictures to step, or a fast: that is
@@ -524,13 +663,20 @@ module VBlank
         raise ArgumentError,
               "pool :#{name} got on_full: #{policy.inspect}. on_full must be one of " \
               "#{POOL_FULL_POLICIES.map(&:inspect).join(', ')}. :drop ignores a spawn when the pool is full. " \
-              ":recycle_oldest reuses the longest-lived instance, so a new one always appears."
+              ":recycle_oldest reuses the longest-lived instance, so a new one always appears. :stop stops " \
+              "the game."
       end
 
       # A pool whose instances draw themselves is a pool of hardware sprites, so it needs
       # a tiled screen and x/y position fields to place them by.
       def refuse_unspritable_pool!(name, fields)
         unless @screen_mode == :tiled
+          if collections_from_arrays.key?(name)
+            raise ArgumentError,
+                  "#{pool_words(name, opening: true)} holds things that are `drawn_as` sprites. Sprites need a " \
+                  "`screen :tiled`. To fix this, make the Array under one. Or remove `drawn_as` from the " \
+                  "Struct, and draw each thing in a walk of the Array on a bitmap screen."
+          end
           raise ArgumentError,
                 "pool :#{name} draws its instances, so they are hardware sprites. Hardware sprites need a " \
                 "`screen :tiled`. Declare the pool under one. Or give it no pictures and draw the pool " \
@@ -545,13 +691,13 @@ module VBlank
       end
 
       # Declare one hardware-sprite object for each thing that can be live at once. Each
-      # shows a PLACE IN THE ORDER the things were spawned in, not a slot (see
+      # shows a place in the order the things were spawned in, not a slot (see
       # Pool#stacked_list): it reads the position and picture copied for its place, so
       # present_objects draws the live things oldest in front and hides the sprites left
       # over. The active flag is scene-gated, so a pool declared in a scene only shows while
       # that scene is live.
       #
-      # WHICH PICTURE a thing shows comes out of the pool's own hidden slots the same way
+      # Which picture a thing shows comes out of the pool's own hidden slots the same way
       # its position does: the direction it faces and where it is in its cycle are
       # per-instance, so ten guards face ten ways and do not march in step.
       def setup_pool_art(pool, capacity, art, widths = {}, fast = nil)
@@ -584,7 +730,7 @@ module VBlank
         at_boot(Build.set(pool.stacked_var, Build.int(0)))
       end
 
-      # COPY EACH DRAWING POOL INTO ITS DRAWING ORDER IN THE GAP BEFORE EVERY FRAME, last of
+      # Copy each drawing pool into its drawing order in the gap before every frame, last of
       # everything that runs there and just before the sprites are drawn — so a thing a
       # `once_a_frame` body spawned, moved or removed in that same gap is drawn as it now is.
       #
@@ -621,7 +767,7 @@ module VBlank
       # drawn in, so a scene's first frame is put in order and drawn alike.
       def call_stacking_while_shown(pool) = while_scene_up(pool.scene_gate, Build.call(pool.stacking_routine))
 
-      # THE POOL'S RHYTHM IS SHARED AND ITS PLACE IN THE CYCLE IS NOT, which is what makes
+      # The pool's rhythm is shared and its place in the cycle is not, which is what makes
       # this cheap enough to put on every frame. One counter for the whole pool decides
       # WHEN a step happens; each instance keeps its own frame, so an instance spawned
       # later is at a different point in the same cycle and the pool does not pulse as one.
@@ -670,11 +816,45 @@ module VBlank
 
       public
 
-      # THE POOL AS POWER-ON LEAVES IT, as statements run where they are recorded: every list
+      # The routine +name+, made from the statements the block gives the first time it is asked
+      # for, and left as it is after. Pool#declare_sort makes one for each line that sorts.
+      #
+      # The statements are made when the routine's body is built, at the end of the build, so a
+      # routine taken back before then (#forget_routine) never makes them.
+      def declare_routine_once(name, &statements) # :nodoc:
+        return if @functions.key?(name)
+
+        builder = self
+        func(name) { statements.call.each { |node| builder.record_statement(node) } } # rubocop:disable Performance/RedundantBlockCall
+      end
+
+      # Takes back the routine +name+, declared by #declare_routine_once and called by nothing now.
+      def forget_routine(name) # :nodoc:
+        @functions.delete(name)
+        @routine_screens&.delete(name)
+      end
+
+      # The list Pool#declare_sort gathers +pool+'s live slots into, and the two variables it works
+      # in, made the first time any line sorts the pool. A slot is below the capacity, so the list
+      # is as narrow as that allows.
+      def declare_pool_sort_storage(pool) # :nodoc:
+        return unless (@pools_with_sort_storage ||= Set.new).add?(pool.name)
+
+        capacity = pool.capacity
+        width = if capacity <= 128 then :byte
+                elsif capacity <= 32_768 then :half
+                else :word
+                end
+        at_boot(Build.list_new(pool.sort_list, capacity, width: width, fast: pool.fast))
+        [pool.sort_slot_var, pool.sort_index_var].each { |var| ensure_var(var) }
+      end
+
+      # The pool as power-on leaves it, as statements run where they are recorded: every list
       # of it emptied and filled again the way #setup_pool_storage fills it, and its counters
       # back at nought. A save_data record's `reset` runs this for a pool it keeps, since
       # emptying a pool's lists the way a kept list is emptied would leave it with no slots.
-      def pool_refill_nodes(pool)
+      # Hook behind a `save_data` record's `reset` of a kept pool, documented on `save_data`.
+      def pool_refill_nodes(pool)  # :nodoc:
         lists, vars = pool.saved_lists_and_vars
         index = pool.part_name(:refill)
         ensure_var(index)
@@ -694,7 +874,7 @@ module VBlank
 
       private
 
-      # How wide a slot NUMBER has to be for a pool of this size — the free stack and the
+      # How wide a slot number has to be for a pool of this size — the free stack and the
       # chain hold one per entry, and the largest is one less than the capacity. A narrow
       # slot reads back below nothing past half its range (a byte holds -128 to 127), and the
       # chain also holds -1 for "no slot", so a byte serves a pool of up to 128.

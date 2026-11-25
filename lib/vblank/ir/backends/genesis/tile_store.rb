@@ -4,23 +4,23 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # THE TILES IN VIDEO MEMORY, IN THEIR ORDER, and what names each one.
+        # The tiles in video memory, in their order, and what names each one.
         #
         # A map cell and a sprite's piece both name a tile by its number, in a word that also holds two
         # bits that turn it: one draws it right to left, one bottom to top. So a tile is stored once
         # however many pictures draw it and whichever way round each shows it, and what is handed back
         # for a tile is that word's low bits: the number, and the turn that shows the tile asked for.
         #
-        # A SPRITE'S PIECE OF SEVERAL TILES names only its first. The video chip takes the rest from
+        # A sprite's piece of several tiles names only its first. The video chip takes the rest from
         # the tiles that follow it in video memory, down the piece's first column and then down the
         # next, and its turn bits turn the piece whole: mirrored, its last column is drawn first and
-        # each tile right to left. So a piece needs its tiles in a row in video memory (a RUN), in
+        # each tile right to left. So a piece needs its tiles in a row in video memory (a run), in
         # one of the four orders a turn can show, and a run already there in any of them is used as
         # it is, wherever it lies: inside a longer piece's run, or across tiles two other pictures
         # stored. A run not there is added after the last tile, less whatever tiles it starts with
         # that the store already ends with.
         #
-        # WHAT TOOK THE ROOM. Each tile added is counted for the picture that asked for it first
+        # What took the room. Each tile added is counted for the picture that asked for it first
         # (+taker+), so a build with too many can name the pictures that took the most.
         class TileStore
           # The bits of a cell's or a piece's word that turn its tile.
@@ -51,7 +51,7 @@ module VBlank
             @own = @own.dup
           end
 
-          # A TILE THE GAME PAINTS AS IT RUNS (Lowering::TileRuns): stored blank after the last, and
+          # A tile the game paints as it runs (Lowering::TileRuns): stored blank after the last, and
           # never shown for any other tile, nor as part of a sprite's run, however alike they look
           # now, since the game writes new pixels into it. Its number.
           def own_tile(taker)

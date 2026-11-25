@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # WHAT A GAME'S SOUND LOG SAYS, as the C prints it and as a test reads it.
+        # What a game's sound log says, as the C prints it and as a test reads it.
         #
         # The interpreter keeps a log of what it played (Reference#audio): sound switched on, a
         # beep and everything about it, a note, a voice set, the wave voice told to play or stop,
@@ -73,7 +73,7 @@ module VBlank
           # it makes with `noise`, in the order the C numbers them.
           attr_reader :waves, :hits
 
-          # EVERY WAVEFORM THE WAVE VOICE CAN BE GIVEN, 32 steps each, in the order the C numbers
+          # Every waveform the wave voice can be given, 32 steps each, in the order the C numbers
           # them: the ones the game's `wave`s name and its songs' parts play, once each; then one for
           # each different waveform a note names for itself (#note_waves), kept apart even where two
           # are the same steps, so the number a note carries reads back as the waveform it named;

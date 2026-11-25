@@ -2,7 +2,7 @@
 
 module VBlank
   module Playthroughs
-    # HOW FAR APART TWO CARTRIDGES' HEARD SOUND MAY BE and still be alike. A game gives all three,
+    # How far apart two cartridges' heard sound may be and still be alike. A game gives all three,
     # each with its reason beside it in the game's test: none has a value a comparison assumes.
     #
     #   first_heard_frames_apart  how many frames apart the two may first be heard
@@ -10,29 +10,68 @@ module VBlank
     #                             from 0 to 1 (HeardSound#level)
     #   ending_frames_apart       how many frames apart they may be last heard, and how many frames
     #                             apart their last sounds may take to fall silent (HeardSound#fall_frames)
-    HeardTolerances = Data.define(:first_heard_frames_apart, :level_share_apart, :ending_frames_apart) do
-      def initialize(first_heard_frames_apart:, level_share_apart:, ending_frames_apart:)
+    #
+    # and one the game may give: +level_stretch_frames+ holds the level a stretch of that many frames
+    # at a time (60 is a second on most consoles), so a song loud where the original is quiet and quiet
+    # where it is loud is found, which one average over the whole song hides. Left out, the level is
+    # one average over the frames heard.
+    #
+    # And +pitch_cents_apart+, which the game may give: how far apart in pitch each voice may be on a
+    # frame both are heard on, in cents, a hundredth of a semitone (25 is a quarter of a semitone
+    # either way, where a wrong note is 100 or more). Each voice is played alone on both to hear it
+    # (HeardComparison.play). Left out, pitch is not compared.
+    #
+    # And +line_up_within_frames+, which the game may give: how many frames apart the two sounds may
+    # start and still be lined up before they are compared, for two cartridges whose start-up takes a
+    # few frames more on one (HeardComparison.play says how). Left out, frame is compared with frame.
+    HeardTolerances = Data.define(:first_heard_frames_apart, :level_share_apart, :ending_frames_apart,
+                                  :level_stretch_frames, :pitch_cents_apart, :line_up_within_frames) do
+      def initialize(first_heard_frames_apart:, level_share_apart:, ending_frames_apart:, level_stretch_frames: nil,
+                     pitch_cents_apart: nil, line_up_within_frames: nil)
+        HeardComparison.refuse_frames_not_count!(:line_up_within_frames, line_up_within_frames) if line_up_within_frames
+        unless pitch_cents_apart.nil? || (pitch_cents_apart.is_a?(Numeric) && !pitch_cents_apart.negative?)
+          raise ArgumentError, "`pitch_cents_apart:` was #{pitch_cents_apart.inspect}. It is how far apart two pitches " \
+                               "can be, in cents, so it must be a number, 0 or more. A semitone is 100 cents. " \
+                               "`pitch_cents_apart: 25` is a quarter of a semitone."
+        end
         HeardComparison.refuse_frames_not_count!(:first_heard_frames_apart, first_heard_frames_apart)
         HeardComparison.refuse_frames_not_count!(:ending_frames_apart, ending_frames_apart)
         unless level_share_apart.is_a?(Numeric) && level_share_apart.between?(0, 1)
           raise ArgumentError, "`level_share_apart:` was #{level_share_apart.inspect}. It is a share of the louder " \
                                "cartridge's level, so it must be a number from 0 to 1. `level_share_apart: 0.1` is a tenth."
         end
+        unless level_stretch_frames.nil? || (level_stretch_frames.is_a?(Integer) && level_stretch_frames.positive?)
+          raise ArgumentError, "`level_stretch_frames:` was #{level_stretch_frames.inspect}. It is how many frames the " \
+                               "level is held over at a time, so it must be a whole number, 1 or more. " \
+                               "`level_stretch_frames: 60` is a second."
+        end
         super
       end
     end
 
-    # WHERE TWO CARTRIDGES' HEARD SOUND FIRST DIFFERS BY MORE THAN THE GAME ALLOWS.
+    # Where two cartridges' heard sound differs by more than the game allows, for one measure.
     #
     # +what+ is which measure was out: +:never_heard+ (one cartridge or both made no sound),
     # +:first_heard+, +:level+, +:last_heard+ or +:fall+. +frame+ is the first frame the two differ
     # on for that reason, counted from 1 (nil where neither was heard), and +loudest+ the loudest
     # sample each put out on it, the first cartridge's and then the second's. +measured+ is the
     # measure itself on each: the frame each was first or last heard on, each one's level, or the
-    # frames each one's last sound took to fall silent.
-    HeardDifference = Data.define(:what, :frame, :loudest, :measured)
+    # frames each one's last sound took to fall silent. For a level held a stretch at a time
+    # (HeardTolerances), +frames+ is the first stretch out, +measured+ each one's level over it, and
+    # +stretches_over+ how many stretches are out; both are nil otherwise. +speaker+ is :left or
+    # :right for a difference found on that speaker alone, where the two speakers mixed are alike for
+    # that measure (a sound on the wrong speaker); nil for one found in the mixed sound.
+    #
+    # +what+ is +:pitch+ for two pitches further apart than +pitch_cents_apart+ on a frame both are
+    # heard on: +measured+ is each one's pitch on +frame+ in hertz, +frames_over+ how many frames are
+    # out, and +voice+ the voice it was heard on alone (nil where the game chose the voices heard).
+    HeardDifference = Data.define(:what, :frame, :loudest, :measured, :frames, :stretches_over, :speaker, :voice,
+                                  :frames_over) do
+      def initialize(what:, frame:, loudest:, measured:, frames: nil, stretches_over: nil, speaker: nil, voice: nil,
+                     frames_over: nil) = super
+    end
 
-    # TWO CARTRIDGES' HEARD SOUND ON THE SAME PRESSES, IN THE SAME EMULATOR: a port's cartridge beside
+    # Two cartridges' heard sound on the same presses, in the same emulator: a port's cartridge beside
     # the original it is made from. The same mixer makes both sounds, so the two can be held close:
     # heard from the same frame, at the same level, and falling silent over the same time.
     #
@@ -43,38 +82,318 @@ module VBlank
     #   compared.difference.what   # => :level
     #   compared.first.level       # each side is a HeardSound
     #
-    # WHAT IS COMPARED, in this order, and the first that is out is the difference: whether each is
-    # heard at all; the frame each is first heard on; each one's level over the frames it is heard;
-    # the frame each is last heard on; and how many frames each one's last sound takes to fall
-    # silent. It is the loudest sample a frame and nothing finer: a wrong note at the right loudness
-    # passes. Play the tape past the end of the sound, or the last frame heard is the tape's last.
+    # What is compared, in this order: whether each is heard at all; the frame each is first heard on;
+    # each one's level over the frames it is heard, or a stretch of them at a time; the frame each is
+    # last heard on; and how many frames each one's last sound takes to fall silent. Every measure out
+    # is a HeardDifference in +differences+, so one run shows them all; #difference is the first. (One
+    # never heard is the only difference: the rest measure a sound.) It is the loudest sample a frame
+    # and nothing finer, so a wrong note at the right loudness passes, unless the game gives
+    # +pitch_cents_apart+ and each voice's pitch is held too (Pitch, below). Play the tape past the
+    # end of the sound, or the last frame heard is the tape's last.
+    #
+    # +recordings+ is what each cartridge put out, as Diagnostics::SoundRecordings, for #write_wav; nil
+    # for a comparison of HeardSounds made elsewhere (#between).
+    #
+    # Each speaker. The measures are taken of the two speakers mixed, and again of each speaker
+    # alone (+speakers+, :left and :right to the two HeardSounds on it): a measure out on one speaker
+    # and not in the mix is a difference of its own, naming the speaker, so a sound on the wrong
+    # speaker fails.
+    #
+    # Each voice. Where the two are not alike and the console's emulator can play one voice alone
+    # (the Advance's and the Color's four, the Genesis's six FM voices and four square and noise
+    # voices, the Super Nintendo's eight), the tape is played again on both once for each voice,
+    # that voice alone, and compared the same way: +voices+ is each voice's name to its own
+    # HeardComparison, so a failure names the voice that differs. It only explains: whether the two
+    # are alike is the mixed sound's answer, and each voice's pitch where the game asked for it.
+    # Empty where no voice can be played alone; nil where the two are alike or it was not asked for,
+    # and pitch was not.
+    #
+    # Lined up. +moved_frames+ is how many frames the second cartridge's sound was moved to line up
+    # with the first's where the game gave +line_up_within_frames+: more than nought where it was
+    # moved earlier (it started late), less where it was moved later, and nil where nothing was lined
+    # up. Every measure and frame after that is of the second as moved, counted in the first's frames,
+    # but for when each is first heard: a move is a start that many frames apart, so one further than
+    # +first_heard_frames_apart+ is a :first_heard difference of the two as played.
+    #
+    # +pitch_unread+ is true where pitch was asked for and the two are heard on the same frames, and
+    # neither has a pitch on any of them: a noise, a drum, or several notes at once, whose pitch
+    # nothing held. A report says so; where the game chose the voices heard it is a :no_pitch
+    # difference.
     #
     # In a test this is Testing::HeardAlike#assert_heard_alike.
-    HeardComparison = Data.define(:first, :second, :difference)
+    #
+    # Chosen voices. +hearing+ is the voices heard on each side where the game chose them (the first
+    # cartridge's list, then the second's), and nil where every voice was heard.
+    #
+    # +frames_stepped+ is how many frames each cartridge's emulator stepped to make its sound, the
+    # first's and then the second's (Diagnostics::Verifier#frames_played): every frame of the tape
+    # from power-on, or the frames after the start where each was put there from a snapshot (and the
+    # few before it an emulator plays for its sound to settle, Console::Kit#frames_sound_settles_after_load).
+    # Nil for a comparison of HeardSounds made elsewhere (#between).
+    HeardComparison = Data.define(:first, :second, :differences, :recordings, :speakers, :voices, :hearing, :frames_stepped,
+                                  :moved_frames, :pitch_unread) do
+      def initialize(first:, second:, differences:, recordings: nil, speakers: nil, voices: nil, hearing: nil,
+                     frames_stepped: nil, moved_frames: nil, pitch_unread: false) = super
+    end
 
     class HeardComparison
+      SPEAKERS = %i[left right].freeze
+      # What a side of +hearing+ names for a cartridge's sound effects alone, on whichever voices they are.
+      SOUND_EFFECTS = :sound_effects
+
       # Play +presses+ (a Tape, or a Playthrough, whose script is played on +first+ and the presses
       # it made on +second+) on both cartridges from power-on, and compare what each put out.
       # +heard_above+ is the loudest sample a silent frame may have (HeardSound), and the rest are
       # HeardTolerances'. +lead_ins+ is a playthrough for each cartridge to play first, not counted
       # (Playthrough#play), for two cartridges that reach the first screen by different roads.
-      def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], **tolerances)
+      # +each_speaker+ false compares the speakers mixed alone, for two that are meant to place
+      # their sound differently; +each_voice+ false plays no voice alone after a difference.
+      #
+      # +hearing+ chooses the voices heard on each side, the first cartridge's list and then the
+      # second's, by the names Diagnostics::Verifier#channels gives: `hearing: [[:square1], [:square2]]`.
+      # Only those are heard from power-on, so one sound is held to the original's while the rest
+      # under it differs, on whichever voice each cartridge plays it. The two lists need not name the
+      # same voices, or as many. Every measure is taken of what is heard; no voice is played alone
+      # afterwards, since the game has chosen them.
+      #
+      # A side can be +:sound_effects+ in place of its list: that cartridge's sound effects alone,
+      # on whichever voices its sound player put their notes, frame by frame
+      # (`hearing: [:sound_effects, [:voice0]]`). It is for a build whose player moves an effect's
+      # notes between voices the tune also plays on, so no list of voices hears the effect without
+      # some of the tune. Each frame is heard on the voices the effects hold at its end
+      # (Verifier#sound_effect_voices), read off a second console playing a frame ahead, and no
+      # other (VoiceReplay#effects_side says why). The sound chip runs a little behind the
+      # processor, so a frame a voice changes hands on starts with a few samples of whoever had it
+      # before, inside that one frame: an effect alone is heard from the frame it starts on to the
+      # frame it ends on. It needs a cartridge built here, whose build says where its player keeps
+      # who holds each voice, for a console whose player moves an effect's notes between voices:
+      # the Super Nintendo's. Heard so, it plays the tape twice.
+      #
+      # ### Starting after a frame
+      #
+      # +starting_after+ is a frame of the tape, by its number or by the name of one of its moments,
+      # that each cartridge is played to without being heard: the sound is compared from the frame
+      # after. With +snapshots+ (a SnapshotCache) each is put on that frame from a snapshot of its
+      # console, made the first time and loaded every time after, the same snapshot a picture
+      # comparison or a probe started there loads (Comparison, Probe). So a comparison of a moment
+      # deep in a tape costs the frames it hears, for each voice played alone too (and, on a console
+      # below, a few frames before the start). Without +snapshots+ each is played there from
+      # power-on. A start takes a tape, not a playthrough, whose presses are known only once it has
+      # played every frame from power-on.
+      #
+      # On the Advance and the Color the sound after a snapshot is put back is the console's own,
+      # sample for sample. bsnes's and Genesis Plus GX's output does not come back at once, so on
+      # the Super Nintendo and the Genesis the snapshot is of a few frames before the start, which
+      # are played unheard (Console::Kit#frames_sound_settles_after_load says how many, and why).
+      # A start no later than those frames plays from power-on. What is left after them is a small
+      # drift in each frame's loudest sample, so a strict level_share_apart there can find a level
+      # a little apart from a warm start that it would not from a cold one.
+      #
+      # Every measure (first heard, level, last heard, fall) is of the frames after the start alone,
+      # and frames are still counted from power-on. So a sound that started before the start is heard
+      # from the frame after it: a test of a sound already playing at the start says so in its
+      # tolerances or starts earlier. A start takes no lead-ins: the frames before it are not heard,
+      # so a lead-in has nothing to keep out of the count.
+      #
+      # A voice played alone (+hearing+, each voice's replay, :sound_effects) is put on the start
+      # from a snapshot of its own, of a console that heard those voices alone from power-on: what
+      # an emulator has already mixed when the snapshot is taken is of the voices it heard, and from
+      # a snapshot of every voice the first frame after the start would carry the others. So each
+      # voice replayed costs the frames before the start once, the first time. The voices are chosen
+      # before the snapshot is put back, and kept as it loads (Diagnostics::Verifier#load_state).
+      #
+      # The :sound_effects side opens two consoles on the start, the one heard from a snapshot that
+      # heard nothing and the one a frame ahead from the mixed sound's, and the one ahead plays each
+      # frame first from there as it does from power-on. An effect sounding as the start comes is
+      # heard from the frame after it, as any sound is.
+      #
+      # ### Pitch
+      #
+      # Where the game gives +pitch_cents_apart+ (HeardTolerances), each voice's pitch is held to the
+      # other cartridge's on the same voice, frame by frame, on the frames both are heard on. Two
+      # notes sounding together have no one pitch, so it is heard a voice at a time: the tape is
+      # played again on both for each voice, that voice alone, whether or not the mix is alike, and a
+      # voice whose pitch is out is a difference of the whole comparison, naming the voice. With
+      # +hearing+ the voices chosen are what is heard, and their pitch is held as heard. A console
+      # whose emulator plays no voice alone is refused, and so is +each_voice+ false.
+      def self.play(presses, first, second, heard_above:, lead_ins: [nil, nil], each_speaker: true, each_voice: true,
+                    hearing: nil, starting_after: nil, snapshots: nil, **tolerances)
         tolerances = HeardTolerances.new(**tolerances)
+        pitch = !tolerances.pitch_cents_apart.nil?
         refuse_frames_not_count!(:heard_above, heard_above)
         refuse_lead_ins_not_pair!(lead_ins)
         refuse_unusable_presses!(presses, lead_ins)
-        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0])
+        refuse_hearing_not_pair!(hearing)
+        refuse_unusable_start!(presses, starting_after, snapshots, lead_ins)
+        refuse_pitch_without_each_voice!(each_voice) if pitch && !hearing
+        replays = [first, second].zip(lead_ins).map do |cartridge, lead_in|
+          VoiceReplay.new(cartridge, lead_in, heard_above, snapshots: snapshots)
+        end
+        replays.zip(hearing) { |replay, voices| replay.refuse_unknown_voices!(voices) } if hearing
+        replays.first.refuse_pitch_without_voices! if pitch && !hearing
+        from_power_on = starting_after.nil? && !(hearing && presses.is_a?(Tape))
+        # A start is given a tape (refuse_unusable_start!), so it plays nothing here.
+        played = presses_led_in(presses, lead_ins[0]).play(first, lead_in: lead_ins[0]) if from_power_on || presses.is_a?(Playthrough)
         tape = presses.is_a?(Tape) ? presses : played.tape
-        heard = [played, presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1])]
-        between(*heard.map { |side| HeardSound.of(side, heard_above: heard_above) }, tolerances)
+        start = start_frame_on(tape, starting_after)
+        sides = if hearing || !from_power_on
+                  replays.zip(hearing || [nil, nil]).map { |replay, voices| replay.side(tape, voices, start, pitch: pitch && !hearing.nil?) }
+                else
+                  [Side.of(played, heard_above), Side.of(presses_led_in(tape, lead_ins[1]).play(second, lead_in: lead_ins[1]), heard_above)]
+                end
+        compared = between(*sides.map(&:mixed), tolerances, recordings: sides.map(&:recording),
+                                                            speakers: each_speaker ? Side.speakers(sides) : nil)
+                   .with(hearing: hearing, frames_stepped: sides.map(&:frames_stepped))
+        compared = with_unread_pitch_refused(compared) if pitch && hearing
+        return compared if hearing || !(pitch || (each_voice && !compared.alike?))
+
+        voices = replays.first.voices.to_h do |voice|
+          alone = replays.map { |replay| replay.side(tape, [voice], start, pitch: pitch) }
+          [voice, between(*alone.map(&:mixed), tolerances, moved: compared.moved_frames)
+                    .with(frames_stepped: alone.map(&:frames_stepped))]
+        end
+        compared.with(voices: voices, differences: compared.differences + pitch_differences_of(voices))
       end
 
-      # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances).
-      def self.between(first, second, tolerances)
-        new(first: first, second: second, difference: Differences.new(first, second, tolerances).first_difference)
+      # Where the game chose the voices heard and asked for their pitch, and neither cartridge has a
+      # pitch on any frame both are heard on, nothing could be held: a difference, not a pass.
+      def self.with_unread_pitch_refused(compared)
+        return compared unless compared.pitch_unread
+
+        compared.with(differences: compared.differences + [HeardDifference.new(what: :no_pitch, frame: nil, loudest: nil,
+                                                                                measured: [nil, nil])])
+      end
+      private_class_method :with_unread_pitch_refused
+
+      # How many frames +second+ (a HeardSound) is behind +first+, from -+within+ to +within+: the
+      # move that lines the two up best.
+      #
+      # ### How the two are lined up
+      #
+      # By cross-correlation of each frame's loudest sample, a frame at or under the silent level
+      # (+heard_above+) read as nought, so a hum under it pulls nothing. For each move the second
+      # could take, the two lists are set side by side, that many frames apart, and how alike they
+      # rise and fall over the frames they share is Pearson's correlation: each list less its own
+      # average, the products of the two added up, over the square root of each one's squares added
+      # up. It is 1 where one is the other made louder or quieter, so a level that differs does not
+      # move the sound. The move whose correlation is highest wins (read to a billionth, so two the
+      # same but for rounding are a tie); of two as high, the smaller, and of a move either way as
+      # high, the second moved earlier. Two sounds that are each one level throughout have nothing to
+      # line up by, and are not moved.
+      def self.lag_frames(first, second, within)
+        one, other = [first, second].map do |sound|
+          sound.loudest_by_frame.map { |loudest| loudest > sound.heard_above ? loudest : 0 }
+        end
+        moves = (-within..within).sort_by { |move| [move.abs, -move] }
+        scores = moves.to_h do |move|
+          shared = (0...one.size).select { |frame| (frame + move).between?(0, other.size - 1) }
+          [move, correlation(shared.map { |frame| one[frame] }, shared.map { |frame| other[frame + move] }).round(9)]
+        end
+        best = scores.values.max
+        moves.find { |move| scores[move] == best }
       end
 
-      def alike? = difference.nil?
+      # Pearson's correlation of two lists of one length, 0 where either is one level throughout.
+      def self.correlation(one, other)
+        return 0.0 if one.empty?
+
+        one_mean, other_mean = one.sum.fdiv(one.size), other.sum.fdiv(other.size)
+        products = one.zip(other).sum { |a, b| (a - one_mean) * (b - other_mean) }
+        spread = Math.sqrt(one.sum { |a| (a - one_mean)**2 } * other.sum { |b| (b - other_mean)**2 })
+        spread.zero? ? 0.0 : products / spread
+      end
+      private_class_method :lag_frames, :correlation
+
+      # Each voice's pitch out, as differences of the whole comparison naming the voice.
+      def self.pitch_differences_of(voices)
+        voices.flat_map do |voice, compared|
+          compared.differences.select { |found| found.what == :pitch }.map { |found| found.with(voice: voice) }
+        end
+      end
+
+      def self.refuse_pitch_without_each_voice!(each_voice)
+        return if each_voice
+
+        raise ArgumentError, "The comparison was given `pitch_cents_apart:` and `each_voice: false`. Pitch is heard a " \
+                             "voice at a time, with each voice played alone. Remove `each_voice: false`, or remove " \
+                             "`pitch_cents_apart:`."
+      end
+      private_class_method :pitch_differences_of, :refuse_pitch_without_each_voice!
+
+      # What one cartridge put out over the tape: the two speakers mixed, each alone, the sound, and
+      # how many frames its emulator stepped to make it (Verifier#frames_played).
+      Side = Data.define(:mixed, :left, :right, :recording, :frames_stepped) do
+        # The Side of +played+ (a played playthrough or tape: its +game+ and its +frames+), heard from
+        # the frame after +starts_after+, with each frame's pitch where +pitch+ asks for it.
+        def self.of(played, heard_above, starts_after = 0, pitch: false)
+          by_speaker = SPEAKERS.to_h do |speaker|
+            [speaker, HeardSound.of(played, heard_above: heard_above, speaker: speaker, starts_after: starts_after)]
+          end
+          new(mixed: HeardSound.of(played, heard_above: heard_above, starts_after: starts_after, pitch: pitch), **by_speaker,
+              recording: Diagnostics::SoundRecording.heard_in(played.game, frames: played.frames - starts_after),
+              frames_stepped: played.game.frames_played)
+        end
+
+        # Each speaker, :left and :right, to the two sides' HeardSounds on it.
+        def self.speakers(sides) = { left: sides.map(&:left), right: sides.map(&:right) }
+      end
+      private_constant :Side
+
+      # The comparison of two HeardSounds, +first+ and +second+, by +tolerances+ (a HeardTolerances), and
+      # of each speaker's where +speakers+ gives them (:left and :right to a pair of HeardSounds).
+      #
+      # Where +tolerances+ gives +line_up_within_frames+, the second (and its speakers) is moved to
+      # line up with the first (#lag_frames) before anything else is measured, or by +moved+ frames
+      # where that is given, so each voice of a comparison moves as its mix did. A move is a start
+      # that many frames apart, so one further than +first_heard_frames_apart+ is a :first_heard
+      # difference, measuring each one's first frame as played.
+      def self.between(first, second, tolerances, recordings: nil, speakers: nil, moved: nil)
+        moved = lag_frames(first, second, tolerances.line_up_within_frames) if moved.nil? && tolerances.line_up_within_frames
+        as_played = second
+        if moved
+          second = second.moved(moved)
+          speakers = speakers&.transform_values { |pair| [pair[0], pair[1].moved(moved)] }
+        end
+        checks = Differences.new(first, second, tolerances)
+        mixed = with_move_counted(checks.all, moved, [first, as_played], tolerances)
+        on_one = (speakers || {}).flat_map do |speaker, pair|
+          Differences.new(*pair, tolerances).all.reject { |found| mixed.any? { |out| out.what == found.what } }
+                     .map { |found| found.with(speaker: speaker) }
+        end
+        new(first: first, second: second, differences: mixed + on_one, recordings: recordings, speakers: speakers,
+            moved_frames: moved, pitch_unread: checks.pitch_unread?)
+      end
+
+      # +found+ with a move further than the first sounds may be apart counted as a :first_heard
+      # difference of the two +as_played+, in its place in the order.
+      def self.with_move_counted(found, moved, as_played, tolerances)
+        return found if moved.nil? || moved.abs <= tolerances.first_heard_frames_apart
+        return found if found.any? { |difference| difference.what == :never_heard }
+
+        frames = as_played.map(&:first_heard)
+        started = HeardDifference.new(what: :first_heard, frame: frames.min, measured: frames,
+                                      loudest: as_played.map { |side| side.loudest_on(frames.min) })
+        [started] + found.reject { |difference| difference.what == :first_heard }
+      end
+      private_class_method :with_move_counted
+
+      def alike? = differences.empty?
+
+      # How far apart two pitches in hertz are, in cents: a hundredth of a semitone, twelve hundred
+      # to an octave, whichever is higher.
+      def self.cents_apart(one, other) = (1200 * Math.log2(one / other)).abs
+
+      # The first measure out, or nil where the two are alike.
+      def difference = differences.first
+
+      # Both cartridges' sound written to +path+ as one WAV file for a person to hear (SoundRecording.write_pair):
+      # +layout+ :in_turn plays the first and then the second, :side_by_side the first on the left speaker
+      # and the second on the right. Answers +path+.
+      def write_wav(path, layout:)
+        raise ArgumentError, "This comparison was made from the loudest samples alone, with no sound to write." unless recordings
+
+        Diagnostics::SoundRecording.write_pair(path, *recordings, layout: layout)
+      end
 
       # A tape says whether it was recorded after a lead-in, and is refused played another way. Each
       # cartridge here has a lead-in of its own or none, so each is handed the tape saying its own.
@@ -102,6 +421,7 @@ module VBlank
         end
         return unless presses.is_a?(Tape)
 
+        presses.refuse_seed_frame_by_frame!("a comparison of sound")
         if presses.in_passes
           raise ArgumentError, "This tape counts passes, and the sound is compared frame by frame. To fix this, give a " \
                                "tape of frames: `tape.in_frames_on(cartridge)`."
@@ -117,6 +437,203 @@ module VBlank
       end
       private_class_method :presses_led_in, :refuse_lead_ins_not_pair!, :refuse_unusable_presses!
 
+      # +hearing+ is nil, or each cartridge's voices as a pair, the first's and then the second's: each
+      # a list of voices or SOUND_EFFECTS.
+      def self.refuse_hearing_not_pair!(hearing)
+        return if hearing.nil?
+        return if hearing.is_a?(Array) && hearing.size == 2 &&
+                  hearing.all? { |voices| voices == SOUND_EFFECTS || (voices.is_a?(Array) && !voices.empty?) }
+
+        raise ArgumentError, "`hearing:` was #{hearing.inspect}. It must be a list of two, the first cartridge's voices " \
+                             "and then the second's. Each is a list of voices or :sound_effects: " \
+                             "`hearing: [[:square1], [:square2]]` or `hearing: [:sound_effects, [:voice0]]`."
+      end
+      private_class_method :refuse_hearing_not_pair!
+
+      # What a start after a frame cannot be given: snapshots with no start, lead-ins, and a
+      # playthrough in place of a tape. A lead-in's or a playthrough's presses are not known until
+      # it has played from power-on, so nothing can say which snapshot they reach, and playing it
+      # would cost every frame before the start the snapshot is there to save.
+      def self.refuse_unusable_start!(presses, starting_after, snapshots, lead_ins)
+        Playthrough.refuse_unusable_start!(starting_after, snapshots, what: "The comparison")
+        return if starting_after.nil?
+
+        unless lead_ins.compact.empty?
+          raise ArgumentError, "The comparison was given `starting_after:` and `lead_ins:`. The frames before the start " \
+                               "are not heard, so a lead-in is not needed. Remove `lead_ins:`, or remove `starting_after:`."
+        end
+        return if presses.is_a?(Tape)
+
+        raise ArgumentError, "The comparison was given `starting_after:` and a playthrough. A playthrough's presses are " \
+                             "known only after it plays every frame from power-on. To fix this, give a tape: " \
+                             "`playthrough.play(ours).tape`, or `Tape.read(path)`."
+      end
+
+      # The frame of +tape+ the sound is heard after, 0 for power-on: a number, or a moment's frame,
+      # before the tape's last, so something is left to hear.
+      def self.start_frame_on(tape, starting_after) = tape.start_frame(starting_after, last_allowed: tape.frames - 1)
+      private_class_method :refuse_unusable_start!, :start_frame_on
+
+      # One cartridge's tape played again with only some voices heard: switched on, told which voices
+      # to hear (Verifier#hearing) before its first frame, led in, and pressed through the tape a
+      # stretch of frames at a time, as a playthrough presses it.
+      class VoiceReplay
+        # A replay's reader and the frames it played: what Side.of reads of a playing.
+        Played = Data.define(:game, :frames)
+
+        def initialize(cartridge, lead_in, heard_above, snapshots: nil)
+          @cartridge = cartridge
+          @lead_in = lead_in
+          @heard_above = heard_above
+          @snapshots = snapshots
+        end
+
+        # The voices this cartridge's emulator can play alone: none on a console whose emulator mixes
+        # them all.
+        def voices
+          reader = Playthrough.power_on(@cartridge)
+          reader.respond_to?(:channels) ? reader.channels : []
+        ensure
+          reader&.close
+        end
+
+        # +voices+ refused before anything is played where this cartridge's console has no voice by one
+        # of those names, or none can be heard alone.
+        def refuse_unknown_voices!(voices)
+          known = self.voices
+          if known.empty?
+            raise ArgumentError, "`hearing:` names voices, and this cartridge's emulator cannot play a voice alone. " \
+                                 "To fix this, remove `hearing:`."
+          end
+          return refuse_unfollowable_effects! if voices == SOUND_EFFECTS
+
+          unknown = voices - known
+          return if unknown.empty?
+
+          raise ArgumentError, "`hearing:` names #{unknown.map(&:inspect).join(', ')}, and this cartridge has no voice " \
+                               "#{unknown.join(', ')}. Its voices are #{known.map(&:inspect).join(', ')}."
+        end
+
+        # Pitch refused before anything is played where no voice can be played alone: the mix of
+        # several voices has no one pitch.
+        def refuse_pitch_without_voices!
+          return unless voices.empty?
+
+          raise ArgumentError, "The comparison was given `pitch_cents_apart:`, and this cartridge's emulator cannot " \
+                               "play a voice alone. Pitch is heard a voice at a time. To fix this, remove " \
+                               "`pitch_cents_apart:`."
+        end
+
+        # :sound_effects refused where nothing can say which voices the effects hold on each frame: a
+        # console whose player keeps each part of an effect on one voice, which a list can name, or a
+        # cartridge not built here, whose build record would say where its player keeps that.
+        def refuse_unfollowable_effects!
+          reader = Playthrough.power_on(@cartridge)
+          unless reader.respond_to?(:sound_effect_voices)
+            raise ArgumentError, "`hearing:` asks for :sound_effects, and on this console each part of a sound effect " \
+                                 "plays on one voice. To fix this, name the voices of the effect: " \
+                                 "`hearing: [[:square2], [:square2]]`."
+          end
+          return if Playthrough.cartridge_from(@cartridge).built
+
+          raise ArgumentError, "`hearing:` asks for :sound_effects of a cartridge that was not built here. Nothing " \
+                               "says which voices its sound player gives its effects. To fix this, name the voices " \
+                               "of that cartridge: `hearing: [:sound_effects, [:voice0]]`."
+        ensure
+          reader&.close
+        end
+
+        # The Side of +voices+ alone over +tape+'s frames after +start+, or of the sound effects alone
+        # (SOUND_EFFECTS), or of every voice where +voices+ is nil. +pitch+ reads each frame's pitch.
+        def side(tape, voices, start = 0, pitch: false)
+          return effects_side(tape, start, pitch) if voices == SOUND_EFFECTS
+
+          reader = opened(tape, start, voices)
+          tape.presses_within((start + 1)..tape.frames).each do |stretch|
+            reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons))
+          end
+          Side.of(Played.new(game: reader, frames: tape.frames), @heard_above, start, pitch: pitch)
+        ensure
+          reader&.close
+        end
+
+        # A console of this cartridge hearing +voices+ (every voice where nil), on frame +start+ of
+        # +tape+: switched on and led in for 0, else put on that frame from a snapshot where there
+        # are +snapshots+, or played there. The voices are chosen as it is switched on, before a
+        # snapshot is put back: a Genesis's are chosen only before its first frame, and each reader
+        # keeps its choice as a state loads (Verifier#load_state). The snapshot is of a console that
+        # heard those voices alone from power-on (SnapshotCache#console_after's +hearing+).
+        def opened(tape, start, voices)
+          open = lambda do
+            Playthrough.power_on(@cartridge).tap { |reader| reader.hearing(only: voices) if voices }
+          end
+          return open.call.tap { |reader| @lead_in&.play_as_lead_in(reader) } if start.zero?
+
+          # An emulator whose sound comes back only after a few frames is put back that many frames
+          # before the start, and plays them unheard (Console::Kit#frames_sound_settles_after_load).
+          # A start no later than that has no frame to put it back on, and plays from power-on.
+          snapshot_frame = start - Console.for(cartridge.console).frames_sound_settles_after_load
+          return open.call.tap { |reader| step_through(reader, tape, 1..start) } unless @snapshots && snapshot_frame.positive?
+
+          refuse_snapshot_without_save_memory!
+          presses = SnapshotCache.presses_up_to(tape, snapshot_frame)
+          @snapshots.console_after(presses, cartridge, hearing: voices, &open)
+                    .tap { |reader| step_through(reader, tape, (snapshot_frame + 1)..start) }
+        end
+
+        # +reader+ pressed through +frames+ of +tape+ (none where the range is empty).
+        def step_through(reader, tape, frames)
+          return if frames.none?
+
+          tape.presses_within(frames).each { |stretch| reader.step(stretch.frames.size, keys: IR::Buttons.mask(stretch.buttons)) }
+        end
+
+        # The cartridge, read once from its path where it was given by one.
+        def cartridge = @cartridge = Playthrough.cartridge_from(@cartridge)
+
+        # A cartridge whose console's snapshot would leave out what it saved, refused
+        # (Console::Kit#snapshot_leaves_out_save_memory?).
+        def refuse_snapshot_without_save_memory!
+          kit = Console.for(cartridge.console)
+          return unless kit.snapshot_leaves_out_save_memory?(cartridge)
+
+          raise ArgumentError, "A cartridge of the comparison keeps a save, and a snapshot of a #{kit.title} does not " \
+                               "hold what it saved. To fix this, remove `snapshots:`, and the cartridge is played to the start."
+        end
+
+        # The Side of the sound effects alone over +tape+'s frames.
+        #
+        # ### Why a second console plays a frame ahead
+        #
+        # The sound player decides who holds each voice as a frame is played, and the chip sounds
+        # that frame's notes before it ends. So which voices to hear on a frame is known only once
+        # it has been played. A second console, +ahead+, plays each frame first, on the same
+        # presses, and the console heard then plays it with the voices the effects held at its end.
+        # Heard with the voices held at the end of the frame before, an effect's first frame would
+        # be silent; and with those as well, the frame after each of its notes would carry the
+        # tune's next note there, since a recording's place stays held for a frame after its last
+        # sample. What is left is the few samples of a frame the chip plays before a change reaches
+        # it, inside the frame either way.
+        #
+        # From a start both consoles are put on the start's frame: the one ahead plays each frame
+        # first there as well, so neither needs a snapshot of the frame after.
+        def effects_side(tape, start, pitch)
+          heard = opened(tape, start, [])
+          ahead = opened(tape, start, nil)
+          tape.presses_within((start + 1)..tape.frames).each do |stretch|
+            keys = IR::Buttons.mask(stretch.buttons)
+            stretch.frames.size.times do
+              heard.hearing(only: ahead.step(1, keys: keys).sound_effect_voices).step(1, keys: keys)
+            end
+          end
+          Side.of(Played.new(game: heard, frames: tape.frames), @heard_above, start, pitch: pitch)
+        ensure
+          heard&.close
+          ahead&.close
+        end
+      end
+      private_constant :VoiceReplay
+
       # The checks, each answering a HeardDifference or nil, in the order they are made.
       class Differences
         def initialize(first, second, tolerances)
@@ -126,7 +643,13 @@ module VBlank
           @tolerances = tolerances
         end
 
-        def first_difference = never_heard || first_heard || level || last_heard || fall
+        # Every measure out, in the order they are checked.
+        def all
+          missing = never_heard
+          return [missing] if missing
+
+          [first_heard, level, last_heard, fall, pitch].compact
+        end
 
         private
 
@@ -149,16 +672,33 @@ module VBlank
         # The frame named is the first on which the two frames' loudest samples are further apart than
         # the share, or the first frame either is heard on when no single frame is.
         def level
-          levels = @sides.map(&:level)
-          return unless apart(levels) > @tolerances.level_share_apart * levels.max
+          return stretched_level if @tolerances.level_stretch_frames
 
-          span = @sides.map(&:first_heard).min..@sides.map(&:last_heard).max
-          frame = span.find do |at|
-            loudest = @sides.map { |side| side.loudest_on(at) }
-            apart(loudest) > @tolerances.level_share_apart * loudest.max
-          end
-          difference(:level, frame || span.first, levels)
+          levels = @sides.map(&:level)
+          return unless out_of_share?(levels)
+
+          difference(:level, first_frame_out(heard_span) || heard_span.first, levels)
         end
+
+        # The level a stretch of frames at a time, over the frames either is heard on: the first stretch
+        # out, each one's level over it, and how many are out.
+        def stretched_level
+          stretches = heard_span.each_slice(@tolerances.level_stretch_frames).map { |frames| frames.first..frames.last }
+          levels = stretches.to_h { |frames| [frames, @sides.map { |side| side.level_over(frames) }] }
+          over = stretches.select { |frames| out_of_share?(levels[frames]) }
+          return if over.empty?
+
+          frames = over.first
+          HeardDifference.new(what: :level, frame: first_frame_out(frames) || frames.first,
+                              loudest: @sides.map { |side| side.loudest_on(first_frame_out(frames) || frames.first) },
+                              measured: levels[frames], frames: frames, stretches_over: over.size)
+        end
+
+        def heard_span = @sides.map(&:first_heard).min..@sides.map(&:last_heard).max
+
+        def out_of_share?(pair) = apart(pair) > @tolerances.level_share_apart * pair.max
+
+        def first_frame_out(frames) = frames.find { |at| out_of_share?(@sides.map { |side| side.loudest_on(at) }) }
 
         # The frame named is the first on which one has fallen silent and the other is still heard.
         def last_heard
@@ -170,6 +710,44 @@ module VBlank
         def fall
           falls = @sides.map(&:fall_frames)
           difference(:fall, @sides.map(&:fall_starts).min + 1, falls) if apart(falls) > @tolerances.ending_frames_apart
+        end
+
+        public
+
+        # Whether pitch was asked for, the two are heard on the same frames, and neither has a pitch on
+        # any of them, so nothing about pitch was held.
+        def pitch_unread?
+          pitch_read = both_heard_frames
+          return false if pitch_read.nil? || pitch_read.empty?
+
+          pitch_read.none? { |frame| @sides.any? { |side| side.pitch_on(frame) } }
+        end
+
+        private
+
+        # The frames both are heard on, where the game gave +pitch_cents_apart+ and each side's pitch
+        # was read; nil otherwise.
+        def both_heard_frames
+          return if @tolerances.pitch_cents_apart.nil? || @sides.any? { |side| side.pitch_by_frame.nil? }
+          return [] unless @sides.all?(&:heard?)
+
+          heard_span.select { |frame| @sides.all? { |side| side.heard_on?(frame) } }
+        end
+
+        # The frames both are heard on with pitches further apart than the game allows, or a pitch on
+        # one and none on the other (a noise, a drum, a wrong instrument): the first is named, with
+        # each pitch on it, nil for none.
+        def pitch
+          over = (both_heard_frames || []).select do |frame|
+            one, other = @sides.map { |side| side.pitch_on(frame) }
+            next false if one.nil? && other.nil?
+
+            one.nil? || other.nil? || HeardComparison.cents_apart(one, other) > @tolerances.pitch_cents_apart
+          end
+          return if over.empty?
+
+          HeardDifference.new(what: :pitch, frame: over.first, loudest: @sides.map { |side| side.loudest_on(over.first) },
+                              measured: @sides.map { |side| side.pitch_on(over.first) }, frames_over: over.size)
         end
 
         def apart(pair) = (pair[0] - pair[1]).abs

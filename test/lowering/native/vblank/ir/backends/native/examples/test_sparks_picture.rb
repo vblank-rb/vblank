@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # examples/sparks.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, for long enough that every slot of its pool of sparks has been used and, for most of

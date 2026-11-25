@@ -3,7 +3,7 @@
 require "test_helper"
 require "web_page"
 
-# MORE THAN ONE PLAYER ON A WEB PAGE: the keyboard is player 1 and its right hand player 2 (I J K
+# More than one player on a web page: the keyboard is player 1 and its right hand player 2 (I J K
 # L, O, U, 7 to 0), and each controller is the player it took when it was connected, the lowest
 # no controller has. The desktop window and vblank run keep the same rule (test_native_seats.rb,
 # test_seats.rb). Each picture is held to the interpreter's with the same players' buttons held.
@@ -69,6 +69,49 @@ class TestJSPagePlayers < Minitest::Test
                            .run(game.checked_program(err: nil, console: :snes), frames: 2)
 
     assert_same_picture interpreter.screen.shown, picture, "with player 2's H and Y held"
+  end
+
+  # A PlayStation game's L2 and R2 on a page: E and R, and a controller's triggers (buttons 6 and
+  # 7), whose pull reaches `pulled`. A bar as long as each pull draws it, held to the interpreter's
+  # with the same pulls.
+  private def triggers_game
+    VBlank.game "TRIGGERS", consoles: %i[ps1] do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        fill_rect 0, 10, pulled(:l2), 4, :white
+        fill_rect 0, 20, pulled(:r2), 4, :white
+        fill_rect 0, 30, 8, 8, :white if held(:l2)
+      end
+    end
+  end
+
+  private def assert_triggers_page(steps, held, moment)
+    picture = pictures_in(played_page([*steps, "play 2", "picture"], triggers_game)).first
+    program = triggers_game.checked_program(err: nil, console: :ps1, for_computer: true)
+    interpreter = Reference.new.input_each_frame { |frame| frame >= 2 ? held : [] }.run(program, frames: 2)
+
+    assert_same_picture interpreter.screen.shown, picture, moment
+  end
+
+  def test_e_and_r_pull_l2_and_r2_all_the_way_on_a_playstation_page
+    assert_triggers_page(["down KeyE", "down KeyR"], %i[l2 r2], "with E and R held")
+  end
+
+  def test_a_controllers_triggers_part_pulled_reach_the_game
+    assert_triggers_page(["pad 0 connect", "pad 0 pull 6 0.4", "pad 0 pull 7 0.05"], [{ l2: 40, r2: 5 }],
+                         "with the left trigger pulled 40 in 100 and the right 5")
+  end
+
+  # A key and a controller, or two controllers, pulling one trigger: the furthest counts, and a key
+  # counts all the way (IR::Buttons.pulls).
+  def test_a_key_pulls_its_trigger_all_the_way_whatever_a_controller_says
+    assert_triggers_page(["pad 0 connect", "pad 0 pull 6 0.3", "down KeyE"], [:l2, { l2: 30 }], "with E held and the trigger at 30")
+  end
+
+  def test_two_controllers_pulling_one_trigger_give_the_furthest
+    assert_triggers_page(["pad 0 connect", "pad 1 connect", "pad 0 pull 7 0.6", "pad 1 pull 7 0.3"], [{ r2: 60 }, { r2: 30 }],
+                         "with one controller's right trigger at 60 and the other's at 30")
   end
 
   # A game that names no players plays as before: every controller is player 1's, and player 2's

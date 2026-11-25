@@ -91,7 +91,7 @@ class TestDOSCheckedRun < Minitest::Test
       screen :bitmap
       clear_screen :black
       fill_rect 10, 10, 20, 30, :red
-      dma_fill_rect 100, 50, 7, 3, :green
+      fill_rect 100, 50, 7, 3, :green
       x = var :x, 0
       y = var :y, 0
       w = var :w, 0

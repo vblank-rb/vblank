@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Guardrails
-      # HOW THE MUSIC CHECKS NAME WHAT THEY FOUND, so every one of them names it the same way.
+      # How the music checks name what they found, so every one of them names it the same way.
       #
       # A song written with `song :title do ... end` is known by that name. One handed over in a
       # list — `songs :music, [...]` — is known by where it sits in the list, since that is how

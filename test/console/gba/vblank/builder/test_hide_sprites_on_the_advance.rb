@@ -38,10 +38,7 @@ class TestHideSpritesOnTheAdvance < Minitest::Test
         passes += 1
         state = 1 if passes > 1
         hide_sprites if passes == TestHideSpritesOnTheAdvance::CALLED_ON
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

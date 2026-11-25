@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SMALL TILED GAMES FOR `screen ... backdrop:`, shared by test/all/vblank/builder/test_screen_backdrop.rb
+# Small tiled games for `screen ... backdrop:`, shared by test/all/vblank/builder/test_screen_backdrop.rb
 # and its twin for what only the Advance does, test/console/gba/vblank/builder/
 # test_screen_backdrop_on_the_advance.rb.
 module ScreenBackdropGames
@@ -35,10 +35,7 @@ module ScreenBackdropGames
       game_loop do
         tick += 1
         state = 1 if tick == 6
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :board
-        end
+        call({ 0 => :title, 1 => :board }, number: :state)
       end
     end
     b.finalize_program

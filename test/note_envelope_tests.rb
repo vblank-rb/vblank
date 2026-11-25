@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A SONG'S RECORDED NOTES WITH A SHAPE — climbing in, falling away after they end — and the voices a
+# A song's recorded notes with a shape — climbing in, falling away after they end — and the voices a
 # falling note holds, on every console whose build mixes recordings for its songs: the Advance's and
 # the Super Nintendo's. Each console's folder has a test file that includes these:
 #
@@ -94,7 +94,7 @@ module NoteEnvelopeVoiceTests
                  "and in the end it is over, and its voice goes back"
   end
 
-  # A NOTE THE GAME PLAYS ITSELF starts its shape as it is played, the way a key struck on an
+  # A note the game plays itself starts its shape as it is played, the way a key struck on an
   # instrument sounds at once: as it is played its shape has moved on once, so the first frame it
   # is heard in is at that level, and it moves on once a frame from there. So an attack of 255 is
   # full in the very first frame, and a recording shorter than a frame is heard, not mixed at

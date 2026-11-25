@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# ONE RECORDING PLAYED WITH SEVERAL ENVELOPES IS KEPT ONCE. An instrument is a recording and one
+# One recording played with several envelopes is kept once. An instrument is a recording and one
 # envelope, so a recording a game shapes three ways is three instruments. The sound unit keeps a
 # recording as its samples alone (its pitch and its envelope are a voice's registers, written for
 # each note), so the three read one copy: once in the cartridge, once in the sound unit's memory,

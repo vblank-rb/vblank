@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# RECORDINGS DECLARED UNDER SEVERAL NAMES WITH THE SAME SAMPLES, as one instrument's recording
+# Recordings declared under several names with the same samples, as one instrument's recording
 # shaped several ways is: small games of them, for the test every run plays
 # (test/all/vblank/builder/test_equal_recordings.rb) and each lowering's test that its build keeps
 # the samples once.

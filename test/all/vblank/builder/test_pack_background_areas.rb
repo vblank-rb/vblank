@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_background_tests"
 
-# A BACKGROUND FROM THE DATA PACK THAT WALKS BETWEEN AREAS: each area names its own slots of tiles,
+# A background from the data pack that walks between areas: each area names its own slots of tiles,
 # map and colours, as a port keeps each level's art, and `show_map` walks between them as it does
 # between the tilesets of a background the game draws itself. The made-up Advance original keeps
 # two areas: a town and a castle, each its own tiles, its own map and its own two banks of colours.
@@ -29,6 +29,9 @@ module PackBackgroundAreaGames
   # [tile, bank, mirrored, upside down], two to a row.
   Area = Data.define(:places, :banks, :cells, :map_at, :colors_at, :tiles_at)
   ACROSS = 2
+  # Each area's map at a width of its own, as a room of an original is its own size: the town two
+  # cells across and two down, the castle four across and one down.
+  ACROSS_BY_AREA = { town: 2, castle: 4 }.freeze
   AREAS = {
     town: Area.new(places: PLACES, banks: BANKS,
                    cells: [[1, 0, false, false], [2, 1, true, false], [3, 0, false, false], [1, 1, false, true]],
@@ -37,13 +40,19 @@ module PackBackgroundAreaGames
                      cells: [[2, 1, false, false], [1, 0, false, true], [0, 0, false, false], [3, 1, true, true]],
                      map_at: CASTLE_MAP_AT, colors_at: CASTLE_COLORS_AT, tiles_at: CASTLE_TILES_AT)
   }.freeze
-  # The same two areas drawn over ONE set of tiles: the castle's map read with the town's tiles and
+  # The same two areas drawn over one set of tiles: the castle's map read with the town's tiles and
   # colours, as `one_tile_slot: true` declares them.
   AREAS_OVER_ONE_SLOT = AREAS.transform_values { |area| area.with(places: PLACES, banks: BANKS) }.freeze
   # The cell each area may be written with later: [tile, bank, mirrored, upside down].
   WRITTEN = [3, 1, false, false].freeze
   # The pass the walk with a sprite (emit_walk_beside_sprite) walks to the castle.
   WALKS_ON = 4
+  # The cells a slot of told cells holds, by place: [tile, bank, mirrored, upside down].
+  TOLD_PLACES = [[3, 1, false, false], [2, 0, true, true]].freeze
+  # The passes #emit_written_places writes in the town on, walks to the castle on, and writes there on.
+  TOLD_TOWN_PASS = 2
+  TOLD_WALK_PASS = 5
+  TOLD_CASTLE_PASS = 8
 
   VBlank::Testing::InRactors.share_constants(self)
 
@@ -73,10 +82,14 @@ module PackBackgroundAreaGames
   # build made (nil for a build that leaves its pack out).
   #
   # With +one_tile_slot+ every area names the town's tiles and colours, and only its map is its own:
-  # an original keeping two maps over one set of tiles in video memory.
+  # an original keeping two maps over one set of tiles in video memory. +across+ is one width for
+  # every area's map, or a Hash of them by area. With +sized_maps+ each map carries its own width
+  # (`as_map(across:)`, from +across+ by area) and the background is given no across: at all.
   private def areas_game_and_file(from, options: VBlank::Cartridge::Options.new, turning: false, set_cells: nil, one_tile_slot: false,
-                                  &loop_body)
+                                  across: ACROSS, sized_maps: false, &loop_body)
     told = set_cells ? { set_cells: set_cells } : {}
+    told[:across] = across unless sized_maps
+    width_of = ->(name) { across.is_a?(Hash) ? across.fetch(name) : across }
     art_of = ->(name) { one_tile_slot ? :town : name }
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
@@ -92,16 +105,71 @@ module PackBackgroundAreaGames
       groups = []
       groups << tile_pictures(:blocks, tiles: { pack[:town_video].tile(1) => pack[:turns].tiles(0, across: TURNS.length) }) if turning
       world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_video"]] },
-                                 map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
-                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, across: ACROSS, **told
+                                 map: AREAS.keys.to_h { |name|
+                                   [name, sized_maps ? pack[:"#{name}_map"].as_map(across: width_of.(name)) : pack[:"#{name}_map"]]
+                                 },
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{art_of.(name)}_colors"]] }, **told
       instance_exec(world, groups.first, &loop_body)
     end
     b.finalize_program
     [b.program, b.made_data_pack_file]
   end
 
-  # THE ANSWER KEY: both areas drawn by hand, walked by the same loop.
-  private def areas_drawn_by_hand(areas = AREAS, &loop_body)
+  # Cells told by a slot (`set_cells: pack[:changes]`) on the two areas, each map a slot of map
+  # cells the unpacking writes from AREAS, and the changes slot holding TOLD_PLACES, a cell each
+  # place. With +by_area+ each area is told by a slot of its own, the same cells; without, one slot
+  # tells every area, and each draws the cell from its own tiles and colours. The loop is
+  # #emit_written_places, or the block given, run on the builder and handed the background.
+  # +across+ is ACROSS or a width by area. Hands back the program and the pack file the build made.
+  private def told_slot_areas_game_and_file(from, options: VBlank::Cartridge::Options.new, by_area: false, across: ACROSS, &loop_body)
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        AREAS.each do |name, area|
+          slots.tiles :"#{name}_video", at: area.tiles_at, count: area.places.length
+          slots.map_cells :"#{name}_map", count: area.cells.length
+          slots.colors :"#{name}_colors", at: area.colors_at, count: 32
+        end
+        changes = by_area ? AREAS.keys.map { |name| :"#{name}_changes" } : [:changes]
+        changes.each { |name| slots.map_cells name, count: TOLD_PLACES.length }
+        slots.fill_from_copy do |_copy, filled|
+          write = lambda do |slot, cells|
+            cells.each_with_index do |(tile, bank, mirrored, upside_down), at|
+              filled[slot].write_cell(at, tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down)
+            end
+          end
+          AREAS.each { |name, area| write.(:"#{name}_map", area.cells) }
+          changes.each { |name| write.(name, TOLD_PLACES) }
+        end
+      end
+      told = by_area ? AREAS.keys.to_h { |name| [name, pack[:"#{name}_changes"]] } : pack[:changes]
+      world = background :world, tiles: AREAS.keys.to_h { |name| [name, pack[:"#{name}_video"]] },
+                                 map: AREAS.keys.to_h { |name| [name, pack[:"#{name}_map"]] },
+                                 colors: AREAS.keys.to_h { |name| [name, pack[:"#{name}_colors"]] },
+                                 across: across, set_cells: told
+      loop_body ? instance_exec(world, &loop_body) : PackBackgroundAreaGames.emit_written_places(self, world)
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The town's top left written with place 1 on pass TOLD_TOWN_PASS, the castle walked to on pass
+  # TOLD_WALK_PASS, and its bottom right written with place 0 on pass TOLD_CASTLE_PASS.
+  def self.emit_written_places(builder, world)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        world.set_cell 0, 0, 1 if tick == TOLD_TOWN_PASS
+        world.show_map :castle if tick == TOLD_WALK_PASS
+        world.set_cell 1, 1, 0 if tick == TOLD_CASTLE_PASS
+      end
+    end
+  end
+
+  # The answer key: both areas drawn by hand, walked by the same loop.
+  private def areas_drawn_by_hand(areas = AREAS, across: ACROSS, &loop_body)
     b = VBlank::Builder.new
     b.instance_eval do
       screen :tiled
@@ -120,7 +188,7 @@ module PackBackgroundAreaGames
           pictures[picture] = picture
         end
         tiles :"#{name}_by_hand", pictures
-        [name, drawn.each_slice(ACROSS).to_a]
+        [name, drawn.each_slice(across.is_a?(Hash) ? across.fetch(name) : across).to_a]
       end
       world = background :world, tiles: areas.keys.to_h { |name| [name, :"#{name}_by_hand"] }, map: maps
       instance_exec(world, &loop_body)
@@ -173,7 +241,7 @@ module PackBackgroundAreaGames
     end
   end
 
-  # A CELL WRITTEN LATER IN EACH AREA (WRITTEN): one cell number told for every area, each area
+  # A cell written later in each area (written): one cell number told for every area, each area
   # drawing it from its own tiles and colours. The town's top left is written on the second pass; the
   # game walks to the castle on the sixth and writes its bottom right on the eighth.
   def self.emit_written_cells(builder, world)
@@ -185,6 +253,230 @@ module PackBackgroundAreaGames
         world.set_cell 0, 0, word if tick == 2
         world.show_map :castle if tick == 6
         world.set_cell 1, 1, word if tick == 8
+      end
+    end
+  end
+
+  # A world of big rooms over one slot of tiles: each room a map of its own, many cells each, every
+  # one drawn from the town's four tiles and two banks, turned every way. A port draws a whole
+  # world's rooms so, and the rooms share what they draw: the same few tiles as drawn, however many
+  # cells and rooms there are.
+  WORLD_ROOMS = %i[hall cellar loft].freeze
+  WORLD_ACROSS = 40
+  WORLD_DOWN = 24
+  WORLD_MAPS_AT = 0x200
+
+  # The cell +at+ of room number +room+: [tile, bank, mirrored, upside down].
+  def self.world_cell(room, at) = [(at + (3 * room)) % 4, (at / 4) % 2, (at / 8).odd?, (at / 16).odd?]
+
+  # The same world over a slot of an original's size: a thousand and twenty-four tiles in sixteen
+  # banks of colours, its cells naming tiles all over the slot, in every bank, turned every way. A
+  # room's map repeats its first BIG_WORLD_PATTERN cells, so the rooms draw a few thousand different
+  # tiles as drawn between them, as a real world's rooms do.
+  BIG_SLOT_TILES = 1024
+  BIG_SLOT_BANKS = Ractor.make_shareable(Array.new(16) { |bank| MadeUpOriginalLayouts::PALETTE.rotate(bank) })
+  BIG_SLOT_PLACES = Ractor.make_shareable(Array.new(BIG_SLOT_TILES) { |tile| Array.new(64) { |at| ((at * 5) + (tile * 3) + (at / 8)) % 16 } })
+  BIG_WORLD_PATTERN = 600
+
+  def self.big_world_cell(room, at)
+    i = at % BIG_WORLD_PATTERN
+    [((i * 37) + (room * 101)) % BIG_SLOT_TILES, i % 16, (i / 16).odd?, (i / 32).odd?]
+  end
+
+  # A cell of the slot of an original's size different from every cell before it in its room: each
+  # tile in each bank, then each again mirrored.
+  def self.different_big_world_cell(_room, at)
+    [at % BIG_SLOT_TILES, (at / BIG_SLOT_TILES) % 16, (at / (BIG_SLOT_TILES * 16)).odd?, false]
+  end
+
+  # The rooms named +rooms+, each +across+ by +down+ cells, as Areas over one slot of tiles and one
+  # of colours: the town's, or with +big+ the slot of an original's size, and with +different+ too,
+  # every cell of a room a different tile as drawn.
+  def self.world_areas(rooms, across, down, big: false, different: false)
+    places = big || different ? BIG_SLOT_PLACES : PLACES
+    banks = big || different ? BIG_SLOT_BANKS : BANKS
+    tiles_at = TOWN_COLORS_AT + (banks.length * 32)
+    maps_at = [WORLD_MAPS_AT, tiles_at + (places.length * 32)].max
+    rooms.each_with_index.to_h do |name, room|
+      cells = Array.new(across * down) do |at|
+        if different
+          different_big_world_cell(room, at)
+        else
+          big ? big_world_cell(room, at) : world_cell(room, at)
+        end
+      end
+      [name, Area.new(places: places, banks: banks, cells: cells, map_at: maps_at + (room * across * down * 2),
+                      colors_at: TOWN_COLORS_AT, tiles_at: tiles_at)]
+    end
+  end
+
+  # The made-up original holding the rooms of +areas+ (#world_areas).
+  private def world_original(folder, areas)
+    last = areas.values.last
+    first = areas.values.first
+    copy = "\0".b * (last.map_at + (last.cells.length * 2))
+    copy[first.colors_at, first.banks.length * 32] = first.banks.flatten.pack("v*")
+    copy[first.tiles_at, first.places.length * 32] = first.places.map(&LOW_HALF_FIRST).join
+    areas.each_value do |area|
+      copy[area.map_at, area.cells.length * 2] = area.cells.map { |cell| PackBackgroundAreaGames.advance_word(*cell) }.pack("v*")
+    end
+    path = File.join(folder, "made_up_world.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The game walking the rooms of +areas+ (#world_areas), each map carrying its width, built as
+  # +options+ say; the loop is #emit_world_walk. Hands back the program and the pack file made.
+  # With +scrolling+ the loop is #emit_world_scroll instead. Without +scenery+ the game declares the
+  # slots alone, no background: its pack is the same file, for a game whose all-in-one build the
+  # build would refuse.
+  private def world_game_and_file(folder, areas, across, options: VBlank::Cartridge::Options.new, scrolling: false, scenery: true)
+    from = world_original(folder, areas)
+    first = areas.values.first
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: first.tiles_at, count: first.places.length
+        slots.colors :town_colors, at: first.colors_at, count: first.banks.length * 16
+        areas.each { |name, area| slots.numbers :"#{name}_map", at: area.map_at, count: area.cells.length, width: :half, signed: false }
+      end
+      next game_loop { wait_vblank } unless scenery
+
+      world = background :world, tiles: pack[:town_video], colors: pack[:town_colors],
+                                 map: areas.keys.to_h { |name| [name, pack[:"#{name}_map"].as_map(across: across)] }
+      if scrolling
+        PackBackgroundAreaGames.emit_world_scroll(self, world)
+      else
+        PackBackgroundAreaGames.emit_world_walk(self, world, areas.keys)
+      end
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # The first room scrolled a pixel right and down every pass, so the whole view is drawn again
+  # every pass.
+  def self.emit_world_scroll(builder, world)
+    builder.instance_eval do
+      across = var :across, 0
+      game_loop do
+        across += 1
+        world.scroll_to across, across
+      end
+    end
+  end
+
+  # The first room on the first passes, and each next room two passes after the one before.
+  def self.emit_world_walk(builder, world, rooms)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        rooms.drop(1).each_with_index { |room, at| world.show_map room if tick == (2 * at) + 3 }
+      end
+    end
+  end
+
+  # Many rooms over two sets of tiles, as a port keeps a world's rooms: each room a small map of its
+  # own, every room of one set naming that set's slots of tiles and colours. The big set is the slot
+  # of an original's size (BIG_SLOT_PLACES, sixteen banks), whose first TURNING_KEYS tiles take turns
+  # through two pictures each; the small set is the town's four tiles and two banks. Every room is
+  # told the same cells (ROOM_TOLD) that `set_cell` writes.
+  ROOM_ACROSS = 4
+  ROOM_CELLS = 16
+  TURNING_KEYS = 8
+  # Cells either set can draw: the small set's tiles and banks, and on the big set tiles that take turns.
+  ROOM_TOLD = Ractor.make_shareable([[3, 1, false, false], [2, 0, true, false]])
+  ROOM_COLORS_AT = 0x40
+  ROOM_TILES_AT = ROOM_COLORS_AT + (16 * 32)
+  ROOM_TOWN_COLORS_AT = ROOM_TILES_AT + (1024 * 32)
+  ROOM_TOWN_TILES_AT = ROOM_TOWN_COLORS_AT + (2 * 32)
+  ROOM_MAPS_AT = ROOM_TOWN_TILES_AT + (4 * 32)
+  # The pictures the turning tiles take turns through: two each, tiles of the big slot past them.
+  ROOM_TURNS_AT = ROOM_TILES_AT + (100 * 32)
+
+  # The rooms of a world of +big+ rooms over the big set and +small+ over the small one, by name,
+  # each its set (:big or :town); a room of each set in turn while both have rooms left.
+  def self.two_set_rooms(big, small)
+    names = Array.new(big) { |at| [:"big_#{at}", :big] } + Array.new(small) { |at| [:"town_#{at}", :town] }
+    names.partition { |_, set| set == :big }.then { |bigs, towns| bigs.zip(towns).flatten(1).compact + towns.drop(bigs.length) }.to_h
+  end
+
+  # The cell +at+ of room number +room+ over +set+: [tile, bank, mirrored, upside down]. A big room
+  # names tiles that take turns and tiles that do not, in every bank.
+  def self.two_set_room_cell(set, room, at)
+    return world_cell(room, at) if set == :town
+
+    [(at + room) % (TURNING_KEYS + 4), (at + room) % 16, at.odd?, (at / 4).odd?]
+  end
+
+  # The made-up original holding both sets and every room of +rooms+ (#two_set_rooms).
+  private def two_set_original(folder, rooms)
+    copy = "\0".b * (ROOM_MAPS_AT + (rooms.length * ROOM_CELLS * 2))
+    copy[ROOM_COLORS_AT, 16 * 32] = BIG_SLOT_BANKS.flatten.pack("v*")
+    copy[ROOM_TILES_AT, 1024 * 32] = BIG_SLOT_PLACES.map(&LOW_HALF_FIRST).join
+    copy[ROOM_TOWN_COLORS_AT, 64] = BANKS.flatten.pack("v*")
+    copy[ROOM_TOWN_TILES_AT, 128] = PLACES.map(&LOW_HALF_FIRST).join
+    rooms.each_with_index do |(_, set), room|
+      words = Array.new(ROOM_CELLS) { |at| PackBackgroundAreaGames.advance_word(*PackBackgroundAreaGames.two_set_room_cell(set, room, at)) }
+      copy[ROOM_MAPS_AT + (room * ROOM_CELLS * 2), ROOM_CELLS * 2] = words.pack("v*")
+    end
+    path = File.join(folder, "made_up_rooms.bin")
+    File.binwrite(path, copy)
+    VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => path }, platform: :gba,
+                               settings_file: File.join(folder, "made_up.yml"),
+                               releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
+  end
+
+  # The game walking the rooms of +rooms+ (#two_set_rooms), built as +options+ say. The block, run on
+  # the builder, is the game loop, handed the background, the group of the big set's turning tiles,
+  # and the told cells' numbers. Hands back the program and the pack file the build made.
+  private def two_set_rooms_game_and_file(folder, rooms, options: VBlank::Cartridge::Options.new, &loop_body)
+    from = two_set_original(folder, rooms)
+    told = ROOM_TOLD.map { |cell| PackBackgroundAreaGames.advance_word(*cell) }
+    b = VBlank::Builder.new(options: options)
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.colors :big_colors, at: ROOM_COLORS_AT, count: 256
+        slots.tiles :big_video, at: ROOM_TILES_AT, count: 1024
+        slots.colors :town_colors, at: ROOM_TOWN_COLORS_AT, count: 32
+        slots.tiles :town_video, at: ROOM_TOWN_TILES_AT, count: 4
+        slots.tiles :turns, at: ROOM_TURNS_AT, count: 2 * TURNING_KEYS
+        rooms.each_key.with_index do |name, room|
+          slots.numbers :"#{name}_map", at: ROOM_MAPS_AT + (room * ROOM_CELLS * 2), count: ROOM_CELLS, width: :half, signed: false
+        end
+      end
+      belts = tile_pictures :belts, tiles: Array.new(TURNING_KEYS) { |key|
+        [pack[:big_video].tile(key), pack[:turns].tiles(2 * key, across: 2)]
+      }.to_h
+      world = background :world, tiles: rooms.transform_values { |set| pack[:"#{set}_video"] },
+                                 colors: rooms.transform_values { |set| pack[:"#{set}_colors"] },
+                                 map: rooms.to_h { |name, _| [name, pack[:"#{name}_map"].as_map(across: ROOM_ACROSS)] },
+                                 set_cells: told
+      instance_exec(world, belts, told, &loop_body)
+    end
+    b.finalize_program
+    [b.program, b.made_data_pack_file]
+  end
+
+  # Each room in turn, two passes each, the turning tiles showing their other picture every other
+  # two passes, and a told cell written in each room as it is walked into.
+  def self.emit_two_set_walk(builder, world, belts, told, rooms)
+    builder.instance_eval do
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        belts.show((tick / 2) % 2)
+        rooms.each_with_index do |room, at|
+          next if at.zero?
+
+          world.show_map room if tick == 2 * at
+          world.set_cell at % ROOM_ACROSS, 1, told[at % told.length] if tick == (2 * at) + 1
+        end
       end
     end
   end
@@ -223,6 +515,216 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
+  # The town's map two cells across and the castle's four, each area's own width.
+  def test_each_area_map_shows_at_its_own_width
+    by_hand = areas_drawn_by_hand(across: ACROSS_BY_AREA) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk(self, world)
+      end
+
+      { 2 => "the town, 2 cells across", 5 => "the castle, 4 cells across", 9 => "the town again" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # Maps of two widths over one slot of tiles and one of colours are one set of tiles: the walk
+  # changes the map alone.
+  def test_areas_of_two_widths_over_one_tile_slot_walk_between_their_maps
+    by_hand = areas_drawn_by_hand(AREAS_OVER_ONE_SLOT, across: ACROSS_BY_AREA) do |world|
+      PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+    end
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+        PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+      end
+
+      ((WALKS_ON - 1)..(WALKS_ON + 4)).each do |frames|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), "frame #{frames}"
+      end
+    end
+  end
+
+  # Each map carries its own width (`as_map(across:)`), and the background is given no across:.
+  def test_each_area_map_that_carries_its_width_shows_at_that_width
+    by_hand = areas_drawn_by_hand(across: ACROSS_BY_AREA) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+    Dir.mktmpdir do |folder|
+      walked, = areas_game_and_file(areas_original(folder), across: ACROSS_BY_AREA, sized_maps: true) do |world|
+        PackBackgroundAreaGames.emit_walk(self, world)
+      end
+
+      { 2 => "the town, 2 cells across", 5 => "the castle, 4 cells across", 9 => "the town again" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # One background of the pack, its map carrying its width: the same picture as across: gives.
+  def test_one_map_that_carries_its_width_needs_no_across
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      given = one_town_background(from, across: 2)
+      sized = one_town_background(from, as_map: 2)
+
+      assert_equal screen_at(given, 2), screen_at(sized, 2)
+      refute_equal screen_at(one_town_background(from, across: 4), 2), screen_at(sized, 2), "the width is the map's"
+    end
+  end
+
+  def test_a_map_that_carries_its_width_and_across_that_agree_build_alike
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+
+      assert_equal screen_at(one_town_background(from, as_map: 2), 2), screen_at(one_town_background(from, as_map: 2, across: 2), 2)
+    end
+  end
+
+  def test_a_map_width_given_two_ways_that_disagree_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) { one_town_background(areas_original(folder), as_map: 2, across: 4) }
+
+      assert_match(/across:/, error.message)
+      assert_match(/2 cells across/, error.message)
+    end
+  end
+
+  def test_area_map_widths_given_two_ways_that_disagree_are_a_friendly_error
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      error = assert_raises(ArgumentError) do
+        b = VBlank::Builder.new
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+            slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+            slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+          end
+          background :world, tiles: pack[:town_video], colors: pack[:town_colors], across: { town: 2, castle: 2 },
+                             map: { town: pack[:town_map].as_map(across: 2), castle: pack[:town_map].as_map(across: 4) }
+        end
+      end
+
+      assert_match(/:castle/, error.message)
+      assert_match(/across:/, error.message)
+    end
+  end
+
+  # The town alone, as one background of the pack: its map given +across+:, or carrying the width
+  # +as_map+ (`as_map(across:)`), or both.
+  private def one_town_background(from, across: nil, as_map: nil)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+        slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+      end
+      map = as_map ? pack[:town_map].as_map(across: as_map) : pack[:town_map]
+      background :town, tiles: pack[:town_video], map: map, colors: pack[:town_colors], **{ across: across }.compact
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
+  # Big rooms over one slot of tiles, each shown in turn: every cell as the same rooms drawn by hand.
+  def test_a_world_of_big_rooms_over_one_tile_slot_shows_each_room
+    areas = PackBackgroundAreaGames.world_areas(WORLD_ROOMS, WORLD_ACROSS, WORLD_DOWN)
+    by_hand = areas_drawn_by_hand(areas, across: WORLD_ACROSS) { |world| PackBackgroundAreaGames.emit_world_walk(self, world, WORLD_ROOMS) }
+    Dir.mktmpdir do |folder|
+      walked, = world_game_and_file(folder, areas, WORLD_ACROSS)
+
+      { 2 => "the hall", 4 => "the cellar", 6 => "the loft" }.each do |frames, what|
+        assert_equal screen_at(by_hand, frames), screen_at(walked, frames), what
+      end
+    end
+  end
+
+  # With the pack left out, the build holds the tiles the rooms can draw, not a tile for every
+  # cell: a world bigger than a background's tiles builds.
+  def test_a_world_of_more_cells_than_a_background_holds_builds_with_the_pack_left_out
+    rooms = %i[field forest lake marsh]
+    areas = PackBackgroundAreaGames.world_areas(rooms, 126, 86)
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      program, = world_game_and_file(folder, areas, 126, options: left_out)
+
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
+    end
+  end
+
+  # The same over a slot of an original's size, 1024 tiles in 16 banks, every turn: the build
+  # holds the slot's tiles once, and each cell names its bank and turn.
+  def test_a_world_over_a_slot_of_an_originals_size_builds_with_the_pack_left_out
+    areas = PackBackgroundAreaGames.world_areas(%i[field forest lake marsh], 126, 86, big: true)
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      program, = world_game_and_file(folder, areas, 126, options: left_out)
+
+      assert(program.walk.any? { |node| node.kind == :background && node.from_file })
+    end
+  end
+
+  # Many rooms over two sets of tiles, the big set's tiles taking turns and every room told cells:
+  # with the pack left out the rooms of one set share its runs of turning tiles and its told cells'
+  # tiles, so what the build holds grows with the sets, and each room adds only a stand-in for each
+  # bank of its colours. Sixty rooms of the big set each holding runs of their own would be more
+  # tiles than a background read as the game starts can hold.
+  def test_many_rooms_over_two_tile_sets_share_each_sets_held_tiles_with_the_pack_left_out
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    held = [30, 60].to_h do |big|
+      Dir.mktmpdir do |folder|
+        rooms = PackBackgroundAreaGames.two_set_rooms(big, 2)
+        program, = two_set_rooms_game_and_file(folder, rooms, options: left_out) do |world, belts, told|
+          PackBackgroundAreaGames.emit_two_set_walk(self, world, belts, told, rooms.keys)
+        end
+        [big, program.walk.find { |node| node.kind == :background && node.from_file }.tiles.length]
+      end
+    end
+
+    assert_equal 30 * BIG_SLOT_BANKS.length, held[60] - held[30], "thirty more rooms hold a stand-in for each bank, and nothing else"
+  end
+
+  # More tiles than a background read as the game starts can hold, the told cells of a slot
+  # among them: the build stops and says how many it can hold.
+  def test_more_tiles_than_a_background_read_at_start_holds_is_a_friendly_error
+    left_out = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      error = assert_raises(ArgumentError) do
+        b = VBlank::Builder.new(options: left_out)
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+            slots.map_cells :town_map, at: 0, count: 4
+            slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+            slots.map_cells :changes, at: 0, count: 0x8000
+          end
+          background :town, tiles: pack[:town_video], map: pack[:town_map].as_map(across: 2), colors: pack[:town_colors],
+                            set_cells: pack[:changes]
+        end
+      end
+
+      assert_match(/background :town/, error.message)
+      assert_match(/at most/, error.message)
+    end
+  end
+
+  def test_across_by_area_naming_other_areas_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      error = assert_raises(ArgumentError) do
+        areas_game_and_file(areas_original(folder), across: { town: 2, keep: 4 }) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+      end
+
+      assert_match(/across:/, error.message)
+      assert_match(/the same areas/, error.message)
+    end
+  end
+
   def test_the_two_areas_show_different_pictures
     by_hand = areas_drawn_by_hand { |world| PackBackgroundAreaGames.emit_walk(self, world) }
 
@@ -258,8 +760,11 @@ class TestPackBackgroundAreas < Minitest::Test
             slots.numbers :byte_map, at: CASTLE_MAP_AT, count: 4, width: :byte, signed: false
             slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
             slots.colors :every_color, at: 0, count: 256
+            slots.map_cells :changes, at: 0, count: 2
           end
           areas = given.transform_values { |by_area| by_area.transform_values { |slot| pack[slot] } }
+          # A Hash by area names its slots; a setting given alone is handed on as it is.
+          set_cells = set_cells.transform_values { |told| told.is_a?(Symbol) ? pack[told] : told } if set_cells.is_a?(Hash)
           told = set_cells ? { set_cells: set_cells } : {}
           background :world, across: ACROSS, **told,
                              **{ tiles: pack[:town_video], map: pack[:town_map], colors: pack[:town_colors] }.merge(areas)
@@ -306,6 +811,39 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
+  # A background declared by area with one area only, as a game's one-room test cartridge is: its
+  # cell is written straight, as the same background declared without areas writes it.
+  private def one_area_game(from, by_area:)
+    word = PackBackgroundAreaGames.advance_word(*WRITTEN)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      pack = data_pack from: from, version: "1" do |slots|
+        slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+        slots.numbers :town_map, at: TOWN_MAP_AT, count: 4, width: :half, signed: false
+        slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+      end
+      wrap = ->(slot) { by_area ? { town: slot } : slot }
+      world = background :world, tiles: wrap.(pack[:town_video]), map: wrap.(pack[:town_map]),
+                                 colors: wrap.(pack[:town_colors]), across: ACROSS, set_cells: wrap.([word])
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        world.set_cell 0, 0, word if tick == 2
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_a_cell_written_on_a_background_of_one_area_is_written_straight
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+
+      assert_equal screen_at(one_area_game(from, by_area: false), 4), screen_at(one_area_game(from, by_area: true), 4)
+    end
+  end
+
   def test_a_cell_no_area_was_told_is_a_friendly_error
     told = PackBackgroundAreaGames.advance_word(*WRITTEN)
     Dir.mktmpdir do |folder|
@@ -320,10 +858,76 @@ class TestPackBackgroundAreas < Minitest::Test
     end
   end
 
-  def test_set_cells_other_than_cell_numbers_on_areas_of_the_pack_are_a_friendly_error
+  def test_set_cells_other_than_cell_numbers_or_a_slot_on_areas_of_the_pack_are_a_friendly_error
     error = refusal_with(tiles: { town: :town_video, castle: :town_video }, set_cells: :town_map)
 
     assert_match(/set_cells:/, error.message)
-    assert_match(/areas/, error.message)
+    assert_match(/cell numbers/, error.message)
+  end
+
+  def test_set_cells_naming_an_area_the_background_lacks_is_a_friendly_error
+    error = refusal_with(set_cells: { town: [1], keep: [1] }, map: { town: :town_map, castle: :town_map })
+
+    assert_match(/:keep/, error.message)
+    assert_match(/set_cells:/, error.message)
+  end
+
+  def test_set_cells_a_slot_for_one_area_and_numbers_for_another_is_a_friendly_error
+    error = refusal_with(set_cells: { town: [1], castle: :changes }, map: { town: :town_map, castle: :town_map })
+
+    assert_match(/set_cells:/, error.message)
+    assert_match(/same way/, error.message)
+  end
+
+  # A slot of told cells, one for every area or one an area: each place is written in the area
+  # showing, from that area's own tiles and colours, as the same cell drawn by hand.
+  def test_cells_told_by_a_slot_are_written_by_place_in_the_area_showing
+    Dir.mktmpdir do |folder|
+      town = areas_drawn_by_hand(areas_with_cell(town: [0, TOLD_PLACES[1]])) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+      castle = areas_drawn_by_hand(areas_with_cell(castle: [3, TOLD_PLACES[0]])) { |world| PackBackgroundAreaGames.emit_walk(self, world) }
+      [false, true].each do |by_area|
+        walked, = told_slot_areas_game_and_file(areas_original(folder), by_area: by_area)
+        told = by_area ? "a slot an area" : "one slot"
+
+        assert_equal screen_at(town, 2), screen_at(walked, TOLD_TOWN_PASS + 2), "the town, its top left written: #{told}"
+        assert_equal screen_at(castle, 5), screen_at(walked, TOLD_CASTLE_PASS + 2), "the castle, its bottom right written: #{told}"
+      end
+    end
+  end
+
+  def test_a_place_past_the_told_slot_on_areas_is_a_friendly_error
+    Dir.mktmpdir do |folder|
+      from = areas_original(folder)
+      error = assert_raises(ArgumentError) do
+        b = VBlank::Builder.new
+        b.instance_eval do
+          screen :tiled
+          pack = data_pack from: from, version: "1" do |slots|
+            slots.tiles :town_video, at: TOWN_TILES_AT, count: 4
+            slots.map_cells :town_map, count: 4
+            slots.map_cells :castle_map, count: 4
+            slots.colors :town_colors, at: TOWN_COLORS_AT, count: 32
+            slots.map_cells :changes, count: 2
+            slots.fill_from_copy do |_copy, filled|
+              %i[town_map castle_map changes].each { |slot| filled[slot].write_cell(0, tile: 1) }
+            end
+          end
+          world = background :world, tiles: pack[:town_video], colors: pack[:town_colors], across: ACROSS,
+                                     map: { town: pack[:town_map], castle: pack[:castle_map] }, set_cells: pack[:changes]
+          world.set_cell 0, 0, 2
+        end
+      end
+
+      assert_match(/set_cells:/, error.message)
+      assert_match(/0 to 1/, error.message)
+    end
+  end
+
+  # +changed+ is [place, cell] by area: AREAS with that cell of the area's map changed.
+  private def areas_with_cell(changed)
+    AREAS.to_h do |name, area|
+      at, cell = changed[name]
+      [name, area.with(cells: area.cells.each_with_index.map { |was, place| place == at ? cell : was })]
+    end
   end
 end

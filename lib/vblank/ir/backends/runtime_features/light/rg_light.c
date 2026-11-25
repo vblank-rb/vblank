@@ -1,5 +1,5 @@
 /*
- * A LIGHT (Framebuffer#shade_outside, Reference#work_out_shade): a `spotlight` or an `iris_out`,
+ * A light (Framebuffer#shade_outside, Reference#work_out_shade): a `spotlight` or an `iris_out`,
  * which darkens the picture everywhere outside one span of each row, as it is shown. A runtime
  * feature (backends/runtime_features.rb): this file is included at the end of rg_screen.c, for a
  * game that has a light, so it reads the screen's own state and painters as if it were written
@@ -27,7 +27,7 @@ void rg_shade_right(int32_t right) { shade_spans[shade_row][1] = right; }
 /* FadeSteps.sixteenths: the amount out of 100, in the display's sixteenths. */
 void rg_shade_darkness(int32_t amount) { shade_steps = whole_sixteenths(amount); }
 
-/* A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
+/* A light that shows nothing outside it (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
  * the same amount, which is then only on (more than no sixteenths) or off, and the rest of each
  * row shows the colour of nothing drawn in place of the picture darkened. */
 static int32_t shade_shuts_out;
@@ -36,7 +36,7 @@ void rg_shade_shut_out(int32_t amount) {
   shade_shuts_out = 1;
 }
 
-/* THE FILTER THE DARKENED PART OF THE PICTURE IS READ THROUGH: the table darkens a colour by the
+/* The filter the darkened part of the picture is read through: the table darkens a colour by the
  * light's steps, and each screen row says which of its pixels are dark, a pixel being changed when
  * +inverted+ XOR from <= x < to (see shown_filter). Worked out at the end of
  * rg_screen_work_out_shade, which is the only place the spans change. */

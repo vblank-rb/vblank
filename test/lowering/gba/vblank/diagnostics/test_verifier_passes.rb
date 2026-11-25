@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# HOW MANY TIMES ROUND THE GAME LOOP THE CONSOLE GOT.
+# How many times round the game loop the console got.
 #
 # Not the frame count, and the difference is the whole point: the console runs the loop once
-# per frame it has TIME for, so a game whose pass does not fit in a frame plays less game per
+# per frame it has time for, so a game whose pass does not fit in a frame plays less game per
 # frame than one that does. Anything lining a console run up against a run somewhere else —
 # the interpreter, an earlier build — has to line up on passes, and the whole-screen
 # cross-backend comparison is built on exactly this.

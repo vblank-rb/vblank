@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_pose_of_shapes_games"
 
-# A POSE READ FROM AN ADVANCE ORIGINAL WHOSE PIECES ARE EVERY SHAPE AND SIZE OF THE CONSOLE'S
+# A pose read from an Advance original whose pieces are every shape and size of the console's
 # (PackPoseOfShapesGames). The answer key is the same pieces painted by hand, a tile at a time,
 # their sizes taken from the console's table.
 #
@@ -13,7 +13,7 @@ require "pack_pose_of_shapes_games"
 class TestPackPosesOfShapesOnTheAdvance < Minitest::Test
   include PackPoseOfShapesGames
 
-  # THE SAME PIECES PAINTED BY HAND, one tile of 8x8 at a time. A piece that is mirrored shows its
+  # The same pieces painted by hand, one tile of 8x8 at a time. A piece that is mirrored shows its
   # last column first, each tile back to front; one that is upside down shows its last row first,
   # each tile's rows in reverse.
   private def pose_painted_by_hand

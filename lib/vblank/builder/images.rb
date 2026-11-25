@@ -2,81 +2,139 @@
 
 module VBlank
   class Builder
-    # The image + color verbs: define a bitmap (from raw data, a file, or ASCII
-    # art), draw it with blit, and build colors (rgb/rgb8/color). A concern of
-    # {Builder}, mixed in so these stay flat DSL verbs.
+    # Pictures and colours
+    #
+    # `image` defines a picture, from pixel data, from an image file or from art drawn in text, and
+    # `blit` draws it by name. `rgb`, `rgb8` and `color` make colours, and `colors` names a list of
+    # colours that a sprite can be drawn with instead of its own. `mirror` and `upside_down` give
+    # the same picture turned round without drawing it twice.
+    #
+    # ```ruby picture=still
+    # VBlank.game "PICTURES", consoles: %i[gba] do
+    #   screen :bitmap
+    #   image :ship, "." => :transparent,
+    #                "#" => :cyan,
+    #                "o" => rgb(31, 20, 0) do
+    #     <<~ART
+    #       .......##.......
+    #       .......##.......
+    #       ......####......
+    #       ......####......
+    #       .....##oo##.....
+    #       .....##oo##.....
+    #       ....########....
+    #       ..############..
+    #       ################
+    #       ################
+    #       ##..##....##..##
+    #       ##..##....##..##
+    #     ART
+    #   end
+    #   clear_screen rgb(3, 4, 7)
+    #   # one picture, drawn three times
+    #   [84, 112, 140].each do |x|
+    #     blit :ship, x, 74
+    #   end
+    #   halt
+    # end
+    # ```
+    #
+    # ```ruby
+    # image :ship, "." => :transparent, "#" => :cyan do
+    #   <<~ART
+    #     ..#..
+    #     #####
+    #   ART
+    # end
+    # blit :ship, 100, 60
+    # ```
+    #--
+    # A concern of Builder, mixed in so these stay flat DSL verbs.
+    #++
     module Images
       # The unused 16th bit of a BGR555 color, set to mark a pixel transparent — a
       # real color is 0x0000..0x7FFF, so this can never collide with one.
-      TRANSPARENT_PIXEL = 0x8000
+      TRANSPARENT_PIXEL = 0x8000  # :nodoc:
 
-      # Define a bitmap, two ways.
+      # Defines a picture, and gives it a name for `blit`, `sprite` and the other verbs to draw
+      # it by.
       #
-      # Array form — raw pixel data, the shape the importer produces. +data+ is
-      # width*height colors (names, hex strings, or raw BGR555 integers), row-major:
+      # A picture comes from one of three places. Give it the colour of every pixel, give it an
+      # image file, or draw it in text.
       #
-      #   image :friend, width: 16, height: 16, data: bmp.data
+      # From pixel data, `data:` is `width * height` colours, row by row. A colour is a name, a
+      # hex string or a raw 15-bit number.
       #
-      # From-a-file form — hand it an image on your machine and a size, and it's
-      # imported (via VBlank::Graphics::Image) and embedded in one step:
+      # ```ruby
+      # image :friend, width: 16, height: 16, data: bmp.data
+      # ```
       #
-      #   image :friend, from: "friend.png", width: 16, height: 16
+      # From a file, the image is imported and embedded in one step. Add `transparent: true` for a
+      # cut-out, an image with its background removed, so that the game shows through the removed
+      # areas instead of a rectangle. In pixel data, a pixel written as `:transparent` is the
+      # see-through one.
       #
-      # Add transparent: true for a cut-out (an image with its background removed):
-      # the removed areas become see-through, so the game field shows through them
-      # instead of a rectangle.
+      # ```ruby
+      # image :friend, from: "friend.png", width: 16, height: 16
+      # image :friend, from: "cutout.png", width: 16, height: 16, transparent: true
+      # image :things, width: 64, height: 64, data: pixels, transparent: true
+      # ```
       #
-      #   image :friend, from: "cutout.png", width: 16, height: 16, transparent: true
+      # In text, give a map from each character to a colour and a block of art. The size comes from
+      # the art's shape, and one character can map to `:transparent`, so that those pixels are not
+      # drawn and the background shows through.
       #
-      # It works for the array form too, where a pixel written as :transparent is the
-      # see-through one:
+      # ```ruby
+      # image :ship, "." => :transparent, "#" => :cyan, "*" => :red do
+      #   <<~ART
+      #     ..#..
+      #     .#*#.
+      #     #####
+      #   ART
+      # end
+      # ```
       #
-      #   image :things, width: 64, height: 64, data: pixels, transparent: true
+      # Add `colors:` for art that came from somewhere that already decided its colours, such as a
+      # picture pulled out of another game or one an artist drew against a fixed set. The list is
+      # that set, in its own order, see-through first. Leave it out, which is almost always right,
+      # and the framework works one out from the colours in the art. The list can also be one
+      # declared with `colors`, by its name, as in `colors: :sea`.
       #
-      # ASCII-art form — hand-drawn, with a char=>color map and a block of art. The
-      # dimensions come from the art's shape, and one char may map to :transparent
-      # (those pixels aren't drawn, so the background shows through):
+      # ```ruby
+      # image :link, from: "link.png", colors: [:transparent, :white, :green]
+      # ```
       #
-      #   image :ship, "." => :transparent, "#" => :cyan, "*" => :red do
-      #     <<~ART
-      #       ..#..
-      #       .#*#.
-      #       #####
-      #     ART
-      #   end
+      # Art that arrived as numbers picking out of that list is given as `places:` instead of
+      # pixels, which is the shape art lifted off another cartridge comes in. Place 0 means
+      # see-through. The picture remembers which place each pixel came from, so a list that holds
+      # one colour twice still tells its two places apart.
       #
-      # Either way the pixels are packed to 15-bit color and embedded in the ROM; a
-      # later `blit` draws it by name.
-      # +opts+ is a single trailing hash — the char=>color map (ASCII form, with a
-      # block), width:/height:/data: (array form), or from:/width:/height: (file
-      # form). It's positional, not keywords, so the char map's string keys (like
-      # "#") pass through cleanly.
-      # Add colors: [...] for art that came from somewhere that already decided its
-      # colors — a picture pulled out of another game, or one an artist drew against a
-      # fixed set. The list is that set, in its own order, see-through first:
+      # ```ruby
+      # image :link, width: 16, height: 16, colors: [:transparent, :white], places: [0, 1, 1, 0]
+      # ```
       #
-      #   image :link, from: "link.png", colors: [:transparent, :white, :green, ...]
+      # A slot of the game's data pack can stand for either list: `colors: pack[:palette]`, or
+      # `places: pack[:walls].tile(0)`.
       #
-      # Set it and the framework keeps that order rather than working one out. Set
-      # nothing, which is almost always right, and it works one out from the colors in
-      # the art.
-      # A slot of the game's data pack can stand for either list: `colors: pack[:palette]`,
-      # `places: pack[:walls].tile(0)` (see DataPacks).
-      # Art that arrived as NUMBERS picking out of that list is given as places instead
-      # of pixels, which is the shape art lifted off another cartridge comes in:
-      #
-      #   image :link, width: 16, height: 16, colors: [...], places: [0, 1, 2, 3, ...]
-      #
-      # Place 0 means see-through. The picture then remembers which place each pixel came
-      # from, so a list that holds one color twice still tells its two places apart.
-      #
-      # The list can also be one declared with `colors`, by its name — `colors: :sea` — which is
-      # what a layer drawn from several lists needs, so `draw_with` can name which of them is
-      # which (see Background#draw_with).
-      #
-      # A picture a place is lit by can count into its shading's colours instead (#define_shaded_image):
-      #
-      #   image :wall, width: 64, height: 64, shading: :fade, places: [3, 228, ...]
+      # * `name` - the picture's name, as a symbol.
+      # * `width:` and `height:` - the picture's size in pixels.
+      # * `data:` - the colour of every pixel.
+      # * `from:` - an image file, found beside your script.
+      # * `transparent:` - `true` to make the background see-through.
+      # * `colors:` - the colours the picture is drawn from.
+      # * `places:` - numbers picking out of that list.
+      # * `shading:` - the name of a shading, for a picture a place is lit by.
+      # * `pieces:`, `tiles_from:` and `frame:` - build a picture from pieces, from a set of
+      #   `sprite_tiles`, or from one of an original's frames in a `data_pack`.
+      # * `from: list` - a list the game paints into itself.
+      #--
+      # The options are one trailing hash, not keywords, so that the character map's string keys
+      # (like "#") pass through cleanly. Either way the pixels are packed to 15-bit colour and
+      # embedded in the cartridge; a later `blit` draws it by name. A picture a place is lit by can
+      # count into its shading's colours instead (#define_shaded_image). The list given by name is
+      # what a layer drawn from several lists needs, so `draw_with` can name which of them is which
+      # (see Background#draw_with). See DataPacks.
+      #++
       def image(name, opts = {}, &block)
         # A picture the game paints itself, kept in a list of its own (see TileRuns).
         return define_picture_run(name, opts) if opts[:from].is_a?(DSL::List)
@@ -122,25 +180,28 @@ module VBlank
         end
       end
 
-      # THE BORDER ROUND THE GAME'S SCREEN, on a console that shows the game's screen in the middle
-      # of a bigger one: a game laid out for the Game Boy Color, built for the Advance with
-      # `variants: { gba: :color_screen }` (Console::AdvanceKit::COLOR_SCREEN). It takes what `image`
-      # takes, without a name, since a game has one border:
+      # Sets the border round the game's screen, on a console that shows the game's screen in the
+      # middle of a bigger one.
       #
-      #   border from: "border.png"                     # a picture of the whole 240×160 screen
-      #   border "#" => :blue, "." => :cyan do          # ...or a pattern, repeated across it
-      #     <<~ART
-      #       #.
-      #       .#
-      #     ART
-      #   end
+      # It is for a game laid out for the Game Boy Color and built for the Advance with `variants:
+      # { gba: :color_screen }`. It takes what `image` takes, without a name, since a game has one
+      # border. The middle of the picture is never seen: the game's screen is drawn there. A game
+      # that declares none gets VBlank's own border. A build that shows the game's screen whole
+      # draws no border, and the game builds the same bytes there as without one.
       #
-      # The middle of the picture is never seen: the game's screen is drawn there. A game that declares
-      # none gets VBlank's own border (Graphics::Border.default). A build that shows the game's
-      # screen whole (the Color's own, or any other console's) draws no border and keeps nothing of
-      # this, so the game builds the same bytes there as without it. What a border can hold is
-      # checked on every build, so a game hears about a wrong one wherever it is built
-      # (Graphics::Border.refuse_unusable!).
+      # ```ruby
+      # border from: "border.png"                     # a picture of the whole 240x160 screen
+      # border "#" => :blue, "." => :cyan do          # or a pattern, repeated across it
+      #   <<~ART
+      #     #.
+      #     .#
+      #   ART
+      # end
+      # ```
+      #--
+      # See Console::AdvanceKit::COLOR_SCREEN. What a border can hold is checked on every build,
+      # so a game hears about a wrong one wherever it is built (Graphics::Border.refuse_unusable!).
+      #++
       def border(opts = {}, &block)
         if @border_said
           raise ArgumentError, "The game says `border` twice. A game has one border. To fix this, remove one " \
@@ -159,24 +220,29 @@ module VBlank
         nil
       end
 
-      # Draw a bitmap (defined with `image`) at a position, which may be a variable
-      # (a moving object) or a constant. Keep it on-screen — off-screen parts aren't
-      # clipped at run time yet.
+      # Draws a picture, made with `image`, at a place on the screen.
       #
-      # @example
-      #   blit :friend, :ball_x, :ball_y
+      # The place can be a variable, for a moving object, or a fixed number. Keep it on screen: the
+      # parts of a picture that are off screen are not clipped when the game runs.
       #
-      # ONE OF A SET, picked by a number the game works out: give it the pictures and
-      # name what chooses between them.
+      # ```ruby
+      # blit :friend, :ball_x, :ball_y
+      # ```
       #
-      #   blit [:calm, :hurt, :dying], 100, 4, showing: damage
+      # To choose one of a set by a number the game works out, give the pictures as a list and say
+      # what chooses with `showing:`. Use it for a face that watches you, a machine in four stages
+      # of wreckage, a dial drawn as a strip, or a portrait picked by who is speaking. The pictures
+      # must all be the same size. A number outside the set draws nothing, so a value that is still
+      # settling, or one that ran off the end, leaves the screen alone instead of drawing the wrong
+      # picture.
       #
-      # A face that watches you, a machine in four stages of wreckage, a dial drawn as a
-      # strip, a portrait picked by who is speaking. `showing:` is the same word a menu
-      # row and a two-colour label already use for "this value decides which". The
-      # pictures must all be the same size, and a number outside the set draws nothing —
-      # so a value still settling, or one that ran off the end, leaves the screen alone
-      # rather than drawing the wrong picture.
+      # ```ruby
+      # blit [:calm, :hurt, :dying], 100, 4, showing: damage
+      # ```
+      #
+      # * `name` - the picture's name, or a list of names for `showing:`.
+      # * `x` and `y` - the top left corner, in pixels from the top left of the screen.
+      # * `showing:` - the number that picks one picture of a list, counting from 0.
       def blit(name, x, y, showing: nil)
         return blit_one_of(name, x, y, showing) if name.is_a?(Array)
 
@@ -190,89 +256,110 @@ module VBlank
         ensure_var(y)
       end
 
-      # THE SAME PICTURE FACING THE OTHER WAY, without drawing it twice.
+      # Gives the same picture facing the other way, without drawing it twice.
       #
-      #   sprite :hero, at: [100, 60],
-      #          facing: { right: :hero_right, left: mirror(:hero_right) }
+      # "Left is the right one, backwards" is how nearly every 2D game faces a character, and this
+      # says it without drawing or exporting the art twice. It gives back a picture name like any
+      # other, so it fits wherever a picture name goes: `facing:`, `frames:`, a `pool` or a plain
+      # `blit`. A whole animation turns round at once: give a list and get a list back.
       #
-      # "Left is the right one, backwards" is how nearly every 2D game faces a
-      # character, and until now saying it meant drawing the art twice — or exporting
-      # it twice, for art that came from somewhere else. This hands back a picture
-      # name like any other, so it drops into `facing:`, `frames:`, a `pool`, or a
-      # plain `blit` wherever a picture name goes.
+      # ```ruby
+      # sprite :hero, at: [100, 60],
+      #        facing: { right: :hero_right, left: mirror(:hero_right) }
       #
-      # A whole animation turns round in one go: pass the list and get a list back.
+      # WALK = [:walk_r1, :walk_r2, :walk_r3]
+      # sprite :hero, at: [100, 60], rate: 6,
+      #        facing: { right: WALK, left: mirror(WALK) }
+      # ```
       #
-      #   WALK = [:walk_r1, :walk_r2, :walk_r3]
-      #   sprite :hero, at: [100, 60], rate: 6,
-      #          facing: { right: WALK, left: mirror(WALK) }
+      # On `screen :tiled` a mirrored picture costs no sprite memory, because the console can draw
+      # an object reversed for nothing, so a character that faces both ways takes a third less. It
+      # also notices art that is already a mirror, so a game that drew both ways by hand gets the
+      # same saving. On `screen :bitmap` there is no such hardware, so a mirrored picture is drawn
+      # like any other, and this saves you the art and not the memory.
       #
-      # ON `screen :tiled` A MIRRORED POSE COSTS NO SPRITE MEMORY. The console can
-      # draw an object reversed for nothing, so the build stores the picture once and
-      # marks it "that one, backwards" — a third off a character that faces both ways.
-      # (It notices art that is ALREADY a mirror too, so a game that drew both ways by
-      # hand gets the same saving with nothing to change. On `screen :bitmap` there is
-      # no such hardware, so a mirrored picture is drawn like any other: this saves you
-      # the art, not the memory.)
+      # * `names` - one picture name, several, or a list of them.
       #
-      # @param names [Array<Symbol>] one picture name, several, or a list of them
-      # @return [Symbol, Array<Symbol>] a name for one, a list of names for several
+      # Returns a name for one, or a list of names for several.
       def mirror(*names) = turned_images(names, :mirrored)
 
-      # THE SAME PICTURE TURNED TOP TO BOTTOM — `mirror`'s other way, for the narrower places
-      # it turns up: a reflection in water, a stalactite drawn from a stalagmite, an arrow
-      # that points up or down.
+      # Gives the same picture turned top to bottom, as `mirror`'s other way.
       #
-      #   image :spike_up, ...
-      #   sprite :spike, at: [x, y], facing: { up: :spike_up, down: upside_down(:spike_up) }
+      # Use it for a reflection in water, a stalactite drawn from a stalagmite, or an arrow that
+      # points up or down. It gives back a picture name, or a list for a list, as `mirror` does,
+      # and the two combine: `mirror(upside_down(:arrow))` is the arrow turned both ways. On
+      # `screen :tiled` the turned picture costs no sprite memory, the same as a mirrored one.
       #
-      # It hands back a picture name, or a list for a list, exactly as `mirror` does, and the
-      # two compose: `mirror(upside_down(:arrow))` is the arrow turned both ways. On
-      # `screen :tiled` the turned pose costs no sprite memory, the same as a mirrored one: the
-      # console draws an object upside down for nothing.
+      # ```ruby
+      # image :spike_up, from: "spike.png", width: 8, height: 8
+      # sprite :spike, at: [x, y], facing: { up: :spike_up, down: upside_down(:spike_up) }
+      # ```
       #
-      # @param names [Array<Symbol>] one picture name, several, or a list of them
-      # @return [Symbol, Array<Symbol>] a name for one, a list of names for several
+      # * `names` - one picture name, several, or a list of them.
       def upside_down(*names) = turned_images(names, :upside_down)
 
-      # Pack 5-bit RGB channels (0-31 each) into a 15-bit GBA color.
-      # Raises on out-of-range values to catch mistakes early.
+      # Makes a colour from red, green and blue amounts from 0 to 31 each.
+      #
+      # A number outside that range is an error, to catch mistakes early.
+      #
+      # ```ruby
+      # fill_rect 50, 50, 30, 20, rgb(31, 31, 0)   # yellow
+      # ```
       def rgb(r, g, b)
         Graphics::Color.rgb(r, g, b)
       end
 
-      # Pack 8-bit RGB channels (0-255 each) into a 15-bit GBA color.
-      # Automatically downsamples to 5-bit per channel.
+      # Makes a colour from red, green and blue amounts from 0 to 255 each, as most art tools show
+      # them.
+      #
+      # The console keeps 32 amounts of each, so each one is rounded down to the nearest of those.
+      #
+      # ```ruby
+      # fill_rect 50, 50, 30, 20, rgb8(255, 128, 0)   # orange
+      # ```
       def rgb8(r, g, b)
         Graphics::Color.rgb8(r, g, b)
       end
 
-      # Resolve a color from a name, hex string, or raw value.
+      # Makes a colour from a name, a hex string or a raw 15-bit value.
+      #
+      # ```ruby
+      # color(:red)
+      # color("#00FF00")
+      # ```
       def color(value)
         Graphics::Color.resolve(value)
       end
 
-      # A LIST OF COLOURS NO PICTURE OWNS, for a sprite to be drawn with instead of its own.
+      # Declares a named list of colours that no picture owns, for a sprite to be drawn with
+      # instead of its own.
       #
-      #   image :ship, from: "ship.png", colors: [:transparent, :white, :blue, :navy]
-      #   colors :hurt, [:transparent, :yellow, :orange, :red]
-      #   ship.draw_with :hurt
+      # It is laid out the way a picture's own `colors:` list is, see-through first. A list is
+      # matched to a picture by place: a pixel drawn in the second colour of the ship's list is
+      # drawn in the second colour of this one. So the shape and the shading stay as drawn and only
+      # the colours move, which is what a character flashing while it cannot be hit looks like.
       #
-      # It is laid out the way a picture's own `colors:` list is, see-through first, and it
-      # is matched to one by PLACE: a pixel drawn in the second colour of the ship's list is
-      # drawn in the second colour of this one. So the shape and the shading stay exactly
-      # as drawn and only the colours move, which is what a character flashing while it
-      # cannot be hit looks like on this console.
+      # ```ruby
+      # image :ship, from: "ship.png", colors: [:transparent, :white, :blue, :navy]
+      # colors :hurt, [:transparent, :yellow, :orange, :red]
+      # ship.draw_with :hurt
+      # ```
       #
-      # THE COLOURS CAN COME FROM THE DATA PACK: a slot of colours, or one bank of it.
+      # The colours can come from the data pack, as a slot of colours or one bank of it. A retail
+      # game repaints a sprite by writing other colours over its palette, and the colours it writes
+      # are its own data.
       #
-      #   colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)
+      # ```ruby
+      # colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)
+      # ```
       #
-      # A retail game repaints a sprite by writing other colours over its palette, and the colours
-      # it writes are its own data. A list from the pack is the list those colours written here
-      # would be, so everything that takes a list's name takes it (DataPacks#pack_color_list). A
-      # build that reads its pack as the game starts does not hold those colours, and the list
-      # then holds a marker for each (DataPacks#pack_colors_read_at_start).
+      # * `name` - the list's name, as a symbol.
+      # * `list` - 2 to 16 colours, the first meaning see-through, or a slot of the data pack.
+      #--
+      # Everything that takes a list's name takes a pack list (DataPacks#pack_color_list). A build
+      # that reads its pack as the game starts does not hold those colours, and the list then
+      # holds a marker for each (DataPacks#pack_colors_read_at_start).
+      #++
       def colors(name, list)
         refuse_bad_color_list_name!(name)
         list = pack_color_list(name, list) if list.is_a?(DSL::PackSlot)
@@ -286,19 +373,25 @@ module VBlank
         name
       end
 
-      # THE NAME OF THE LIST A PICTURE IS DRAWN FROM, for a picture whose list the game did not
-      # write down itself: a pose that takes its colours from the bank its frame names (PackPoses),
-      # which is in the player's copy.
+      # Gives the name of the list of colours a picture is drawn from, for a picture whose list
+      # the game did not write down itself.
       #
-      #   part = sprite :part_12, at: [80, 40]
-      #   part.draw_with colors_name_of(:part_12)      # so it follows `recolor` of that list
+      # An example is a pose that takes its colours from the bank its frame names, which is in the
+      # player's copy. A sprite told to `draw_with` that name follows `recolor` of that list.
       #
-      # A build that reads its pack as the game starts does not know which list that is, and
-      # hands back a name standing for it (PackPoses#pose_list_stand_in): a sprite told to
-      # draw_with it follows whichever list the player's file picks.
+      # ```ruby
+      # part = sprite :part_12, at: [80, 40]
+      # part.draw_with colors_name_of(:part_12)      # so it follows `recolor` of that list
+      # ```
       #
-      # @param picture [Symbol] a picture declared with `image` and given a list by name
-      # @return [Symbol] the list's name, as `colors` declared it
+      # * `picture` - a picture declared with `image` and given a list by name.
+      #
+      # Returns the list's name, as `colors` declared it.
+      #--
+      # A build that reads its pack as the game starts does not know which list that is, and hands
+      # back a name standing for it (PackPoses#pose_list_stand_in): a sprite told to draw_with it
+      # follows whichever list the player's file picks.
+      #++
       def colors_name_of(picture)
         image = @pictures.fetch(picture) do
           raise ArgumentError, "colors_name_of :#{picture} names no picture. Declare it first with `image :#{picture}, ...`."
@@ -312,8 +405,10 @@ module VBlank
       # The colours of the `colors` lists +names+, for a sprite showing +poses+ to be drawn
       # with — checked against the sprite, since a list is matched to its pictures by place.
       # Called by a sprite or a pool told `draw_with`; +subject+ is what the error calls it.
-      def colors_to_draw_with(names, poses:, subject:)
+      # Hook behind `draw_with` on a sprite and on a pool instance: checks the lists named against the sprite's own. Documented on `colors` and `draw_with`.
+      def colors_to_draw_with(names, poses:, subject:)  # :nodoc:
         own = shared_pose_colors!(poses, subject)
+        refuse_draw_with_banked_pose!(subject) if own.length > PICTURE_COLORS
         names.map do |name|
           list = @color_lists.fetch(name) do
             raise ArgumentError,
@@ -334,7 +429,8 @@ module VBlank
       # The same, for a sprite or pool whose poses are drawn from several lists and which was told
       # to draw every one of them with the list +names+ holds (#list_for_every_pose_list!). Each
       # pose swaps place for place into it, so the list is checked against each pose's own list.
-      def colors_to_draw_across_lists(names, poses:, subject:)
+      # Called by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def colors_to_draw_across_lists(names, poses:, subject:)  # :nodoc:
         groups = poses.group_by { |pose| colors_drawn_from(pose) }.values
         names.map do |name|
           groups.map { |group| colors_to_draw_with([name], poses: group, subject: subject).first }.first
@@ -343,11 +439,12 @@ module VBlank
 
       # Whether +lists+ (a hash `draw_with` was given) draws every list with one other list:
       # `{ warm: :white, cold: :white }`. A hash that draws each list with itself follows them.
-      def one_list_for_pose_lists?(lists)
+      # Asked by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def one_list_for_pose_lists?(lists)  # :nodoc:
         lists.is_a?(Hash) && !lists.empty? && lists.values.uniq.one? && lists.any? { |own, with| own != with }
       end
 
-      # A SPRITE OR POOL TOLD TO DRAW EVERY LIST ITS POSES ARE DRAWN FROM WITH ONE OTHER LIST, given
+      # A sprite or pool told to draw every list its poses are drawn from with one other list, given
       # as a hash (`draw_with({ warm: :white, cold: :white })`): hands back the name of that list.
       #
       # A swap goes by place, so one list lines up with poses of any list: a pose's pixel at place 3
@@ -357,7 +454,8 @@ module VBlank
       # that later gives the sprite a pose of a new list is told, rather than shown it unchanged.
       # A hash that draws the lists with different lists is refused: one number picks a sprite's
       # other colours, and poses of several lists would need a number each.
-      def list_for_every_pose_list!(lists, poses:, showing:, subject:)
+      # Called by a sprite and a pool when a `draw_with` hash draws every list with one other list; documented on `draw_with`.
+      def list_for_every_pose_list!(lists, poses:, showing:, subject:)  # :nodoc:
         unless showing.nil?
           raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. " \
                                "showing: picks one of several lists by a number, and a hash names one list. " \
@@ -404,7 +502,7 @@ module VBlank
         with
       end
 
-      # A SPRITE TOLD TO FOLLOW THE LISTS ITS POSES ARE DRAWN FROM (HardwareSprite#draw_with given a
+      # A sprite told to follow the lists its poses are drawn from (HardwareSprite#draw_with given a
       # hash): +lists+ names each list to follow, drawn with itself. The object +node+ then names
       # them (IR::Nodes::Object#follows_each), and a pose drawn from one shows what that list holds.
       #
@@ -413,7 +511,8 @@ module VBlank
       #
       # A sprite whose poses are all of one list has nothing to tell apart, and this hands back the
       # name of that list for an ordinary `draw_with` of it. nil otherwise.
-      def follow_pose_lists(node, lists, poses:, showing:, subject:)
+      # Called by a sprite's handle when `draw_with` is given a hash; documented on `draw_with`.
+      def follow_pose_lists(node, lists, poses:, showing:, subject:)  # :nodoc:
         unless showing.nil?
           raise ArgumentError, "#{subject} was told to draw_with a list for each of its lists and showing:. A sprite " \
                                "follows each list or leaves it as drawn, and nothing is picked by a number. To fix " \
@@ -456,7 +555,8 @@ module VBlank
       # are two lists whatever they hold. A tile given the colours themselves is drawn from the
       # list of the layer that holds them, where one does (IR::Nodes::Background#recolored_list_of);
       # where two named apart hold them, nothing names which, and the game is told.
-      def lists_drawn_from(poses, subject:)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def lists_drawn_from(poses, subject:)  # :nodoc:
         refuse_swapping_unplaced_pixels!(poses, subject)
         unless poses.all? { |pose| colors_drawn_from(pose) }
           raise ArgumentError,
@@ -478,11 +578,13 @@ module VBlank
 
       # The colours one picture was drawn from, or nil where the framework worked them out. A
       # picture painted from a list is drawn from the one it was given.
-      def colors_drawn_from(pose) = @painted_colors[pose] || @pictures.fetch(pose).colors
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def colors_drawn_from(pose) = @painted_colors[pose] || @pictures.fetch(pose).colors  # :nodoc:
 
       # ...as the list it was drawn from: the name it was declared under, nil for colours given
       # themselves, and its colours (IR::Assets::Image#list_drawn_from).
-      def list_drawn_from(pose)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def list_drawn_from(pose)  # :nodoc:
         return [@painted_colors_names[pose], @painted_colors[pose]] if @painted_colors.key?(pose)
 
         @pictures.fetch(pose).list_drawn_from
@@ -492,19 +594,32 @@ module VBlank
       # black as a colour, its picture's (Tiled#solid_black_image), since the copy of a picture of
       # colours in a list read as the game starts has no list name of its own. Public for
       # DSL::Background#refuse_unfollowed_changing_list!, which refuses alike both ways by it.
-      def list_name_drawn_from(pose) = list_drawn_from(solid_black_source(pose) || pose).first
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def list_name_drawn_from(pose) = list_drawn_from(solid_black_source(pose) || pose).first  # :nodoc:
 
       # A list declared with `colors`, as a picture given it by name holds it: see-through first.
       # nil for a name nothing declared.
-      def declared_colors(name)
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def declared_colors(name)  # :nodoc:
         list = @color_lists[name]
         list && [0x0000, *list.drop(1)]
       end
 
       # The name a picture's list was declared under, where it was one.
-      def name_of_colors(colors) = @color_lists.keys.find { |name| declared_colors(name) == colors }
+      # Asked by a background drawn from several lists while it works out which list is which; behind `draw_with` on a background.
+      def name_of_colors(colors) = @color_lists.keys.find { |name| declared_colors(name) == colors }  # :nodoc:
 
       private
+
+      # A list of more colours than one list holds is a pose of several banks (PackPoses, `banks:`),
+      # a list for each bank, which no list of the game's can stand in for.
+      def refuse_draw_with_banked_pose!(subject)
+        raise ArgumentError,
+              "#{subject} was told to draw_with a list of colors, and it shows a pose of several banks of colors " \
+              "(banks:). Such a pose has a list for each bank, so one list cannot take their place. To fix this, " \
+              "make a pose for each bank with bank:, show each pose with a sprite of its own, and tell that sprite " \
+              "to draw_with a list."
+      end
 
       # Tiles of one background given colours that two of its lists, named apart, both hold.
       def refuse_unnamed_colors_of_two_lists!(subject, names)
@@ -525,7 +640,7 @@ module VBlank
         @reading_picture_aside = false
       end
 
-      # A LIST THAT HOLDS ONE COLOUR TWICE, SWAPPED ONTO ART THAT RECORDED NO PLACES.
+      # A list that holds one colour twice, swapped onto art that recorded no places.
       #
       # Swapping colours goes by place: a pixel at place 1 shows the other list's colour at
       # place 1. A picture given as colours holds no places, so where its own list has the
@@ -540,7 +655,7 @@ module VBlank
       # +through+ names the list the sprite really draws with, where +name+ is a set that
       # list is told to hold (see ColorLists#recolor) rather than a list the sprite named.
       #
-      # WHERE THE OTHER LIST IS READ FROM THE DATA PACK AS THE GAME STARTS, its colours at those
+      # Where the other list is read from the data pack as the game starts, its colours at those
       # places are markers (IR::StartFile), and two markers differ whatever colours the file
       # holds there. The build cannot tell, and nothing in the player's file may stop the game,
       # so the swap is made by the first place, as the all-in-one build makes it wherever it
@@ -636,7 +751,7 @@ module VBlank
 
       # The two ways a picture can be turned: the verb that asks for each, and the words an
       # error uses for the motion.
-      TURNS = Ractor.make_shareable({ mirrored: ["mirror", "turn it round"],
+      TURNS = Ractor.make_shareable({ mirrored: ["mirror", "turn it round"],  # :nodoc:
                                       upside_down: ["upside_down", "turn it upside down"] })
 
       # Hand back the turned picture for each of +names+ — one name for one, a list for
@@ -670,7 +785,8 @@ module VBlank
           node = Build.bitmap(name, width: turned.width, height: turned.height,
                                     pixels: turned.pixels, transparent: turned.transparent,
                                     colors: turned.colors, places: turned.places, colors_name: turned.colors_name,
-                                    pieces: turned.pieces, piece_groups: turned.piece_groups)
+                                    pieces: turned.pieces, piece_groups: turned.piece_groups,
+                                    bank_places: turned.bank_places)
           read_turned_picture_from_start_file(node, source, way)
           record_picture(node)
           box_x, box_y, box_w, box_h = @image_bounds[source] || [0, 0, turned.width, turned.height]
@@ -765,10 +881,14 @@ module VBlank
       # The picture still keeps colors for everything that draws it; the places ride along
       # beside them, and only the two things that read a pixel as a NUMBER — the console's
       # sprite and tile storage, and swapping in another list of colors — look at them.
+      #
+      # +table+ is the picture's colours already worked out, nil where they are worked out from
+      # +colors+: a pose of several banks (PackPoses#banks_table) holds a list of sixteen for each
+      # bank, which one list of a game's own cannot.
       def define_placed_image(name, places:, width:, height:, colors:, colors_name: nil, pieces: nil, places_from_pack: false,
-                              piece_groups: nil)
+                              piece_groups: nil, table: nil, bank_places: nil)
         positive_dims!(name, width, height)
-        table = color_table(name, colors || [])
+        table ||= color_table(name, colors || [])
         refuse_bad_places!(name, places: places, width: width, height: height, table: table)
 
         pixels, marker = IR::Assets.placed_pixels(places, table)
@@ -776,11 +896,11 @@ module VBlank
         record_picture(Build.bitmap(name, width: width, height: height, pixels: pixels,
                                             transparent: marker, colors: table.map { |value| value || 0x0000 },
                                             places: places.pack("C*"), colors_name: colors_name, pieces: pieces,
-                                            places_from_pack: places_from_pack, piece_groups: piece_groups))
+                                            places_from_pack: places_from_pack, piece_groups: piece_groups, bank_places: bank_places))
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: marker)
       end
 
-      # A LIT PICTURE GIVEN AS NUMBERS INTO ITS SHADING'S COLOURS (see Places#shading): each pixel
+      # A lit picture given as numbers into its shading's colours (see Places#shading): each pixel
       # the place in the shading's `colors:` of its colour, as a game's own art counts into the
       # palette its fade tables are made for. Every place is a colour; none is see-through.
       #
@@ -823,7 +943,7 @@ module VBlank
         record_visible_bounds(name: name, width: width, height: height, cells: drawn, transparent: nil)
       end
 
-      # A PICTURE MADE OF 8x8 PIECES, each where the game puts it, as a cartridge's own sprites are
+      # A picture made of 8x8 PIECES, each where the game puts it, as a cartridge's own sprites are
       # kept: a list of pieces, each [dx, dy, places] — where its top left sits in the picture, and
       # its 64 pixels row by row as places in the `colors:` list, nought see-through. Pieces may
       # overlap; where they do, the one earlier in the list is in front, as a console draws its
@@ -834,8 +954,9 @@ module VBlank
       # which can put more pieces on one line than it shows.
       #
       # +piece_groups+ is for pieces cut from bigger ones (PackPoses): how many of them each bigger
-      # piece became, in their order (IR::Assets::Image#piece_groups).
-      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil)
+      # piece became, in their order (IR::Assets::Image#piece_groups). +table+ is as
+      # #define_placed_image takes it.
+      def define_pieced_image(name, pieces:, colors:, colors_name: nil, size: nil, piece_groups: nil, table: nil, bank_places: nil)
         refuse_bad_pieces!(name, pieces, colors)
         refuse_bad_pieced_size!(name, size)
         # Out to a multiple of a piece each way, see-through past the pieces: a console that cuts a
@@ -855,13 +976,14 @@ module VBlank
         end
         kept = pieces.map { |dx, dy, own| [dx, dy, own.pack("C*")] }
         define_placed_image(name, places: places, width: width, height: height, colors: colors,
-                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups)
+                                  colors_name: colors_name, pieces: kept, piece_groups: piece_groups, table: table,
+                                  bank_places: bank_places)
       end
 
-      PIECE_SIZE = IR::Assets::PIECE_SIZE
-      BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE
-      PICTURE_REACH = 255 # A pose table holds where a piece sits as a byte each way
-      MOST_PIECED_SIDE = 256 # Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
+      PIECE_SIZE = IR::Assets::PIECE_SIZE  # :nodoc:
+      BIG_PIECE_SIZE = IR::Assets::BIG_PIECE_SIZE  # :nodoc:
+      PICTURE_REACH = 255 # :nodoc: A pose table holds where a piece sits as a byte each way
+      MOST_PIECED_SIDE = 256 # :nodoc: Pixels a side of a picture of pieces, which a piece at PICTURE_REACH ends at
 
       # The size a picture of pieces was given (`size: [width, height]`), or nil where it was given none.
       def refuse_bad_pieced_size!(name, size)
@@ -910,7 +1032,7 @@ module VBlank
         end
       end
 
-      # A picture gives what its pixels are ONE way. Art in characters, colors and places are
+      # A picture gives what its pixels are one way. Art in characters, colors and places are
       # three ways of giving it, and two of them would have to agree with nothing able to
       # check that they did.
       def one_source_of_pixels!(name, opts, block)
@@ -1020,7 +1142,7 @@ module VBlank
       # (Console::Description#list_colors) takes the colours each tile uses from the longer list, so
       # a list of five on the Color draws, and each tile is held to the console's list as the art is
       # made, which is where a tile that truly does not fit is refused by name.
-      PICTURE_COLORS = 16
+      PICTURE_COLORS = 16  # :nodoc:
 
       # A picture's own table, checked while the author is still looking at the line
       # that wrote it. Three things can be wrong, and each is a plain sentence rather
@@ -1035,7 +1157,7 @@ module VBlank
         # (IR::StartFile), so no pixel can be held to it here. The picture's pixels are the
         # game's own colours, and it is drawn in them.
         #
-        # NOR IS IT CHECKED AS THE GAME STARTS, against the colours the file then holds. Nothing in
+        # Nor is it checked as the game starts, against the colours the file then holds. Nothing in
         # the player's file may stop the game, so a check there could only fall back, and the one
         # fallback is to draw the picture in its own colours, which is what is done anyway: the
         # list is used only to swap the pixels onto another, and that is refused while building
@@ -1063,7 +1185,7 @@ module VBlank
         table.map { |value| value || 0x0000 }
       end
 
-      # A PICTURE GIVEN AS COLOURS, IN A LIST READ AS THE GAME STARTS, DRAWN WITH ANOTHER LIST. Such
+      # A picture given as colours, in a list read as the game starts, drawn with another list. Such
       # a picture is drawn as it is: its pixels are the game's own colours. Drawn with another
       # list it is swapped by finding each pixel's colour in its own list, and the build does not
       # hold that list's colours (it holds markers, IR::StartFile), so it cannot say which place

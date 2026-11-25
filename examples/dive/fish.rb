@@ -23,18 +23,18 @@ module Dive
     # The lists the fish are drawn with, laid out like the picture's own: see-through
     # first, then the body, then the eye. A fish whose `kind` names none of these would be
     # drawn in its own colours, so a number that ran off the end looks ordinary.
-    SPECIES = Ractor.make_shareable(%i[perch gold ember slate plum moss])
+    SPECIES = %i[perch gold ember slate plum moss]
 
     # Where each one swims, how fast, and which species it is. Negative is leftward, and
     # `face` below turns the picture round to match. Every one of them starts UNDER the
     # surface, because a fish in the sky is a fish.
-    SHOAL_AT = Ractor.make_shareable([[20, 58, 1], [180, 74, -1], [60, 100, 2],
-                [210, 126, -1], [120, 64, -2], [8, 142, 1]])
+    SHOAL_AT = [[20, 58, 1], [180, 74, -1], [60, 100, 2],
+                [210, 126, -1], [120, 64, -2], [8, 142, 1]]
 
     SCREEN_W = 240
     SCREEN_H = 160
 
-    BODY = Ractor.make_shareable(<<~ART)
+    BODY = <<~ART
       ................
       ......########..
       ..#..##########.
@@ -45,6 +45,13 @@ module Dive
       ................
     ART
 
+    # One fish: where it is, how fast it swims, and which species it is. Each is a sprite
+    # facing the way it swims, in the layer the diver swims in. Only the right-facing picture
+    # is named: facing left is that picture mirrored, which the build makes itself.
+    One = Struct.new(:x, :y, :speed, :kind) do
+      drawn_as facing: { right: :fish_right }, layer: :swimmers
+    end
+
     def initialize(build)
       @build = build
       declare_art
@@ -53,12 +60,9 @@ module Dive
       # when it returns. The whole shoal is in this dive, so `colors_in_use` says so, and all
       # six species keep their groups for as long as the dive lasts.
       build.colors_in_use SPECIES
-      @fish = build.layer(:swimmers) do
-        build.pool :fish, x: 0, y: 0, speed: 0, kind: 0, capacity: SHOAL,
-                          facing: { right: :fish_right, left: build.mirror(:fish_right) }
-      end
+      @shoal = Array.new(capacity: SHOAL)
       SHOAL_AT.each_with_index do |(x, y, speed), which|
-        @fish.spawn x: x, y: y, speed: speed, kind: which % SPECIES.length
+        @shoal << One.new(x, y, speed, which % SPECIES.length)
       end
     end
 
@@ -71,7 +75,7 @@ module Dive
     # there are different ones. +surface+ is where the top of the sea is on screen, so a
     # fish coming back round from below arrives under it rather than in the sky.
     def update(sank, surface)
-      @fish.each do |fish|
+      @shoal.each do |fish|
         fish.x += fish.speed
         fish.y -= sank
         if fish.speed > 0

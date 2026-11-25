@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "pack_at_start_tests"
 
-# MADE-UP ORIGINALS WHOSE SCREEN IS A BACKGROUND OF THEIR OWN TILES, MAP AND COLOURS, and a game
+# Made-up originals whose screen is a background of their own tiles, map and colours, and a game
 # that shows it through a data pack (Builder::PackBackgrounds). The answer key is the made-up data
 # itself: each cell of the map names a tile, a bank of colours and a turn, written here from each
 # console's hardware and not from VBlank's readers.
@@ -92,7 +92,7 @@ module PackBackgroundGames
   # The Advance's tiles of PLACES, as its cartridge keeps them.
   private def advance_tiles = PLACES.map(&LOW_HALF_FIRST).join
 
-  # A GAME BOY COLOR ORIGINAL, WHOSE MAP IS TWO MAPS: a byte a cell naming the tile, and a byte a
+  # A Game Boy Color original, whose map is two maps: a byte a cell naming the tile, and a byte a
   # cell of attributes, written here from the Color's hardware: the bank of four colours in bits 0
   # to 2, the bank of video memory in bit 3, mirrored in bit 5, upside down in bit 6, and the
   # priority in bit 7, which no background reads. Each bank of video memory holds COLOR_BANK_TILES
@@ -117,7 +117,7 @@ module PackBackgroundGames
   ColorScreen = Data.define(:video, :cells, :palette, :across)
   COLOR_SCREEN = ColorScreen.new(video: COLOR_VIDEO, cells: COLOR_CELLS, palette: COLOR_PALETTE, across: COLOR_ACROSS)
 
-  # A SCREEN IN +banks+ BANKS OF COLOURS, as a Color game's title is, whose tiles each draw only
+  # A screen in +banks+ BANKS OF COLOURS, as a Color game's title is, whose tiles each draw only
   # some of their bank's places: 1 and 2, 2 and 3, or 1 and 3, the rest see-through. Each bank is
   # drawn by two of them, one a row, and a few cells are turned. Its 32 colours are all different.
   SUBSET_VIDEO = [
@@ -197,7 +197,7 @@ module PackBackgroundGames
     Array.new(rows * 8) { |y| Array.new((color_screen.across + 1) * 8) { |x| screen.pixel(x, y) } }
   end
 
-  # THE ANSWER KEY: the same screen with each cell decoded here, from the Color's hardware, and
+  # The answer key: the same screen with each cell decoded here, from the Color's hardware, and
   # written in the game as a picture of 8x8 in its bank's colours, turned as the cell says.
   private def color_cells_drawn_by_hand(walked: false, color_screen: COLOR_SCREEN)
     b = VBlank::Builder.new
@@ -243,7 +243,7 @@ module PackBackgroundGames
   end
 end
 
-# A BACKGROUND FROM THE PACK, ITS PACK LEFT OUT: what the same games built with `pack_at_start:
+# A background from the pack, its pack left out: what the same games built with `pack_at_start:
 # true` hold when written out, and what a map the build never read does. That each plays as its
 # all-in-one build is the registry's (PackGames::Backgrounds, test/pack_games.rb).
 #

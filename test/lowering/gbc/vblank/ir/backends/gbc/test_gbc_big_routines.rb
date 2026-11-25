@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A ROUTINE BIGGER THAN A BANK. The Color sees its cartridge 16K at a time, and a routine has to be
+# A routine bigger than a bank. The Color sees its cartridge 16K at a time, and a routine has to be
 # in one bank whole, so a routine of the game's that comes to more than a bank is cut into parts,
 # each a routine of its own in whatever bank it fits, called where its statements stood
 # (Backends::RoutineCuts). The checked run holds every variable to the interpreter, so a part run

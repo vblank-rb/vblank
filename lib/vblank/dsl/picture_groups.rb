@@ -2,10 +2,20 @@
 
 module VBlank
   module DSL
-    # A SCENE'S SPRITE PICTURES IN GROUPS, handed back by `picture_groups`: a room's things,
-    # in a scene made of many rooms. The game sets which groups are up with #show, from
-    # numbers it works out — the room it is in, and the room beside while the screen slides.
+    # Sprite pictures in groups
+    #
+    # `picture_groups` puts a scene's sprite pictures in numbered groups, such as one group for
+    # each room of a scene made of many rooms. Only the groups that are up take sprite memory,
+    # so a scene can have many more pictures than the console holds at once. The game says
+    # which groups are up with #show, from numbers it works out: the room it is in, and the
+    # room beside while the screen slides.
+    #
+    # ```ruby
+    # rooms = picture_groups :rooms, { 0 => [:pot, :bush], 1 => [:pot, :chest] }, up_together: [[0, 1]]
+    # rooms.show room
+    # ```
     class PictureGroups
+      # The name the groups were given.
       attr_reader :name
 
       # +slots+ is how many groups can be up at once: the biggest set up_together names.
@@ -15,16 +25,16 @@ module VBlank
         @slots = slots
       end
 
-      # Set which groups are up from now on:
+      # Sets which groups are up from now on, and returns nil.
       #
-      #   rooms.show here            # one group up
-      #   rooms.show here, beside    # two, while the screen slides from one room to the next
+      # Give one number for each group to be up, as many as the biggest set in `up_together:`
+      # lets be up at once. Each is a number, a variable or an expression. A number naming no
+      # group is a room with no things of its own, and nothing of it is up.
       #
-      # Each is a number, a variable or an expression. A number naming no group is a room with
-      # no things of its own, and nothing of it is up.
-      #
-      # @param numbers [Array<Integer, Symbol, Value>] the groups up, as many as can be at once
-      # @return [nil]
+      # ```ruby
+      # rooms.show here            # one group up
+      # rooms.show here, beside    # two, while the screen slides from one room to the next
+      # ```
       def show(*numbers)
         refuse_count_of_groups!(numbers)
         refuse_fractions!(numbers)

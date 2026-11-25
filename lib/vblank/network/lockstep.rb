@@ -2,21 +2,21 @@
 
 module VBlank
   module Network
-    # ONE MACHINE'S SIDE OF A MATCH PLAYED IN LOCKSTEP.
+    # One machine's side of a match played in lockstep.
     #
-    # WHY LOCKSTEP. A game here is a plain machine: the same program, given the same buttons on the
+    # Why lockstep. A game here is a plain machine: the same program, given the same buttons on the
     # same passes, reaches the same state, every time, on every machine and in every lowering (that is
     # what the test suite proves, pass by pass). So two machines need not send each other the game.
     # Each runs the whole game, and they send only what a person did: each player's buttons for each
     # pass, a few numbers. A machine runs a pass only once it holds every player's buttons for it,
     # and so no machine is ever ahead of the others by more than the network is slow.
     #
-    # PASSES, NOT FRAMES. The match counts passes of the game: a machine that is slow to finish a
+    # Passes, not frames. The match counts passes of the game: a machine that is slow to finish a
     # pass makes every machine wait, and changes nothing in the game. The window may show fewer
     # pictures on that machine, but the game itself never skips a pass. Pass 1 sets the game up and
     # reads no buttons; pass 2 is the first that does.
     #
-    # THE INPUT DELAY. A person's buttons are read at the end of pass p, and cannot be used until
+    # The input delay. A person's buttons are read at the end of pass p, and cannot be used until
     # every other machine has them. So they are sent labelled for pass p + 1 + delay, and used then;
     # the passes in between use the buttons that were sent delay passes ago. With a delay of two
     # the network has two passes of game time to carry a message before any machine has to wait: a
@@ -24,16 +24,16 @@ module VBlank
     # for the match, the same on every machine, because machines that used different delays would use
     # different buttons on the same pass.
     #
-    # A MATCH IS: a handshake (Join, Welcome, Start: see Messages), then, at the end of each pass,
+    # A match is: a handshake (Join, Welcome, Start: see Messages), then, at the end of each pass,
     # one Buttons message from each machine, and every so many passes one Checkpoint (a CRC-32 of the
     # whole game state) that each machine compares with the others'. Machines that differ stop with a
     # Desync naming the pass.
     #
-    # A PLAYER WHO LEAVES is a message the room sends after the last message that player sent. Every
+    # A player who leaves is a message the room sends after the last message that player sent. Every
     # machine therefore knows the same last pass of that player's buttons, and from the pass after it
     # that player holds nothing, on every machine at once. Nobody waits for a player who has gone.
     #
-    # THE TRANSPORT is whatever carries messages. It answers send_message(message), receive_message
+    # The transport is whatever carries messages. It answers send_message(message), receive_message
     # (an Envelope, or nil when there is none yet), wait_for_message (returns once there is one, or
     # once the link is closed), id (the machine's number in the room, which is its player number),
     # close and closed?. A simulated network, a socket and a WebSocket each answer the same.
@@ -113,7 +113,7 @@ module VBlank
         self
       end
 
-      # THE BUTTONS FOR THE PASS THAT STARTS, given the end of pass +pass+, as one number a player
+      # The buttons for the pass that starts, given the end of pass +pass+, as one number a player
       # (IR::Buttons.masks). +local_mask+ is what this machine's player holds now; +game+ answers
       # state_crc, which is asked only when this pass is a checkpoint. Returns once every player who
       # is still in the match has sent their buttons for the pass; raises Desync when a checkpoint
@@ -223,7 +223,7 @@ module VBlank
         end
       end
 
-      # TRUST ONLY WHAT A SENDER MAY SAY. The room stamps who sent each message, so a machine cannot pass for
+      # Trust only what a sender may say. The room stamps who sent each message, so a machine cannot pass for
       # another, but any machine in the room can send any message. So what only the host decides (who is in, the
       # settings, the start) is taken from the host alone. Buttons and checkpoints are kept from anybody, since a
       # player's can come before the host's start does on a slower link, but only the players of the match are
@@ -295,11 +295,28 @@ module VBlank
           return if heard_everyone_for?(pass)
 
           if @transport.closed?
-            @roster.each { |each_player| record_departure(each_player) unless each_player == @player }
+            leave_cut_off_match
           else
             @transport.wait_for_message
           end
         end
+      end
+
+      # This machine's link to the room has closed in the match: the room went (a direct host is the room,
+      # so a host that went takes it along), or this machine's own link went. Either way the others are out
+      # of reach, and no message says which of their passes was their last.
+      #
+      # Where only the host was still in, nobody is left to disagree with: the host leaves after the last
+      # pass heard from it, and the game goes on here alone, as in a match of two whose host was closed.
+      # Where another player was still in, that player is cut off from the room too, or still plays with the
+      # host; either way each machine would pick its own last pass for the others, and their games would
+      # differ with nobody to see it. So the match stops on this machine (MatchCutOff), and on each other
+      # machine the room has gone from the same way.
+      def leave_cut_off_match
+        still_in = @roster.reject { |each_player| each_player == @player || @left_after.key?(each_player) }
+        raise MatchCutOff unless (still_in - [HOST_PLAYER]).empty?
+
+        still_in.each { |each_player| record_departure(each_player) }
       end
 
       # Whether every player still in the match has sent their buttons for +pass+.
@@ -373,6 +390,13 @@ module VBlank
           IR::Buttons::PLAYERS_NAMES[index].each_with_index.filter_map { |name, bit| name if mask[bit] == 1 }
         end
       end
+    end
+
+    # The link to the room closed in a match of three or more, so the players still in it cannot agree when
+    # the others left (Lockstep#leave_cut_off_match).
+    class MatchCutOff < StandardError
+      def initialize = super("The connection to the match closed. This computer cannot reach the other players now, " \
+                             "so the match stopped on this computer. To play again, start a new match.")
     end
 
     # The link to the room closed while a machine waited to be let into a match.

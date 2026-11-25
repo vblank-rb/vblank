@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A ROUTINE BIGGER THAN A BANK. The processor runs a routine inside one 32K bank of the cartridge —
+# A routine bigger than a bank. The processor runs a routine inside one 32K bank of the cartridge —
 # its program counter goes round to the start of the bank rather than on into the next — so a
 # routine of the game's that comes to more than that is cut into parts, each a routine of its own in
 # whatever bank it fits, called where its statements stood. The checked run holds every variable

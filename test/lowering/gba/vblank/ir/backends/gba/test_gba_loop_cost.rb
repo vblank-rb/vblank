@@ -3,7 +3,7 @@
 require "test_helper"
 require "loop_cost_games"
 
-# A TURN OF A LOOP ON THE ADVANCE, measured in the emulator: a `repeat`, and a game's `while i < n`
+# A turn of a loop on the Advance, measured in the emulator: a `repeat`, and a game's `while i < n`
 # with `i += 1` last, which the build lowers as a counted loop (Backends::LoopForm#counted_while,
 # Statements#emit_counted_while). The ARM's own way is a count in a register, ADD and CMP and a B
 # back, or a SUBS that is its own test (GBATEK, "ARM CPU Instruction Cycle Times"). A loop here keeps
@@ -23,6 +23,24 @@ class TestGBALoopCost < Minitest::Test
   def test_a_turn_of_repeat_read_costs_under_30_cycles = assert_turn_under(:repeat_read, 30)
   def test_a_turn_of_while_set_costs_under_10_cycles = assert_turn_under(:while_set, 10)
   def test_a_turn_of_while_read_costs_under_30_cycles = assert_turn_under(:while_read, 30)
+
+  # A search that asks each turn whether to `break` or go to its `next` round, a jump being one branch.
+  # Measured: 67 and 64 a turn while a jump set a hidden number that the loop's test and a test round
+  # the rest of the turn read; 12 and 47 as a branch. The `next` loop is not a counted while (its
+  # `i += 1` is not last), so its turn is a while's, asking its test of `i` in memory.
+  def test_a_turn_of_while_break_costs_under_14_cycles = assert_turn_under(:while_break, 14)
+  def test_a_turn_of_while_next_costs_under_50_cycles = assert_turn_under(:while_next, 50)
+
+  # A Ruby `times` folded into one loop, working four numbers out from its count each turn
+  # (`k * 3 + 1`, `k * 5 + 2`, `k + 7`, `100 - k`). Measured: 32 a turn, the loop running four
+  # copies of its body a turn (LoopForm.unrolled_copies) with k * 3 and k * 5 stepped in registers of
+  # their own (Statements#held_steps), so every number is one instruction from a register, as
+  # written out it is one from the instruction itself; 38 while each was worked out from the count
+  # every round. Written out, the same rounds measure 19 a round here. The profile reads a turn by
+  # sampling, which reads straight-line code low: counted exactly, in the cycles the processor was
+  # busy a frame, a round is 30 folded and 27 written out, a turn's add, compare, branch and steps
+  # shared by four rounds.
+  def test_a_turn_of_folded_steps_costs_under_34_cycles = assert_turn_under(:steps, 34)
 
   private def assert_turn_under(loop, bound)
     cost = LoopCostGames.cycles_a_turn(:gba, loop, FRAME_CYCLES)

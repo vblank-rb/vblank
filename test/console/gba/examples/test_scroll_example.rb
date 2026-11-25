@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/scroll").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/scroll").to_s)
 
 # Where the lake is, shared with the cartridge's tests
 # (test/lowering/gba/examples/test_scroll_example_cartridge.rb).

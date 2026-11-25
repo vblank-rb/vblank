@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # ONE PROGRAM, WRITTEN OUT FOR A COMPUTER, as a tree of statements (Statements): globals,
+        # One program, written out for a computer, as a tree of statements (Statements): globals,
         # routines, tables of numbers, and calls into a runtime. Make one per program, as a build's
         # own lowering (Native::Lowering writes the tree as C, JS::Lowering as JavaScript,
         # Ruby::Lowering as Ruby), and ask it for the text. Each build supplies #build_name, what a
@@ -21,6 +21,7 @@ module VBlank
         # carries on from where it stopped: Resumable), and
         # rg_game_dump_state, which a test build uses to print where every variable and list stands.
         class Lowering
+          include BendSchedule
           include Picture
           include Sound
           include Saving
@@ -37,13 +38,14 @@ module VBlank
                                               and: "rg_both", or: "rg_either"
                                             })
 
-          # EVERY KIND THIS LOWERING WRITES, each by a method of its own called by name in #lower and
+          # Every kind this lowering writes, each by a method of its own called by name in #lower and
           # #value_by_kind; read by test_native_kind_coverage.rb and #refuse_unlowered_kinds!. A
           # declaration writes nothing where it is (#lower_nothing).
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp if loop repeat every after call call_one_of
-            case halt wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
-            list_set list_fill list_copy list_sort screen clear_screen fill_rect dma_fill_rect draw_rect_at
+            program set add sub copy negate abs negate_abs clamp if loop repeat break_repeat next_repeat every after call
+            call_one_of
+            case halt stop_full wait_vblank timer_start timer_stop on_timer set_clock list_new list_push list_drop
+            list_set list_fill list_copy list_sort list_pack screen clear_screen fill_rect draw_rect_at
             pixel draw_text draw_digit inside camera blit blit_pose draw_column_at draw_place fill_face
             save_region restore_region background affine_background scroll_background place_bar box_background
             scroll_rows shade_outside show_light_now set_tile set_tile_block show_map show_held_tiles background_colors
@@ -67,12 +69,15 @@ module VBlank
             when :if then lower_if(node)
             when :loop then lower_loop(node)
             when :repeat then lower_repeat(node)
+            when :break_repeat then [Statements::Break.new]
+            when :next_repeat then lower_next_repeat(node)
             when :every then lower_every(node)
             when :after then lower_after(node)
             when :call then lower_call(node)
             when :call_one_of then lower_call_one_of(node)
             when :case then lower_case(node)
             when :halt then lower_halt(node)
+            when :stop_full then lower_stop_full(node)
             when :wait_vblank then lower_wait_vblank(node)
             when :timer_start then lower_timer_start(node)
             when :timer_stop then lower_timer_stop(node)
@@ -85,10 +90,10 @@ module VBlank
             when :list_fill then lower_list_fill(node)
             when :list_copy then lower_list_copy(node)
             when :list_sort then lower_list_sort(node)
+            when :list_pack then lower_list_pack(node)
             when :screen then lower_screen(node)
             when :clear_screen then lower_clear_screen(node)
             when :fill_rect then lower_fill_rect(node)
-            when :dma_fill_rect then lower_dma_fill_rect(node)
             when :draw_rect_at then lower_draw_rect_at(node)
             when :pixel then lower_pixel(node)
             when :draw_text then lower_draw_text(node)
@@ -150,7 +155,7 @@ module VBlank
           end
 
           VALUE_KINDS = %i[
-            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed
+            int var_ref binop neg bit_not absolute clamped mul_fix div_fix shift_right held pressed pulled
             players_connected local_player chance table_get data_byte list_get list_len timer_ticks clock
             pixels_overlap save_read save_sum
           ].freeze
@@ -169,6 +174,7 @@ module VBlank
             when :shift_right then value_of_shift_right(node)
             when :held then value_of_held(node)
             when :pressed then value_of_pressed(node)
+            when :pulled then value_of_pulled(node)
             when :players_connected then value_of_players_connected(node)
             when :local_player then value_of_local_player(node)
             when :chance then value_of_chance(node)
@@ -185,7 +191,7 @@ module VBlank
             end
           end
 
-          # EVERY KIND THIS BACKEND CANNOT WRITE YET, listed rather than found out. Native
+          # Every kind this backend cannot write yet, listed rather than found out. Native
           # trails the other two backends, so a kind may be missing here — but only on this list,
           # which test_native_kind_coverage.rb holds against every kind there is. A kind leaves
           # the list the day it joins STATEMENT_KINDS or VALUE_KINDS.
@@ -194,20 +200,18 @@ module VBlank
           # How many bytes a slot of a list takes, by the width it was declared with.
           SLOT_BYTES = Ractor.make_shareable({ byte: 1, half: 2, word: 4, nil => 4 })
 
-          # +title+ is the game's name, for the window.
-          def initialize(program, title: "VBlank")
+          # +title+ is the game's name, for the window. +seeded+ writes the routine that adds a seed to
+          # the game's random numbers (#mix_seed) for a game of one player too, for a windowless program
+          # handed a seed of a playing's own.
+          def initialize(program, title: "VBlank", seeded: false)
             @program = program
             @title = title
+            @seeded = seeded
             @names = Names.new
             @locals = 0
             @funcs = by_name(program.walk, :func)
-            # The bend each background's rows are given: the last one written for it, wherever
-            # that is, since it stands from power-on (Reference#collect_definitions), in the
-            # order the bends are first written, which is the order they are worked out in. One
-            # written for a background the game does not have is never asked for.
-            written = by_name(program.walk, :scroll_rows)
-            declared = by_name(program.walk, :background)
-            @bends = written.select { |name, _| declared.key?(name) }
+            # The bend each background's rows are given (RowBends), in the order they are worked out.
+            @bends = RowBends.new(program)
             # The game's light: the last one written, wherever, since it stands from power-on
             # (Reference#collect_definitions), or nil for a game with none.
             @shade = program.walk.select { |node| node.kind == :shade_outside }.last
@@ -226,7 +230,7 @@ module VBlank
             # what each bend runs as its lines are worked out. A routine nothing calls is left
             # out of the file altogether, so nothing in it (a table it reads, a routine it calls)
             # can leave something declared and unused.
-            @reachable = statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@bends.values,
+            @reachable = statements_from(program, *@called.map { |name| @funcs.fetch(name) }, *@bends.nodes,
                                          *@tick_handlers.values)
             @tables = by_name(program.walk, :table)
             @shadings = by_name(program.walk, :shading)
@@ -263,7 +267,7 @@ module VBlank
           # How many bytes each type an array can be written in takes.
           ARRAY_TYPE_BYTES = Ractor.make_shareable({ "int8_t" => 1, "uint8_t" => 1, "int16_t" => 2, "uint16_t" => 2, "int32_t" => 4 })
 
-          # THE BYTES THE GAME SETS ASIDE FOR WHAT THE START FILE FILLS (Statements::StartFileArray): the
+          # The bytes the game sets aside for what the start file fills (Statements::StartFileArray): the
           # tables, colours and numbers a build that reads its pack as the game starts keeps while it runs,
           # in whichever language it is written. The written game names only their sizes, so what it holds
           # at run time is not in its length. Public for the tests of what such a build costs
@@ -272,12 +276,19 @@ module VBlank
             top_level.sum { |item| item.is_a?(Statements::StartFileArray) ? item.count * ARRAY_TYPE_BYTES.fetch(item.type) : 0 }
           end
 
-          # THE BYTES OF ROOM THE GAME MAKES AS IT STARTS FOR THE SPRITE PICTURES THE START FILE FILLS
+          # The bytes of room the game makes as it starts for the sprite pictures the start file fills
           # (StartFileFills#build_start_file_pixel_room), which the written game names only by size.
           # Public for the same tests; asking lowers the program.
           def start_file_image_room_bytes
             top_level
             (@image_pixel_count - @image_pixels_held) * ARRAY_TYPE_BYTES.fetch("int16_t")
+          end
+
+          # The bytes of room the game makes as it starts for the background tiles the start file fills,
+          # the same way. Public for the same tests; asking lowers the program.
+          def start_file_tile_room_bytes
+            top_level
+            (@tile_pixel_count - @tile_pixels_held) * ARRAY_TYPE_BYTES.fetch("uint16_t")
           end
 
           private
@@ -295,11 +306,42 @@ module VBlank
           # Every routine that can wait for a frame is then made resumable (Resumable), so the place
           # the game has reached is in its globals between frames, in every language it is printed in.
           def top_level
-            items = Resumable.new(top_level_items).items
+            items = Resumable.new(top_level_items).items.map { |item| without_repeated_comments(item) }
             [*items, Statements::Function.new(name: @names.own("visit_state"), body: visit_state(items), exported: true)]
           end
 
-          # THE GAME'S HALF OF THE STATE IMAGE (runtime/rg_state.h): every global the build wrote and every
+          # A routine with each comment naming where in the game its statements were written left
+          # out where the comment before it, read down the routine, already names the same line. A
+          # Ruby loop in a game makes many statements from one line, and the comment above the first
+          # stands for the rest. Each resumable step starts afresh, since a printer may write a step
+          # as a function of its own.
+          def without_repeated_comments(item)
+            return item unless item.is_a?(Statements::Function)
+
+            item.with(body: comments_once(item.body, [nil]))
+          end
+
+          # +last+ holds the comment last kept, shared by every body read after it in the routine.
+          def comments_once(body, last)
+            body.filter_map do |statement|
+              case statement
+              when Statements::Comment
+                next if statement == last[0]
+
+                last[0] = statement
+              when Statements::If
+                statement = statement.with(body: comments_once(statement.body, last),
+                                           otherwise: comments_once(statement.otherwise, last))
+              when Statements::While, Statements::Block
+                statement = statement.with(body: comments_once(statement.body, last))
+              when Statements::Steps
+                statement = statement.with(steps: statement.steps.map { |step| comments_once(step, [nil]) })
+              end
+              statement
+            end
+          end
+
+          # The game's half of the state image (runtime/rg_state.h): every global the build wrote and every
           # list, found among the finished top level, so a global added anywhere in the lowering, a
           # routine's place and locals among them (Resumable), is in the image without being named
           # here. A global is a field of one number, "game." and its name; a list is "list." and the
@@ -348,13 +390,13 @@ module VBlank
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [Statements::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *tables, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
+             *tables, *picked_tile_arrays, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| Statements::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
              *routines, *answers, main, *start_file_routines,
              Statements::Function.new(name: @names.own("dump_state"), body: dump_state, exported: true),
-             *(@program.several_players? ? [Statements::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
+             *(@program.several_players? || @seeded ? [Statements::Function.new(name: @names.own("mix_seed"), body: mix_seed, exported: true)] : [])]
           end
 
           # The game's name as a C string. A character outside plain ASCII is written as '?', since
@@ -376,7 +418,7 @@ module VBlank
           # window, the Ruby window and the web page read it: only a game for two or more gives
           # player 2 keys and each gamepad a player of its own (rg_seats.h, Live::Seats).
           def seats_array
-            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.most_players || 0], exported: true)
+            Statements::ConstArray.new(name: @names.own("seats"), type: "int32_t", values: [@program.max_players || 0], exported: true)
           end
 
           # A program that waits for frames shows nothing until its first frame is set up
@@ -392,7 +434,7 @@ module VBlank
           def statements_under(root) = Reach.statements_under(root)
           def statements_from(*roots) = Reach.statements_from(*roots)
           def routines_named(nodes) = Reach.routines_named(nodes)
-          def called_routines = Reach.routines(@program, also: [*@bends.values, *@tick_handlers.values])
+          def called_routines = Reach.routines(@program, also: [*@bends.nodes, *@tick_handlers.values])
           def variable_names = @variable_names ||= (Reach.variables(@program) + loop_variables).uniq
 
           def by_name(nodes, *kinds) = nodes.select { |node| kinds.include?(node.kind) }.to_h { |node| [node.name, node] }
@@ -401,7 +443,8 @@ module VBlank
           # match's shared seed (rg_match_seed, nought when the game is played alone) to the game's random
           # numbers: what makes the colours `rand` picks differ from one match to the next and agree within one.
           # A game that never draws one has an empty routine, and a game for one player has none at all, so it
-          # builds as it did before matches were played.
+          # builds as it did before matches were played, unless it is built for a playing's own seed
+          # (+seeded+), which the windowless C program adds the same way (`--seed`, rg_headless.c).
           def mix_seed
             stream = Builder::Randomness::RNG_STATE
             return [] unless variable_names.include?(stream)
@@ -471,13 +514,14 @@ module VBlank
           def list_storage
             @lists.values.map do |node|
               Statements::ListStorage.new(name: list(node.name), items: @names.of(:list, "#{node.name}.items"),
-                                 capacity: node.capacity, width: slot_place(node.name).width, label: node.name.to_s)
+                                 capacity: list_capacities.fetch(node.name).max, width: slot_place(node.name).width,
+                                 label: node.name.to_s)
             end
           end
 
           # --- pools (Backends::PoolLayout) ---
           #
-          # A POOL IS KEPT IN THE LAYOUT ITS PLACEMENT GIVES, and these builds keep every pool AS LISTS,
+          # A pool is kept in the layout its placement gives, and these builds keep every pool as lists,
           # whatever layout the game names for the console it is made as: a list of the runtime's for
           # each of the pool's lists (runtime/rg_list.h), each item as wide as the list. A layout is
           # where a cartridge keeps a pool in the console's memory so its processor reaches a field
@@ -667,7 +711,7 @@ module VBlank
 
           # A counted loop. The count is read once, before the first pass, as the interpreter
           # reads it; the index counts 0, 1, 2... and is stored in the game's variable at the
-          # top of each pass; and +stop_when+ is asked BEFORE the body, so a loop already
+          # top of each pass; and +stop_when+ is asked before the body, so a loop already
           # finished on its first pass runs the body no times.
           def lower_repeat(node)
             count = local_name("count")
@@ -675,12 +719,26 @@ module VBlank
             pass = []
             pass << assign(node.index, index) if node.index
             pass << Statements::If.new(condition: value(node.stop_when), body: [Statements::Break.new]) if node.stop_when
-            pass.concat(body_of(node))
-            pass << Statements::Assign.new(index, call("rg_add", index, Statements::Int.new(1)))
+            repeat_indexes.push(index)
+            begin
+              pass.concat(body_of(node))
+            ensure
+              repeat_indexes.pop
+            end
+            pass << next_turn(index)
             [Statements::Block.new([Statements::Local.new(name: count, value: value(node.count)),
                            Statements::Local.new(name: index, value: Statements::Int.new(0)),
                            Statements::While.new(condition: call("rg_lt", index, count), body: pass)])]
           end
+
+          # Ruby's `next` in a repeat (IR::LoopJumps): the innermost loop's index steps on, as the end of
+          # its turn would, and the loop goes back to its test.
+          def lower_next_repeat(_node) = [next_turn(repeat_indexes.last), Statements::Continue.new]
+
+          def next_turn(index) = Statements::Assign.new(index, call("rg_add", index, Statements::Int.new(1)))
+
+          # The index locals of the repeats being lowered, the innermost last.
+          def repeat_indexes = (@repeat_indexes ||= [])
 
           # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
           def lower_beat(node) = Frames.beat_statements(node).flat_map { |statement| lower(statement) }
@@ -704,7 +762,7 @@ module VBlank
                            Statements::If.new(condition: in_range, body: [eval_call("rg_call_routine", picked)])])]
           end
 
-          # Picks the scene to run by the variable, read ONCE: a scene usually ends by setting
+          # Picks the scene to run by the variable, read once: a scene usually ends by setting
           # the variable to the next scene, and reading it again per clause would run that one
           # too, in the same pass.
           def lower_case(node)
@@ -745,6 +803,12 @@ module VBlank
                         body: statements_of(order.pass_end, order: order))
             end
             [*ends, eval_call("rg_halt")]
+          end
+
+          # Reference#exec_stop_full: the runtime faults in the words a push onto a full list does.
+          def lower_stop_full(node)
+            [eval_call("rg_stop_full", Statements::Text.new(node.name.to_s), Statements::Int.new(node.capacity),
+                       Statements::Int.new(node.in_walk ? 1 : 0))]
           end
 
           # Reference#exec_rumble. A desktop or a web page shakes no gamepad yet, but the runtime
@@ -823,8 +887,21 @@ module VBlank
 
           # --- lists (runtime/rg_list.h does the work and the checking) ---
 
+          # A list declared with several capacities (#list_capacities) takes this declaration's
+          # first; its storage has room for the most of them (#list_storage).
           def lower_list_new(node)
-            [node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)]
+            made = node.full_of ? list_call("rg_list_full", node, Statements::Int.new(node.full_of)) : list_call("rg_list_empty", node)
+            return [made] unless list_capacities.fetch(node.name).length > 1
+
+            [list_call("rg_list_set_capacity", node, Statements::Int.new(node.capacity)), made]
+          end
+
+          # The capacities each list is declared with, by name: one, or several where scenes declare a
+          # list of one name each their own way. Each declaration makes the list anew at its own
+          # capacity (Reference#exec_list_new), as LoweringPlan#list_capacities says for the cartridges.
+          def list_capacities
+            @list_capacities ||= @reachable.select { |node| node.kind == :list_new }
+                                           .group_by(&:name).transform_values { |made| made.map(&:capacity).uniq }
           end
           def lower_list_push(node) = [list_call(item_access_function("rg_list_push", node.name), node, value(node.value))]
           def lower_list_drop(node) = [list_call("rg_list_drop", node, Statements::Int.new(node.from == :front ? 1 : 0))]
@@ -834,16 +911,20 @@ module VBlank
             [list_call("rg_list_fill", node, value(node.from), value(node.count), value(node.value))]
           end
 
-          # A copy into the list of a run that shows only where a cell of the file is pointed at it
-          # is made only once one is (StartFileFills#made_where_run_pointed).
+          # A copy into the list of runs that show only where a cell of the file is pointed at them
+          # is made only once one is (StartFileFills#made_where_any_run_pointed).
           def lower_list_copy(node)
             table = @tables.fetch(node.table)
             kept = TABLE_KEPT_AS.fetch(table_type(table))
             copy = list_call("rg_list_copy", node, @names.of(:table, node.table), Statements::Int.new(kept), Statements::Int.new(table.entry_count),
                              value(node.at), Statements::Int.new(node.count))
-            run = run_painted_from(node.name)
-            [run ? made_where_run_pointed(run.name, copy) : copy]
+            runs = runs_painted_from(node.name)
+            [runs.empty? ? copy : made_where_any_run_pointed(runs.map(&:name), copy)]
           end
+
+          # Reference#exec_list_pack, written as the loop it stands for: a computer sets a byte in a
+          # few instructions, so a routine of its own would save little.
+          def lower_list_pack(node) = ListPacking.loops_for(node).flat_map { |loop| lower(loop) }
 
           # Reference#exec_list_sort, as one call: the runtime sorts the list in place by the
           # numbers +by+ holds, stably.
@@ -851,6 +932,8 @@ module VBlank
           # With +shown+, whether each place shows is written into an array of its own first, a place
           # at a time, and the runtime puts every item not showing behind the rest.
           def lower_list_sort(node)
+            return node.children.flat_map { |child| lower(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
             by = Statements::AddressOf.new(list(node.by))
             descending = Statements::Int.new(node.descending ? 1 : 0)
             return [list_call("rg_list_sort", node, by, descending)] unless node.shown
@@ -903,7 +986,7 @@ module VBlank
           end
           def value_of_shift_right(node) = call("rg_shr", value(node.operand), Statements::Int.new(node.bits))
 
-          # A READING OF THE CARTRIDGE'S CLOCK, asked of the runtime by its place in
+          # A reading of the cartridge's clock, asked of the runtime by its place in
           # IR::Clock::READINGS. Where the time comes from is the runtime's driver's to set: the
           # computer's clock in a window, the test's moment with none (rg_driver.h).
           #
@@ -916,7 +999,7 @@ module VBlank
 
           def sets_clock? = @sets_clock.nil? ? (@sets_clock = IR::Clock.sets_clock?(@program)) : @sets_clock
 
-          # SETTING THE CLOCK: the runtime works out how far the time set is from its clock's, and
+          # Setting the clock: the runtime works out how far the time set is from its clock's, and
           # the game keeps the two parts in its saved numbers (Reference#exec_set_clock).
           def lower_set_clock(node)
             parts = [node.year, node.month, node.day, node.hour, node.minute, node.second].map { |part| value(part) }
@@ -927,6 +1010,17 @@ module VBlank
 
           def value_of_held(node) = button_call("rg_held", node)
           def value_of_pressed(node) = button_call("rg_pressed", node)
+
+          # How far a button is pulled. A build for a computer asks the runtime about a gamepad's
+          # triggers, which the window hands it part pulled (IR::Buttons.pull_shift); every other
+          # button, and every button of a build for a cartridge, is all or nothing, as the
+          # interpreter answers it (Reference#value_of_pulled).
+          def value_of_pulled(node)
+            return value(Build.pulled_as_held(node)) unless @program.for_computer && Buttons::PULLED_BUTTONS.include?(node.button)
+
+            call("rg_pulled", Statements::Int.new(button_number(node.button)), Statements::Int.new(Buttons.pull_shift(node.button)),
+                 Statements::Int.new(node.player))
+          end
 
           # The first player's button is a bit to look at. Anything that names another player asks
           # the runtime about that player's buttons, by number (0 for any connected player), and a

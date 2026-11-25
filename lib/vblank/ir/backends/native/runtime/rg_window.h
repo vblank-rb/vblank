@@ -1,12 +1,12 @@
 /*
- * WHAT A PLAYER DOES TO THE WINDOW, as plain functions: pause, step a frame, fast forward,
+ * What a player does to the window, as plain functions: pause, step a frame, fast forward,
  * fullscreen, window size, volume and mute, which key and gamepad button is each console button,
  * the hotkeys, and the settings file that remembers it all.
  *
- * There is no SDL in this file and no Dear ImGui, and no window to open: it keeps the window's
- * settings and answers questions about them. The menu (rg_menu.cpp) is a thin layer that draws
- * these and calls these; a hotkey calls the very function its menu item calls; rg_sdl.c reads the
- * answers and does what they ask for to the real window, the speaker and the clock. Nothing the
+ * There is no SDL in this file, and no window to open: it keeps the window's settings and answers
+ * questions about them. The menu (rg_window_menu.c) is a thin layer that draws these and calls
+ * these; a hotkey calls the very function its menu item calls; rg_sdl.c reads the answers and does
+ * what they ask for to the real window, the speaker and the clock. Nothing the
  * window can do lives only in the menu. That is what lets all of it be tested with no window
  * (test_native_window.rb), as rg_pacing.h and rg_save.c are.
  *
@@ -26,8 +26,8 @@ extern "C" {
 #endif
 
 /* Every console's buttons, in the order rg_runtime.h numbers them (IR::Buttons::NAMES): a, b,
- * select, start, right, left, up, down, r, l, x, y, c. */
-#define RG_WINDOW_BUTTONS 13
+ * select, start, right, left, up, down, r, l, x, y, c, l2, r2. */
+#define RG_WINDOW_BUTTONS 15
 /* Keys a button may have: Right Shift and Backspace are both Select by default. */
 #define RG_WINDOW_KEYS_A_BUTTON 2
 /* Gamepad buttons a button may have: the one it starts on, and one the game adds (a player's
@@ -67,7 +67,13 @@ const char *rg_window_hotkey_name(int hotkey);
 const char *rg_window_pad_button_name(int pad_button);
 const char *rg_window_button_setting(int button);
 const char *rg_window_hotkey_setting(int hotkey);
-#define RG_WINDOW_PAD_BUTTONS 15 /* the ones a standard gamepad has: face, back, start, sticks, shoulders, d-pad */
+/* The ones a standard gamepad has: face, back, start, sticks, shoulders, d-pad, and then its two
+ * triggers. A trigger is an axis to SDL, not a button, so the window gives each a number after SDL's
+ * fifteen (IR::ComputerControls::PADS): it is down from RG_TRIGGER_HELD_FROM percent pulled
+ * (rg_console.h). */
+#define RG_WINDOW_PAD_BUTTONS 17
+#define RG_PAD_LEFT_TRIGGER 15
+#define RG_PAD_RIGHT_TRIGGER 16
 
 /* --- pause, step and fast forward --- */
 
@@ -148,7 +154,7 @@ void rg_window_set_show_frame_time(int on);
 void rg_window_toggle_frame_time(void);
 int rg_window_shows_frame_time(void);
 
-/* The frame rate is how many frames of the GAME were played a second, so fast forward shows its
+/* The frame rate is how many frames of the game were played a second, so fast forward shows its
  * speed and a pause shows none. Every frame played is noted with the time it ended and how long the
  * game worked in it (both in nanoseconds), whether or not either is shown. What is asked for is
  * the last half second's: frames a second (0 for a game that has stopped), and the game's work in
@@ -157,8 +163,9 @@ void rg_window_frame_played(uint64_t now_ns, uint64_t work_ns);
 double rg_window_frames_a_second(uint64_t now_ns);
 double rg_window_frame_work_ms(uint64_t now_ns);
 
-/* Windows over the picture that can be open at once: the controls (keys, gamepad buttons and hotkeys) and the game's variables. */
-typedef enum { RG_PANEL_CONTROLS, RG_PANEL_VARIABLES, RG_PANEL_COUNT } rg_panel;
+/* Windows over the picture that can be open while the game plays: the game's variables
+ * (rg_window_menu.h draws it). */
+typedef enum { RG_PANEL_VARIABLES, RG_PANEL_COUNT } rg_panel;
 void rg_window_show_panel(int panel, int shown);
 int rg_window_panel_shown(int panel);
 /* What a panel is called in a script (--scripted-keys) and in the menu; -1 for no such panel. */
@@ -167,7 +174,7 @@ int rg_window_panel_named(const char *name);
 
 /* --- keys and gamepad buttons --- */
 
-/* THE BUTTONS THE GAME'S CONSOLE HAS, a bit each in the order above (RG_CONSOLE_BUTTONS, which
+/* The buttons the game's console has, a bit each in the order above (RG_CONSOLE_BUTTONS, which
  * Computer::ConsoleNumbers writes), given before rg_window_use_defaults; the Advance's ten until
  * then. Only they are read, shown in the menu and checked for a key two of them share. A button the
  * console lacks keeps its keys and gamepad buttons, here and in the settings file, for a game of a
@@ -188,7 +195,7 @@ int rg_window_pad_button(int button, int slot);
 /* The menu's words for a console button: its keys and its gamepad buttons, "X, D / east, west". */
 void rg_window_button_text(int button, char *text, size_t room);
 
-/* THE GAME'S OWN KEYS AND GAMEPAD BUTTONS (Builder::Input#computer_keys and #computer_gamepad),
+/* The game's own keys and gamepad buttons (Builder::Input#computer_keys and #computer_gamepad),
  * added to VBlank's layout: the list the game is built with (rg_game_controls, laid out as
  * IR::ComputerControls.runtime_numbers says), given before rg_window_use_defaults, and kept, not copied.
  * They are where the window starts, where Reset puts things back, and they are added again after
@@ -317,20 +324,22 @@ void rg_window_mark_settings_written(void);
 void rg_window_mark_settings_write_failed(void);
 #define RG_SETTINGS_QUIET_NS 500000000ull
 
-/* The sentences about the settings file as it was read. The controls panel shows them, and the
- * menu shows them over the picture as the window opens until the player has seen them, since a
- * player who opened the game by double-clicking it has no terminal to read. */
+/* The sentences about the settings file as it was read. The menu shows them over the picture as
+ * the window opens until the player has seen them (rg_window_menu_answer_messages), since a player
+ * who opened the game by double-clicking it has no terminal to read. */
 void rg_window_set_problems(const char *text);
 const char *rg_window_problems(void);
 int rg_window_problems_unseen(void);
 void rg_window_mark_problems_seen(void);
 
-/* WHAT A SHELL TELLS THE PLAYER (a file that is no copy the game reads, an unpacking that
- * stopped), shown in a box over the picture until the player closes it or presses a button. The
- * box is drawn by the window with everything else it draws, so nothing waits for it: the shell's
- * menu plays on under it, and a box nobody answers holds nothing up. Empty for none. */
-void rg_window_tell(const char *words);
+/* What the window tells the player (a file a shell refused, an unpacking that stopped, a save
+ * file that is not the game's, a game that stopped on a fault), shown in a box over the picture
+ * under +title+ until the player presses a button. The box is drawn by the window with everything
+ * else it draws, so nothing waits for it: a shell's menu plays on under it, and a box nobody
+ * answers holds nothing up. What happens once it is answered is the teller's. Empty for none. */
+void rg_window_tell(const char *title, const char *words);
 const char *rg_window_told(void);
+const char *rg_window_told_title(void);
 void rg_window_clear_told(void);
 
 #ifdef __cplusplus

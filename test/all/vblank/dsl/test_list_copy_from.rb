@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A RUN OF A TABLE COPIED INTO A LIST AT ONCE: `list.copy_from(table, at: start, count: n)`.
+# A run of a table copied into a list at once: `list.copy_from(table, at: start, count: n)`.
 # The table is pictures or text built into the cartridge, the start is worked out as the game
 # runs (which letter, which frame), and the list then holds exactly those n entries. A loop of
 # `list[i] = table[start + i]` says the same thing a byte at a time; this is one copy.
@@ -88,7 +88,7 @@ class TestListCopyFrom < Minitest::Test
       /table :t has 2/ => -> { list(:l, capacity: 4, width: :byte).copy_from table(:t, [1, 2], width: :byte), at: 0, count: 3 },
       /capacity of 3/ => -> { list(:l, capacity: 2, width: :byte).copy_from table(:t, [1, 2, 3], width: :byte), at: 0, count: 3 },
       /same `width:`/ => -> { list(:l, capacity: 4).copy_from table(:t, [1, 2], width: :byte), at: 0, count: 2 },
-      /holds numbers with a fraction. The list holds whole numbers/ =>
+      /holds numbers with a fraction. `list :l` holds whole numbers/ =>
         -> { list(:l, capacity: 4).copy_from table(:t, [1.5, 2.5]), at: 0, count: 2 },
       /`at:` holds a fraction/ =>
         -> { list(:l, capacity: 4, width: :byte).copy_from table(:t, [1, 2], width: :byte), at: var(:f, 1.5), count: 2 },

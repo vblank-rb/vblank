@@ -33,7 +33,7 @@ module Preview
       shots << { width: interp.screen.width, height: interp.screen.height, pixels: interp.screen.to_a }
     end
     # The frame count is the stop condition, so a heavy game gets every frame asked for; the
-    # step budget rides along as the guard on ONE frame (a game loop that never comes round).
+    # step budget rides along as the guard on one frame (a game loop that never comes round).
     interp.run(program, frames: frames, max_steps: max_steps)
     shots
   end

@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# A SONG PART THAT PLAYS A RECORDED INSTRUMENT, on every console whose build mixes recordings for its
+# A song part that plays a recorded instrument, on every console whose build mixes recordings for its
 # songs: the Advance's and the Super Nintendo's (the Color plays one recording at a time, and refuses
 # a song that plays one). Each console's folder has a test file that includes these, so they are
 # written once and played on every run that plays games as either console:
@@ -106,7 +106,7 @@ module SongInstrumentsTests
     assert_equal [:piano], seen[25], "the next note plays it again"
   end
 
-  # A RECORDED PART CAN SIT TO ONE SIDE, the whole part or a note of it, and its notes sound as they
+  # A recorded part can sit to one side, the whole part or a note of it, and its notes sound as they
   # do from the middle. What each speaker hears of it is each console's: the Super Nintendo's voice
   # volumes are in test/lowering/snes/vblank/ir/backends/snes/test_snes_recorded_pan.rb.
   def test_a_recorded_part_that_sits_to_one_side_plays_its_notes
@@ -176,7 +176,7 @@ module SongInstrumentsTests
                  "all of them the game's, the part resting"
   end
 
-  # THE MOMENT THE VOICES RUN OUT: every voice is the game's when the part's note comes, so the
+  # The moment the voices run out: every voice is the game's when the part's note comes, so the
   # note takes the voice of the game's sound that has played longest.
   def test_a_note_with_no_voice_free_takes_the_one_the_game_started_first
     assert_equal [:piano] + clip_names(1...VOICES), game_player.run(note_after_the_burst, frames: 40).active_samples,

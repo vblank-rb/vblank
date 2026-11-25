@@ -192,10 +192,7 @@ class TestGenesisCheckedRun < Minitest::Test
       scene(:title) { ticks += 1; state = 1 if ticks > 3 }
       scene(:play) { ticks += 10; if ticks > 50 then state = 0; ticks = 0 end }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
 
@@ -308,7 +305,7 @@ class TestGenesisCheckedRun < Minitest::Test
     assert_equal 0, run[:n]
   end
 
-  # A STAND-IN FOR A RUNTIME THAT LETS THE SCREEN COME ON WHILE IT SETS UP: the video chip's second
+  # A stand-in for a runtime that lets the screen come on while it sets up: the video chip's second
   # mode register reads with the screen bit set, where the real cartridge still has it clear. The run
   # reports the picture Genesis Plus GX shows, not the interpreter's switched-off white, so a check
   # against the interpreter would fail.

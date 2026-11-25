@@ -5,7 +5,7 @@ require "test_helper"
 # Defined by a file of this project outside the part's folder and outside the folder that loads it.
 PART_REFUSALS_PROJECT_NUMBER = 7
 
-# A FILE OF A GAME IS CHECKED AS A GAME BLOCK IS. A part brought in by `VBlank.require_game_file`
+# A file of a game is checked as a game block is. A part brought in by `VBlank.require_game_file`
 # that calls outside the game, or uses a constant from outside it, is refused with the words the
 # same line in a game block gets.
 class TestPlainRubyPartRefusals < Minitest::Test

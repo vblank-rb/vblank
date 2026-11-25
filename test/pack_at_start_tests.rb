@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original"
 require "made_up_original_layouts"
 
-# SEARCHING WRITTEN-OUT CODE FOR THE ORIGINAL'S BYTES. A program written as C, JavaScript or Ruby
+# Searching written-out code for the original's bytes. A program written as C, JavaScript or Ruby
 # holds an array as its numbers, in order, or (JavaScript's and Ruby's past a few hundred entries)
 # as base64 text of its bytes packed as the array's kind keeps them. So the search reads both:
 # every whole number in the text, in order, and every run of base64 decoded and unpacked each way
@@ -43,7 +43,7 @@ module WrittenOutSearch
   end
 end
 
-# AN ORIGINAL FROM ANOTHER CONSOLE, ITS PACK LEFT OUT (MadeUpOriginalLayouts, made_up_original_layouts.rb):
+# An original from another console, its pack left out (MadeUpOriginalLayouts, made_up_original_layouts.rb):
 # each console's layout written out with none of the made-up original's bytes in it. That each is
 # played as its all-in-one build plays is the registry's (PackGames::Layouts, test/pack_games.rb).
 module PackAtStartLayoutTests
@@ -94,7 +94,7 @@ module PackAtStartLayoutTests
   end
 end
 
-# THE GAMES OF THE MADE-UP ORIGINAL THAT DRAW FROM THE PACK, kept once for PackAtStartTests and for
+# The games of the made-up original that draw from the pack, kept once for PackAtStartTests and for
 # the registry of games held to their all-in-one builds (PackGames::Pictures, test/pack_games.rb).
 module PackAtStartPictures
   include MadeUpOriginal
@@ -102,7 +102,7 @@ module PackAtStartPictures
   # The build each of these games is made by: one for a computer, its data pack left out.
   PACK_AT_START = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
-  # PICTURES DRAWN FROM THE PACK. The made-up original's sprite picture is four tiles of places
+  # Pictures drawn from the pack. The made-up original's sprite picture is four tiles of places
   # (SPRITE_PLACES), and each game of #picture_game draws it, or a tile of it, one way each: as a
   # sprite, a blit, a place's face, in other colours, turned, or with only one of its two lists in
   # the pack. Each is built all-in-one and with the pack left out, handed a pack of these two slots.
@@ -156,7 +156,7 @@ module PackAtStartPictures
   private def pack_at_start_game(folder) = game_program(through_pack(folder), options: PACK_AT_START)
   private def all_in_one_game(folder) = game_program(through_pack(folder))
 
-  # A PICTURE OF UP TO 256 COLOURS FROM A SLOT OF PIXELS, one byte a pixel: the made-up copy's
+  # A picture of up to 256 COLOURS FROM A SLOT OF PIXELS, one byte a pixel: the made-up copy's
   # sprite bytes read as 256 places of a 16x16 picture, in a list of 256 colours the game gives, the
   # copy's first sprite byte named see-through. Drawn plain, turned, and as stretched columns.
   PIXELS_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:art, at: SPRITES_AT, count: 256)])
@@ -186,7 +186,7 @@ module PackAtStartPictures
     b.program
   end
 
-  # A FONT OF THE PACK'S PIXELS with the pack left out: each letter a run of the sprite bytes, lit
+  # A font of the pack's pixels with the pack left out: each letter a run of the sprite bytes, lit
   # where a byte is not nought, written in one colour, in a pair picked by a test that changes every
   # pass, placed in the middle, and as a number.
   LETTERING_SLOTS = Ractor.make_shareable([VBlank::Original::Slot.pixels(:letters, at: SPRITES_AT, count: 120)])
@@ -218,7 +218,7 @@ module PackAtStartPictures
     b.program
   end
 
-  # A NUMBER THAT CHANGES in a font of the pack's pixels whose digits differ in width, as an
+  # A number that changes in a font of the pack's pixels whose digits differ in width, as an
   # original's alphabet keeps them: each digit two or three pixels wide, overlapping in the slot,
   # and a space four wide, which a number without leading noughts shows in a place not reached.
   private def changing_number_game(folder, screen_kind, options: VBlank::Cartridge::Options.new)
@@ -251,7 +251,7 @@ module PackAtStartPictures
   end
 end
 
-# A GAME BUILT WITH ITS DATA PACK LEFT OUT, handed the pack file as it starts. The made-up original
+# A game built with its data pack left out, handed the pack file as it starts. The made-up original
 # and its game are made_up_original.rb's (MadeUpOriginal): built all-in-one there, the pack is made
 # from the copy as the game is built and the game holds what it read. Built here with
 # `pack_at_start: true`, the build reads no copy at all, the program holds none of the original's
@@ -436,7 +436,7 @@ module PackAtStartTests
     end
   end
 
-  # THE UNPACKING, BUILT WITH NO COPY PRESENT. A shell makes its pack on the player's machine by
+  # The unpacking, built with no copy present. A shell makes its pack on the player's machine by
   # playing the game's unpacking program, handed the player's copy as it starts. Built with the pack
   # left out, that program holds none of the copy either: it is built for a copy of a known size
   # (the release's), and reads the copy from the file it is handed.
@@ -444,7 +444,7 @@ module PackAtStartTests
     unpacked_pack(VBlank::Builder.new(options: PACK_AT_START), folder).unpacking(release: made_up_release)
   end
 
-  # THE BAR A SHELL SHOWS AS IT UNPACKS, measured off the screen: a pack of a slot copied as it is
+  # The bar a shell shows as it unpacks, measured off the screen: a pack of a slot copied as it is
   # (the made-up copy's first 512 bytes) and a slot the routine fills, 1024 bytes, counted 256 at a
   # time. +cost+ is how many times the work of a plain copy each byte of the second costs, or nil to
   # name none. Gives back the bar's width on each frame it moved, in order.

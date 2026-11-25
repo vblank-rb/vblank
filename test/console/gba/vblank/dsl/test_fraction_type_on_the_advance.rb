@@ -4,7 +4,7 @@ require "test_helper"
 
 require "differential"
 
-# THE TESTS OF vblank/dsl/test_fraction_type.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/dsl/test_fraction_type.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # Numbers that carry a fraction, declared by writing a Float and then carried through
@@ -12,7 +12,7 @@ require "differential"
 # for the rules and the evidence they were argued from.
 #
 # The behaviour is asserted by putting the answer on screen as a marker and reading where
-# it landed, so these tests say what a program DOES rather than which nodes it built.
+# it landed, so these tests say what a program does rather than which nodes it built.
 class TestFractionTypeOnTheAdvance < Minitest::Test
   include Differential
 

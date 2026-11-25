@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # THE PART OF VBLANK A KEPT PACK IS KEYED ON (PackCache). A pack is made by building the port's
+    # The part of VBLANK a kept pack is keyed on (PackCache). A pack is made by building the port's
     # routine and playing it, on the interpreter, as C or as Ruby, so a change to the code that does
     # either must make it again. A change to code that does neither must not: digesting every file
     # under lib made every commit to VBlank replay a port's whole copy, though most commits are to
@@ -42,15 +42,18 @@ module VBlank
 
       # Files inside a LEFT_OUT folder that a pack is made with all the same: the packed formats'
       # numbers (Original::Packing::GBA reads BiosCompress's), each lowering's list of what it
-      # cannot make yet (Console::Kit), a build's options and players (read as a routine is built),
-      # the records the interpreter makes of a sprite and of dropped sound, and the fingerprint of a
-      # state file (Computer::StateFile).
+      # cannot make yet (Console::Kit), a build's options, players and features (read as a routine
+      # is built), the records the interpreter makes of a sprite and of dropped sound, the
+      # fingerprint of a state file (Computer::StateFile), and the record of what a build reads
+      # (Live::BuildInputs), whose wrapped read methods run beside every build once `vblank run`
+      # has loaded them.
       KEPT = %w[
         ir/backends/gba/bios_compress.rb
         ir/backends/gbc/lowering.rb ir/backends/snes/lowering.rb ir/backends/genesis/lowering.rb
-        cartridge/options.rb cartridge/players.rb
+        cartridge/options.rb cartridge/players.rb cartridge/features.rb
         diagnostics/sprite_row.rb diagnostics/sound_drops.rb
         network/fingerprint.rb
+        live/build_inputs.rb
       ].freeze
 
       # The library under +root+ (lib, holding vblank.rb and vblank/), leaving out +left_out+ but

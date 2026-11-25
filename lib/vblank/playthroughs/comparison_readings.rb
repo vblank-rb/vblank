@@ -3,15 +3,15 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE NAMED READINGS OF A COMPARISON: things read off the two running cartridges on
+      # The named readings of a comparison: things read off the two running cartridges on
       # every frame that is looked at, each under a name a person chose.
       #
-      # WHAT THEY ARE FOR. Two games can show the same screen and be a long way apart
+      # What they are for. Two games can show the same screen and be a long way apart
       # underneath — a position a pixel out behind a wall, a counter that will run out a
       # second early. And where the pictures do differ, "the hero is at 61 on one and 60 on
       # the other" shows what went wrong where two screenshots only show that something did.
       #
-      # A READING IS A NAME AND A WAY TO READ IT, and there are four ways to give the way:
+      # A reading is a name and a way to read it, and there are four ways to give the way:
       #
       #   readings: {
       #     paces:  :paces,                                             # a variable, on both
@@ -20,16 +20,16 @@ module VBlank
       #     hero_x: [:px, ->(game) { game.mem16(0x0300_1234) }],        # one way for each
       #   }
       #
-      # ONE WAY FOR EACH is the form that matters to somebody rebuilding a game, because the
+      # One way for each is the form that matters to somebody rebuilding a game, because the
       # two cartridges are not the same program: the rebuilt one keeps the hero's position
       # in a variable with a name, and the original keeps it at an address somebody found.
       # The reading is "the hero's position" all the same, and each side names where it is.
       #
-      # A VARIABLE'S NAME only means something on a cartridge this framework built, since
+      # A variable's name only means something on a cartridge this framework built, since
       # which variable is where is what the build worked out and is kept beside a cartridge,
       # never in it. On any other cartridge it is refused, before a frame is played.
       #
-      # A SPRITE OR A BACKGROUND, NAMED, is read whole, as the reader gives it (IR::SpriteState,
+      # A sprite or a background, named, is read whole, as the reader gives it (IR::SpriteState,
       # IR::BackgroundState): two are the same when every part is, and a report shows each part.
       # Like a variable's name it is looked up before a frame is played. One part of one is a
       # block: `->(game) { game.sprite(:hero).x }`.
@@ -97,8 +97,8 @@ module VBlank
         # each plays, so those of the frame before can be had (Watch).
         def start_watch(consoles) = Watch.new(self, consoles)
 
-        # THE READINGS OF TWO RUNNING CARTRIDGES ON THE FRAME BEFORE, for two lined up at the end of
-        # each pass (Passes, AT THE END OF EACH PASS): each pass's readings are compared on the last
+        # The readings of two running cartridges on the frame before, for two lined up at the end of
+        # each pass (Passes, at the end of each pass): each pass's readings are compared on the last
         # frame that showed it, and that cartridge has played one frame more by the time the pass is
         # seen to have ended. Each is read as it stands when the watch begins, so the first frame
         # played has a frame before it, the lead-in's last.

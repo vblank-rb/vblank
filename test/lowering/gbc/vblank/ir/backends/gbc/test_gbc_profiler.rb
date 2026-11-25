@@ -2,10 +2,15 @@
 
 require "test_helper"
 require "stringio"
+require "power_on_profile_tests"
 
 # A Game Boy Color cartridge measured as it runs (Diagnostics::GBCProfiler): the frame rate it
 # played at, how much of the time it slept, and its frames by routine, its own by the game's names.
 class TestGBCProfiler < Minitest::Test
+  include PowerOnProfileTests
+
+  private def power_on_console = :gbc
+
   GAME = VBlank.game("BUSY", consoles: %i[gba gbc]) do
     total = 0
     func(:count_up) { repeat(40) { total += 3 } }
@@ -31,7 +36,7 @@ class TestGBCProfiler < Minitest::Test
     assert_includes names, "the game loop"
   end
 
-  # A SCREEN FADED IN BY STEPPING ITS LISTS, the way a cartridge made for the Color fades: seven
+  # A screen faded in by stepping its lists, the way a cartridge made for the Color fades: seven
   # lists of the background's, and +sprite_lists+ lists that eight sprites wear, each drawn with the
   # next of sixteen steps every frame, and no tint or fade said. Copying the colours that change is
   # all the frame needs.
@@ -84,7 +89,7 @@ class TestGBCProfiler < Minitest::Test
     assert_match(/cannot measure one scene/, error.message)
   end
 
-  # NINE THINGS IN NINE LISTS OF COLOURS ON THE SCREEN AT ONCE: the Color lends its eight lists
+  # Nine things in nine lists of colours on the screen at once: the Color lends its eight lists
   # to the lists on the screen, so one thing finds none free every pass and is drawn in another
   # list's colours. Nothing in the picture says so to the author; the profile does.
   # +on_screen+ of nine kinds of thing, each kind in a list of colours of its own, and one more of

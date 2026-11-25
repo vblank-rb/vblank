@@ -4,7 +4,7 @@ require "test_helper"
 require "mixed_sound"
 require "all/vblank/audio/test_wav_import"
 
-# A 16-BIT RECORDING ON THE ADVANCE'S CARTRIDGE. The console's mixer plays eight bits, so its build
+# A 16-BIT recording on the Advance's cartridge. The console's mixer plays eight bits, so its build
 # keeps the high byte of each sample, the bytes it held before a game could give sixteen: the
 # cartridge is the one built from those bytes, and it sounds as the interpreter's console mix says.
 # The computer builds' sixteen bits are test/full_depth_sound_tests.rb's.

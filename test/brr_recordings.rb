@@ -2,7 +2,7 @@
 
 require "digest"
 
-# MADE-UP RECORDINGS IN THE SUPER NINTENDO SOUND CHIP'S OWN FORMAT (BRR, Audio::SNESRecording), and
+# Made-up recordings in the Super Nintendo sound chip's own format (BRR, Audio::SNESRecording), and
 # the answer key they are decoded by: the chip's decoder as fullsnes writes it ("SNES APU DSP BRR
 # Samples"), worked in fifteen-bit samples, where Audio::SNESRecording works in the doubled sixteen
 # bits the chip keeps. Shared by the decoder's own test (test/all/vblank/audio/test_snes_recording.rb),
@@ -61,7 +61,7 @@ module BRRRecordings
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # ENVELOPES AS THE CHIP KEEPS THEM (Audio::SNESEnvelope: adsr1, adsr2, gain), one of each way it
+  # Envelopes as the chip keeps them (Audio::SNESEnvelope: adsr1, adsr2, gain), one of each way it
   # moves a level: three ADSR shapes, and GAIN's level held, its climbs, even and bent, and its two
   # falls, which from key-on are silence.
   CHIP_ENVELOPES = Ractor.make_shareable([[0x8E, 0xE0, 0], [0x9F, 0x2A, 0], [0, 0, 0x7F], [0, 0, 0xDC], [0, 0, 0xF8], [0, 0, 0x9C],
@@ -101,7 +101,7 @@ module BRRRecordings
     slots.samples :loud, at: LOUD_AT, count: LOUD.size
   end
 
-  # THE ANSWER KEY: +bytes+ decoded through to the end and then +loops+ times round from +loop_at+,
+  # The answer key: +bytes+ decoded through to the end and then +loops+ times round from +loop_at+,
   # as fifteen-bit samples, the chip's decoder as fullsnes writes it. The two before the first are
   # nought.
   def self.chip_samples(bytes, loop_at: 0, loops: 0)

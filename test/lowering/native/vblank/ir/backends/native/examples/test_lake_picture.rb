@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/lake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lake").to_s)
 
 # examples/lake.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, for longer than two whole waves take to roll down the water: every row of the water

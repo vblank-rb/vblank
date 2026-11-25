@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# THE PICTURE WITHOUT ITS SPRITES, OR THE SPRITES ALONE (`layers:`), and, where two cartridges
+# The picture without its sprites, or the sprites alone (`layers:`), and, where two cartridges
 # part, which of the console's video memories differ. The cartridges are a small tiled game built
 # here: a white box sprite standing on a field of sea tiles. One is built with the box a pixel
 # off, one with the sea another colour; each comparison finds or forgives exactly that.
@@ -35,7 +35,7 @@ class TestComparisonLayersAndMemories < Minitest::Test
     assert_plays_alike field, field(sea: :green), stand, layers: :sprites
   end
 
-  # THE SPRITES ALONE ARE WHAT THE SPRITES DRAW: the colour behind them, which a room covers on
+  # The sprites alone are what the sprites draw: the colour behind them, which a room covers on
   # the whole screen, is each cartridge's own. The two are alike under the sprites alone, and
   # still differ when the box is a pixel off.
   def test_the_sprites_alone_leave_the_colour_behind_them_out
@@ -72,7 +72,7 @@ class TestComparisonLayersAndMemories < Minitest::Test
     end
   end
 
-  # A LAYER FOR EACH: a port draws its room on other layers than the original, so each side
+  # A layer for each: a port draws its room on other layers than the original, so each side
   # shows its own. Here the sea is on BG0 of the first cartridge and on BG1 of the second.
   def test_each_cartridge_shows_its_own_layers
     sea_first = two_fields(first: :blue, second: :green)
@@ -98,7 +98,7 @@ class TestComparisonLayersAndMemories < Minitest::Test
     assert_match "second cartridge", error.message
   end
 
-  # WHICH VIDEO MEMORIES DIFFER, each with its first difference: the colours for a sea another
+  # Which video memories differ, each with its first difference: the colours for a sea another
   # colour, the sprite table for a box a pixel off. The memories that agree are not named.
   def test_a_drift_names_the_colours_when_a_colour_differs
     drift = stand.compare(field, field(sea: :green)).drift

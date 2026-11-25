@@ -2,8 +2,9 @@
 
 require "test_helper"
 require "draw_order_cost_games"
+require "sprite_count_cost_games"
 
-# WHAT AN ORDER OF SEVEN COSTS ON THE GAME BOY COLOR, measured in the emulator. The sort is written
+# What an order of seven costs on the Game Boy Color, measured in the emulator. The sort is written
 # in the Color's own code with both lists' places known, a compare an item when nobody passed
 # anybody, so working out the seven numbers and sorting them is a few of the frame's 154 lines.
 # Placing the sprites in a worked-out order costs little more than placing them in a fixed one: a
@@ -59,5 +60,27 @@ class TestGBCDrawInOrderCost < Minitest::Test
 
   def test_a_pool_of_thirty_two_whose_order_turns_round_is_drawn_as_the_interpreter_draws_it
     game_player.run(DrawOrderCostGames.reversed_pool_game(:gbc, 32).program(console: :gbc), frames: 8)
+  end
+
+  # A place of an order is written short. The Color sees its cartridge a bank of 16 KB at a time (Pan
+  # Docs, "MBC5"), and the sort is written out a place at a time in the bank of the code that runs it,
+  # so every byte a place takes is a byte that code cannot have. A place is its number, its step of
+  # the sort and of the walk, the test of whether it shows, and the test of its flag with a call to
+  # the code every place shares where it turned over (Lowering::ShownSort). A pool's place is a
+  # compare of its count and stays under 104 bytes; a sprite's test reads its own four-byte flag and
+  # stays under 168. With the flag's work written out at every place they were 118 and 183.
+  BYTES_A_POOL_PLACE = 104
+  BYTES_A_SPRITE = 168
+
+  def test_each_place_of_a_pool_in_an_order_adds_under_a_hundred_and_four_bytes
+    bytes = SpriteCountCostGames.order_bytes_a_place(:gbc, :pool, 36)
+
+    assert_operator bytes, :<, BYTES_A_POOL_PLACE, "each place of the pool added #{bytes.round(1)} bytes"
+  end
+
+  def test_each_sprite_in_an_order_adds_under_a_hundred_and_sixty_eight_bytes
+    bytes = SpriteCountCostGames.order_bytes_a_place(:gbc, :sprites, 36)
+
+    assert_operator bytes, :<, BYTES_A_SPRITE, "each sprite added #{bytes.round(1)} bytes"
   end
 end

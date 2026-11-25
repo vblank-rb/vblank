@@ -4,12 +4,12 @@ require "test_helper"
 
 require "differential"
 
-# THE TESTS OF vblank/effects/packs/test_menu.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/effects/packs/test_menu.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
 # `menu` — a list of rows, a cursor that moves between them, and a block per row.
 #
-# These tests read the PICTURE, not the pick variable. Where the cursor sits is the
+# These tests read the picture, not the pick variable. Where the cursor sits is the
 # thing a player can see, so a test that finds the cursor by looking for it would
 # still catch a menu that moved its pick and drew somewhere else. The rows are given
 # distinct colours for the same reason: "picked" is a colour on the screen, not a
@@ -205,7 +205,7 @@ class TestMenuOnTheAdvance < Minitest::Test
   # ---- a row that can be picked only while the game says so ----
   #
   # A Continue row greyed until there is a save; Resume greyed unless a game is running.
-  # Row TWO can be picked while `open` is 1 (said as a test), row THREE while `open` is not
+  # Row TWO can be picked while `open` is 1 (said as a test), row three while `open` is not
   # 0 (said as the variable itself). L opens and closes both.
 
   private def changing_menu(on: :bitmap, opens_at: nil, repeat_every: nil)

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TEST READS A RUNNING GAME'S VARIABLES BY THEIR NAMES (IR::ReadingByName), on whichever player
+# A test reads a running game's variables by their names (IR::ReadingByName), on whichever player
 # the run hands it. A name the game never declared is refused in plain words, naming the closest
 # names it has, rather than read as 0: a test left reading a name a rename took away would
 # otherwise keep passing every "it stays 0" assertion.

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # A VARIABLE KEPT A BYTE OR TWO WIDE (IR::KeptWidths). Mixed into Lowering.
+          # A variable kept a byte or two wide (IR::KeptWidths). Mixed into Lowering.
           #
           # The Color's processor works on a byte at a time, so a four-byte variable costs four
           # trips to memory each time it is read, tested or written. One the game declared narrow
@@ -261,7 +261,7 @@ module VBlank
               emit_list_slot_address(place, width, out_of_range, length: length, slots: slots)
             end
 
-            # AN INDEX THAT CANNOT FALL OUTSIDE ITS LIST: a list always as long as it can be
+            # An index that cannot fall outside its list: a list always as long as it can be
             # (+length+, Lowering#fixed_length_lists) read at an index known while building to stay
             # below that, a loop's variable, a mask or a remainder (ControlFlow#index_known_below). The
             # compare with the length, and the jump past it, can never be taken there and are left

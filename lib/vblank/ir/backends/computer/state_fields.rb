@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE RUNTIME'S FIELDS IN THE STATE IMAGE, in the order each runtime visits them
+        # The runtime's fields in the state image, in the order each runtime visits them
         # (runtime/rg_state.h). The game's own fields — every global the build wrote, every list —
         # the build finds for itself (Lowering#visit_state); these are what each runtime keeps in
         # its own variables, which the C, JavaScript and Ruby runtimes each name by hand. So they
@@ -31,8 +31,10 @@ module VBlank
         # again after every wait, before the next picture is read; columns paints and keeps nothing;
         # faces keeps only tables it works out from the game's colours.
         module StateFields
-          Field = Data.define(:name, :count, :with_save_memory, :feature) do
-            def initialize(name:, count:, with_save_memory: false, feature: nil)
+          # +with_screen_of_its_own+ marks a field only a game given a screen of its own size keeps
+          # (Console::Description#screen_of_its_own), so every other game's states read as before.
+          Field = Data.define(:name, :count, :with_save_memory, :feature, :with_screen_of_its_own) do
+            def initialize(name:, count:, with_save_memory: false, feature: nil, with_screen_of_its_own: false)
               super
             end
           end
@@ -45,7 +47,7 @@ module VBlank
 
           # How many numbers a runtime writes for one of each thing below: the runtimes' layouts.
           BACKGROUND_NUMBERS = 21 # one background in "tiled.backgrounds"
-          PLACED_SPRITE_NUMBERS = 10 # one sprite in "sprites.drawing" and "sprites.kept"
+          PLACED_SPRITE_NUMBERS = 12 # one sprite in "sprites.drawing" and "sprites.kept"
           LOUDNESS_NUMBERS = 4 # a voice's loudness: now, samples a step holds, samples left, swelling
           SOUND_NUMBERS = 3 + 4 # the sound's carry, slide clock and waveform, and a speaker for each of four voices
           SQUARE_VOICES = 2 # the square voices
@@ -61,7 +63,7 @@ module VBlank
           SPU_NUMBERS = 13 + (20 * SPU_VOICE_NUMBERS) # the sound chip's own thirteen, the game's four voices and sixteen for recordings
           MIX_NUMBERS = 5 # the mixer's own counts
           MIX_VOICE_NUMBERS = 22 # one voice of the mixer
-          MUSIC_NUMBERS = 10 # the music's own counts
+          MUSIC_NUMBERS = 11 # the music's own counts, and the sound effects' timer
           WOBBLE_VOICES = 3 # the voices that wobble: the squares and the wave
           WOBBLE_NUMBERS = 6 # one voice's wobble
           SWELL_VOICES = 4 # the voices that swell: every voice
@@ -93,6 +95,8 @@ module VBlank
             # pass's end placing writes, scenery taken down, the window's corner, and a mixed cell's
             # two shares.
             Field.new(name: "screen", count: 19),
+            # How much of the top left of the picture the window shows, across and down (rg_screen_show_size).
+            Field.new(name: "screen.shown_size", count: 2, with_screen_of_its_own: true),
             Field.new(name: "screen.page.first", count: :screen_cells),
             Field.new(name: "screen.page.second", count: :screen_cells),
             Field.new(name: "screen.scenery", count: :screen_cells),
@@ -168,8 +172,8 @@ module VBlank
             Field.new(name: "mix.slice", count: :slice_samples, feature: :mix),
             # The music: the tune wanted, playing and ended, stops asked and seen, held, how far into
             # the tune, the volume its notes were set at, how many notes are held and voices have
-            # been held; each part's walk (after its first time through, and its next note); each
-            # held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
+            # been held, and the sound effects' timer; each part's walk (after its first time through,
+            # and its next note); each held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
             # and shapes and who holds it; and each sound effect's place.
             Field.new(name: "music", count: MUSIC_NUMBERS, feature: :music),
             Field.new(name: "music.parts", count: :song_parts, feature: :music),
@@ -180,10 +184,11 @@ module VBlank
 
           # The fields a game's state holds besides its own, in order: those of a game that reaches
           # save memory with +save_memory+, else the rest, and of the runtime features named in
-          # +features+.
-          def self.kept(save_memory:, features: [])
+          # +features+, and of a game given a screen of its own with +screen_of_its_own+.
+          def self.kept(save_memory:, features: [], screen_of_its_own: false)
             FIELDS.select do |field|
-              (save_memory || !field.with_save_memory) && (field.feature.nil? || features.include?(field.feature))
+              (save_memory || !field.with_save_memory) && (field.feature.nil? || features.include?(field.feature)) &&
+                (screen_of_its_own || !field.with_screen_of_its_own)
             end
           end
         end

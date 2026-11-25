@@ -25,13 +25,13 @@ class TestPongTitleCartridge < Minitest::Test
     assert moved.white?(column - 11, ROW_MUSIC + 1), "and walks to the music row"
   end
 
-  # The one column MUSIC: OFF reaches and MUSIC: ON does not — the last "F". A GLYPH
+  # The one column MUSIC: OFF reaches and MUSIC: ON does not — the last "F". A glyph
   # there while the music is on means both sets of words are on screen at once, printed
   # over each other, which is what a row showing every one of its labels looks like.
   #
   # "Is it black" is the wrong question of this screen: the title's backdrop is a
   # checkerboard, so that column is a dark tile rather than nothing. The question is
-  # whether a LETTER is drawn on it, and a letter is one of the row's two colours.
+  # whether a letter is drawn on it, and a letter is one of the row's two colours.
   private def beyond_the_shorter_words
     [column + (MUSIC_ON.length * Fonts.get(:default).cell_w), ROW_MUSIC]
   end
@@ -49,7 +49,7 @@ class TestPongTitleCartridge < Minitest::Test
     refute lettered?(on, beyond_the_shorter_words),
            "MUSIC: ON is up, so no letter reaches the column only MUSIC: OFF fills"
 
-    # Down onto the music row, then A to turn it off — and now that column IS lettered.
+    # Down onto the music row, then A to turn it off — and now that column is lettered.
     walk = lambda do |frame|
       next VBlank::Console::Hardware::KEY_DOWN if frame < 3
       next 0 if frame < 6

@@ -41,8 +41,8 @@ worktrees under `.claude/worktrees/` (`git worktree list`) are the count.
 
 - A second item is one that touches different files: another milestone and another lowering
   than the first. Two branches in the same files collide when they land.
-- Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`. One `rake test:golden` runs on
-  the machine at a time: two together take twice as long each.
+- Each worktree runs its rake with `VBLANK_SUITE_LOCK=checkout`, and its own nearby test files
+  only (see "Running Tests").
 - An item lands by cherry-picking its commits onto `main` once its own tests pass there, then
   its worktree and branch are removed.
 
@@ -107,16 +107,18 @@ needs a C compiler and a system libmgba (`brew install mgba` / `apt install libm
 
 ## Running Tests
 
-**Day to day, run `rake test:golden`, and `rake test:all` at most once a day and only after asking
-the operator.** `rake test:all` takes the machine for about four and three-quarter hours (measured
+**Day to day, run the nearby test files only**: the ones the change touches and those beside them,
+plus `rake emitted:check` where a cartridge's contents change. That is the check before a commit
+and before a close. **Never run `rake test:golden` unless the operator asks, and `rake test:all`
+at most once a day and only after asking.** `rake test:all` takes the machine for about four and three-quarter hours (measured
 2026-11-17: twenty runs of 3 to 21 minutes, the computer builds playing once per console) and stops work while
 it does, so never start it, or a whole lowering's run, without the operator's say-so. The golden
-path plays the core of each feature and a little of each lowering (`test/golden.txt`, a tenth of the
-tests or less) and 5% of the other test files drawn at random, on every run (`Testing::GoldenSample`).
-It says its seed first and last; a failure in the drawn part is played again with `GOLDEN_SEED=<seed>
-rake test:golden`, and is a fault to fix like any other. While working, run the test files the change touches, then
-`rake test:golden` before committing anything shared. Wherever this file says a change "wants"
-`rake test:all`, that means the golden path now and the next full run the operator agrees to.
+path, when the operator asks for it, plays the core of each feature and a little of each lowering
+(`test/golden.txt`, a tenth of the tests or less) and 5% of the other test files drawn at random
+(`Testing::GoldenSample`). It says its seed first and last; a failure in the drawn part is played
+again with `GOLDEN_SEED=<seed> rake test:golden`, and is a fault to fix like any other. Wherever
+this file says a change "wants" `rake test:all`, that means the nearby test files now and the next
+full run the operator agrees to.
 
 **`rake test:all` is the whole suite.** It plays the suite once for each lowering, one after
 the other: the GBA lowering's run (every game on the interpreter, the cartridge checked in the
@@ -137,7 +139,7 @@ with a line for each and fails if any did. It needs zig 0.17 (`mise use zig@0.17
 18 or later as well as the emulator, and SDL3 (`brew install sdl3`) for the tests that open a window.
 
 ```bash
-rake test:golden                                                # the golden path, on every lowering: the everyday run
+rake test:golden                                                # the golden path, on every lowering: only when the operator asks
 rake test:all                                                   # the suite, on every lowering: ask the operator first
 rake test TEST=test/all/vblank/dsl/test_thing.rb                    # one file, on every lowering that plays it
 rake test TEST=test/all/vblank/dsl/test_thing.rb TESTOPTS="--name=/pattern/"  # one test
@@ -284,10 +286,10 @@ happens to touch:
 | `playthroughs/` | `VBlank::Playthroughs` | it plays a finished cartridge with nobody at the controls, or two side by side to find where they differ (`Playthrough`, `Tape`, `Comparison`, `CommandLine`) |
 | `messages/` | `VBlank::Messages` | it is how a build talks to the author while it builds (`PlainWords`, `Progress`, `BuildOutput`, `AuthorSource`) |
 | `testing/` | `VBlank::Testing` | it is how a game's own test suite plays its games on each lowering (`CheckedPlayer`, `TestTask`, `RakeTasks`, `Processes`, `CartridgeCache`, `PlaysAlike`, `HeardAlike`, `PackParity`, `InRactors`, `RactorSettings`, `GroupTasks`, `GoldenTask`) |
-| `live/` | `VBlank::Live` | it plays a game live, built as Ruby (`IR::Backends::Ruby#live_game`) and run in this process, for a person or a test standing in for one: the session that keeps a pass at a time on the console's beat, and the devices it is shown on (`Session`, `Headless`, `SDL`, `Rate`); `vblank run` opens the window a person plays in |
+| `live/` | `VBlank::Live` | it plays a game live, built as Ruby (`IR::Backends::Ruby#live_game`) and run in this process, for a person or a test standing in for one: the session that keeps a pass at a time on the console's beat, and the devices it is shown on (`Session`, `Headless`, `SDL`, `Rate`); `vblank run` opens the window a person plays in, building the game in a helper process (`BuildHelper`) and becoming the window's own process (`WindowProcess`), which waits on the build (`BuildWatch`) and plays the game the helper wrote out (`IR::Backends::Ruby::WrittenGame`) |
 | `bots/` | `VBlank::Bots` | it is a player with no window and no person: a script that reads its own copy of a game in a match and chooses its buttons (`Bot`, `TapeBot`, `GameView`); `Live::BotDevice` is the device it plays on |
 | `network/` | `VBlank::Network` | it is how machines play one match together: what they say to each other (`Join`, `Buttons`, `Checkpoint`), the session each runs to keep in step (`Lockstep`), the fingerprint that tells one build of a game from another (`Fingerprint`), the messages as text (`Wire`; `docs/network/protocol.md` says them in words), a relay in Ruby for the tests (`StandInRelay`), a host that is a relay over TCP (`DirectRoom`, `DirectPlay`), a WebSocket client for the relay (`WebSocket::Client`, `RelayPlay`), and a network in one process for a test to control (`SimulatedNetwork`, `Scheduler`) |
-| `original/` | `VBlank::Original` | it is about the retail original a port is made from and the player's own copy of it: finding and accepting that copy (`Game`, `Copy`), what the port measured from it (`Facts`, `FactsFile`), proving a decompilation builds the copy before it is read (`Decompilation`), the unpacking routine that fills a data pack from the copy and the handle it reads the copy with (`Unpacking`, `CopyReader`, and the packed formats it offers in `packing/`: `Packing::Format` and the `Packing::BlockKit` (`packing/block_kit.rb`) every format is written with, then each platform's, `Packing::GBA`, `Packing::Genesis`), how an original keeps a frame of a sprite and the one record the unpacking writes each as (`FrameLayout`, `FrameRecord`, `FrameRewrite`), keeping its data out of the port's repository (`DataGuard`, and `DataGuardTasks`, a Rakefile's, not loaded by the front door), and checking a shell build against the all-in-one one (`ShellCheckTasks`, a Rakefile's too) |
+| `original/` | `VBlank::Original` | it is about the retail original a port is made from and the player's own copy of it: finding and accepting that copy (`Game`, `Copy`), what the port measured from it (`Facts`, `FactsFile`), proving a decompilation builds the copy before it is read (`Decompilation`), the unpacking routine that fills a data pack from the copy and the handle it reads the copy with (`Unpacking`, `CopyReader`, and the packed formats it offers in `packing/`: `Packing::Format` and the `Packing::BlockKit` (`packing/block_kit.rb`) every format is written with, then each platform's, `Packing::GBA`, `Packing::Genesis`), how an original keeps a frame of a sprite and the one record the unpacking writes each as (`FrameLayout`, `FrameRecord`, `FrameRewrite`), keeping its data out of the port's repository (`DataGuard`, and `DataGuardTasks`, a Rakefile's, not loaded by the front door), and checking a shell build against the all-in-one one (`WholeGameCheck`, the shell's game as C over a whole tape, and `ShellCheckTasks`, a Rakefile's too) |
 
 `testing/`'s front door is the exception both ways. `lib/vblank.rb` does NOT require it: it
 loads minitest, which a game needs only for its tests, so a game's suite requires
@@ -355,7 +357,7 @@ same name — the GBA backend has an `Audio` class of its own — write the whol
 - `lib/vblank/cartridge/game_code.rb` — the four characters an emulator tells one cartridge from
   another by. A game need not write one (`GameCode.for(title)` works a free one out), and a
   code a real cartridge already carries is refused — the list it checks against is
-  `lib/vblank/data/known_game_codes.txt`, regenerated by `tools/make_known_game_codes.rb`
+  `lib/vblank/data/known_advance_codes.txt`, regenerated by `tools/make_known_advance_codes.rb`
 - `lib/vblank/console/hardware.rb` — GBA hardware register addresses and flags (`Console::Hardware`)
 - `lib/vblank/audio/music.rb` — Music DSL (`SongContext`, note frequencies, duration math). Channel 1 for music, channel 2 for SFX
 - `lib/vblank/graphics/color.rb` — 15-bit BGR555 color handling, named presets
@@ -388,7 +390,17 @@ this design allows for but doesn't have yet — see the register-convention comm
 
 Keep the IR **target-agnostic**: `IR::Node` describes *what the program does*, not how one machine runs it. ARM/GBA is the current lowering backend, but nothing in the node model assumes it — another backend (e.g. JavaScript) could lower the same tree. Put target-specific detail in the lowering pass, never in the IR core — and that includes code comments: don't frame the IR around GBA/ARM.
 
-**Backends** consume the IR and live under `IR::Backends`, named for the platform they target (the ROM backend is `GBA`, not `Arm` — the target is the whole platform, not just the CPU). `Backends::Reference` runs the IR in Ruby (the headless test oracle — named for its role as the answer key, not for the language, since every backend here happens to be written in Ruby); `Backends::GBA` lowers it to a ROM; `Backends::Native` writes it as C; `Backends::Computer` is what the builds for a computer share (the statement tree `Computer::Statements` that `Computer::Lowering` builds, `Computer::Resumable`, the windowless run and its check against the interpreter, `Computer::ProgramRun`); `Backends::JS` prints those statements as JavaScript, for a web page (`vblank build --format=web`, `vblank preview`) and for node in the tests; `Backends::Ruby` prints them as Ruby, played by a runtime written in Ruby, so a game runs with nothing but Ruby (the interpreter stays the answer key and is never tuned for speed); `Backends::GBC` lowers it to SM83 code and a Game Boy Color cartridge (`vblank build`, which makes a cartridge for each console a game names, or `--console gbc`), for a game that says it is for that console too (`consoles: %i[gba gbc]`; every game names its consoles); `Backends::SNES` lowers it to 65816 code and a Super Nintendo cartridge (`consoles: %i[gba snes]`, `--console snes`), checked in bsnes through ruby-snes-emulator, whose core and C extension `rake compile_snes_core` builds; `Backends::Genesis` lowers it to 68000 code and a Sega Genesis cartridge (`consoles: %i[gba genesis]`, `--console genesis`), checked in Genesis Plus GX through ruby-genesis-emulator, whose core and C extension `rake compile_genesis_core` builds, and tested by `rake test:lowering:genesis`; `Backends::PS1` lowers it to R3000 (MIPS) code and a PlayStation program, a PS-X EXE (`consoles: %i[gba ps1]`, `--console ps1`), checked in Beetle PSX through ruby-ps1-emulator, whose core and C extension `rake compile_ps1_core` builds, and tested by `rake test:lowering:ps1`. What each console does with each verb — works, or refused naming the hardware it lacks — is its answers table (`Console::AdvanceAnswers`, `Console::ColorAnswers`, `Console::SNESAnswers`, `Console::GenesisAnswers`, `Console::PS1Answers`), written out for the reader in `.claude/dsl/game-boy-advance.md`, `.claude/dsl/game-boy-color.md`, `.claude/dsl/super-nintendo.md`, `.claude/dsl/sega-genesis.md` and `.claude/dsl/playstation.md`. All honor `IR::Int32`'s signed-32-bit semantics — that shared contract is what keeps them agreeing.
+**Backends** consume the IR and live under `IR::Backends`, named for the platform they target (the ROM backend is `GBA`, not `Arm` — the target is the whole platform, not just the CPU). `Backends::Reference` runs the IR in Ruby (the headless test oracle — named for its role as the answer key, not for the language, since every backend here happens to be written in Ruby); `Backends::GBA` lowers it to a ROM; `Backends::Native` writes it as C; `Backends::Computer` is what the builds for a computer share (the statement tree `Computer::Statements` that `Computer::Lowering` builds, `Computer::Resumable`, the windowless run and its check against the interpreter, `Computer::ProgramRun`); `Backends::JS` prints those statements as JavaScript, for a web page (`vblank build --format=web`, `vblank preview`) and for node in the tests; `Backends::Ruby` prints them as Ruby, played by a runtime written in Ruby, so a game runs with nothing but Ruby (the interpreter stays the answer key; see "What the interpreter is for" below); `Backends::GBC` lowers it to SM83 code and a Game Boy Color cartridge (`vblank build`, which makes a cartridge for each console a game names, or `--console gbc`), for a game that says it is for that console too (`consoles: %i[gba gbc]`; every game names its consoles); `Backends::SNES` lowers it to 65816 code and a Super Nintendo cartridge (`consoles: %i[gba snes]`, `--console snes`), checked in bsnes through ruby-snes-emulator, whose core and C extension `rake compile_snes_core` builds; `Backends::Genesis` lowers it to 68000 code and a Sega Genesis cartridge (`consoles: %i[gba genesis]`, `--console genesis`), checked in Genesis Plus GX through ruby-genesis-emulator, whose core and C extension `rake compile_genesis_core` builds, and tested by `rake test:lowering:genesis`; `Backends::PS1` lowers it to R3000 (MIPS) code and a PlayStation program, a PS-X EXE (`consoles: %i[gba ps1]`, `--console ps1`), checked in Beetle PSX through ruby-ps1-emulator, whose core and C extension `rake compile_ps1_core` builds, and tested by `rake test:lowering:ps1`. What each console does with each verb — works, or refused naming the hardware it lacks — is its answers table (`Console::AdvanceAnswers`, `Console::ColorAnswers`, `Console::SNESAnswers`, `Console::GenesisAnswers`, `Console::PS1Answers`), written out for the reader in `.claude/dsl/game-boy-advance.md`, `.claude/dsl/game-boy-color.md`, `.claude/dsl/super-nintendo.md`, `.claude/dsl/sega-genesis.md` and `.claude/dsl/playstation.md`. All honor `IR::Int32`'s signed-32-bit semantics — that shared contract is what keeps them agreeing.
+
+**What the interpreter is for, in order:** (1) correct, since it is the answer key every lowering
+and every game's tests are checked against; (2) readable, so a person can follow what a verb does
+by reading it; (3) fast, because every test that plays a game plays it there, here and in each game
+built on VBlank, and a slow interpreter slows them all. A speedup is welcome when it is measured as
+large (count work, as everywhere) and leaves the code as plain as before: work done once instead of
+per pixel or per node, a row filled at once instead of cell by cell. Where a quick path covers only
+some cases, the plain path stays beside it for the rest, and a test plays both on the same input.
+Not welcome: a gain too small to matter bought with cleverness, a cache that can go stale while a
+game runs, or state shared across Ractors.
 
 **Cross-backend rule:** a hardware feature (sound, tiles, sprites, paged modes…) isn't *done* until it works on every backend — the GBA lowering, the native lowering (`Backends::Native`, the game as C, built by zig into a desktop program), the JavaScript lowering (`Backends::JS`, whose runtime is the native one's written again in JavaScript), the Ruby lowering (`Backends::Ruby`, the game as Ruby on a runtime written in Ruby), the Game Boy Color lowering (`Backends::GBC`, where "works" may also be a stated answer from `Console::ColorAnswers`: or refused in plain words naming the hardware it lacks) **and** the Ruby interpreter. `rake test:all` holds it to that: every test plays on every lowering, so a feature one of them lacks fails the run (see the comment atop `IR::Backends`). **Correct is not done on a console**: its hot path there is measured against the console's own games doing the same job and pinned by a test naming the measurement's source (`.claude/rules/adding-a-backend.md`, "What done means"). The moment a feature is on the radar, write down each backend's slice as its own piece of work — even before the details are known — so it can't be forgotten while you're heads-down on the feature elsewhere. Don't lean on this principle to remember; record it.
 
@@ -400,7 +412,7 @@ Keep the IR **target-agnostic**: `IR::Node` describes *what the program does*, n
 - `r10`/`r11` are scratch registers for variable operations, `r12` for addresses
 - Functions use `PUSH {lr}` / `POP {pc}` for call/return
 - Conditionals emit inverse-condition branches to skip over blocks
-- `case_var` reloads the variable before each comparison (scene calls clobber r10)
+- The scene dispatch (the case node a scene-picking `case` or `call` builds) copies its variable once, then reloads that copy before each comparison (scene calls clobber r10)
 - Sound: channel 2 for beep/SFX, channel 1 for music (no conflicts)
 - Music is played from the VBlank interrupt, not where `play_song` is written: the game only
   names the tune, and the player walks each part's event table in ROM once per real frame
@@ -484,9 +496,9 @@ explanation, and leads with what went wrong and where.
 ### DSL Conventions
 
 - `flip` (not `negate`) for reversing direction — reads naturally in game code
-- `copy :dest, :src` for variable-to-variable assignment
+- Plain Ruby assignment (`x = y`, `x += n`) changes a variable
 - Underscore prefix (`_cpu_center`) for scratch/temp variables
-- `func` for subroutines, `scene` for game states, `case_var` for dispatch
+- `func` for subroutines, `scene` for game states, a plain `case` that calls scenes (or `call mode`) for dispatch
 
 ## Examples
 

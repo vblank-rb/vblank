@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+ShareableConstants.require_file(VBlank.root.join("examples/sprite_mover").to_s)
 
 # The two sprite footgun guardrails, both advisory and both recognizing a sprite
 # purely by structure (its repaint uses save/restore-region ops, which nothing
@@ -47,7 +48,7 @@ class TestSpriteGuardrails < Minitest::Test
   end
 
   def test_flags_a_full_screen_fill_over_a_sprite
-    prog = a_heart { |hero| dma_fill_rect 0, 0, 240, 160, :black; hero.x += 1 }
+    prog = a_heart { |hero| fill_rect 0, 0, 240, 160, :black; hero.x += 1 }
     assert_equal 1, Cleared.new.detect(prog).length, "a full-screen fill is a clear too"
   end
 
@@ -72,7 +73,6 @@ class TestSpriteGuardrails < Minitest::Test
   end
 
   def test_does_not_flag_the_correct_sprite_mover
-    require VBlank.root.join("examples/sprite_mover").to_s
     assert_empty Cleared.new.detect(SpriteMover.program),
                  "sprite_mover clears once BEFORE the loop, not every frame"
   end
@@ -118,7 +118,6 @@ class TestSpriteGuardrails < Minitest::Test
   def test_does_not_flag_the_sprites_own_draws
     # sprite_mover's only blits are the framework's (the initial draw and the
     # per-frame repaint), so nothing should be flagged.
-    require VBlank.root.join("examples/sprite_mover").to_s
     assert_empty Manual.new.detect(SpriteMover.program), "the sprite's own draws aren't hand blits"
   end
 

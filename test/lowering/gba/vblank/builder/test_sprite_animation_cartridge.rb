@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_sprite_animation"
 
-# A FLIPBOOK ON THE ADVANCE'S CARTRIDGE, read in the emulator a few frames apart. The flipbook as
+# A flipbook on the Advance's cartridge, read in the emulator a few frames apart. The flipbook as
 # every run plays it is in test/all/vblank/builder/test_sprite_animation.rb.
 class TestSpriteAnimationCartridge < Minitest::Test
   include SpriteAnimationGames

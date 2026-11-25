@@ -7,7 +7,7 @@ module VBlank
   # Thor is required here and in bin/vblank only — never by the library — so
   # building a ROM in code or in a test does not depend on it.
   #
-  # THE HELP IS WRITTEN OUT BY HAND, one page a command, beside the options it explains. Thor can
+  # The help is written out by hand, one page a command, beside the options it explains. Thor can
   # make a help page from each option's own line, and what it makes is one line an option, as
   # wide as the longest, with every option of every format in one list and the explaining in a
   # paragraph after. Nobody reads that. A page here is what a person wants first, the commands
@@ -66,7 +66,7 @@ module VBlank
       exit(given_args.first == "compare" ? NOT_COMPARED : 1)
     end
 
-    # THERE IS NO `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
+    # There is no `vblank play`. It played a script or a tape on the cartridge, in the emulator, while
     # `vblank run` played the game as Ruby with a person at the controls. Nothing in the two names
     # showed which ran the game how, and a bot was run on the emulator by somebody sure it was Ruby.
     # Now `vblank run` plays a game either way, so the old name is refused with the line to write
@@ -312,14 +312,15 @@ module VBlank
       Run vblank COMMAND --help to see a command's options.
     TEXT
 
-    # THE CONSOLES, as the help pages name them, from the kits (Console::KITS): every console a game
+    # The consoles, as the help pages name them, from the kits (Console::KITS): every console a game
     # can be for is offered wherever a command takes --console, with nothing to add here for one.
     CONSOLE_NAMES = VBlank::Console.kits.map { |kit| kit.name.to_s }.freeze
     # "gba, gbc or snes"
     CONSOLE_CHOICES = "#{CONSOLE_NAMES[0...-1].join(', ')} or #{CONSOLE_NAMES.last}".freeze
     # A line for each console: its name, the console, and the ending of its cartridge's file.
+    CONSOLE_NAME_WIDTH = VBlank::Console.kits.map { |kit| kit.name.to_s.length }.max + 2
     CONSOLE_LINES = VBlank::Console.kits.map do |kit|
-      "  #{kit.name.to_s.ljust(6)}the #{kit.title}, a #{kit.description.extension}"
+      "  #{kit.name.to_s.ljust(CONSOLE_NAME_WIDTH)}the #{kit.title}, a #{kit.description.extension}"
     end.join("\n").freeze
     # The consoles whose cartridges `compare` can line up side by side
     # (Console::Kit#compared_side_by_side?), and how a sentence says them.
@@ -415,6 +416,9 @@ module VBlank
         --stats                  Say how far packing shrank the pictures and
                                  sounds, and what is kept in quick memory. The
                                  Advance's cartridge only.
+        --dump-arm[=NAME]        List the machine code of the Advance's
+                                 cartridge: every routine, or only the one
+                                 called NAME. For work on VBlank itself.
         --profile                Run the cartridge and report what it costs.
         --scene NAME             Profile this scene. Turns on --profile.
         --keys BUTTON ...        Profile with these buttons held. Turns on
@@ -458,7 +462,10 @@ module VBlank
         gba in consoles:.
 
       A program, a web page and a Ruby file are made from the game as one
-      console plays it, with that console's screen.
+      console plays it: with its buttons, its sound and its clock. The screen
+      is that console's, unless the game asks for a size of its own with
+      `screen :bitmap, size: [320, 200]`. Then the program, the page and the
+      Ruby file get that size, and each cartridge keeps its console's screen.
     TEXT
     option :output, aliases: "-o", banner: "PATH"
     option :format, banner: "NAME", default: "game"
@@ -466,6 +473,7 @@ module VBlank
     option :variant, banner: "NAME"
     option :profile, type: :boolean, default: false
     option :stats, type: :boolean, default: false
+    option :dump_arm, banner: "NAME", lazy_default: ""
     option :scene, banner: "NAME"
     option :keys, type: :array, banner: "BUTTON", default: []
     option :set, type: :array, banner: "NAME=VALUE", default: []
@@ -517,6 +525,9 @@ module VBlank
         vblank profile game.rb --keys right a     with right and A held
         vblank profile game.rb --scene level      in the scene named :level
         vblank profile game.rb --from boss.ss1    from an emulator save state
+        vblank profile game.rb --lines busiest    the busiest routines, line by line
+        vblank profile game.rb --scene level --lines level
+                                                  the scene :level, line by line
         vblank profile game.rb --console gbc      its Game Boy Color cartridge
         vblank profile game.rb --tape t.tape --frames 590..610
                                                   each frame of a tape by itself
@@ -540,6 +551,10 @@ module VBlank
                                  awake, and its busiest routines. On the Game
                                  Boy Color, the Super Nintendo, the Genesis and
                                  the PlayStation.
+        --lines NAME ...         Also show where the time went in these routines,
+                                 line by line: a func's name, a scene's name, or
+                                 game_loop. busiest shows the busiest routines.
+                                 On the Game Boy Advance.
         --frames N               Measure this many frames. Default: #{VBlank::Diagnostics::Profiler::FRAMES}.
                                  With --tape, a range of the tape's frames,
                                  counted from 1: --frames 590..610.
@@ -560,6 +575,7 @@ module VBlank
     option :press, type: :array, banner: "BUTTON", default: []
     option :scene, banner: "NAME"
     option :from, banner: "PATH"
+    option :lines, type: :array, banner: "NAME"
     option :set, type: :array, banner: "NAME=VALUE", default: []
     def profile(game_file)
       format = { "human" => :human, "json" => :json }[options[:format]] or
@@ -569,6 +585,8 @@ module VBlank
       # Each console's profile has its own settling when none is given, and a tape holds its own start.
       measuring[:settle] = options[:settle] if options[:settle]
       measuring[:tape] = VBlank::Playthroughs::Tape.read(options[:tape]) if options[:tape]
+      # `--lines busiest` asks for the busiest routines, as `lines: true` does.
+      measuring[:lines] = options[:lines] == ["busiest"] ? true : options[:lines].map(&:to_sym) if options[:lines]
       game = load_game(game_file)
       # Built the same way `build` builds it — measured placement included — so this reports on
       # the cartridge somebody would actually ship, not a differently-placed one.
@@ -644,6 +662,15 @@ module VBlank
         --saves FIRST SECOND     A save file for each, or - for none.
         --lead-ins FIRST SECOND  A playthrough for each to play first and not
                                  count, or - for none. Needs --script.
+        --starting-after FRAME   Compare from the frame after this frame of the
+                                 presses: a frame number, or a moment's name.
+                                 Each cartridge plays to it, and is not
+                                 compared before it.
+        --snapshots DIR          With --starting-after: keep a snapshot of each
+                                 console at the start in DIR. The next run
+                                 starts from the snapshot, and does not play
+                                 the frames before the start. Without it, each
+                                 run plays to the start.
 
       What counts as different (with none of these, one pixel is a difference):
         --share-may-differ SHARE
@@ -660,8 +687,8 @@ module VBlank
                                  cartridge shows, on each frame and the frame
                                  before.
         --sprite-sizes SIZES     With --ignoring-sprites, for a Super Nintendo
-                                 cartridge: its two sprite sizes, small then
-                                 large, like 8x8,16x16.
+                                 cartridge: two sprite sizes, small then large,
+                                 like 8x8,16x16, over the ones its game set.
         --forgiving-torn-frames-of WHICH
                                  first or second: forgive that cartridge a frame
                                  unlike the frames either side of it, where the
@@ -683,6 +710,36 @@ module VBlank
                                  screens, where they differ, and a tape that plays
                                  a cartridge to that frame.
         #{SET}
+
+      The sound in place of the picture (a cartridge for any console):
+        --sound                  Compare what the two put out of the speakers, by
+                                 the loudest sample of each frame: when each is
+                                 first heard, its level, when it is last heard,
+                                 and how long its last sound takes to fall
+                                 silent. Each speaker, and each voice where one
+                                 can play alone, is compared too. Takes --tape
+                                 or --script, --lead-ins, --starting-after and
+                                 --snapshots, and none of the picture's flags.
+        --heard-above N          With --sound, needed: the loudest sample a
+                                 frame can have and count as silent.
+        --first-heard-frames-apart N
+                                 With --sound, needed: how many frames apart
+                                 the two can first be heard.
+        --level-share-apart SHARE
+                                 With --sound, needed: how far apart the levels
+                                 can be, a share of the louder, 0 to 1.
+        --ending-frames-apart N  With --sound, needed: how many frames apart the
+                                 two can be last heard, and can fall silent.
+        --level-stretch-frames N Hold the level N frames at a time.
+        --pitch-cents-apart CENTS
+                                 Hold each voice's pitch, played alone, within
+                                 this many cents. A semitone is 100.
+        --line-up-within-frames N
+                                 Move the second's sound up to N frames earlier
+                                 or later, to line up with the first's.
+        --hearing FIRST SECOND   Hear only these voices on each cartridge, with
+                                 a comma between voices: square1 square1,wave.
+        --wav PATH               Write both sounds to PATH, one after the other.
     TEXT
     options_for_playing
     option :share_may_differ, type: :numeric, banner: "SHARE"
@@ -708,13 +765,27 @@ module VBlank
     option :save, banner: "PATH"
     option :saves, type: :array, banner: "PATH"
     option :lead_ins, type: :array, banner: "NAME"
+    option :starting_after, banner: "FRAME"
+    option :snapshots, banner: "DIR"
     option :reports_in, banner: "DIR"
+    option :sound, type: :boolean
+    option :heard_above, type: :numeric, banner: "N"
+    option :first_heard_frames_apart, type: :numeric, banner: "N"
+    option :level_share_apart, type: :numeric, banner: "SHARE"
+    option :ending_frames_apart, type: :numeric, banner: "N"
+    option :level_stretch_frames, type: :numeric, banner: "N"
+    option :pitch_cents_apart, type: :numeric, banner: "CENTS"
+    option :line_up_within_frames, type: :numeric, banner: "N"
+    option :hearing, type: :array, banner: "VOICES"
+    option :wav, banner: "PATH"
     def compare(first_file, second_file)
-      # A comparison lines screens up at one size, so only the consoles whose kits allow it are offered.
-      result = with_playthroughs_command_line("compare", offered: COMPARED_NAMES) do |command|
+      # A comparison of pictures lines screens up at one size, so only the consoles whose kits allow it
+      # are offered; a comparison of sound plays any console's cartridge.
+      offered = options[:sound] ? nil : COMPARED_NAMES
+      result = with_playthroughs_command_line("compare", offered: offered) do |command|
         command.compare(first_file, second_file)
       end
-      exit DRIFTED if result.drift?
+      exit DRIFTED if options[:sound] ? !result.alike? : result.drift?
     end
 
     desc "preview GAME_FILE", "Play the game in a browser, built again on every reload"
@@ -756,7 +827,12 @@ module VBlank
 
       With no --tape and no --script, you play the game in a window, at the
       speed of the console. When the play stops, the command prints how fast the
-      game ran.
+      game ran. The window opens at once and shows the build as it goes. The
+      game it builds is kept, and the next time it plays at once, until the game
+      file, a file it reads, the console, a --set, the folder you run it from
+      or VBlank changes. It is kept
+      in ~/Library/Caches/vblank (on a Mac) or ~/.cache/vblank, or in the folder
+      that VBLANK_WRITTEN_GAMES names.
 
       With --tape or --script, nobody is at the controls: the tape or the script
       holds the buttons. The command prints how many frames went by and the
@@ -777,6 +853,11 @@ module VBlank
       each pass of the game, not pictures, so it needs little from the network. If
       one computer is slow, every computer waits for it, and the game does not
       change. A game with no `players:` for a computer cannot be hosted.
+
+      You can also start a match from the window's menu (F1), under Match: host by
+      address or with a room code, or join by address or by room code. The game
+      starts again as the match. A game with `menu: false` has no menu, so use
+      --host and --join for it.
 
       With --browser, serve the game as a web page instead, and print its address.
       Open it in a browser to play. Change the game file and reload the page: the
@@ -972,6 +1053,12 @@ module VBlank
                                  game at any speed on every way. COUNT is
                                  passes, or the name of a variable that the
                                  game adds to.
+        --seed N                 Add N to the game's random numbers once the
+                                 game has set itself up, so one build plays
+                                 another run of them for each N. Works with
+                                 --on logic, native and interpreter. The tape
+                                 keeps the seed. A cartridge cannot take one:
+                                 build it with --set instead.
         --pictures-in DIR        Write the screen at each moment to DIR, as a
                                  PNG named for the moment.
         --write-tape PATH        Write the presses that were made, as a tape.
@@ -1009,6 +1096,7 @@ module VBlank
     option :tape, banner: "PATH"
     option :lead_in, banner: "NAME"
     option :in_passes, banner: "COUNT"
+    option :seed, type: :numeric, banner: "N"
     option :pictures_in, banner: "DIR"
     option :write_tape, banner: "PATH"
     option :write_mgba_script, banner: "PATH"
@@ -1042,6 +1130,7 @@ module VBlank
       return play_unattended(game_file, way) if unattended?
 
       game = load_game(game_file)
+      return play_built_in_helper(game_file, game) if build_in_helper?
       return say_rate(game, *play_shell_in_window(game)) if options[:shell]
 
       program = program_to_run(game)
@@ -1133,7 +1222,7 @@ module VBlank
       device = VBlank::Live::BotDevice.new(bot, passes: options[:pictures], on_notice: ->(words) { say words })
       begin
         live_session(game, program, network).play(device)
-      rescue *MATCH_FAILURES => e
+      rescue *match_failures => e
         raise Thor::Error, match_failure_message(e)
       end
       say_match_summary(network, events_said: true)
@@ -1304,14 +1393,98 @@ module VBlank
       rate = shell.play(window, folder_path: folder, choose_copy: shell.copy_chooser(window), open_settings: -> { window.open_menu },
                                 refused: lambda { |words|
                                   warn words
-                                  window.notice(words)
-                                }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) })
+                                  window.tell_in_box(words)
+                                }, kept_pack_refused: ->(words) { warn words }, play_game: ->(playing) { play_shell_game(window, game, playing) },
+                                stop_after_passes: options[:pictures])
       [built.game, rate]
     rescue ArgumentError, VBlank::BuildError, VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError => e
       raise build_stopped(e)
     ensure
       build_progress.done # a phase that stopped leaves its line open
       window&.close
+    end
+
+    # A person playing, with the build in another process. A helper process builds the game and writes
+    # it out as one Ruby file (Live::BuildHelper), and this command becomes the window's process
+    # (Live::WindowProcess), which opens the window at once, shows the build's progress, and plays the
+    # written game. The build's memory is the helper's and goes when it ends, so a big game plays
+    # with none of it to look after. Nothing more is said here: the window says what the build does.
+    #
+    # What the written game cannot do yet plays in this process instead (#build_in_helper?).
+    #
+    # A game written out by an earlier launch, and still current, is played again with no helper at
+    # all (Live::WrittenGames).
+    def play_built_in_helper(game_file, game)
+      console = game.refuse_console_not_for!(console_to_play(game))
+      require_relative "live"
+      shell = options[:shell]
+      slot = VBlank::Live::WrittenGames.new(VBlank::Live::WrittenGames.root)
+                                       .slot(game_file: game_file, console: console, settings: given_settings, shell: shell)
+      library = VBlank::Live::WrittenGames.library_key
+      match = !match_launch(game_file).nil?
+      # A game whose menu can start a match is written with what a match needs to know of it too.
+      facts = match || !menu_match_launch(game_file, game).nil?
+      unless slot.current?(console: console, settings: given_settings, library: library, match: facts)
+        pid, pipe = VBlank::Live::BuildHelper.start(game_file: game_file, console: console, settings: given_settings,
+                                                    slot: slot, library: library, match: facts, shell: shell)
+      end
+      VBlank::Live::WindowProcess.become(window_launch(game_file, game, console, slot.script_path, pid), helper_pipe: pipe,
+                                                                                                      zjit: zjit_on?, match: match, shell: shell)
+    rescue ArgumentError => e
+      raise build_stopped(e)
+    rescue SystemCallError => e
+      # This process could not become the window's, so nothing else will end the helper.
+      VBlank::Live::BuildWatch.new(pipe, pid: pid, title: game.title).stop_helper if pid
+      raise Thor::Error, "VBlank cannot open the window for #{game.title}: #{e.message}"
+    end
+
+    # What the window's process is told (runtime/rg_window_main.rb): the window opens at the
+    # console's size, and is fitted to the game once it is written. +pid+ is the helper building
+    # it, nil for a game written already. A match over a network (--host, --join) adds what
+    # Live::MatchPlay is told (#match_launch), and keeps no save states. A shell (--shell) opens its
+    # window with none, and offers them once its game plays.
+    def window_launch(game_file, game, console, written, pid)
+      described = VBlank::Console.described(console)
+      width, height = described.framed_screen_size
+      match = match_launch(game_file)
+      { title: game.title, width: width, height: height, pixel_size: described.pixel_size, menu: game.menu?,
+        buttons: described.buttons, state_folder: state_folder_name(game, match), written_path: written,
+        helper_pid: pid, yjit: options[:yjit], match: match, shell: options[:shell], menu_match: menu_match_launch(game_file, game),
+        options: { scale: options[:scale], pictures: options[:pictures], uncapped: options[:uncapped],
+                   "collect-garbage": options[:collect_garbage], "settings-file": options[:settings_file],
+                   "config-dir": options[:config_dir], "record-sound": options[:record_sound],
+                   "pack-folder": options[:pack_folder], "unpack-workers": options[:unpack_workers] }.compact }
+    end
+
+    # Whether the play goes through a helper process (#play_built_in_helper): a person playing in a
+    # window, on a Ruby that can hand the helper a descriptor and replace itself with the window's
+    # process (Live::WindowProcess.available?).
+    def build_in_helper?
+      require_relative "live"
+      VBlank::Live::WindowProcess.available?
+    end
+
+    # What the window's process is told of a match: Live::MatchPlay's options (#match_options, but
+    # for how it speaks), whether it has a window, and the keys it holds with none; nil when this is
+    # no match.
+    def match_launch(game_file)
+      return nil unless options[:host] || options[:join]
+
+      { game_file: game_file, host: options[:host], join: options[:join], relay: options[:relay], players: options[:players],
+        input_delay: options[:input_delay], window: options[:window] != false, keys: options[:keys] || [],
+        console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
+    end
+
+    # What the window's process is told so its menu can start a match (WindowMenu::MATCH_HEADING): the
+    # network's files, which it loads only when a match is chosen (Live::WindowProcess.match_part_paths),
+    # the game's file for the line the others join with, and the consoles' names; nil where the menu
+    # offers none: a match given by flags, a shell, no window, or a game with no menu. Whether the game
+    # is for several players is known once it is built, and the window asks that itself.
+    def menu_match_launch(game_file, game)
+      return nil if options[:host] || options[:join] || options[:shell] || options[:window] == false || !game.menu?
+
+      { game_file: game_file, parts: VBlank::Live::WindowProcess.match_part_paths,
+        console_titles: VBlank::Console.kits.to_h { |kit| [kit.name.to_s, kit.title] } }
     end
 
     # The game of a shell, played in its window with save states: only the game offers them, once the
@@ -1535,8 +1708,9 @@ module VBlank
       session.play(recording || window).tap { say_match_summary(network) if network }
     rescue VBlank::Live::SDL::Missing, VBlank::Live::SDL::Failed, VBlank::IR::ProgramError,
            VBlank::Live::SaveFile::NotThisGamesSave => e
+      window&.tell_why_play_ended(e)
       raise Thor::Error, e.message
-    rescue *MATCH_FAILURES => e
+    rescue *match_failures => e
       raise Thor::Error, match_failure_message(e)
     ensure
       build_progress.done # a window that would not open leaves its phase open
@@ -1544,87 +1718,39 @@ module VBlank
       write_recorded_sound(recording) if recording # a play that went wrong is the one most worth hearing
     end
 
-    # What stops a match, each already in plain words.
-    MATCH_FAILURES = [VBlank::Network::Refused, VBlank::Network::Desync, VBlank::Network::ConnectionLost,
-                      VBlank::Network::ConnectionFailed, VBlank::Network::VersionMismatch, VBlank::Network::RoomRefused,
-                      VBlank::Network::BadMessage].freeze
-
-    # The words for what stopped a match. A machine whose game went another way than another machine's
-    # first writes the tape of the match and the report into a new folder, which nothing removes, and
-    # the words say where: the tape replays this machine's game on the interpreter, pass for pass.
-    def match_failure_message(error)
-      return error.message unless error.is_a?(VBlank::Network::Desync)
-
-      require "tmpdir"
-      error.report.written_message(error.report.write_in(Dir.mktmpdir("vblank-match-")))
+    # What stops a match, each already in plain words (Live::MatchPlay::FAILURES).
+    def match_failures
+      require_relative "live"
+      VBlank::Live::MatchPlay::FAILURES
     end
 
-    # The match this command is to play (--host or --join), not yet begun: the host has opened its port and
-    # said where it can be found, or the joining computer has connected. Nil when it is not a match.
+    # The words for what stopped a match (Live::MatchPlay.failure_message).
+    def match_failure_message(error) = VBlank::Live::MatchPlay.failure_message(error)
+
+    # The match this command is to play (--host or --join), begun: the host has opened its port and
+    # said where it can be found, or the joining computer has connected, and everybody is in. Nil
+    # when it is not a match. The window's own process does the same from the facts a helper wrote
+    # (runtime/rg_window_main.rb); this is the one-process path, which a bot takes.
     def network_to_play(game_file, game, program)
       return nil unless options[:host] || options[:join]
 
-      refuse_match_for_one_player!(game, program)
-      fingerprint = VBlank::Network::Fingerprint.of(program, title: game.title)
-      lockstep = if options[:relay] then meet_on_relay(game_file, program, fingerprint)
-                 elsif options[:host] then open_match_as_host(game_file, program, fingerprint)
-                 else connect_to_match_host(fingerprint)
-                 end
-      say "Waiting for the other players. Press Ctrl-C to give up." if options[:host]
+      require_relative "live"
+      match = VBlank::Live::MatchPlay.new(VBlank::Live::MatchPlay.facts_of(program, title: game.title), **match_options(game_file))
+      lockstep = match.open
+      say match.waiting_line if match.waiting_line
       lockstep.begin_match
       say "The match has begun. You are player #{lockstep.player}."
       lockstep
-    rescue ArgumentError, *MATCH_FAILURES => e
+    rescue ArgumentError, VBlank::Live::MatchPlay::Refused, *match_failures => e
       raise Thor::Error, e.message
     rescue Interrupt
       raise Thor::Error, "You stopped the wait, so no match was played."
     end
 
-    # A match is for a game that takes more than one player. A game for one player is built without what a match
-    # needs (Program#several_players?).
-    def refuse_match_for_one_player!(game, program)
-      return if program.several_players?
-
-      raise Thor::Error, "#{game.title} is a game for one player, so it cannot play in a match. To fix this, say on " \
-                         "VBlank.game how many players it takes, for example players: 1..2."
-    end
-
-    def players_in_match(program)
-      players = options[:players] || 2
-      most = program.most_players
-      if most && players > most
-        raise Thor::Error, "--players #{players} is more than this game takes. The game takes at most #{most}. " \
-                           "To fix this, give --players #{most} or fewer."
-      end
-      players
-    end
-
-    # A match through the relay: --host makes a room and says its code, --join CODE joins one.
-    def meet_on_relay(game_file, program, fingerprint)
-      url = VBlank::Network::RelayPlay.url_from(options[:relay])
-      input_delay = options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES
-      return VBlank::Network::RelayPlay.join(url, options[:join], fingerprint: fingerprint).tap { say "Joined the room #{options[:join]}." } unless options[:host]
-
-      lockstep, code = VBlank::Network::RelayPlay.host(url, players: players_in_match(program), input_delay: input_delay, fingerprint: fingerprint)
-      say "Made the room #{code} on the relay. The others can join with:"
-      say "  vblank run #{game_file} --relay --join #{code}"
-      lockstep
-    end
-
-    def open_match_as_host(game_file, program, fingerprint)
-      players = players_in_match(program)
-      lockstep, port = VBlank::Network::DirectPlay.host(port: Integer(options[:host], 10), players: players,
-                                                        input_delay: options[:input_delay] || VBlank::Network::Lockstep::DEFAULT_INPUT_DELAY_PASSES,
-                                                        fingerprint: fingerprint)
-      say "Hosting a match for #{players} players on port #{port}. The others can join with one of:"
-      VBlank::Network::DirectPlay.addresses_for(port).each { |address| say "  vblank run #{game_file} --join #{address}" }
-      lockstep
-    end
-
-    def connect_to_match_host(fingerprint)
-      address = VBlank::Network::DirectPlay::Address.parse(options[:join])
-      say "Joining the match at #{address}."
-      VBlank::Network::DirectPlay.join(address, fingerprint: fingerprint)
+    # What Live::MatchPlay is told of this command's options.
+    def match_options(game_file)
+      { game_file: game_file, host: options[:host], join: options[:join], relay: options[:relay], players: options[:players],
+        input_delay: options[:input_delay], say: ->(line) { say line } }
     end
 
     def refuse_mismatched_match_options!
@@ -1672,14 +1798,13 @@ module VBlank
       device = VBlank::Live::Headless.new(frames: options[:pictures], buttons: keys, on_notice: ->(words) { say words },
                                           keeps_save: false)
       session.play(device).tap { say_match_summary(network, events_said: true) }
-    rescue *MATCH_FAILURES => e
+    rescue *match_failures => e
       raise Thor::Error, match_failure_message(e)
     end
 
     # +events_said+ is true where the events were said as they came, and need no telling again.
     def say_match_summary(network, events_said: false)
-      network.events.each { |event| say event.words } unless events_said
-      say "The match is over. The computers agreed on every checkpoint."
+      VBlank::Live::MatchPlay.summary_lines(network, events_said: events_said).each { |line| say line }
     end
 
     # A bot plays in a match, so it needs a way into one.
@@ -1772,7 +1897,7 @@ module VBlank
     # The "game" format (--format=game, the default): a cartridge for each console the game names,
     # or for the one --console names.
     #
-    # EACH IS BUILT WHATEVER HAPPENS TO THE OTHER. A game for both consoles that the Color cannot
+    # Each is built whatever happens to the other. A game for both consoles that the Color cannot
     # play still gets its Advance cartridge, and the command then ends saying why the Color's was
     # not made and how to stop asking for it — which may be all the game needs, since not every
     # game is for the Color. It still ends as a failure: a console the game names was not built.
@@ -1785,6 +1910,7 @@ module VBlank
         raise Thor::Error, "--variant names the chip for one console. " \
                            "#{consoles_choice_message(game, 'build', game.consoles)}"
       end
+      refuse_dump_arm_without_advance!(consoles)
       built = {}
       failed = {}
       stops = []
@@ -1823,7 +1949,25 @@ module VBlank
         say rom.compression.summary_line if rom.compression&.any?
         say placement_line(rom) if rom.placement&.funcs&.any?
       end
+      dump_arm_of(rom) if options[:dump_arm] && VBlank::Console.for(console).arm_listing?
       rom
+    end
+
+    def refuse_dump_arm_without_advance!(consoles)
+      return if options[:dump_arm].nil? || consoles.any? { |console| VBlank::Console.for(console).arm_listing? }
+
+      raise Thor::Error, "--dump-arm lists the code of the Game Boy Advance's cartridge. " \
+                         "This build makes none. Add --console gba."
+    end
+
+    # The machine code of every routine of +rom+, or of the one --dump-arm names, as the listing
+    # a game's `dump_func` prints.
+    def dump_arm_of(rom)
+      routines = rom.built.func_spans
+      names = options[:dump_arm].empty? ? routines.keys : [options[:dump_arm].to_sym]
+      VBlank::Diagnostics::FuncDumper.new(rom, routines, tables: rom.built.number_tables, spans: rom.built.statement_spans,
+                                                         out: $stdout, err: $stderr)
+                                     .dump(names)
     end
 
     # Why the consoles in +failed+ (console => reason) were not built, and the ways to stop
@@ -2142,7 +2286,7 @@ module VBlank
 
     # +error+, which stopped the command, as the error the command ends with, saying +message+.
     #
-    # A BUILD THAT STOPPED SAYS SO IN ITS FIRST LINE (Messages::BuildStopped), because its reason
+    # A build that stopped says so in its first line (Messages::BuildStopped), because its reason
     # alone does not say that nothing was made. This is the one place the command line adds that
     # line: every rescue of a build hands its error here. The error is a VBlank::BuildError, or one
     # the playthroughs made from one (its cause). A build the guardrails stopped printed the line

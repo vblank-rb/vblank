@@ -5,7 +5,7 @@ require "shell_tests"
 require "fileutils"
 require "tmpdir"
 
-# A PORT BUILT AS A SHELL, PLAYED AS THE DESKTOP PROGRAM. The program holds none of the made-up
+# A port built as a shell, played as the desktop program. The program holds none of the made-up
 # original's data (ShellTests). Started with no data pack in its folder it plays its menu part;
 # LOAD ROM takes the file the player picks, checks it is a release the game reads, plays the
 # release's unpacking part, keeps the pack in the folder and plays the game. The next start plays the
@@ -18,7 +18,7 @@ require "tmpdir"
 # SDL's stand-in for a display. The answer key is the same game built all-in-one, played the same
 # number of frames, and the pack the all-in-one build makes.
 #
-# The shell has ONE WINDOW from its menu to its game: its parts have none, and send what they draw
+# The shell has one window from its menu to its game: its parts have none, and send what they draw
 # to the program that started them (runtime/rg_shell.c).
 class TestNativeShell < Minitest::Test
   include ShellTests
@@ -75,7 +75,7 @@ class TestNativeShell < Minitest::Test
     end
   end
 
-  # AN UNPACKING THAT WORKS A LONG TIME BETWEEN WRITES plays on a thread of its own, so its window
+  # An unpacking that works a long time between writes plays on a thread of its own, so its window
   # keeps showing pictures the whole time. Played on the window's thread, as it was, it showed a
   # picture only every thirtieth time the routine waited for a frame, and this one waits for none
   # as it works. The unpacking part is run as the shell runs it, with --frame-times besides, whose
@@ -110,7 +110,7 @@ class TestNativeShell < Minitest::Test
   # asks to end as the window closing): the program ends without waiting for the unpacking to
   # finish, which ends with it, and nothing is left in the pack's folder to make a pack from.
   #
-  # HELD TO WHAT HAPPENS, NOT TO THE CLOCK. The window is closed once the unpacking is seen running,
+  # Held to what happens, not to the clock. The window is closed once the unpacking is seen running,
   # however long the shell takes to get there: a fixed wait before closing it missed the unpacking
   # on a busy machine, where the shell had not yet got through its menu. And the unpacking is paused
   # before the window closes, so it can never finish: a shell that waited for it would never end,
@@ -184,7 +184,7 @@ class TestNativeShell < Minitest::Test
     `pgrep -f #{File.join(shell, 'parts', 'unpack-0')}`.split
   end
 
-  # WHAT A PERSON DOES AT THE FILE DIALOG, with nobody there (--shell-picks): closes it with nothing
+  # What a person does at the file dialog, with nobody there (--shell-picks): closes it with nothing
   # picked, picks a file that is no release, then picks the copy. The window is saved each time the
   # dialog would open (--shell-pick-pictures), and every window opened by the shell or a part of it
   # is written down (VBLANK_WINDOW_LOG, which a part is handed with the rest of the environment).
@@ -215,7 +215,7 @@ class TestNativeShell < Minitest::Test
     end
   end
 
-  # A PACK AN OLDER BUILD KEPT IS ROUTINE, AND NEVER A BOX. A port grows a part at a time and each
+  # A pack an older build kept is routine, and never a BOX. A port grows a part at a time and each
   # part changes its pack, so a player who takes a new build starts it over the old build's pack: one
   # of another version, or of another size. The shell was started over one by a person, put up a box
   # of the system's as it started, and the box could not be answered: the program never came back.
@@ -258,7 +258,7 @@ class TestNativeShell < Minitest::Test
   end
 
   # The menu's two lines in the window's picture (Original::Shell.menu_program draws LOAD ROM at
-  # the screen's middle and SETTINGS twelve rows under it), and its colours as a BMP keeps them,
+  # the screen's middle and settings twelve rows under it), and its colours as a BMP keeps them,
   # blue first: yellow for the line chosen, white for the line under the cursor.
   LOAD_ROM_ROWS = (240...264)
   SETTINGS_ROWS = (276...300)
@@ -284,7 +284,7 @@ class TestNativeShell < Minitest::Test
   end
 
   # SETTINGS plays the menu again with the window's menu open. The script it plays with then closes
-  # that menu with its first line and chooses LOAD ROM, one line up from SETTINGS, where the cursor
+  # that menu with its first line and chooses LOAD ROM, one line up from settings, where the cursor
   # was left; had the window's menu been shut, that line would open it, and the A after it would
   # never reach the shell's menu.
   private def assert_settings_opens_the_window_menu(shell, dir)

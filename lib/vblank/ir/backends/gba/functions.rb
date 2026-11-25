@@ -37,18 +37,24 @@ module VBlank
             @funcs = {}
             @minted = {}
             @func_ranges = {}
+            @stop_bytes = {}
             @number_tables = {}
           end
 
-          attr_writer :modes, :drawing
+          attr_writer :modes, :drawing, :fault_stops
           attr_reader :funcs, :func_ranges
+
+          # The bytes of stops (FaultStops) a routine written in place keeps outside its range, by
+          # name: the game loop's body left inline, whose range ends where the jump back to its top
+          # is, which a reader counts its passes by. A routine of its own keeps them inside.
+          attr_reader :stop_bytes
 
           # Where each routine's number table is, for the routines that have one: the last
           # part of the routine's own span, which holds numbers and not instructions. Anything
           # that reads a routine back as code (dump_func) has to know where the code stops.
           attr_reader :number_tables
 
-          # A ROUTINE THIS BACKEND MADE UP FOR ITSELF, with a block for a body rather than
+          # A routine this backend made up for itself, with a block for a body rather than
           # statements of the program — because nothing in the program asked for it. Something
           # the console needs done in one place rather than written out again at every point
           # it is needed (see SpriteDrawing#emit_write_sprite_rows).
@@ -101,13 +107,10 @@ module VBlank
               @drawing.emit_scene_late_pages(name) # what this scene's screen does with a late page
               if @modes.scene_funcs.include?(name)
                 # ...a preamble: what this scene has to tell the display as it takes over.
-                # That is the screen mode, in a program that switches it per scene, and the
-                # layers this scene uses, in one whose scenes use different ones. A program
-                # that needs neither emits nothing here.
+                # That is the screen mode, in a program that switches it per scene, the
+                # layers this scene uses, in one whose scenes use different ones, and its own
+                # sprite pictures. A program that needs none of them emits nothing here.
                 @drawing.emit_scene_preamble(name)
-                # ...and its own sprite pictures, which scenes share the room for, so a
-                # scene taking over sends its own and one already running sends nothing.
-                @drawing.emit_scene_art_upload(name)
                 # ...and, with its pictures up, the end of the pass it took over on, for a scene
                 # that has that pass to itself.
                 @drawing.emit_return_on_arrival_pass(name)
@@ -115,6 +118,7 @@ module VBlank
               fnode.children.each { |stmt| @lowering.statement(stmt) }
             end
             @emitter.emit(ASM.pop(15))                           # pop {pc}  (return)
+            @fault_stops&.emit_pending # where its stops go, inside its span
             table_start = @emitter.pos
             @emitter.close_number_table
             @number_tables[name] = (table_start...@emitter.pos) if @emitter.pos > table_start
@@ -130,8 +134,8 @@ module VBlank
           # comparison reloads from memory itself, so a scene call is free to clobber
           # every register without disturbing the dispatch.
           #
-          # WHICH IS WHY THE VALUE IS COPIED ASIDE FIRST, and it is the whole of this
-          # method. Reloading is right; reloading THE STATE VARIABLE would not be, because
+          # Which is why the value is copied aside first, and it is the whole of this
+          # method. Reloading is right; reloading the state variable would not be, because
           # the scene that just ran is usually the thing that changes it. A title screen
           # sets the state to the menu and returns, and the next comparison would ask "is
           # it the menu?", find that it is, and run the menu too — in the same pass, on the
@@ -159,7 +163,7 @@ module VBlank
           # Where a `case` on +var+ keeps the copy its clauses are tested against.
           def self.picked_var(var) = :"_picked_#{var}"
 
-          # A CLAUSE OF THE DISPATCH THAT SWAPS: the scene's own routines are copied into the
+          # A clause of the dispatch that swaps: the scene's own routines are copied into the
           # quick memory before its routine is called, unless they are in already (see
           # SceneQuickMemory). The swap belongs on the branch that calls the scene, so a pass
           # that calls no new scene copies nothing.
@@ -178,14 +182,14 @@ module VBlank
             @emitter.place_label(skip)
           end
 
-          # A CALL PICKED BY NUMBER, which costs the same for a list of two as for a list of
+          # A call picked by number, which costs the same for a list of two as for a list of
           # two hundred. The dispatch above asks each clause in turn — a compare, a branch and a
           # load of the copy for every one, all of them asked every time — so a long list is a
           # long run of questions. This asks none: the number is how far along a table of
           # addresses to read (see Placement#routine_table), and the word it finds is where the
           # routine starts.
           #
-          # ONE TEST GUARDS BOTH ENDS. Compared as a number that cannot be negative, -1 reads as
+          # One test guards both ends. Compared as a number that cannot be negative, -1 reads as
           # the biggest number there is, so "is it at least the length?" catches a number below 0
           # as well as one past the end — and either way nothing is called, where reading the
           # table there would jump to whatever the next word happened to hold.

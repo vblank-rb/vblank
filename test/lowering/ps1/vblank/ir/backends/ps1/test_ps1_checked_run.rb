@@ -51,20 +51,20 @@ class TestPS1CheckedRun < Minitest::Test
     end
   end
 
-  # Each of the twelve buttons a game names on the pad held alone for one frame, a frame apart: each is
+  # Each of the fourteen buttons a game names on the pad held alone for one frame, a frame apart: each is
   # counted once under its own name, so one wired to another's bit shows as a count in the wrong place.
-  BUTTONS = %i[a b x y l r select start right left up down].freeze
+  BUTTONS = %i[a b x y l r l2 r2 select start right left up down].freeze
 
   def test_every_button_reaches_the_game_under_its_own_name
     run = PS1::CheckedRun.new
-    run.input_each_frame { |frame| frame.even? && frame.between?(2, 24) ? [BUTTONS[(frame - 2) / 2]] : [] }
+    run.input_each_frame { |frame| frame.even? && frame.between?(2, 28) ? [BUTTONS[(frame - 2) / 2]] : [] }
     run.run(program_of do
       BUTTONS.each do |button|
         count = var :"#{button}_count", 0
         once_a_frame { count += 1 if pressed(button) }
       end
       game_loop {}
-    end, frames: 30)
+    end, frames: 34)
 
     assert_equal [1] * BUTTONS.size, BUTTONS.map { |button| run[:"#{button}_count"] }
   end
@@ -143,7 +143,6 @@ class TestPS1CheckedRun < Minitest::Test
   # part, never in the words of hardware the console lacks (Console::PS1Answers).
   def test_what_the_build_does_not_make_yet_is_refused_as_not_made_yet
     games = {
-      "the second pad" => proc { game_loop { wait_vblank if held(:a, player: 2) } },
       "fades, lights and screen effects" => proc { game_loop { fade :black, 50, inside: [0, 0, 16, 16] } }
     }
     games.each do |part, game|
@@ -163,7 +162,7 @@ class TestPS1CheckedRun < Minitest::Test
     assert_equal 0, run[:n]
   end
 
-  # A STAND-IN FOR A RUNTIME THAT LETS THE DISPLAY COME ON WHILE IT SETS UP: the graphics chip reads
+  # A stand-in for a runtime that lets the display come on while it sets up: the graphics chip reads
   # with its display on, where the real program still has it off. The run reports the picture
   # Beetle PSX holds where the chip shows it, not the interpreter's switched-off white, so a check
   # against the interpreter would fail.

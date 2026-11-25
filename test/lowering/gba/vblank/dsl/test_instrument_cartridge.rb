@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# AN INSTRUMENT'S CHORD ON THE ADVANCE'S CARTRIDGE, read in the emulator: three distinct pitched
+# An instrument's chord on the Advance's cartridge, read in the emulator: three distinct pitched
 # voices. The instrument on every run is in test/all/vblank/dsl/test_instrument.rb, and the notes
 # only the Advance plays in test/console/gba/vblank/dsl/test_instrument_on_the_advance.rb.
 class TestInstrumentCartridge < Minitest::Test

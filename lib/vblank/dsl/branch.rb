@@ -4,7 +4,7 @@ module VBlank
   module DSL
     # The open `if` Condition#record_branch just recorded, waiting for an optional other side. On
     # its own it does nothing; #else fills in the branch that runs when the test was false.
-    class Branch
+    class Branch # :nodoc:
       def initialize(builder, if_node)
         @builder = builder
         @if_node = if_node

@@ -41,15 +41,16 @@ require_relative "gbc/lowering"
 require_relative "gbc/sound_log"
 require_relative "gbc/headless_run"
 require_relative "gbc/checked_run"
+require_relative "gbc/work_reservations"
 
 module VBlank
   module IR
     module Backends
-      # The game as a GAME BOY COLOR cartridge: the same program every other backend runs, lowered
+      # The game as a Game Boy Color cartridge: the same program every other backend runs, lowered
       # to the SM83, the Color's 8-bit processor, and laid out in a cartridge with a memory bank
       # controller.
       #
-      # HOW IT IS MADE. GBC::Lowering walks the IR and emits SM83 machine code, as the GBA lowering
+      # How it is made. GBC::Lowering walks the IR and emits SM83 machine code, as the GBA lowering
       # emits ARM. What it works out before writing an instruction — what a run reaches, how a
       # table is kept, where a routine too big for a bank is cut, how sections fill the banks — it
       # shares with the Super Nintendo's lowering (LoweringPlan, RoutineCuts, Sections), so the two
@@ -67,7 +68,7 @@ module VBlank
       # interpreter, given the Color's screen, and comparing every variable, list and pixel after
       # every pass of the game loop (GBC::CheckedRun).
       class GBC
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows:
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows:
         # every variable by the game's name, every list (its place, its capacity, its slot width),
         # where the runtime keeps how the run stands (Runtime::Frame's names), where every label of
         # the code went (the Linker's places), and where each of the game's routines is — a
@@ -84,15 +85,16 @@ module VBlank
         # the game declared narrow, or one only ever holding a byte or two (GBC::NarrowVariables).
         #
         # +slot_places+ is where each of a pool's lists keeps its slots, as its layout placed it
-        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
+        # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list; +unsigned_lists+ the lists
+        # kept in two bytes read back with no sign (Lowering#unsigned_list?).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_tables, :notes,
                              :music_follows_level, :sound_effects, :recordings, :picture_checks, :together_checks,
-                             :kept_bytes, :slot_places) do
+                             :kept_bytes, :slot_places, :unsigned_lists) do
           # How many bytes variable +name+ is kept in: four for a whole number. A narrow one reads
           # back with its sign copied up from its top byte.
           def variable_bytes(name) = kept_bytes.fetch(name, 4)
 
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
+          # The sprites the game placed in its last pass, as the interpreter gives them
           # (Reference#sprites): who each is, which picture it shows and where, back to front. The
           # runtime keeps them in a table of its own (Runtime::Picture::DRAWN), front-most first as
           # the console draws them, so anything reading a running cartridge asks the same of it.
@@ -108,6 +110,12 @@ module VBlank
               drawn.row(whose - 1, picture, signed16.call(x), signed16.call(y))
             end
             rows.reverse
+          end
+
+          # How many bytes each of the game's routines takes, biggest first. The parts a big routine
+          # was cut into share its name (Lowering#routines_fitting), so they are one entry.
+          def routine_sizes
+            RoutineSize.summed(routines)
           end
 
           # Where the runtime counts the times the game has waited for the screen (32 bits).
@@ -167,7 +175,7 @@ module VBlank
 
         # +program+ as a cartridge (Cartridge::GBCROM), carrying its Places.
         #
-        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering, until one fits. The first
+        # A build is a series of tries (BuildTries), each a whole lowering, until one fits. The first
         # keeps everything the simple way. A try stops at the first thing that does not fit, which
         # decides what the next try changes (#settings_after):
         #
@@ -242,7 +250,7 @@ module VBlank
           end
         end
 
-        # THE PART OF THE CARTRIDGE ALWAYS IN VIEW is 16384 bytes, and a game that does not fit there
+        # The part of the cartridge always in view is 16384 bytes, and a game that does not fit there
         # is built again keeping more of itself in the banks, in this order (#next_view): its
         # songs' notes (GBC::Music#sections); its sprites' tables of poses in each list
         # (Lowering::Picture); the tables of what its backgrounds' palettes show at each step of a
@@ -274,9 +282,9 @@ module VBlank
         # The step after +view+ (#roomier_view), nil after the last: for a game with +songs+ and
         # sound +effects+.
         #
-        # THE LAST WAY TO FIT THE PART ALWAYS IN VIEW: everything kept in the banks that the build
+        # The last way to fit the part always in view: everything kept in the banks that the build
         # can keep there — its songs' notes, its sound effects, its sprites' pose tables, its fades'
-        # colour tables and every table of its own but the smallest — and the INDEXES as well, the
+        # colour tables and every table of its own but the smallest — and the indexes as well, the
         # small tables that record where each of those things is. Each is a few bytes, but a few bytes
         # for every song, every sprite picture, every screen and every routine a call picks from
         # add up, so a game that keeps adding songs and screens fills the part always in view with
@@ -303,7 +311,7 @@ module VBlank
                     banked_table_bytes: view.bank_background_colors ? smaller : view.banked_table_bytes)
         end
 
-        # AT MOST HOW MANY BYTES +later+ MOVES OUT OF VIEW that +view+ kept there, read off the try
+        # At most how many bytes +later+ moves out of view that +view+ kept there, read off the try
         # that +spans+ measured (#in_view_spans) and +lowering+ made. Moving a thing to the banks
         # never shrinks the rest of what is in view: what stays to record where it went, and the code
         # that puts its bank in view, is the same size or bigger. So a try's part in view, less these bytes, is the least
@@ -384,7 +392,7 @@ module VBlank
                                            indexes_in_banks: view.indexes_in_banks, cache: cache)
           # The runtime's places first, so they are in the half of work memory always in view.
           Runtime.reserve(memory, art: lowering.art, effects: lowering.music.effects, together: lowering.groups_up_together?,
-                                  bar_rows: lowering.bar_rows, slides: lowering.music.slides?,
+                                  bar_rows: lowering.bar_rows, slides: lowering.music.slides?, pans: lowering.music.pans?,
                                   wobbles: lowering.music.wobbles?, shapes: lowering.music.shapes?, waves: lowering.music.waves?,
                                   swells: lowering.holds_swells?, noise_swells: lowering.holds_noise_swells?,
                                   banked_songs: lowering.music.banked?, clips: lowering.clips.any?,
@@ -393,6 +401,7 @@ module VBlank
                                   kept_sprites: lowering.keeps_unchanged_sprites?,
                                   holds_music: lowering.holds_music?, effect_table: lowering.music.effects_in_banks?,
                                   song_entries_in_banks: lowering.music.entries_in_banks?, tune_plays_once: lowering.music.tune_plays_once?,
+                                  effect_clock_step: lowering.music.effect_clock_step,
                                   cells_shown_now: lowering.cells_shown_now?,
                                   bar_covers: lowering.bar_covers_sprites?, tile_loads: lowering.loads_sprite_tiles?,
                                   walks_colors: lowering.walks_colors?, grids_kept: lowering.reserves_grid_kept?)
@@ -407,9 +416,10 @@ module VBlank
                                              bar_rows: lowering.bar_rows, bar_maps: lowering.bar_shows_maps?, clips: clips,
                                              count_at: (lowering.whole_place_of(Frames::COUNT) if lowering.counts_dark_frames?),
                                              banked_colors: view.bank_background_colors && !lowering.drawn_palettes.nil?,
-                                             byte_fills: lowering.fills_byte_lists?, queues: lowering.keeps_queues?,
+                                             fills: lowering.fills_lists?, queues: lowering.keeps_queues?,
                                              half_queues: lowering.keeps_half_queues?,
-                                             save_list_moves: lowering.moves_lists_to_save?,
+                                             saves: SaveLayout.named_by?(program), save_list_moves: lowering.moves_lists_to_save?,
+                                             list_packs: lowering.packs_lists?,
                                              sprites_over_picture: IR::SpritesOverPicture.any?(program),
                                              indexes_in_banks: view.indexes_in_banks,
                                              byte_divides: lowering.divides_by_written_bytes?,
@@ -434,7 +444,7 @@ module VBlank
                              sound_effects: lowering.music.effects.map(&:name), recordings: lowering.clips.recordings,
                              picture_checks: lowering.picture_checks,
                              together_checks: lowering.together_checks, kept_bytes: lowering.kept_variable_bytes,
-                             slot_places: lowering.slot_places)
+                             slot_places: lowering.slot_places, unsigned_lists: lowering.unsigned_lists)
           save_bytes = SaveLayout.named_by?(program) ? Runtime::Saving::SIZE : 0
           Cartridge::GBCROM.new(linked.banks, title: title, save_bytes: save_bytes, clock: lowering.clock?,
                                               rumble: lowering.rumbles?, built: built)

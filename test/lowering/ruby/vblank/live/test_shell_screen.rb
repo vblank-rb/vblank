@@ -5,9 +5,9 @@ require "tmpdir"
 require "vblank/live"
 require "shell_screen_tests"
 
-# A SHELL'S FIRST SCREEN MADE THE GAME'S OWN, PLAYED AS RUBY (`shell_screen`; ShellScreenTests has
+# A shell's first screen made the game's own, played as Ruby (`shell_screen`; ShellScreenTests has
 # the port and the answer key). Every picture the shell shows is held to the same screen drawn by a
-# plain game, pixel for pixel, and LOAD ROM and SETTINGS do what they do on a screen nobody changed.
+# plain game, pixel for pixel, and LOAD ROM and settings do what they do on a screen nobody changed.
 #
 # The device is headless, and its buttons are set by pass, counted from the first each time the
 # shell plays its menu again. A button held on pass n is seen by the pass that draws picture n,

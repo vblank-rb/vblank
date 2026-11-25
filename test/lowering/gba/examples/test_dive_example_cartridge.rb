@@ -25,7 +25,7 @@ class TestDiveExampleCartridge < Minitest::Test
 
   private def holding_start = ->(frame) { frame > START_AT ? KEY_START : 0 }
 
-  # The title is the console's MIXED arrangement: two layers that scroll beside one that
+  # The title is the console's mixed arrangement: two layers that scroll beside one that
   # turns. Read off the console's own display register rather than guessed from the
   # picture, because the half a picture hides is the fourth layer being switched OFF —
   # that arrangement has no fourth layer, and a bit left on there means nothing to the
@@ -41,7 +41,7 @@ class TestDiveExampleCartridge < Minitest::Test
 
   # The near sheet of light shafts is drawn from the next of four lists of colours every
   # eight frames, which is light moving on water. What makes it worth a test rather than a
-  # look is the second half of the promise: the colours that move are that layer's ALONE.
+  # look is the second half of the promise: the colours that move are that layer's alone.
   # Both sheets of shafts are drawn from the same tiles, so if the two shared one group of
   # sixteen the far sheet would flicker in step with the near one, and nothing in the game
   # would say why.
@@ -119,7 +119,7 @@ class TestDiveExampleCartridge < Minitest::Test
      verifier.pixel_gba(*OPEN_WATER)]
   end
 
-  # THE ONE THAT MATTERS. Seeing through a layer and darkening a finished picture are the
+  # The one that matters. Seeing through a layer and darkening a finished picture are the
   # same part of the display, and it does one at a time — so a game that does both has to
   # move the COLOURS instead, and that is what keeps the water blending here. Get it wrong
   # and the water turns solid the instant the fade starts: the diver disappears behind a
@@ -159,7 +159,7 @@ class TestDiveExampleCartridge < Minitest::Test
   # colours come from which group of colours the fish's table entry names, so this reads
   # the entries rather than the pixels.
   def test_the_console_gives_each_fish_its_own_colours
-    worn = console(frames: START_AT + 10, keys: holding_start).sprites(:fish).map(&:colors)
+    worn = console(frames: START_AT + 10, keys: holding_start).sprites(:fish_shoal).map(&:colors)
 
     assert_operator worn.length, :>=, SPECIES, "not every fish reached the console"
     assert_operator worn.uniq.length, :>=, SPECIES, "the console drew the fish all one colour"

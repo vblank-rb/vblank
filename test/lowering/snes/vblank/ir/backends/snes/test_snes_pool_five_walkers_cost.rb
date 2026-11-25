@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# FIVE THINGS OF A POOL, EACH CHECKED AGAINST THE OTHER FOUR EVERY PASS, as the five enemies of a
+# Five things of a pool, each checked against the other four every pass, as the five enemies of a
 # Super Bomberman stage are (bank6.asm, straight_movement calls check_for_enemy_with_enemy_collision
 # for each): a routine of the pool steps its thing, walks the pool, and turns its thing round when
 # another is within 16 pixels on both axes. Twenty pairs a pass, and the routine's share of the

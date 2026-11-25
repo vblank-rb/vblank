@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE MUSIC PLAYER, which runs in the frame's interrupt — once for every frame the
+          # The music player, which runs in the frame's interrupt — once for every frame the
           # screen shows, however long the game's passes take — as the Advance's does: the game
           # only names a tune (rt_music_play) or stops it (rt_music_stop), and the player
           # walks each part's notes (GBC::Music) a frame at a time, writing each note into its
@@ -27,7 +27,7 @@ module VBlank
             NEXT = "rt music next" # Each part's next note, 16 bits each
             PART = "rt music part" # The part being played: its voice, its tone, how many notes, where they are
             PARTS = 4
-            # WHAT EACH VOICE IS HOLDING, for a new music level to reach it: the volume its note was
+            # What each voice is holding, for a new music level to reach it: the volume its note was
             # written at (0 for a rest), for the two square voices and the wave voice; and for the
             # two square voices, which take a volume only as a note starts and so are sounded again,
             # the note's tuning and duty. A drum hit on the noise voice rings and fades by itself,
@@ -43,11 +43,15 @@ module VBlank
             # ...and its own waveform, 1 up, or nought for its part's, in a game where a wave note
             # names one (GBC::Music.note_bytes).
             NOTE_WAVE = "rt music note wave"
+            # ...and, in a game where a note plays from one speaker, a rest's speakers, set once the
+            # voice is quiet, or 0xFF for a note, whose speakers are set before it starts.
+            REST_SPEAKER = "rt music rest speaker"
+            NOT_A_REST = 0xFF
             HELD_VOICES = 3
             # The waveform in the wave voice, 1 up, in a game with sound effects: a song's part and an
             # effect's can each sound in their own, so a note puts its own in when it is not there.
             WAVE_LOADED = "rt music wave loaded"
-            # A WAVE NOTE HELD ACROSS A RECORDING, in a game that plays one (Runtime::Clips): the
+            # A wave note held across a recording, in a game that plays one (Runtime::Clips): the
             # recording has the voice while it plays, so the note's tuning and waveform are kept
             # beside what HELD keeps of it, and WAVE_BACK is set as the recording ends, for the next
             # frame to put the note back (rt_music_wave_back) rather than leave it quiet until the
@@ -64,7 +68,20 @@ module VBlank
 
             module_function
 
-            # SONGS KEPT IN THE CARTRIDGE'S BANKS (GBC::Music#sections): the bank the game's code put
+            # A at the sound chip's +register+ (its address, or [:c] for the one C names): written
+            # now, or in a game whose effects are struck inside the frame, through rt_sound_put
+            # (Runtime::Strikes), which keeps every register.
+            def emit_sound_write(asm, memory, register)
+              return asm.load_high(register, :a) unless Strikes.any?(memory)
+              return asm.call("rt_sound_put") if register == [:c]
+
+              asm.push(:bc)
+              asm.load(:c, register & 0xFF)
+              asm.call("rt_sound_put")
+              asm.pop(:bc)
+            end
+
+            # Songs kept in the cartridge's banks (GBC::Music#sections): the bank the game's code put
             # in view last (SM83#select_rom_bank notes it here), which the player puts back once it
             # has read a part's notes from that part's own bank — kept at PART_BANK in [PART].
             BANK_NOTED = "rt music bank noted"
@@ -72,7 +89,7 @@ module VBlank
 
             def banked?(memory) = memory.reserved?(BANK_NOTED)
 
-            # WHETHER EACH WAVE NOTE PUTS ITS WAVEFORM IN, rather than the tune at its start: in a game
+            # Whether each wave note puts its waveform in, rather than the tune at its start: in a game
             # whose sound effects or recordings can sound on the wave voice with a waveform of their
             # own (WAVE_LOADED holds which is in), so a note after them finds its own gone, or whose
             # wave notes name waveforms of their own.
@@ -100,7 +117,7 @@ module VBlank
             # Whether the game holds its music (TUNE_HELD).
             def holds?(memory) = memory.reserved?(TUNE_HELD)
 
-            # A TUNE THAT PLAYS ONCE AND HAS REACHED ITS END, in a game that has one
+            # A tune that plays once and has reached its end, in a game that has one
             # (IR::Tunes.plays_once?): its number, 1 up, as PLAYING had it, or 0 for none. Set at the
             # end of its last frame; the next frame quiets it (rt_music_end), as the interpreter's
             # player does (Reference::Player#advance_song_frame keeps @ended, and
@@ -114,7 +131,7 @@ module VBlank
 
             def tune_plays_once?(memory) = memory.reserved?(ENDED)
 
-            # SONGS' ENTRIES KEPT IN A BANK (GBC::Music#entries_in_banks?): the playing song's entry,
+            # Songs' entries kept in a bank (GBC::Music#entries_in_banks?): the playing song's entry,
             # copied here from its bank as the song starts, which SONG then names. Every reading of the
             # song after that — its parts, its length, where it comes round from — reads this copy, so
             # the player puts no bank in view for it on any other frame.
@@ -122,8 +139,20 @@ module VBlank
 
             def entries_in_banks?(memory) = memory.reserved?(ENTRY_COPY)
 
-            def reserve(memory, effects: [], slides: false, wobbles: false, shapes: false, waves: false, swells: false, noise_swells: false,
-                        banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false)
+            # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
+            # its count, two bytes from power-on, and whether the frame playing now has a tick (not
+            # nought) or none. On a frame with none the effects are not played at all, and what was
+            # asked for waits for the tick.
+            EFFECT_CLOCK = "rt sfx clock"
+            EFFECT_TICKED = "rt sfx ticked"
+
+            def reserve(memory, effects: [], slides: false, pans: false, wobbles: false, shapes: false, waves: false, swells: false,
+                        noise_swells: false, banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
+                        effect_clock_step: nil)
+              if effect_clock_step
+                memory.reserve(EFFECT_CLOCK, 2)
+                memory.reserve(EFFECT_TICKED, 1)
+              end
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
               memory.reserve(TUNE_HELD, 1) if holds
@@ -137,6 +166,7 @@ module VBlank
                 memory.reserve(WAVE_BACK, 1)
               end
               memory.reserve(NOTE_SLIDE, 1) if slides
+              memory.reserve(REST_SPEAKER, 1) if pans
               memory.reserve(WOBBLES, WOBBLE_BYTES * WOBBLE_VOICES) if wobbles
               memory.reserve(SHAPE_WALKS, SHAPE_BYTES * SHAPE_VOICES) if shapes
               memory.reserve(SWELLS, SWELL_BYTES * (noise_swells ? SWELL_VOICES.length : SQUARE_SWELLS.length)) if swells || noise_swells
@@ -144,7 +174,7 @@ module VBlank
               (effect_table ? EffectTable : Effects).reserve(memory, effects)
             end
 
-            # A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, in a game that moves the music volume
+            # A song's swelling note held under the music volume, in a game that moves the music volume
             # and has one, for each of the two square voices, and the noise voice in a game where a
             # drum hit swells (IR::Tunes::Swell says how it is counted):
             # 1 while the voice has one, the 64ths of a second each step lasts, how loud the voice has
@@ -174,7 +204,7 @@ module VBlank
               asm.load([swell_at(memory, voice)], :a)
             end
 
-            # A SQUARE NOTE'S SHAPES, in a game where a square note sets them, for each of the two
+            # A square note's shapes, in a game where a square note sets them, for each of the two
             # square voices (Audio::Duty says what they are, and Reference::Player#step_shapes how they
             # step): the shapes' bits, the frame of the note it is on, 1 while a note (not a rest)
             # holds there, and the shape it played last frame. Four bytes a voice.
@@ -187,7 +217,7 @@ module VBlank
 
             def shapes?(memory) = memory.reserved?(SHAPE_WALKS)
 
-            # A VOICE HOLDING THE HELD TUNE'S NOTE moves no further: on to +still+ while the tune is held,
+            # A voice holding the held tune's note moves no further: on to +still+ while the tune is held,
             # unless a sound effect holds this voice, whose note keeps moving
             # (Reference::Player#held_still?). Spends A, DE and HL.
             def emit_skip_voice_held_still(asm, memory, voice, still)
@@ -214,7 +244,7 @@ module VBlank
             # Whether anything moves a voice at the end of each of the player's frames (#emit_tick).
             def steps_each_frame?(memory) = wobbles?(memory) || shapes?(memory) || swells?(memory)
 
-            # A NOTE A VOICE WOBBLES, in a game where a note does, for each of the two square voices
+            # A note a voice wobbles, in a game where a note does, for each of the two square voices
             # and the wave voice (IR::Tunes::Wobble steps it): its depth and speed (Audio::Vibrato#bits'
             # low byte; no depth holds still), the frames still to wait, the frames the swing it is in
             # has left, 1 while that swing is the one above, the steps it moves the pitch by (below
@@ -254,13 +284,13 @@ module VBlank
             # any slides its pitch (GBC::Music#slides?), and +pans+ whether any plays from one speaker
             # (GBC::Music#pans?). Whether any wobbles is whether its place was reserved (#wobbles?).
             def emit(asm, memory, level:, songs:, effects: [], by_rank: [], fades: false, slides: false, pans: false,
-                     carries: false)
+                     carries: false, clock_step: nil)
               sharing = !effects.empty?
               emit_game_side(asm, memory, sharing)
               return emit_no_songs(asm) unless songs
 
               bytes = GBC::Music.note_bytes(slides, pans, shapes?(memory), wobbles?(memory), carries, note_waves?(memory))
-              emit_tick(asm, memory, level, sharing)
+              emit_tick(asm, memory, level, sharing, clock_step)
               emit_notes(asm, memory, level, sharing, fades, slides, pans, bytes)
               emit_wobbles(asm, memory, carries) if wobbles?(memory)
               emit_set_speakers(asm, memory) if pans
@@ -282,11 +312,15 @@ module VBlank
 
             # The slide of the note whose volume is at HL, kept for rt_voice_write: the byte after the
             # volume, in a game where a note slides. In one where a note plays from one speaker, the
-            # voice's speakers set from the byte after that (rt_set_speakers). In one where a square
-            # note sets its shapes, the note's first shape and its stepping from the byte after that
-            # (rt_shape_start). And in one where a note wobbles, the voice set to wobble the note from
-            # the two after those (rt_wobble_start). Keeps B and DE.
-            def emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+            # voice's speakers set from the byte after that (rt_set_speakers): now for a note, and for a
+            # rest kept in REST_SPEAKER for rt_voice_write to set once the voice is quiet. Switched
+            # first, the note still sounding would be heard from the other speaker until the rest's
+            # own write, a click, and longer when the writes wait on a list (Runtime::Strikes). In one
+            # where a square note sets its shapes, the note's first shape and its stepping from the
+            # byte after that (rt_shape_start). And in one where a note wobbles, the voice set to
+            # wobble the note from the two after those (rt_wobble_start). +from+ names the routine it
+            # is written in, for its labels. Keeps B and DE.
+            def emit_store_slide_speaker_vibrato(asm, memory, slides, pans, from:)
               if note_waves?(memory) # a wave note's own waveform comes first (GBC::Music.note_bytes)
                 asm.inc(:hl)
                 asm.load(:a, [:hl])
@@ -298,9 +332,16 @@ module VBlank
                 asm.load([memory[NOTE_SLIDE]], :a)
               end
               if pans
+                asm.load(:a, :d)
+                asm.and_a(:e)
+                asm.inc(:a) # nought for a rest, whose tuning is every bit set
                 asm.inc(:hl)
                 asm.load(:a, [:hl])
+                asm.jump_relative(:z, "#{from}_rest_speaker")
                 asm.call("rt_set_speakers")
+                asm.load(:a, NOT_A_REST)
+                asm.label("#{from}_rest_speaker")
+                asm.load([memory[REST_SPEAKER]], :a)
               end
               if shapes?(memory)
                 asm.inc(:hl)
@@ -313,7 +354,7 @@ module VBlank
               asm.call("rt_wobble_start")
             end
 
-            # THE WOBBLE, in a game where a note does (Audio::Vibrato says what it is, IR::Tunes::Wobble
+            # The wobble, in a game where a note does (Audio::Vibrato says what it is, IR::Tunes::Wobble
             # how it steps, and every backend steps it the same way).
             #
             # rt_wobble_start: the note just written to the part's voice ([PART]) is the one it
@@ -457,9 +498,9 @@ module VBlank
                 asm.load(:de, 0x07FF)
                 asm.label("rt_wobble_within_#{voice}")
                 asm.load(:a, :e)
-                asm.load_high(low, :a)
+                emit_sound_write(asm, memory, low)
                 asm.load(:a, :d)
-                asm.load_high(high, :a) # no start bit: the note carries on
+                emit_sound_write(asm, memory, high) # no start bit: the note carries on
                 asm.label(still)
               end
               asm.ret
@@ -474,7 +515,7 @@ module VBlank
               asm.load([memory[SHAPE_WALKS] + ((voice - 1) * SHAPE_BYTES) + SHAPE_ON], :a)
             end
 
-            # A SQUARE NOTE'S SHAPES, in a game where a square note sets them.
+            # A square note's shapes, in a game where a square note sets them.
             #
             # rt_shape_start: A = the note's shapes (Audio::Duty#bits), DE its tuning. On a square
             # voice ([PART]) the note is written in its first shape — the part's tone, which
@@ -564,13 +605,13 @@ module VBlank
                 asm.label("rt_shape_same_#{voice}")
                 asm.rrca
                 asm.rrca
-                asm.load_high(register, :a)
+                emit_sound_write(asm, memory, register)
                 asm.label(still)
               end
               asm.ret
             end
 
-            # WHICH SPEAKERS A VOICE PLAYS FROM is a pair of switches for each voice in NR51: the four
+            # Which speakers a voice plays from is a pair of switches for each voice in NR51: the four
             # voices' right switches in bits 0 to 3 and their left ones in bits 4 to 7, all on since
             # power-on (Runtime::Boot).
             #
@@ -612,11 +653,18 @@ module VBlank
               asm.and_a(0x0F)
               asm.label("rt_set_speakers_chosen")
               asm.load(:c, :a) # the switches it is on
-              asm.load_high(:a, Console::GBCHardware::NR51)
+              if Strikes.any?(memory) # the others' switches as the list will leave them (Strikes)
+                asm.push(:bc)
+                asm.load(:c, Console::GBCHardware::NR51 & 0xFF)
+                asm.call("rt_sound_listed")
+                asm.pop(:bc)
+              else
+                asm.load_high(:a, Console::GBCHardware::NR51)
+              end
               asm.or_a(:b)
               asm.xor_a(:b) # this voice's switches off
               asm.or_a(:c)
-              asm.load_high(Console::GBCHardware::NR51, :a)
+              emit_sound_write(asm, memory, Console::GBCHardware::NR51)
               asm.label("rt_set_speakers_kept") if Clips.any?(memory)
               asm.pop(:bc)
               asm.ret
@@ -637,11 +685,11 @@ module VBlank
               return emit_wave_quiet(asm, memory) if voice == GBC::Music::WAVE_VOICE
 
               asm.xor_a(:a)
-              asm.load_high(volume, :a)
+              emit_sound_write(asm, memory, volume)
               return unless start
 
               asm.load(:a, 0x80)
-              asm.load_high(start, :a)
+              emit_sound_write(asm, memory, start)
             end
 
             # The wave voice off — but not while a recording plays on it (Runtime::Clips), which is
@@ -650,7 +698,7 @@ module VBlank
               past = "rt_wave_quiet_past_#{asm.here}" # emitted in several places, each its own
               Clips.emit_skip_while_recording_plays(asm, memory, past) if Clips.any?(memory)
               asm.xor_a(:a)
-              asm.load_high(Console::GBCHardware::NR30, :a)
+              emit_sound_write(asm, memory, Console::GBCHardware::NR30)
               asm.label(past)
             end
 
@@ -740,6 +788,43 @@ module VBlank
               asm.jump("rt_music_quiet")
             end
 
+            # The sound effects' timer moved on a frame: +step+'s low 16 bits added to its count
+            # (EFFECT_CLOCK), and EFFECT_TICKED the ticks, the step's whole counts and the carry; A
+            # holds them too, and the zero flag is set for a frame with no tick.
+            def emit_step_effect_clock(asm, memory, step)
+              asm.load(:a, [memory[EFFECT_CLOCK]])
+              asm.load(:l, :a)
+              asm.load(:a, [memory[EFFECT_CLOCK] + 1])
+              asm.load(:h, :a)
+              asm.load(:de, step & 0xFFFF)
+              asm.add_hl(:de)
+              asm.load(:a, :l)
+              asm.load([memory[EFFECT_CLOCK]], :a)
+              asm.load(:a, :h)
+              asm.load([memory[EFFECT_CLOCK] + 1], :a)
+              asm.load(:a, step >> 16)
+              asm.adc_a(0)
+              asm.load([memory[EFFECT_TICKED]], :a)
+              asm.and_a(:a)
+            end
+
+            # Each later tick of a frame the effects' timer ticks more than once on, after the first's
+            # rt_sfx_below: both passes again (IR::Tunes, "Several ticks in one frame").
+            def emit_later_ticks(asm, memory)
+              asm.label("rt_sfx_later_tick")
+              asm.load(:hl, memory[EFFECT_TICKED])
+              asm.dec([:hl])
+              asm.ret(:z)
+              asm.call("rt_strikes_next_tick") if Strikes.any?(memory)
+              asm.call(sfx_side(memory, "above"))
+              asm.call(sfx_side(memory, "below"))
+              asm.jump("rt_sfx_later_tick")
+            end
+
+            # The routine that plays one side of a tick's effects (Runtime::Effects#emit_sides): with
+            # their writes listed to be struck in a game that strikes them (Runtime::Strikes).
+            def sfx_side(memory, side) = Strikes.any?(memory) ? "rt_sfx_#{side}_struck" : "rt_sfx_#{side}"
+
             def emit_no_songs(asm)
               asm.label("rt_music_tick")
               asm.label("rt_music_quiet")
@@ -748,9 +833,16 @@ module VBlank
 
             # A game with sound effects plays a frame as the interpreter does (Reference::Player#advance):
             # the tune caught up with, the effects that outrank it, its parts, and the other effects.
-            def emit_tick(asm, memory, level, sharing)
+            def emit_tick(asm, memory, level, sharing, clock_step = nil)
               h = Console::GBCHardware
               asm.label("rt_music_tick")
+              # In a game that strikes its effects inside the frame, once the frame is played, what of
+              # it is due already is written and the timer set for the rest (Runtime::Strikes).
+              if Strikes.any?(memory)
+                asm.call("rt_music_tick_struck")
+                asm.jump("rt_strikes_due")
+                asm.label("rt_music_tick_struck")
+              end
               # Once the frame's notes are all written: where a swelling note is held under the music
               # volume, every square voice holding one (rt_swell_step); then, in a game where a note
               # wobbles, every wobbling voice moves on (rt_wobble_step), and then, where a note steps
@@ -769,9 +861,24 @@ module VBlank
                 asm.call("rt_music_switch")
                 asm.call("rt_music_end") if tune_plays_once?(memory)
                 asm.call("rt_music_tune_rank")
-                asm.call("rt_sfx_above")
-                asm.call("rt_music_song_frame")
-                asm.jump("rt_sfx_below")
+                if clock_step
+                  asm.call("rt_strikes_frame") if Strikes.any?(memory)
+                  emit_step_effect_clock(asm, memory, clock_step)
+                  asm.call(:nz, sfx_side(memory, "above"))
+                  asm.call("rt_music_song_frame")
+                  asm.load(:a, [memory[EFFECT_TICKED]])
+                  asm.and_a(:a)
+                  asm.ret(:z)
+                else
+                  asm.call("rt_sfx_above")
+                  asm.call("rt_music_song_frame")
+                end
+                if clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+                  asm.call(sfx_side(memory, "below"))
+                  emit_later_ticks(asm, memory)
+                else
+                  asm.jump(sfx_side(memory, "below"))
+                end
                 asm.label("rt_music_switch")
               end
               asm.load(:a, [memory[START]])
@@ -833,7 +940,7 @@ module VBlank
               asm.load([:hl], :a)
               asm.call("rt_music_from_the_top")
               asm.load(:a, 0)
-              asm.load_high(h::NR10, :a) # no sweep on the first square voice
+              emit_sound_write(asm, memory, h::NR10) # no sweep on the first square voice
               # With sound effects or recordings, each wave note puts its own waveform in
               # (rt_music_note_wave_on), since writing one now would quiet what is sounding there.
               if sharing
@@ -977,11 +1084,11 @@ module VBlank
               asm.load(:hl, "music_waves")
               asm.add_hl(:de)
               asm.xor_a(:a)
-              asm.load_high(h::NR30, :a)
+              emit_sound_write(asm, memory, h::NR30)
               asm.load(:c, h::WAVE_RAM & 0xFF)
               asm.label("rt_music_waveform_byte")
               asm.load(:a, [:hli])
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.inc(:c)
               asm.load(:a, :c)
               asm.cp_a((h::WAVE_RAM + 16) & 0xFF)
@@ -997,7 +1104,7 @@ module VBlank
               clips = Clips.any?(memory)
               asm.xor_a(:a)
               ([h::NR12, h::NR22, h::NR30, h::NR42] - (clips ? [h::NR30] : [])).each do |register|
-                asm.load_high(register, :a)
+                emit_sound_write(asm, memory, register)
               end
               HELD_VOICES.times { |i| asm.load([memory[HELD] + i], :a) }
               if wobbles?(memory)
@@ -1008,7 +1115,7 @@ module VBlank
               end
               swell_voices(memory).each { |voice| asm.load([swell_at(memory, voice)], :a) } if swells?(memory)
               asm.load(:a, 0x80)
-              [h::NR14, h::NR24, h::NR44].each { |register| asm.load_high(register, :a) }
+              [h::NR14, h::NR24, h::NR44].each { |register| emit_sound_write(asm, memory, register) }
               emit_wave_quiet(asm, memory) if clips
               asm.ret
             end
@@ -1032,7 +1139,7 @@ module VBlank
               asm.ret
             end
 
-            # THE STARTING SONG'S ENTRY COPIED OUT OF ITS BANK (ENTRY_COPY), with HL at its place in
+            # The starting song's entry copied out of its bank (ENTRY_COPY), with HL at its place in
             # the table of songs, and SONG naming the copy.
             #
             # The cartridge shows the processor one bank of 16K at 0x4000 to 0x7FFF at a time, and
@@ -1171,7 +1278,7 @@ module VBlank
               asm.load(:a, [:hli])
               asm.load(:d, :a)
               asm.load(:b, [:hl]) # its volume, times the music's level over 16
-              emit_store_slide_speaker_vibrato(asm, memory, slides, pans)
+              emit_store_slide_speaker_vibrato(asm, memory, slides, pans, from: "rt_music_note")
               asm.load(:a, :b)
               asm.load([memory[NOTE_VOLUME]], :a)
               if level
@@ -1183,8 +1290,17 @@ module VBlank
               # note's loudness here (GBC::SoundLog).
               asm.label("rt_music_note_voice")
               asm.call("rt_music_hold")
-              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([PART]).
+              # rt_voice_write: B = the volume, DE = the tuning, onto the part's voice ([PART]); and a
+              # rest's speakers after it (REST_SPEAKER).
               asm.label("rt_voice_write")
+              if pans
+                asm.call("rt_voice_write_now")
+                asm.load(:a, [memory[REST_SPEAKER]])
+                asm.cp_a(NOT_A_REST)
+                asm.ret(:z)
+                asm.jump("rt_set_speakers")
+                asm.label("rt_voice_write_now")
+              end
               asm.load(:a, [part])
               asm.cp_a(GBC::Music::WAVE_VOICE)
               asm.jump_relative(:z, "rt_music_note_wave")
@@ -1196,7 +1312,7 @@ module VBlank
                 asm.cp_a(1)
                 asm.jump_relative(:nz, "rt_music_note_unslid")
                 asm.load(:a, [memory[NOTE_SLIDE]])
-                asm.load_high(h::NR10, :a)
+                emit_sound_write(asm, memory, h::NR10)
                 asm.load(:a, 1)
                 asm.label("rt_music_note_unslid")
               end
@@ -1206,18 +1322,18 @@ module VBlank
               asm.load(:c, h::NR21 & 0xFF)
               asm.label("rt_music_note_square")
               asm.load(:a, [part + 1])
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.inc(:c)
               rest_or_volume(asm, "square", fades)
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.inc(:c)
               asm.load(:a, :e)
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.inc(:c)
               asm.load(:a, :d)
               asm.and_a(7)
               asm.or_a(0x80)
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.ret
 
               asm.label("rt_music_note_wave")
@@ -1226,7 +1342,7 @@ module VBlank
               asm.and_a(:e)
               asm.inc(:a)
               asm.jump_relative(:nz, "rt_music_note_wave_on")
-              asm.load_high(h::NR30, :a) # a rest: the voice off
+              emit_sound_write(asm, memory, h::NR30) # a rest: the voice off
               asm.ret
               asm.label("rt_music_note_wave_on")
               if reloads_wave?(memory)
@@ -1238,7 +1354,7 @@ module VBlank
               # B = the volume, DE = the tuning, the waveform in: the voice on, and the note started.
               asm.label("rt_music_note_wave_sound")
               asm.load(:a, 0x80)
-              asm.load_high(h::NR30, :a)
+              emit_sound_write(asm, memory, h::NR30)
               asm.load(:a, :b)
               asm.load(:hl, "rt_music_wave_levels")
               asm.add_a(:l)
@@ -1247,13 +1363,13 @@ module VBlank
               asm.adc_a(0)
               asm.load(:h, :a)
               asm.load(:a, [:hl])
-              asm.load_high(h::NR32, :a)
+              emit_sound_write(asm, memory, h::NR32)
               asm.load(:a, :e)
-              asm.load_high(h::NR33, :a)
+              emit_sound_write(asm, memory, h::NR33)
               asm.load(:a, :d)
               asm.and_a(7)
               asm.or_a(0x80)
-              asm.load_high(h::NR34, :a)
+              emit_sound_write(asm, memory, h::NR34)
               asm.ret
 
               asm.label("rt_music_note_noise")
@@ -1276,7 +1392,7 @@ module VBlank
                 asm.load(:a, :c)
                 asm.label("rt_music_noise_fade_set")
               end
-              asm.load_high(h::NR42, :a)
+              emit_sound_write(asm, memory, h::NR42)
               asm.load(:b, :a) if noise_swells?(memory)
               asm.load(:a, [part + 1])
               asm.and_a(0x80) # the metallic hiss
@@ -1285,10 +1401,10 @@ module VBlank
               asm.rrca
               asm.rrca
               asm.or_a(:e)
-              asm.load_high(h::NR43, :a)
+              emit_sound_write(asm, memory, h::NR43)
               asm.load([memory[SWELL_NOISE_TONE]], :a) if noise_swells?(memory)
               asm.load(:a, 0x80)
-              asm.load_high(h::NR44, :a)
+              emit_sound_write(asm, memory, h::NR44)
               emit_start_noise_swell(asm, memory) if noise_swells?(memory)
               asm.ret
 
@@ -1321,11 +1437,11 @@ module VBlank
               asm.add_hl(:de)
               asm.pop(:de)
               asm.xor_a(:a)
-              asm.load_high(h::NR30, :a)
+              emit_sound_write(asm, memory, h::NR30)
               asm.load(:c, h::WAVE_RAM & 0xFF)
               asm.label("rt_music_wave_load_byte")
               asm.load(:a, [:hli])
-              asm.load_high([:c], :a)
+              emit_sound_write(asm, memory, [:c])
               asm.inc(:c)
               asm.load(:a, :c)
               asm.cp_a((h::WAVE_RAM + 16) & 0xFF)
@@ -1513,7 +1629,7 @@ module VBlank
               asm.load([at], :a)
             end
 
-            # A SONG'S SWELLING NOTE HELD UNDER THE MUSIC VOLUME, in a game that has one
+            # A song's swelling note held under the music volume, in a game that has one
             # (IR::Tunes::Swell says how it is counted, and every backend counts it alike).
             #
             # rt_swell_step: every voice holding one, at the end of the interrupt's frame before
@@ -1621,33 +1737,33 @@ module VBlank
               return emit_strike_noise_swell(asm, memory, volume, high) if duty.nil?
 
               asm.load(:a, [memory[DUTIES] + voice - 1])
-              asm.load_high(duty, :a)
-              emit_swell_volume(asm, volume)
+              emit_sound_write(asm, memory, duty)
+              emit_swell_volume(asm, memory, volume)
               asm.load(:a, [memory[TUNINGS] + ((voice - 1) * 2)])
-              asm.load_high(low, :a)
+              emit_sound_write(asm, memory, low)
               asm.load(:a, [memory[TUNINGS] + ((voice - 1) * 2) + 1])
               asm.and_a(7)
               asm.or_a(0x80)
-              asm.load_high(high, :a)
+              emit_sound_write(asm, memory, high)
             end
 
             def emit_strike_noise_swell(asm, memory, volume, start)
-              emit_swell_volume(asm, volume)
+              emit_swell_volume(asm, memory, volume)
               asm.load(:a, [memory[SWELL_NOISE_TONE]])
-              asm.load_high(Console::GBCHardware::NR43, :a)
+              emit_sound_write(asm, memory, Console::GBCHardware::NR43)
               asm.load(:a, 0x80)
-              asm.load_high(start, :a)
+              emit_sound_write(asm, memory, start)
             end
 
-            def emit_swell_volume(asm, volume)
+            def emit_swell_volume(asm, memory, volume)
               asm.load(:a, :b)
               asm.swap(:a)
               asm.and_a(0xF0)
               asm.or_a(:c)
-              asm.load_high(volume, :a)
+              emit_sound_write(asm, memory, volume)
             end
 
-            # THE MUSIC LEVEL MOVED: every voice holding a note takes the new level, as
+            # The music level moved: every voice holding a note takes the new level, as
             # Reference::Player#apply_music_volume does. A square voice takes a volume only as a note
             # starts, so its note is started again at the new volume; the wave voice takes one while
             # it plays. A run of the cartridge reads each voice's new loudness at
@@ -1710,19 +1826,19 @@ module VBlank
                 if (registers = squares[voice])
                   duty, volume, low, high = registers
                   asm.load(:a, [memory[DUTIES] + voice - 1])
-                  asm.load_high(duty, :a)
+                  emit_sound_write(asm, memory, duty)
                   asm.load(:a, :b)
                   asm.swap(:a)
                   asm.and_a(0xF0)
                   # The held note's fade, out of the top of its tuning as a new note's is.
                   emit_fade_under_volume(asm, [memory[TUNINGS] + ((voice - 1) * 2) + 1]) if fades
-                  asm.load_high(volume, :a)
+                  emit_sound_write(asm, memory, volume)
                   asm.load(:a, [memory[TUNINGS] + ((voice - 1) * 2)])
-                  asm.load_high(low, :a)
+                  emit_sound_write(asm, memory, low)
                   asm.load(:a, [memory[TUNINGS] + ((voice - 1) * 2) + 1])
                   asm.and_a(7)
                   asm.or_a(0x80)
-                  asm.load_high(high, :a)
+                  emit_sound_write(asm, memory, high)
                 else
                   # ...but not under a recording, whose voice it is while it plays (Runtime::Clips).
                   Clips.emit_skip_while_recording_plays(asm, memory, "rt_music_relevel_past_#{voice}") if Clips.any?(memory)
@@ -1734,7 +1850,7 @@ module VBlank
                   asm.adc_a(0)
                   asm.load(:h, :a)
                   asm.load(:a, [:hl])
-                  asm.load_high(h::NR32, :a)
+                  emit_sound_write(asm, memory, h::NR32)
                 end
                 asm.label("rt_music_relevel_past_#{voice}")
               end

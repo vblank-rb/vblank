@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE MAIN VOLUME (`enable_sound main_volume:`) IN WHAT THE DESKTOP BUILD'S SPEAKER PLAYS: the whole
+# The main volume (`enable_sound main_volume:`) IN WHAT THE DESKTOP BUILD'S SPEAKER PLAYS: the whole
 # mix, songs and effects alike, at that many 127ths of what the same game plays naming none. Played
 # as the Advance, whose voices the runtime makes itself, and as the PlayStation, whose sound chip it
 # plays (rg_spu.c), whose own main volume takes the setting. The JavaScript and Ruby runtimes are held

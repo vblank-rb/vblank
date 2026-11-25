@@ -174,7 +174,7 @@ void rg_save_file_written(void) {
 
 void rg_save_cut_power_after(long steps) { power_left = steps; }
 
-/* THE SAVE MEMORY IN THE STATE IMAGE (rg_state.h): every byte, and where a block is still being
+/* The save memory in the state image (rg_state.h): every byte, and where a block is still being
  * wiped. A game with no save memory keeps none. Read back, the memory differs from the file it came
  * from, so the file is due to be written again. */
 void rg_save_visit_state(void) {

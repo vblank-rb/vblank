@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG ON A SUPER NINTENDO. The Advance plays a song's square parts on its two square voices, a
+# A song on a Super Nintendo. The Advance plays a song's square parts on its two square voices, a
 # note at a time from the screen's interrupt; here each part's notes are DSP writes on the voice the
 # Advance's square voice is (voice 0 for the first, voice 1 for the second, which beeps share), sent
 # as each note's frame comes. A note holds at a fixed level, as the Advance's song notes do, and a
@@ -198,7 +198,7 @@ class TestSNESSongs < Minitest::Test
     assert_equal 0x12, dsp.getbyte(NOISE)
   end
 
-  # A NOTE FROM ONE SPEAKER: a voice has a volume for each side, and the other side's is nought. A
+  # A note from one speaker: a voice has a volume for each side, and the other side's is nought. A
   # square part on the left, and a drum on the right, whose own entry writes its volumes after it.
   def test_a_note_from_one_speaker_has_no_volume_on_the_other_side
     game = VBlank.game("ONE SIDE", consoles: %i[gba snes]) do
@@ -219,7 +219,7 @@ class TestSNESSongs < Minitest::Test
     assert_operator dsp.getbyte(NOISE + 1), :>, 0, "and on the right"
   end
 
-  # A NOTE THAT FADES AND ONE THAT SWELLS: the sound chip counts the envelope by itself, so the
+  # A note that fades and one that swells: the sound chip counts the envelope by itself, so the
   # first voice's falls with nothing more written, and the second's climbs from nought.
   def test_a_note_that_fades_falls_and_one_that_swells_climbs
     game = VBlank.game("FADES", consoles: %i[gba snes]) do
@@ -243,7 +243,7 @@ class TestSNESSongs < Minitest::Test
     assert_operator swelling_early, :<, 0x7F, "it starts low"
   end
 
-  # A SWELL UNDER THE MUSIC VOLUME is heard. The envelope climbs with the voice's volume at the top,
+  # A swell under the music volume is heard. The envelope climbs with the voice's volume at the top,
   # whatever the level, until the player's count reaches the level: there the volume says the level
   # and the envelope stops at its top. When the music comes back the note climbs on from there.
   def test_a_note_that_swells_is_heard_and_stops_at_the_music_volume
@@ -272,7 +272,7 @@ class TestSNESSongs < Minitest::Test
     assert_includes (7 * 0x7F / 15)...0x7F, climbing_on.last, "the envelope climbing on from where it was held"
   end
 
-  # A NOTE THAT SLIDES. The sound chip has no slide, so the player walks the pitches worked out at
+  # A note that slides. The sound chip has no slide, so the player walks the pitches worked out at
   # build time. Going down it only slows; going up it runs off the top and the voice falls silent.
   def test_a_note_sliding_down_falls_and_one_sliding_up_runs_out
     falling = sliding_pitches(slide_down: :fast)
@@ -327,7 +327,7 @@ class TestSNESSongs < Minitest::Test
     assert_equal [0, 0], [stopped.getbyte(FIRST + ENVX), stopped.getbyte(WAVE + ENVX)], "both let go"
   end
 
-  # THE MUSIC VOLUME. At music_volume 50 the level is 8 of 16, so a square note at 12 sounds at
+  # The music volume. At music_volume 50 the level is 8 of 16, so a square note at 12 sounds at
   # 12 * 8 / 16 = 6, volume 48 ($30); and a wave part at 15 at 7, which the Advance plays at the
   # nearest of its wave voice's five loudnesses, :half (7 * 4 / 15 rounds to 2), so the voice
   # changes to its recording at :half, a quarter of the way down the ladder from the note's own.

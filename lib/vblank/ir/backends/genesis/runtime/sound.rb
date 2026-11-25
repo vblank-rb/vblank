@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE SOUND CHIPS, AND HOW THE 68000 TALKS TO THEM. A Genesis has two: the PSG, whose port the
+          # The sound chips, and how the 68000 talks to them. A Genesis has two: the PSG, whose port the
           # 68000 writes a byte at a time, and the YM2612, which sits on the sound processor's side of the
           # console. The 68000 reaches it only while the sound processor (a Z80) has been asked to stay off
           # its bus (Runtime::Boot), and each of its registers is two writes, which register and then what
@@ -13,11 +13,11 @@ module VBlank
           # Z80 run and plays through it (Runtime::Recordings), and the FM chip is then the Z80's: the
           # 68000's writes to it go into the Z80's queue, and the Z80 makes them.
           #
-          # NOTHING SOUNDS UNTIL `enable_sound`, as nothing does on the Advance: until then ON is nought and
+          # Nothing sounds until `enable_sound`, as nothing does on the Advance: until then ON is nought and
           # the writes here go nowhere, and a voice's loudness does not move. A sound before it is still
           # in the sound log, as it is in the interpreter's.
           #
-          # A VOICE'S LOUDNESS. A PSG voice holds a loudness and has no way of changing it, so a note that
+          # A voice's loudness. A PSG voice holds a loudness and has no way of changing it, so a note that
           # fades or swells is the runtime's work: each voice's volume is kept here, with the number of
           # 64ths of a second between its steps, and once a frame each is counted on (rt_sound_fades) the
           # way the Advance's voice counts itself.
@@ -45,7 +45,7 @@ module VBlank
             COUNTS = "rt sound counts" # A word for each voice: how far to its next step
             VOICES = 4
 
-            # THE SOUND LOG, for whoever reads a run back: every sound statement the game ran, as the number
+            # The sound log, for whoever reads a run back: every sound statement the game ran, as the number
             # the lowering gave its entry of the interpreter's log (Lowering::Sound), the last LOG_LENGTH of
             # them in a ring, and how many there have been (16 bits).
             LOG = "rt sound log"
@@ -89,18 +89,22 @@ module VBlank
             # that plays recordings (Recordings), whose count moves on there and whose Z80 shares the FM chip.
             def emit(asm, memory, songs: false, samples: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_log(asm, at, samples)
-              emit_chip_writes(asm, at, samples)
-              emit_loudness(asm, at)
+              strikes = Strikes.strikes?(memory)
+              emit_log(asm, at, samples, strikes: strikes)
+              emit_chip_writes(asm, at, samples, strikes: strikes)
+              emit_loudness(asm, at, strikes: strikes)
               emit_fades(asm, at)
               emit_frame(asm, memory, at, songs, samples)
             end
 
             # rt_sound_on: `enable_sound`.
             # rt_sound_log(entry): the entry's number into the ring, and one more counted.
-            def emit_log(asm, at, samples)
+            # With +strikes+ in a game that plays no recording, no FM register's value is kept yet
+            # (Strikes's rt_strikes_unkept; Recordings does it in one that does).
+            def emit_log(asm, at, samples, strikes: false)
               asm.label("rt_sound_on")
               asm.move(:w, asm.imm(1), at.call(ON))
+              asm.jsr(asm.abs_l("rt_strikes_unkept")) if strikes && !samples
               asm.jsr(asm.abs_l("rt_recordings_on")) if samples
               asm.rts
 
@@ -119,11 +123,20 @@ module VBlank
             # rt_fm_write(register, value): the FM chip's +register+ (its second part's from $100) set to
             # +value+. The chip's two parts each have a port for the register and one for the value, and
             # it takes a little while over each, during which its first port's top bit reads 1.
-            def emit_chip_writes(asm, at, samples)
+            #
+            # With +strikes+, for a game whose sound effects are struck inside the frame (Strikes), each goes
+            # through rt_strikes_chip once the sound is on, which makes it at rt_psg_now or rt_fm_now, now or
+            # at its line. rt_fm_unlisted is rt_fm_write made now, for a recording's own writes, and is
+            # rt_fm_write itself in any other game.
+            def emit_chip_writes(asm, at, samples, strikes: false)
               h = Console::GenesisHardware
               asm.label("rt_psg_write")
               asm.tst(:w, at.call(ON))
               asm.branch(:eq, "rt_psg_write_done")
+              if strikes
+                emit_psg_listed(asm)
+                asm.label("rt_psg_now")
+              end
               asm.move(:b, asm.d(0), asm.abs_l(h::PSG))
               asm.cmp(:w, asm.imm(ONE_BYTE), asm.d(1))
               asm.branch(:eq, "rt_psg_write_done")
@@ -131,10 +144,22 @@ module VBlank
               asm.label("rt_psg_write_done")
               asm.rts
 
+              asm.label("rt_fm_unlisted")
+              if strikes
+                asm.tst(:w, at.call(ON))
+                asm.branch(:eq, "rt_fm_write_done")
+                emit_fm_unchanged_dropped(asm, at, "rt_fm_unlisted")
+                asm.bra("rt_fm_now")
+              end
               asm.label("rt_fm_write")
               asm.tst(:w, at.call(ON))
               asm.branch(:eq, "rt_fm_write_done")
-              return emit_fm_write_queued(asm, at) if samples
+              if strikes
+                emit_fm_unchanged_dropped(asm, at, "rt_fm_write")
+                emit_fm_listed(asm)
+                asm.label("rt_fm_now")
+              end
+              return emit_fm_write_queued(asm, at, dropping: !strikes) if samples
 
               asm.lea(asm.abs_l(h::FM), asm.a(1))
               asm.move(:w, asm.d(0), asm.d(2))
@@ -157,33 +182,43 @@ module VBlank
               asm.rts
             end
 
-            # rt_fm_write in a game that plays recordings, where the FM chip is the Z80's: the write put
-            # in the Z80's queue (Recordings#emit_queued), which the Z80 makes between two samples.
-            #
-            # THE TIMERS' REGISTER ($27) ALSO HOLDS THE THIRD VOICE'S MODE, and the Z80 writes it every
-            # sample. So a write to it from the game's side is not queued as it is: its mode is written
-            # into each of the Z80's own writes of it (Recordings::TIMER_WRITES), and what is queued is
-            # the mode with the timers left counting, which changes nothing of theirs while a recording
-            # plays and nothing that matters while none does.
-            #
-            # A WRITE THAT WOULD CHANGE NOTHING IS NOT QUEUED. Each register's last value is kept
-            # (Recordings::FM_KEPT, a word each, $FFFF for one not written yet), and a write of the same
-            # value again is dropped. A note sets its voice's every register, some thirty, and a voice
-            # playing one instrument changes only a few of them from note to note; each write the Z80
-            # makes costs it most of a sample. The key register is never dropped, since each write to it
-            # is a key going down or up, and nor are the pitch registers, since the chip takes a pitch's
-            # high byte only as its low byte is written.
-            def emit_fm_write_queued(asm, at)
+            # A PSG write (D0, D1) handed to rt_strikes_chip, inline: D2 the voice and kind its command
+            # names (Strikes::PSG).
+            def emit_psg_listed(asm)
+              asm.move(:w, asm.d(0), asm.d(2))
+              asm.and(:w, asm.imm(Strikes::FIRST_PSG_BITS), asm.d(2))
+              asm.or(:w, asm.imm(Strikes::PSG), asm.d(2))
+              asm.jmp(asm.abs_l("rt_strikes_chip"))
+            end
+
+            # An FM write (D0, D1) handed to rt_strikes_chip, inline: D2 the register, or for the key
+            # register the voice its value keys (Strikes::KEY_VOICE).
+            def emit_fm_listed(asm)
+              asm.move(:w, asm.d(0), asm.d(2))
+              asm.cmp(:w, asm.imm(ChipWrites::KEY), asm.d(2))
+              asm.branch(:ne, "rt_fm_listed_register")
+              asm.move(:w, asm.d(1), asm.d(2))
+              asm.and(:w, asm.imm(Strikes::KEY_VOICE_BITS), asm.d(2))
+              asm.or(:w, asm.imm(Strikes::KEY_VOICE), asm.d(2))
+              asm.label("rt_fm_listed_register")
+              asm.jmp(asm.abs_l("rt_strikes_chip"))
+            end
+
+            # A write (D0, D1) of the FM chip that changes nothing dropped, inline: to rt_fm_write_done when
+            # Recordings::FM_KEPT holds that value for that register already, and otherwise kept there; the
+            # key register, the timers' and the pitch registers are always made. +name+ makes the labels.
+            # See #emit_fm_write_queued for why.
+            def emit_fm_unchanged_dropped(asm, at, name)
               r = Recordings
-              program = r.driver
+              made = "#{name}_changes"
               asm.cmp(:w, asm.imm(ChipWrites::KEY), asm.d(0))
-              asm.branch(:eq, "rt_fm_write_sent")
+              asm.branch(:eq, made)
               asm.cmp(:w, asm.imm(r::TIMERS), asm.d(0))
-              asm.branch(:eq, "rt_fm_write_sent")
+              asm.branch(:eq, made)
               asm.move(:w, asm.d(0), asm.d(2))
               asm.and(:w, asm.imm(r::PITCH_REGISTERS_MASK), asm.d(2))
               asm.cmp(:w, asm.imm(r::PITCH_REGISTERS), asm.d(2))
-              asm.branch(:eq, "rt_fm_write_sent")
+              asm.branch(:eq, made)
               asm.and(:w, asm.imm(0xFF), asm.d(1))
               asm.move(:w, asm.d(0), asm.d(2))
               asm.add(:w, asm.d(2), asm.d(2))
@@ -191,7 +226,32 @@ module VBlank
               asm.cmp(:w, asm.idx(1, 0, 2, :w), asm.d(1))
               asm.branch(:eq, "rt_fm_write_done")
               asm.move(:w, asm.d(1), asm.idx(1, 0, 2, :w))
-              asm.label("rt_fm_write_sent")
+              asm.label(made)
+            end
+
+            # rt_fm_write in a game that plays recordings, where the FM chip is the Z80's: the write put
+            # in the Z80's queue (Recordings#emit_queued), which the Z80 makes between two samples.
+            #
+            # The timers' register ($27) also holds the third voice's mode, and the Z80 writes it every
+            # sample. So a write to it from the game's side is not queued as it is: its mode is written
+            # into each of the Z80's own writes of it (Recordings::TIMER_WRITES), and what is queued is
+            # the mode with the timers left counting, which changes nothing of theirs while a recording
+            # plays and nothing that matters while none does.
+            #
+            # A write that would change nothing is not queued. Each register's last value is kept
+            # (Recordings::FM_KEPT, a word each, $FFFF for one not written yet), and a write of the same
+            # value again is dropped. A note sets its voice's every register, some thirty, and a voice
+            # playing one instrument changes only a few of them from note to note; each write the Z80
+            # makes costs it most of a sample. The key register is never dropped, since each write to it
+            # is a key going down or up, and nor are the pitch registers, since the chip takes a pitch's
+            # high byte only as its low byte is written.
+            #
+            # In a game whose sound effects are struck inside the frame (+dropping+ false) the write is
+            # dropped before it is listed (#emit_chip_writes), so it is not looked at again here.
+            def emit_fm_write_queued(asm, at, dropping: true)
+              r = Recordings
+              program = r.driver
+              emit_fm_unchanged_dropped(asm, at, "rt_fm_write_queued") if dropping
               Recordings.emit_bus_taken(asm)
               asm.cmp(:w, asm.imm(r::TIMERS), asm.d(0))
               asm.branch(:ne, "rt_fm_write_queue")
@@ -216,7 +276,8 @@ module VBlank
             # step (ChipWrites's [:loud ...]).
             # rt_sound_level(voice and volume): at that volume, going on as it was ([:level ...]).
             # rt_sound_silence(voices): each voice whose bit is set stopped.
-            def emit_loudness(asm, at)
+            # With +strikes+ the PSG's write goes through rt_strikes_chip (#emit_chip_writes).
+            def emit_loudness(asm, at, strikes: false)
               h = Console::GenesisHardware
               asm.label("rt_sound_loud")
               asm.tst(:w, at.call(ON))
@@ -249,7 +310,13 @@ module VBlank
               asm.lsl(:w, 4, asm.d(1)) # the voice's number in its bits of the command
               asm.or(:b, asm.d(1), asm.d(0))
               asm.or(:b, asm.imm(0x90), asm.d(0))
-              asm.move(:b, asm.d(0), asm.abs_l(h::PSG))
+              if strikes
+                asm.and(:w, asm.imm(0xFF), asm.d(0))
+                asm.move(:w, asm.imm(ONE_BYTE), asm.d(1))
+                emit_psg_listed(asm)
+              else
+                asm.move(:b, asm.d(0), asm.abs_l(h::PSG))
+              end
               asm.label("rt_sound_volume_done")
               asm.rts
 
@@ -332,6 +399,7 @@ module VBlank
             # many entries the log holds, with the pass's number written last (LOGGED_BY_PASS).
             def emit_frame(asm, memory, at, songs, samples)
               asm.label("rt_sound_frame")
+              Strikes.emit_wait_ended(asm, at) if Strikes.strikes?(memory)
               asm.move(:w, at.call(Frame::FRAMES_TAKEN), at.call(TICKS_LEFT))
               asm.label("rt_sound_frame_tick")
               asm.jsr(asm.abs_l("rt_recordings_frame")) if samples

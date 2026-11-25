@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A STATUS BAR ON THE THIRD LAYER, beside two backgrounds (SNES::Lowering::Picture
+# A status bar on the third layer, beside two backgrounds (SNES::Lowering::Picture
 # .third_layer?): its tiles are four-colour, from eight lists of three colours, and
 # a bar whose art does not fit that is refused by name. A bar of many lists, its cells changed as
 # a score's are, is drawn as the interpreter draws it on every pass.
@@ -39,7 +39,17 @@ class TestSNESThirdLayer < Minitest::Test
     assert_match(/8 lists of 3 colours/, error.message)
   end
 
-  # A BACKGROUND HELD ABOVE A ROW beside two others goes on the third layer too, and shows alone
+  # A bar on the third layer that walks its colours (`draw_with`), up from black and past its last
+  # step back to its own: its eight lists of three are written again on the pass the game names
+  # another step, each colour as the list and place it was drawn at gives it. Green is in both of
+  # the bar's lists, at different places, and the two greens walk apart.
+  def test_a_held_bar_walking_its_colours_up_from_black_is_drawn_as_the_interpreter_draws_it
+    run = SNES::CheckedRun.new.run(game_with_walking_bar, frames: 8)
+
+    assert_operator run[:step], :>=, 6
+  end
+
+  # A background held above a row beside two others goes on the third layer too, and shows alone
   # above its row: a tile it cannot draw in four colours is refused as a bar's is, and so is one
   # that could show the arena behind it, which that layer cannot.
   def test_a_held_tile_of_four_colours_is_refused_naming_the_background_and_the_tile
@@ -78,16 +88,25 @@ class TestSNESThirdLayer < Minitest::Test
     assert_match(/alone: true/, error.message)
   end
 
-  # SHOWN ALONE (`alone: true`), the interpreter draws nothing else above the row either, so see-through
+  # Shown alone (`alone: true`), the interpreter draws nothing else above the row either, so see-through
   # pixels, empty cells and a place behind the arena all build.
   def test_a_held_background_shown_alone_builds_see_through_scrolled_and_behind_the_arena
     refute_nil SNES.new.build(game_with_held([0x001F, 0x0000], scrolls: true, first: true, alone: true))
   end
 
+  # The third layer's background switched off with `hide` needs a window, as a box does, and the
+  # refusal says `hide`, not the box's verb.
+  def test_a_hidden_background_on_the_third_layer_is_refused_naming_hide
+    error = assert_raises(SNES::Lowering::NotMadeYet) { SNES.new.build(game_with_held([0x001F, 0x03E0], hides: true)) }
+
+    assert_match(/`hide`/, error.message)
+    refute_match(/show_only_inside/, error.message)
+  end
+
   # The arena of game_with_bar and a background of four rows held above row 32, its one tile in
   # stripes of +colors+; +scrolls+ moves it every pass, +first+ declares it before the arena,
-  # behind it, and +alone+ shows it alone above its row.
-  private def game_with_held(colors, scrolls: false, first: false, alone: false)
+  # behind it, +alone+ shows it alone above its row, and +hides+ switches it off every pass.
+  private def game_with_held(colors, scrolls: false, first: false, alone: false, hides: false)
     b = Builder.new
     b.instance_eval do
       screen :tiled
@@ -102,7 +121,10 @@ class TestSNESThirdLayer < Minitest::Test
       background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
       background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
       top = background :top, tiles: :top_tiles, map: Array.new(4) { "t" * 32 }, above_row: 32, alone: alone unless first
-      game_loop { top.scroll_by 0, 1 if scrolls }
+      game_loop do
+        top.scroll_by 0, 1 if scrolls
+        top.hide if hides
+      end
     end
     b.finalize_program
     b.program.copy.tap { |program| program.console = :snes }
@@ -133,6 +155,44 @@ class TestSNESThirdLayer < Minitest::Test
         tick += 1
         clouds.scroll_by 1, 1
         bar.set_tile 3, 1, (bar_colors.length - 1).to_s if tick == 5
+      end
+    end
+    b.finalize_program
+    b.program.copy.tap { |program| program.console = :snes }
+  end
+
+  # The arena and clouds of game_with_bar, and a bar of four rows held above row 32, shown alone
+  # there, of two tiles: one drawn from :sea (red and green) and one from :sky (green and blue),
+  # walking from black through a dim step to colours of its own, then off the end, back to the
+  # colours it was drawn in.
+  WALKING_BAR_STEPS = {
+    sea: [[:transparent, 0x0000, 0x0000], [:transparent, 0x000F, 0x01E0], %i[transparent orange yellow]],
+    sky: [[:transparent, 0x0000, 0x0000], [:transparent, 0x01E0, 0x3C00], %i[transparent cyan magenta]]
+  }.freeze
+  private def game_with_walking_bar
+    steps = WALKING_BAR_STEPS
+    stripes = Array.new(64) { |i| (i % 8) < 4 ? 1 : 2 }
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:ground, "a" => 0x0118, "b" => 0x0231) { "abababab\n" * 8 }
+      image(:cloud, "." => :transparent, "w" => :white) { "ww....ww\n" * 8 }
+      colors :sea, %i[transparent red green]
+      colors :sky, %i[transparent green blue]
+      steps.each { |list, lists| lists.each_with_index { |shades, n| colors :"#{list}#{n}", shades } }
+      image :water, width: 8, height: 8, places: stripes, colors: :sea
+      image :air, width: 8, height: 8, places: stripes, colors: :sky
+      tiles :arena_tiles, "#" => :ground
+      tiles :cloud_tiles, "o" => :cloud
+      tiles :bar_tiles, "~" => :water, "^" => :air
+      background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
+      clouds = background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
+      bar = background :bar, tiles: :bar_tiles, map: Array.new(4) { "~^" * 16 }, above_row: 32, alone: :without_sprites
+      step = var :step, 0
+      game_loop do
+        clouds.scroll_by 1, 1
+        bar.draw_with(steps.to_h { |list, lists| [list, lists.each_index.map { |n| :"#{list}#{n}" }] }, showing: step)
+        step += 1
       end
     end
     b.finalize_program

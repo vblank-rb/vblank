@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT A SCENE'S ARRIVAL COPY SENDS INTO VIDEO MEMORY, on the console. A scene's own tile pictures
+# What a scene's arrival copy sends into video memory, on the console. A scene's own tile pictures
 # go in as it takes over, and on a scene that loads first that copy has one pass to itself. Two
 # stretches of the room its pictures sit in hold none of them:
 #
@@ -70,10 +70,7 @@ class TestSceneArrivalCopy < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == test.class::HANDED_OVER_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_color_lists"
 
-# A LIST OF COLOURS FROM THE DATA PACK IS THE LIST THOSE COLOURS WRITTEN OUT WOULD BE, so the
+# A list of colours from the data pack is the list those colours written out would be, so the
 # Advance's cartridge of a game taking its lists from the pack is, byte for byte, the cartridge of
 # the same game with the colours written in it. What the two show is held on every run by
 # test/all/vblank/builder/test_pack_color_lists.rb.

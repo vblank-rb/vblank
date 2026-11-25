@@ -451,7 +451,8 @@ class BuildTimeCountsPart
 end
 
 # One routine gives `@mode` a number and another tests it, with nothing named: the game can run them
-# in either order, so the test would be decided from whichever ran first while building.
+# in either order. The line is in a routine's block, so `@mode` is the game's from the first
+# routine that reads or sets it.
 class UnnamedAcrossRoutinesPart
   def initialize(builder)
     @mode = 0
@@ -481,7 +482,7 @@ class HolderPart
   end
 end
 
-# VALUES ONLY THE BUILD USES, NEVER REFUSED.
+# Values only the build uses, never refused.
 #
 # A flag that keeps a part from declaring a routine twice: false from `initialize`, read by Ruby's
 # `unless` and set true by Ruby while game code is recorded. Nothing the game runs reads it.
@@ -565,9 +566,9 @@ class WrittenOncePart
   def write = @written = true
 end
 
-# A DOOR FLAG THE GAME KEEPS, NAMED NOWHERE: one routine opens the door outright, and another
-# tests it. The game can run them in either order, and Ruby decides the test while building, so
-# the build stops at whichever line comes second. Declared in each order.
+# A door flag the game keeps, named nowhere: one routine opens the door outright, and another
+# tests it. The game can run them in either order; the line opening it is in a routine's block, so
+# the flag is the game's from whichever comes first. Declared in each order.
 class UnnamedDoorOpenedFirstPart
   def initialize(builder)
     @open = false
@@ -587,8 +588,8 @@ class UnnamedDoorTestedFirstPart
 end
 
 # The door tested and then opened in one routine. It has the shape of a once-guard, but the side
-# of the test holds game code, so the flag decides what the game does as it plays. Once with the
-# side Ruby skips (the door starts shut), once with the side it runs.
+# of the test holds game code, so the flag decides what the game does as it plays, and the game
+# keeps it. Once with the side Ruby skips (the door starts shut), once with the side it runs.
 class UnnamedDoorOneRoutinePart
   def initialize(builder)
     @open = false
@@ -609,6 +610,19 @@ class UnnamedDoorOneRoutineRunSidePart
       @open = true
     end
   end
+end
+
+# A latch set outright by a method a routine calls, and tested by another routine. Nothing in the
+# source shows the method is game code, so the build stops at the end, naming the fix.
+class UnnamedLatchPart
+  def initialize(builder)
+    @set = false
+    @seen = builder.var(:latch_seen, 0)
+    builder.func(:latch_set) { latch }
+    builder.func(:latch_test) { @seen += 1 if @set }
+  end
+
+  def latch = @set = true
 end
 
 # The door again, named: a game variable, which plays as its twin with `var`.
@@ -666,8 +680,8 @@ class UnsetNamedPart
   end
 end
 
-# VALUES HANDED A VARIABLE. A cursor names its selection. A part handed that variable whole, as an
-# argument, as it is made, was given it to change; one that names its own copies the number.
+# Values handed a variable. A cursor names its selection. A part handed that variable keeps a number
+# of its own once game code gives it one, as in Ruby, and the cursor keeps its selection.
 class HandedCursor
   game_variables :selection
   attr_reader :selection
@@ -685,8 +699,8 @@ class NamedHandedHolderPart
   end
 end
 
-# A part handed the cursor's variable whole, as an argument, as it is made: the caller gave it
-# that variable to change, so its line in game code changes the cursor's selection.
+# A part handed the cursor's variable whole, as an argument, as it is made: its line in game code
+# gives its own value a number, and the cursor's selection stays as it was.
 class HandedArgumentHolderPart
   def initialize(builder, selection)
     @selection = selection
@@ -698,7 +712,7 @@ class HandedArgumentMakerPart
   def initialize(builder, cursor) = HandedArgumentHolderPart.new(builder, cursor.selection)
 end
 
-# The same handed a slot of a Hash, which it is given to change all the same.
+# The same handed a slot of a Hash, which keeps its number all the same.
 class SlotArgumentMakerPart
   def initialize(builder)
     @states = { 0 => builder.var(:slot_argument_0, 1) }
@@ -706,24 +720,34 @@ class SlotArgumentMakerPart
   end
 end
 
-# A holder sharing the first of its own Hash's variables from setting up, given a number in game
-# code. In Ruby the first slot keeps 0, so the line is refused.
+# A holder handed the first of its own Hash's variables while setting up, given a number in game
+# code. In Ruby the first slot keeps 0 and the holder holds 5.
 class HandedHeldNumberPart
+  game_variables :seen
+
   def initialize(builder)
     @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_number_#{light}", light)] }
     @held = @states[0]
-    builder.func(:handed_held_number_tick) { @held = 5 }
+    @seen = 9
+    builder.func(:handed_held_number_tick) do
+      @held = 5
+      @seen = @held
+    end
   end
 end
 
-# The same with the Hash named, and the holder counted up.
+# The same with the Hash named, and the holder counted up from the slot's 1.
 class NamedStatesHeldPart
-  game_variables :states
+  game_variables :states, :seen
 
   def initialize(builder)
     @states = { 0 => 1, 1 => 2 }
     @held = @states[0]
-    builder.func(:named_states_held_tick) { @held += 1 }
+    @seen = 9
+    builder.func(:named_states_held_tick) do
+      @held += 1
+      @seen = @held
+    end
   end
 end
 

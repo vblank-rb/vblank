@@ -12,7 +12,7 @@ module VBlank
     # it stands, and only one copy caught it, so a game with a `debug_halt` in it built a
     # cartridge quite happily and then raised the moment anything asked for its tree.
     #
-    # IT ALSO CARRIES WHAT THE RUN LEARNED THAT IS NOT IN THE TREE. A few facts about a
+    # It also carries what the run learned that is not in the tree. A few facts about a
     # program have nowhere to live in the tree — Conditions built and never branched on, the
     # frame syncs the game loop already covered, the software sprites (whose layer lives on
     # the handle) — and the guardrails need them. Reaching for those meant reaching into the
@@ -20,7 +20,7 @@ module VBlank
     # pipeline's own surface. They come from here now, so the verb surface stays a verb
     # surface.
     class EvaluatedGame
-      # MAKING ONE RUNS THE BLOCK. There is no way to hold one that has not run yet, which is
+      # Making one runs the block. There is no way to hold one that has not run yet, which is
       # what stops the four steps drifting apart again: a caller cannot do three of them.
       #
       # +progress+ is what the build says it is doing while it does it, and it is carried into
@@ -31,19 +31,27 @@ module VBlank
       # +settings+ is what this one build was told, which the game reads with `setting`.
       #
       # +options+ is how the game is built (see {Options}).
-      def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {})
-        @builder = Builder.new(options: options, progress: progress, settings: settings)
-        # `debug_halt` throws rather than returns, because it stops the game's block where it
-        # stands and there is no other way out of somebody else's code. Catching it here is
-        # what makes a truncated build a build like any other: everything above the call is
-        # in the tree, everything below it never happened, and the tree that comes back is a
-        # real (short) program rather than an exception.
-        catch(:debug_halt) { @builder.instance_eval(&block) }
-        # ...and a setting the block never reached may simply be below the halt.
-        @builder.check_settings_were_asked! unless @builder.debug_halted?
-        # Finalizing the tree is also what paces it: `game_loop` runs once per frame and the
-        # builder writes that wait itself, so nothing downstream has to think about it.
-        @builder.finalize_program
+      #
+      # +screen_as_asked+ gives the game the screen size it asks for (Builder#initialize).
+      #
+      # The block runs in a build session of its own (Builder::Session.building), closed when the
+      # build ends, however it ends: a part made after it finds no game being built.
+      def initialize(block, options: Options.new, progress: Messages::Progress.silent, settings: {}, screen_as_asked: false)
+        make = -> { Builder.new(options: options, progress: progress, settings: settings, screen_as_asked: screen_as_asked) }
+        Builder::Session.building(make) do |builder|
+          @builder = builder
+          # `debug_halt` throws rather than returns, because it stops the game's block where it
+          # stands and there is no other way out of somebody else's code. Catching it here is
+          # what makes a truncated build a build like any other: everything above the call is
+          # in the tree, everything below it never happened, and the tree that comes back is a
+          # real (short) program rather than an exception.
+          catch(:debug_halt) { @builder.instance_eval(&block) }
+          # ...and a setting the block never reached may simply be below the halt.
+          @builder.check_settings_were_asked! unless @builder.debug_halted?
+          # Finalizing the tree is also what paces it: `game_loop` runs once per frame and the
+          # builder writes that wait itself, so nothing downstream has to think about it.
+          @builder.finalize_program
+        end
         # Nothing changes the tree after this, so every pass that reads it can read an index
         # rather than walking it again (see IR::Node#mark_written!).
         @program = @builder.program.mark_written!
@@ -79,8 +87,6 @@ module VBlank
       # How many `wait_vblank` calls the game loop already covered.
       def dropped_syncs = @builder.dropped_syncs
 
-      # Where the game gave an `estimate:`, which nothing reads.
-      def estimate_lines = @builder.estimate_lines
       def handed_name_writes = @builder.handed_name_writes
 
       # The lines outside game code that keep a button for game code to read.
@@ -89,7 +95,16 @@ module VBlank
       # The variables normal Ruby needed that nobody declared (see Diagnostics::HiddenVariables).
       def hidden_variable_notes = @builder.hidden_variable_notes
 
+      # The counted loops of game code and what the build made of each (see Diagnostics::CountedLoops).
+      def counted_loop_notes = @builder.counted_loop_notes
+
+      # The game variables kept in instance variables (see Diagnostics::InstanceVariableNumbers).
+      def instance_variable_numbers = @builder.instance_variable_uses.part_variable_notes
+
       def variables_with_no_var_line = @builder.variables_with_no_var_line
+
+      # Each list or pool a plain Ruby Array made, with the local the game wrote (IR::Guardrails::BuildFacts).
+      def collections_from_arrays = @builder.collections_from_arrays
 
       # The software sprites, in the order they were declared — which on a bitmap screen is
       # the order they are painted in.

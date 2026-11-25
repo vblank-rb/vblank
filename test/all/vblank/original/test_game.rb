@@ -212,7 +212,7 @@ class TestOriginalGame < Minitest::Test
     assert_raises(ArgumentError) { game(Dir.tmpdir, releases: nil) }
   end
 
-  # A GAME THAT ACCEPTS BY SHA-1 AND NAMES BY ITS HEADER: two releases of made-up bytes, each
+  # A game that accepts by SHA-1 and names by its header: two releases of made-up bytes, each
   # starting with a region of its own, and a probe that reads the region as a game reads its
   # cartridge's header. The digest decides what is accepted; the probe only names what is refused.
   US_DUMP = "US:the release this game reads"
@@ -294,6 +294,22 @@ class TestOriginalGame < Minitest::Test
       end
       assert_match "the EU release", error.message
       assert_match "damaged", error.message
+    end
+  end
+
+  # A shell built on one thread hides the copies from that thread alone: a game on another thread
+  # at the same time still finds its copy.
+  def test_copies_hidden_on_one_thread_are_found_on_another
+    Dir.mktmpdir do |folder|
+      path = write(folder, "named.gb", RIGHT)
+      found = game(folder, env: named(path))
+
+      other_thread = VBlank::Original.without_copies do
+        assert_raises(VBlank::Original::NotSet) { found.copy }
+        Thread.new { found.copy.path }.value
+      end
+
+      assert_equal path, other_thread
     end
   end
 end

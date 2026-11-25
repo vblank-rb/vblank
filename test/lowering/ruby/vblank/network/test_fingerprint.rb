@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# THE FINGERPRINT OF A GAME tells two machines whether they run the same program for the same
+# The fingerprint of a GAME tells two machines whether they run the same program for the same
 # console, which a match must know before it plays a pass.
 class TestFingerprint < Minitest::Test
   Fingerprint = VBlank::Network::Fingerprint

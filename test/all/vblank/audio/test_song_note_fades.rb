@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG'S NOTES THAT FADE OUT OR SWELL IN, on the console's square and noise voices.
+# A song's notes that fade out or swell in, on the console's square and noise voices.
 #
 # A square or noise voice can change its own loudness while a note holds: it starts at the note's
 # volume and steps it down (or up) by one every so many 64ths of a second, with nothing from the
@@ -76,7 +76,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal [[1, c4, 12, NoteFade.fading(5)], [1, e4, 12, NoteFade.fading(5)]], played
   end
 
-  # A NOTE CAN SAY ITS OWN, in place of its part's: a pluck in a bowed line, or one note that
+  # A note can say its own, in place of its part's: a pluck in a bowed line, or one note that
   # starts quieter. And a note that says nothing takes its part's.
   def test_a_notes_own_fade_and_volume_come_before_its_parts
     c4 = VBlank::Audio::Music::NOTE_FREQUENCIES[:C4]
@@ -92,7 +92,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal [[1, c4, 9, NoteFade.fading(2)], [1, e4, 12, NoteFade.swelling(3)]], played
   end
 
-  # A DRUM THAT SAYS NOTHING OF A NOTE'S FADE rings out as its part says, and the log says what it
+  # A drum that says nothing of a note's fade rings out as its part says, and the log says what it
   # always did; a hit that says its own is logged with it.
   def test_a_drum_hit_says_its_fade_only_when_the_note_does
     c2 = VBlank::Audio::Music::NOTE_FREQUENCIES[:C2]
@@ -107,7 +107,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal [[4, c2, 12, nil], [4, c2, 12, NoteFade.swelling(1)]], played
   end
 
-  # A SCORE SAYS IT THE SAME WAY, for a game that converts another game's music into one: a part's
+  # A score says it the same way, for a game that converts another game's music into one: a part's
   # `decay:` or `swell:`, and a note's own, as a speed or as the step itself.
   def test_a_score_says_how_its_notes_fade
     score = VBlank::Audio::Score
@@ -130,7 +130,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal [[12, NoteFade.swelling(4)], [15, NoteFade.fading(7)]], sounding.map { |_, _, volume, fade| [volume, fade] }
   end
 
-  # THE MUSIC VOLUME REACHES A HELD NOTE BY STRIKING IT AGAIN, which would start a fading note's
+  # The music volume reaches a held note by striking it again, which would start a fading note's
   # fade over — and during a fade of the music it moves every frame, so a plucked note would never
   # die away. So a note that fades by itself is left to fade, the way a drum hit is, and only the
   # note that holds takes the new volume while it sounds.
@@ -188,7 +188,7 @@ class TestSongNoteFades < Minitest::Test
     game_player.run(program, frames: frames).audio.select { |entry| entry.first == :loudness && entry[1] == 1 }
   end
 
-  # A SWELLING NOTE STOPS AT THE MUSIC VOLUME. The voice counts its loudness up by itself, as far as
+  # A swelling note stops at the music volume. The voice counts its loudness up by itself, as far as
   # full, whatever the music volume is. So the player counts with it, and when the note reaches
   # the loudest the music volume lets a note be, strikes it again there, holding.
   def test_a_swelling_note_stops_at_the_music_volume
@@ -198,7 +198,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal 1, entries.count { |entry| entry[2] == 7 }, "and is struck there once"
   end
 
-  # ...AND FADES WITH THE MUSIC. While the music fades out, the pad held at the music volume is
+  # ...AND fades with the music. While the music fades out, the pad held at the music volume is
   # struck lower each time the volume drops below it, down to nothing.
   def test_a_swelling_note_fades_out_with_the_music
     entries = loudness_of_pad(swelling_pad_game { |count| fade_music_out frames: 20 if count == 30 }, frames: 80)
@@ -245,7 +245,7 @@ class TestSongNoteFades < Minitest::Test
     game_player.run(program, frames: frames).audio.select { |entry| entry.first == :loudness && entry[1] == 4 }
   end
 
-  # A DRUM HIT IS HELD THE SAME WAY, on the noise voice.
+  # A drum hit is held the same way, on the noise voice.
   def test_a_swelling_drum_hit_stops_at_the_music_volume
     entries = loudness_of_drum(swelling_drum_game { |count| music_volume 50 if count == 1 }, frames: 40)
 
@@ -267,7 +267,7 @@ class TestSongNoteFades < Minitest::Test
     assert_equal [:loudness, 4, 7, NoteFade.swelling(1)], entries.last, "struck at 7 again, swelling"
   end
 
-  # ...BUT A SWELLING NOTE THAT SLIDES IS LEFT ALONE, as the music volume leaves every sliding note:
+  # ...BUT a swelling note that slides is left alone, as the music volume leaves every sliding note:
   # striking it again would start its slide over.
   def test_a_swelling_note_that_slides_is_left_alone
     b = Builder.new

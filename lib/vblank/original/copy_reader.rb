@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # THE PLAYER'S COPY OF THE ORIGINAL, AS AN UNPACKING ROUTINE READS IT: the `copy` a
+    # The player's copy of the original, as an unpacking routine reads it: the `copy` a
     # `slots.fill_from_copy do |copy, pack| ... end` block is handed (Unpacking says where that
     # block runs, and why). Everything here is game code, so it plays the same on every backend.
     #
@@ -14,7 +14,7 @@ module VBlank
     #   copy.unpack_lz77 at: 0x300, into: pack[:sprites]   # a packed format the copy offers
     #   copy.file("MAPHEAD.WL6").word(2)          # one file of a copy that is several (FileReader)
     #
-    # THE PACKED FORMATS the copy offers are those of the platform its original is for
+    # The packed formats the copy offers are those of the platform its original is for
     # (Packing.formats_for: an Advance original's are LZ77, RLE and the songs of its common sound
     # driver, MusicPlayer2000 (Packing::M4A), a Genesis original's Nemesis and
     # Enigma), and any the port names in
@@ -48,6 +48,7 @@ module VBlank
         @internals = Packing::BlockKitInternals.new(builder, copy: copy, pack: pack, faults: faults, before_wait: before_wait,
                                                              slot_bytes_done: slot_bytes_done)
         @kit = Packing::BlockKit.new(@internals)
+        @step_tables = StepTables.new(builder, @internals)
         @formats = formats
         @platform = platform
         @block_routines = {}
@@ -121,7 +122,7 @@ module VBlank
         nil
       end
 
-      # ONE FILE OF A COPY THAT IS SEVERAL FILES (Release#files), as a FileReader: the same verbs,
+      # One file of a copy that is several files (Release#files), as a FileReader: the same verbs,
       # each place counted from the start of that file. +name+ is the file's name in the release, in
       # any case. The release is known as the routine is built (each release's unpacking is built for
       # it), so where each file starts is a number in the program.
@@ -176,6 +177,10 @@ module VBlank
         (asked && @formats.any? { |offered| offered.format_name == asked }) || super
       end
 
+      # The steps asked for so far made into table loops where they can be (StepTables). The build
+      # asks once each stretch of the routine is built: the slots copied as they are, and each part.
+      def fold_constant_steps! = @step_tables.fold_into_tables!
+
       # A format's verb takes its places by name; one given +given+ in order is refused (FileReader asks too).
       def refuse_positional_arguments!(name, given)
         return if given.empty?
@@ -196,25 +201,27 @@ module VBlank
         start = settings.fetch(:start, 0)
         refuse_unless_slot!(into, verb)
         refuse_outside_slot!(into, start, 0)
-        format.format_settings.each { |name, default| @kit.setting(name).store!(settings.fetch(name, default)) }
+        format_stores = format.format_settings.map { |name, default| [@kit.setting(name), settings.fetch(name, default)] }
         emit_block_call(:"unpack_#{format.format_name}", at: settings.fetch(:at), slot: into, start: start, count: 0,
-                                                         format_number: @formats.index(format), file: file) do
+                                                         format_number: @formats.index(format), file: file,
+                                                         format_stores: format_stores) do
           @internals.with_lists_declared_by(format.format_name) { format.routine(@kit) }
         end
       end
 
-      # One block: what it is handed set in the kit's variables, its routine called (made the first
-      # time, from the block given), and a wait for the next frame. Its reads are held to +file+ (a
-      # FileReader), or to the whole copy for nil.
+      # One block: its format's settings (+format_stores+, each [variable, value]) and what it is
+      # handed set in the kit's variables, its routine called (made the first time, from the block
+      # given), and a wait for the next frame, as a step StepTables may fold into a table loop. Its
+      # reads are held to +file+ (a FileReader), or to the whole copy for nil.
       #
       # Every block writes +slot+, so the write is recorded here, where each one is built: a verb
       # added later cannot leave it out (SlotUses, which the pack cache's parts read).
-      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, &routine)
+      def emit_block_call(routine_name, at:, slot:, start:, count:, format_number:, file: nil, format_stores: [], &routine)
         slot.record_write
-        @internals.emit_block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
-                                        file: file)
-        @builder.call(define_block_routine(routine_name, &routine))
-        @internals.emit_wait
+        name = define_block_routine(routine_name, &routine)
+        arguments = @internals.block_arguments(at: at, slot: slot, start: start, count: count, format_number: format_number,
+                                               file: file)
+        @step_tables.emit_step(name, format_stores + arguments)
         nil
       end
 
@@ -292,7 +299,7 @@ module VBlank
       end
     end
 
-    # ONE FILE OF A COPY THAT IS SEVERAL FILES, as an unpacking routine reads it (CopyReader#file):
+    # One file of a copy that is several files, as an unpacking routine reads it (CopyReader#file):
     # each verb of the copy's, with its places counted from the start of the file. A place written in
     # the program that is outside the file is refused as the routine is built. One worked out as the
     # routine runs is held to the file as it runs: a read outside it is the fault
@@ -361,7 +368,7 @@ module VBlank
       end
     end
 
-    # WHAT WENT WRONG IN AN UNPACKING ROUTINE: the first fault (Unpacking::Fault), kept in the
+    # What went wrong in an unpacking routine: the first fault (Unpacking::Fault), kept in the
     # program's FAULT_ variables, and the routine halted there. Nothing after a fault is worth
     # running, since the build stops on it (Builder::DataPacks#refuse_faulted_or_unfinished_unpacking!),
     # and running on is what lets a loop whose only way out was the byte it could not read go
@@ -373,7 +380,13 @@ module VBlank
         @kind = builder.var(Unpacking::FAULT_KIND, 0)
         @at = builder.var(Unpacking::FAULT_AT, 0)
         @detail = builder.var(Unpacking::FAULT_DETAIL, 0)
+        @number_written = builder.var(Unpacking::NUMBER_WRITTEN, 0)
+        @index_written = builder.var(Unpacking::INDEX_WRITTEN, 0)
       end
+
+      # The variables a wide write keeps its value and its place in, so each is worked out once
+      # (SlotBytes#kept_once).
+      attr_reader :number_written, :index_written
 
       def emit_fault(kind, at, detail)
         @kind.store!(kind)
@@ -383,7 +396,7 @@ module VBlank
       end
     end
 
-    # ONE SLOT OF THE PACK, AS AN UNPACKING ROUTINE WRITES IT: `pack[:walls]` inside
+    # One slot of the pack, as an unpacking routine writes it: `pack[:walls]` inside
     # `slots.fill_from_copy`. Its bytes are a run of the pack's one list of bytes
     # (Unpacking).
     #
@@ -456,7 +469,7 @@ module VBlank
         write_or_emit_fault(index, byte_size, index) { store_byte(index, value) }
       end
 
-      # CELL +index+ OF A SLOT OF MAP CELLS written as a MapCell record: its +tile+, counted from the
+      # Cell +index+ of a slot of map cells written as a MapCell record: its +tile+, counted from the
       # first tile of the background's `tiles:`, its +bank+ of colours, whether it is +mirrored+ and
       # +upside_down+, and whether it is +in_front+ of the sprites (each true or false, or a number
       # whose lowest bit says; the last read only by a background that asks, `cells_in_front: true`).
@@ -468,10 +481,12 @@ module VBlank
       # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
       # keep only its low bits. One the routine works out keeps them.
       def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false, in_front: false)
+        index = kept_once(index, @faults.index_written)
         refuse_cell_of_another_shape!
         cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
         MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
-        bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down, in_front: in_front)
+        bytes = bytes_kept_once(MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down,
+                                              in_front: in_front))
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "cell"])
           return bytes.each_with_index { |byte, at| store_byte((index * MapCell::BYTES) + at, byte) }
@@ -494,12 +509,14 @@ module VBlank
       # A channel written as a number past +bits+ is refused. One the routine works out keeps its
       # low +bits+ bits.
       def write_color(index, red:, green:, blue:, bits: 8)
+        index = kept_once(index, @faults.index_written)
         refuse_color_of_another_shape!
         refuse_channel_bits_out_of_range!(bits)
         refuse_channels_past_bits!(index, bits, red: red, green: green, blue: blue)
         format = @slot.format
         number = combine_bits([[red, format.red_at], [green, format.green_at], [blue, format.blue_at]]
                                 .map { |channel, at| scale_channel(channel, bits, format.channel_bits) << at })
+        number = kept_once(number, @faults.number_written)
         low_high = [number, number >> 8]
         bytes = format.high_byte_first ? low_high.reverse : low_high
         if index.is_a?(Integer)
@@ -535,6 +552,7 @@ module VBlank
       def number_byte(index, offset) = (index * @slot.item_bytes) + offset
 
       def write_number(index, value)
+        index = kept_once(index, @faults.index_written)
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index)
           return write_number_bytes(index, value)
@@ -544,10 +562,34 @@ module VBlank
       end
 
       def write_number_bytes(index, value)
+        value = kept_once(value, @faults.number_written)
         slot_bytes_lowest_first.each_with_index do |offset, step|
           store_byte(number_byte(index, offset), step.zero? ? value : value >> (8 * step))
         end
       end
+
+      # +given+ as it is when it is a number or reads no slot; otherwise kept in +variable+ and given
+      # as that. A write of several bytes works its value out for each byte, and a value that reads
+      # this slot (written[0] + 1 into written[0]) would read the low byte it has just written.
+      def kept_once(given, variable)
+        return given unless given.is_a?(DSL::Value) && reads_pack?(given)
+
+        variable.store!(given)
+        variable
+      end
+
+      # +bytes+, a record written a byte at a time, as they are when none reads the pack; otherwise
+      # joined into one number kept in a variable and taken apart from it, so every byte is worked out
+      # before the first is written (a tile read from the cell it is written over).
+      def bytes_kept_once(bytes)
+        return bytes unless bytes.any? { |byte| byte.is_a?(DSL::Value) && reads_pack?(byte) }
+
+        joined = kept_once(combine_bits(bytes.each_with_index.map { |byte, at| (byte & 0xFF) << (8 * at) }),
+                           @faults.number_written)
+        bytes.each_index.map { |at| at.zero? ? joined : joined >> (8 * at) }
+      end
+
+      def reads_pack?(value) = value.node.walk.any? { |node| node.kind == :list_get && node.name == Unpacking::BYTES }
 
       # The write the block makes, when +index+ is 0 or more and below +items+ (the slot's bytes, or
       # its numbers) as the routine runs; otherwise the fault that stops the build, naming +byte+,
@@ -632,7 +674,7 @@ module VBlank
         store_byte(index, value)
       end
 
-      # EVERY BYTE OF THE SLOT IS READ AND WRITTEN HERE, so the read or the write is recorded where
+      # Every byte of the slot is read and written here, so the read or the write is recorded where
       # it is built (#record_read, #record_write, which the pack cache's parts read), and a way of
       # writing added later cannot leave it out. A copy's formats write through the routine their
       # block calls, which records its slot (CopyReader#emit_block_call). +at+ is a byte of the
@@ -649,13 +691,13 @@ module VBlank
       end
     end
 
-    # A SLOT IN PIECES, AS AN UNPACKING ROUTINE WRITES IT: `pack[:music]` inside
+    # A slot in pieces, as an unpacking routine writes it: `pack[:music]` inside
     # `slots.fill_from_copy :music, pieces: 27 do ... end`, which is written a piece at a time,
     # `pack[:music].piece(song)[i] = sample`, the piece a SlotBytes of its own (PieceBytes) whose
     # items count from the piece's first. The slot itself is never read or written whole: a part in
     # pieces writes the pieces, and no other part reads them (PiecedUnpacking says why).
     #
-    # THE PIECE IS ONE THE ROUTINE WORKS OUT AS IT RUNS: the part's block is built once, handed the
+    # The piece is one the routine works out as it runs: the part's block is built once, handed the
     # piece's number as a game value, so its code is in the program once however many pieces it
     # has. Where each piece starts in the program's list, and how many items it holds, are two
     # tables the piece's number reads (+piece_places+, a place for every piece, by its number; a
@@ -669,7 +711,7 @@ module VBlank
         @pieces = {}.compare_by_identity
       end
 
-      # THE PIECE the part's block is handed (+number+, the game value it is given), a PieceBytes.
+      # The piece the part's block is handed (+number+, the game value it is given), a PieceBytes.
       def piece(number)
         @building.refuse_piece_not_its_own!(@slot, number)
         @pieces[number] ||= PieceBytes.new(@builder, @list, @slot.piece_shape, read_by(:at, @piece_places, number),
@@ -697,7 +739,7 @@ module VBlank
       end
     end
 
-    # ONE PIECE OF A SLOT IN PIECES (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
+    # One piece of a slot in pieces (PiecedSlotBytes#piece): a SlotBytes over the piece's bytes,
     # numbered as its slot, so a fault or a count of bytes done names the slot. +slot+ is the
     # piece's shape (Slot#piece_shape), +start+ where it starts in the list and +items+ how many
     # it holds, each a number or a value the routine works out. +whole+ is the PiecedSlotBytes whose
@@ -735,7 +777,7 @@ module VBlank
       def as_value(index) = index.is_a?(Integer) ? DSL::Value.new(@builder, DSL::Value.node_for(index)) : index
     end
 
-    # WHICH PART OF THE ROUTINE IS BEING BUILT, and for a part in pieces which piece: what a slot's
+    # Which part of the routine is being built, and for a part in pieces which piece: what a slot's
     # writer asks before it is read or written, so a part in pieces that reaches past its own
     # piece is refused as the routine is built, in plain words (PiecedUnpacking says why each is).
     class UnpackingPartBuilding
@@ -757,7 +799,7 @@ module VBlank
 
       private def routine_entered = @entered&.routine
 
-      # THE COUNT OF BYTES DONE (CopyReader#bytes_done) READ IN A PART AFTER THE FIRST, or in a part
+      # The count of bytes done (CopyReader#bytes_done) read in a part after the first, or in a part
       # in pieces. The count runs on from one part to the next, and from one piece to the next, so
       # there it holds what the parts or pieces before wrote. The pack cache plays a part with only
       # the parts it reads slots from (UnpackingParts), and a piece is made on its own, so the
@@ -816,7 +858,7 @@ module VBlank
       end
     end
 
-    # THE PACK'S SLOTS, AS AN UNPACKING ROUTINE WRITES THEM: `pack` inside `slots.fill_from_copy`,
+    # The pack's slots, as an unpacking routine writes them: `pack` inside `slots.fill_from_copy`,
     # a SlotBytes for each slot, by name.
     class UnpackingSlots
       def initialize(writers) = @writers = writers

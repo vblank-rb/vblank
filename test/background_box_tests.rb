@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
-# A BACKGROUND SHOWN ONLY INSIDE A BOX THE GAME MOVES AND SIZES (`show_only_inside`), on every
+# A background shown only inside a box the game moves and sizes (`show_only_inside`), on every
 # console whose display can hold a layer to a box. The Color and the Genesis cannot, and refuse it
 # (test/all/vblank/dsl/test_background_box_refusals.rb). Each console that can has a test file in
 # its folder that includes these, so they are written once and played on every run that plays
 # games as that console:
 #
 #   test/console/gba/vblank/dsl/test_background_box.rb
+#   test/console/snes/vblank/dsl/test_background_box_on_the_super_nintendo.rb
 #
 # The games stack a red background in front of a green one that fills the screen, so a pixel says
 # which of the two the display drew there: red inside the box, green, the layer behind, outside it.
@@ -139,10 +140,7 @@ module BackgroundBoxTests
         passes += 1
         state = 1 if passes == 6
         state = 0 if passes == 8
-        case_var(:state) do
-          when_val 0, :boxed
-          when_val 1, :away
-        end
+        call({ 0 => :boxed, 1 => :away }, number: :state)
       end
     end
     b.finalize_program

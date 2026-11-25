@@ -2,13 +2,13 @@
 
 require "test_helper"
 
-# A SONG PART ON THE WAVE VOICE AND ON THE NOISE VOICE — the console's other two.
+# A song part on the wave voice and on the noise voice — the console's other two.
 #
 # A part played the square wave or a recorded instrument, and the console had two more voices a
 # tune could use and did not: the wave voice, which loops a short waveform (rounder than a square
 # wave, and it reaches an octave lower), and the noise voice, which makes a hiss (the drums).
 #
-# WHAT THEY ARE WORTH is that they cost NO mixer voice. A part that plays a recording keeps one
+# What they are worth is that they cost no mixer voice. A part that plays a recording keeps one
 # of the mixer's voices for as long as its note sounds; these two the console makes itself. So a
 # busy song reaches for them before it reaches for another recording, and the voices it does not
 # spend stay free for the game's own sounds.
@@ -22,7 +22,7 @@ module SongConsoleVoicesGames
 
   Registers = VBlank::IR::Backends::GameBoySound
 
-  # THE NAMED SHAPES ARE A CONVENIENCE, NOT THE TRUTH. The console's wave voice is 32 steps of
+  # The named shapes are a convenience, not the truth. The console's wave voice is 32 steps of
   # four bits that a game writes, so a game whose music came from somewhere else — decoded out
   # of another cartridge — arrives holding those 32 numbers, and no name would be the waveform
   # it actually has. A 50% pulse is the common case and is none of :sine, :triangle, :sawtooth

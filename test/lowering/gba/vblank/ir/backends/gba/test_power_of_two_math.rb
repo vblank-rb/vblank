@@ -9,7 +9,7 @@ require "differential"
 #
 # Nothing here is a new spelling: the DSL gains `%`, which a Ruby programmer already
 # writes, and `/` and `*` are unchanged. The speed comes from the lowering recognising
-# the divisor, so these tests care about two things — that the ANSWERS are right
+# the divisor, so these tests care about two things — that the answers are right
 # (especially on negatives, where the shortcut and the honest routine round differently)
 # and that the shortcut is actually being taken.
 class TestPowerOfTwoMath < Minitest::Test
@@ -78,6 +78,84 @@ class TestPowerOfTwoMath < Minitest::Test
   def test_multiplying_by_a_power_of_two
     assert_answer(-24) { var(:n, -3) * 8 }
     assert_answer(24) { var(:n, 3) * 8 }
+  end
+
+  # One more or one less than a power of two, and -1, are a shift and an add or a subtract in one
+  # instruction: what a counted loop's worked-out numbers multiply by (`i * 3 + 1`, `100 - i`).
+  def test_multiplying_by_one_more_or_one_less_than_a_power_of_two
+    assert_answer(-15) { var(:n, -5) * 3 }
+    assert_answer(45) { var(:n, 9) * 5 }
+    assert_answer(-49) { var(:n, -7) * 7 }
+    assert_answer(62) { var(:n, 2) * 31 }
+    assert_answer(-9) { var(:n, 9) * -1 }
+  end
+
+  # A number less a variable is one reverse subtract, the number riding inside it.
+  def test_a_number_less_a_variable
+    assert_answer(91) { 100 - var(:n, 9) }
+    assert_answer(-30) { 5 - var(:n, 35) }
+    assert_answer(7) { 0 - var(:n, -7) }
+  end
+
+  def test_a_number_less_a_variable_emits_less_than_a_variable_less_a_variable
+    fixed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 9
+      out = var(:out, 0)
+      out = 100 - n
+      halt
+    end
+    computed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 9
+      d = var :d, 100
+      out = var(:out, 0)
+      out = d - n
+      halt
+    end
+
+    assert_operator fixed, :<, computed
+  end
+
+  # A loop's count held in a register is read straight into the one instruction working it out.
+  def test_a_counted_loop_works_numbers_out_from_its_held_count
+    program = build do
+      screen :bitmap
+      clear_screen :blue
+      a = var :a, 0
+      b = var :b, 0
+      c = var :c, 0
+      repeat(5) do |k|
+        a += (k * 3) + 1
+        b += 100 - k
+        c ^= k + 7
+      end
+      draw_rect_at a, 40, 2, 2, Color.resolve(:red)
+      draw_rect_at b - 400, 50, 2, 2, Color.resolve(:red)
+      draw_rect_at c, 60, 2, 2, Color.resolve(:red)
+      halt
+    end
+    assert_backends_agree(program)
+  end
+
+  def test_a_multiply_by_one_more_than_a_power_of_two_emits_less_than_a_computed_one
+    fixed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 100
+      out = var(:out, 0)
+      out = n * 5
+      halt
+    end
+    computed = emitted_bytes do
+      screen :bitmap
+      n = var :n, 100
+      d = var :d, 5
+      out = var(:out, 0)
+      out = n * d
+      halt
+    end
+
+    assert_operator fixed, :<, computed
   end
 
   # --- wrapping ---

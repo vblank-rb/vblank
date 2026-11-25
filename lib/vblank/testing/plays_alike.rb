@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # ONE GAME HELD TO ANOTHER, FRAME BY FRAME, in a test: a port's cartridge held to the original it
+    # One game held to another, frame by frame, in a test: a port's cartridge held to the original it
     # is made from, the same presses on both from power-on. Matching the original is how a port is
     # accepted, and this is the one assertion for it, over Playthroughs::Comparison:
     #
@@ -37,7 +37,7 @@ module VBlank
     # `pass_count_wraps_at: 256` for a count kept in a byte, and `passes_compared_at: :end` for one
     # whose slow pass counts itself before its work is done (the readings on the last frame that
     # shows each pass, the picture on the frame after; to compare the tape's last pass, play a frame
-    # past it). After `lead_ins:` the two are compared from the FIRST cartridge's pass as its lead-in
+    # past it). After `lead_ins:` the two are compared from the first cartridge's pass as its lead-in
     # left it, the second played on to it, so every pass of the first from there is compared. As it
     # plays on, a second led in by the first's lead-in cut short (or from power-on) is held what the
     # first's lead-in held on each of those frames, so a press after the cut still reaches it. A second
@@ -46,6 +46,10 @@ module VBlank
     # `skipping_still_frames_of: :second`
     # (or `:first`, or `:both`) skips that cartridge's frames whose picture is the one before's, a
     # room loading, so the two are in step again after a load that is longer on one.
+    # `starting_after: 4194, snapshots: SNAPSHOTS` with a tape compares from the frame after 4194,
+    # each cartridge put there from a snapshot of its console kept on disk (Playthroughs::SnapshotCache),
+    # so a test of a moment deep in the game costs the frames it compares; a playthrough is played on
+    # the first cartridge to make its tape, so give the tape to save that too.
     #
     # A failure says where the two first part: the frame and the moment before it, what differed,
     # every reading on both, how many pixels differ, the box they lie in, the first of them and its

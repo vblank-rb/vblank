@@ -17,8 +17,27 @@ module VBlank
         "index #{index} is out of range for list :#{list} (valid indexes are 0..#{length - 1})"
       end
 
+      # A push onto a full list, or a full pool told to stop (Nodes::StopFull), named as the game
+      # names it: a plain Ruby Array of numbers or of Structs, or a `list` or `pool` written by
+      # hand, so the words fit all of them. The runtimes' rg_stop_full give the same words.
       def list_full(list, capacity)
-        "list :#{list} is full (capacity #{capacity}): drop an item first, or give it a larger capacity"
+        "`#{list}` is full: it has room for #{capacity} items, and a console cannot make it bigger. To fix " \
+          "this, take an item out or test its size before you add one, or give it a larger capacity."
+      end
+
+      # A push during a walk of +list+ that finds it full only of things the walk took out
+      # (Nodes::StopFull +in_walk+). The runtimes' rg_stop_full give the same words.
+      def full_in_walk(list, capacity)
+        "`#{list}` has no room yet: it has room for #{capacity} items, and an item taken out inside a walk " \
+          "of it gives its place back only when the walk ends. To fix this, add the new item after the walk, " \
+          "or give it a larger capacity."
+      end
+
+      # A save read back into the list +list+ holds +count+ items, more than its +capacity+
+      # (Reference#exec_save_load_list): a save made by a build where the list had more room.
+      def save_list_too_long(list, count, capacity)
+        "The save holds #{count} items for `#{list}`, and it has room for #{capacity}. To fix this, give " \
+          "it a capacity of #{count} or more, or erase the save."
       end
 
       # +from+ is :front for a shift, :back for a pop.

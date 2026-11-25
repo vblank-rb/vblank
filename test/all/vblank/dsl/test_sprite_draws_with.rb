@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SPRITE THAT DRAWS WITH A DIFFERENT SET OF COLOURS while the game runs — a character that
+# A sprite that draws with a different set of colours while the game runs — a character that
 # cannot be hit flashing warm, a poisoned enemy turning green. Its picture does not change:
 # every pixel keeps its place in the sprite's own list of colours, and only the colours those
 # places show are swapped for the ones in another list.
@@ -60,7 +60,7 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_equal Color.resolve(:white), i.screen.pixel(45, 41)
   end
 
-  # A LIST WHOSE PLACES REPEAT A COLOUR, as a logo's list does while every place is still black before
+  # A list whose places repeat a COLOUR, as a logo's list does while every place is still black before
   # it fades in. Each place is a place of its own: a pixel drawn at the second green stays green, and
   # a background of other colours beside the sprite never takes that place over.
   def test_a_list_that_repeats_a_color_keeps_each_place_beside_a_background
@@ -526,7 +526,7 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_match(/no group is left/, error.message)
   end
 
-  # SIXTEEN IS EXACTLY ENOUGH: the ship's own colours and fifteen lists, one group each, with
+  # Sixteen is exactly enough: the ship's own colours and fifteen lists, one group each, with
   # nothing left over. The first group of the table is one of the sixteen. Its first entry is
   # never drawn, as in every group, so sprites can have it.
   #
@@ -554,7 +554,7 @@ class TestSpriteDrawsWith < Minitest::Test
 
   # --- scenes take turns with the groups ---
 
-  # THE SIXTEEN GROUPS ARE ONE SCENE'S, NOT THE WHOLE GAME'S, the way a scene's pictures and
+  # The sixteen groups are one scene's, not the whole game's, the way a scene's pictures and
   # scenery already are: two scenes are never on screen together, so each can have the groups
   # to itself. Here each scene's ship draws with one of nine lists besides its own — ten groups
   # a scene, twenty for the game. The ship shows the last list, so a group another scene took
@@ -587,17 +587,14 @@ class TestSpriteDrawsWith < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program
     builder.program
   end
 
-  # ...UNDER A TINT, and beside a sprite every scene shows. A tiled screen tints by moving the
+  # ...UNDER a tint, and beside a sprite every scene shows. A tiled screen tints by moving the
   # colour tables themselves, and a tint held steady is not walked again — so a scene's colours
   # sent as it takes over have to go in already tinted, or its sprites arrive at full colour in
   # the middle of a red screen. The badge belongs to no scene and has to keep its colours
@@ -626,17 +623,14 @@ class TestSpriteDrawsWith < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     builder.finalize_program
     builder.program
   end
 
-  # A SCENE THAT RUNS OUT ON ITS OWN IS NAMED, since it is measured on its own. The small scene
+  # A scene that runs out on its own is named, since it is measured on its own. The small scene
   # beside it is fine and is not mentioned.
   def test_a_scene_with_more_lists_than_groups_is_named
     error = refused(GBA::LoweringError) do
@@ -655,10 +649,7 @@ class TestSpriteDrawsWith < Minitest::Test
       end
       var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :calm
-          when_val 1, :busy
-        end
+        call({ 0 => :calm, 1 => :busy }, number: :state)
       end
     end
 
@@ -666,7 +657,7 @@ class TestSpriteDrawsWith < Minitest::Test
     refute_match(/calm/, error.message)
   end
 
-  # THE FRAME A SCENE TAKES OVER. Each scene's ship steps through three lists of its own, which
+  # The frame a scene takes over. Each scene's ship steps through three lists of its own, which
   # take turns with the other scene's at the same groups, and the game goes back and forth every
   # six passes. A sprite is drawn from the pass before, so on the frame the new scene's routine
   # first runs the leaving scene's ship is still the one on screen, and it has to keep its own
@@ -688,10 +679,7 @@ class TestSpriteDrawsWith < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 6) % 2
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
     builder.finalize_program

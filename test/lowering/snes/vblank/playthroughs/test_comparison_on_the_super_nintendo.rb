@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "slow_pass_games"
 
-# TWO SUPER NINTENDO CARTRIDGES COMPARED on their own screen, 256 by 224 pixels, not the Advance's:
+# Two Super Nintendo cartridges compared on their own screen, 256 by 224 pixels, not the Advance's:
 # a part of the screen past the Advance's 240 columns can be left out, and a difference is placed on
 # the console's screen. The cartridges are small games built here: a white box on a blue field
 # that walks two pixels a frame while RIGHT is down, from column +from+.
@@ -56,19 +56,16 @@ class TestComparisonOnTheSuperNintendo < Minitest::Test
     assert_match "`layers:`", error.message
   end
 
-  # The boxes are read from the console's own table, at the two sizes the game set (VBlank's own
-  # build sets OBSEL's first two, 8 by 8 and 16 by 16): two boxes eight pixels apart on one field
-  # are alike with both boxes left out.
-  def test_every_sprite_s_box_is_left_out_at_the_sizes_given
-    assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: [[8, 8], [16, 16]]
+  # The boxes are read from the console's own table, at the two sizes the game set in OBSEL, read
+  # off the cartridge: two boxes eight pixels apart on one field are alike with both boxes left out.
+  def test_every_sprite_s_box_is_left_out_at_the_sizes_the_game_set
+    assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: true
   end
 
-  # bsnes here does not hand over the register the sizes are set in, so they are asked for.
-  def test_leaving_the_sprites_out_without_their_sizes_is_refused
-    error = assert_raises(ArgumentError) { assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: true }
-
-    assert_match "Super Nintendo", error.message
-    assert_match "`ignoring_sprites: [[8, 8], [16, 16]]`", error.message
+  # The two sizes given are used over the ones the game set (VBlank's own build sets OBSEL's
+  # first two, 8 by 8 and 16 by 16).
+  def test_every_sprite_s_box_is_left_out_at_the_sizes_given
+    assert_plays_alike walker(20), walker(28), walk, ignoring_sprites: [[8, 8], [16, 16]]
   end
 
   # Lined up by passes, a pass that finishes on its second frame is compared at its end

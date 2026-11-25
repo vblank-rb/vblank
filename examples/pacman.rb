@@ -62,7 +62,7 @@ module Pacman
   ADVANCE = Layout.new(width: 240, height: 160)
   FLOOR_X = ADVANCE.floor_x
   FLOOR_Y = ADVANCE.floor_y
-  PELLET_SPOTS = Ractor.make_shareable(ADVANCE.pellet_spots)
+  PELLET_SPOTS = ADVANCE.pellet_spots
   START = ADVANCE.start.freeze
   GHOST_START = [24, 24].freeze
 

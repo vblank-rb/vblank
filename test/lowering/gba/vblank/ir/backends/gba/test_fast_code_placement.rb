@@ -8,7 +8,7 @@ require "differential"
 # instructions run about two and a half times faster; the author can overrule it either
 # way, and `rom.explain` says what it chose.
 #
-# The strongest thing to assert here is that NOTHING CHANGES: the same program draws the
+# The strongest thing to assert here is that nothing changes: the same program draws the
 # same pixels, on the interpreter and on the console, whether its code runs from the
 # cartridge or not. Everything else is the placement being visible and steerable.
 class TestFastCodePlacement < Minitest::Test
@@ -110,7 +110,7 @@ class TestFastCodePlacement < Minitest::Test
       rom.write(file.path)
       file.flush
       probe = RubyGBAEmulator.open(file.path)
-      reading = 3.times.map { probe.busy_scanlines(settle: 20) }.min
+      reading = Array.new(3) { probe.busy_scanlines(settle: 20) }.min
       probe.close
       return reading
     end
@@ -128,6 +128,21 @@ class TestFastCodePlacement < Minitest::Test
   def test_a_named_routine_still_moves_with_the_choosing_off
     report = placement_of(looping_program(fast: true), fast_code: false)
     assert_equal [:work], report.funcs
+  end
+
+  # ...and placing it costs no measuring pass: with the choosing off there is nothing to choose,
+  # so the routine named goes in as it comes out, and only its fit is checked. Counted by the
+  # phases the build names, one per lowering it makes to measure.
+  def test_a_named_routine_is_placed_without_measuring_with_the_choosing_off
+    assert_equal 0, measuring_phases(looping_program(fast: true), fast_code: false)
+    assert_operator measuring_phases(looping_program(fast: true), fast_code: true), :>=, 1,
+                    "with the choosing on, the build measures before it chooses"
+  end
+
+  private def measuring_phases(program, **opts)
+    said = StringIO.new
+    GBA.new(progress: VBlank::Messages::Progress.to(said), **opts).lower(program)
+    said.string.lines.count { |line| line.strip.start_with?("Measuring") }
   end
 
   # And a routine marked `fast: false` is left alone even when the framework would have
@@ -169,7 +184,7 @@ class TestFastCodePlacement < Minitest::Test
   # an estimate that ignored the move would read nearly three times over for any game
   # whose loop went — which is most of them.
   #
-  # EVERYTHING THIS PROGRAM SPENDS ITS FRAME ON IS INSIDE :work, so :work is what has to
+  # Everything this program spends its frame on is inside :work, so :work is what has to
   # move for the frame to get cheaper. Naming only the frame's own body would leave the
   # routine in the cartridge, and a game whose loop moved while its routine did not is a
   # real build rather than a hypothetical one — that is what quick memory running out
@@ -182,7 +197,7 @@ class TestFastCodePlacement < Minitest::Test
   # MEASURED, which is the only way this claim was ever worth anything. It used to be checked
   # against an estimate that had been told which routines moved — so it asserted that the
   # estimate applied its own discount, not that the console ran anything faster. The same
-  # program is now built both ways and RUN, and the two frames are counted.
+  # program is now built both ways and run, and the two frames are counted.
   def test_the_code_really_runs_faster_in_quick_memory
     require_emulator!
     # It has to keep running to be measured: the fixture normally stops after three passes,
@@ -191,16 +206,16 @@ class TestFastCodePlacement < Minitest::Test
     cart = profile_of(rom_of(program, title: "SLOW", code: "PSLW", fast_code: false))
     quick = profile_of(rom_of(program, title: "FAST", code: "PFST", fast_code: true))
 
-    # HOW MUCH OF EACH FRAME IS LEFT, not the instruction count. The two run the same
+    # How much of each frame is left, not the instruction count. The two run the same
     # instructions; what differs is how long each takes to fetch. Counting instructions a
     # frame would read backwards, because a pass too slow for one frame spills into the next
-    # and so runs FEWER of them per frame.
+    # and so runs fewer of them per frame.
     assert_operator quick.idle_share, :>, cart.idle_share,
                     "moving the code has to leave more of each frame: " \
                     "#{quick.idle_share} against #{cart.idle_share}"
   end
 
-  # ...and the half of that which is easy to lose: moving the frame's own body does NOT carry
+  # ...and the half of that which is easy to lose: moving the frame's own body does not carry
   # the routine it calls along with it. A routine is emitted once and jumped to, so one left
   # behind runs from the cartridge whoever called it. That is a placement fact, so the
   # placement is what says it.
@@ -242,10 +257,7 @@ class TestFastCodePlacement < Minitest::Test
         hero.move :down
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :playing
-        end
+        call({ 0 => :menu, 1 => :playing }, number: :state)
       end
     end
     builder.finalize_program
@@ -289,7 +301,7 @@ class TestFastCodePlacement < Minitest::Test
   # program. It has no name the author wrote, like the game loop's body, and it is placed
   # the same way.
   #
-  # It bends FOUR layers, which is what puts it on the interrupt: three is as many copying
+  # It bends four layers, which is what puts it on the interrupt: three is as many copying
   # engines as there are to lend out, so a fourth layer is one more than there is an engine
   # for and the display has to be interrupted for all of them. Give the helper a block
   # instead and it bends one layer, which an engine feeds and which lands there not at all
@@ -326,7 +338,7 @@ class TestFastCodePlacement < Minitest::Test
     refute_includes placement_of(program).funcs, Placement::IRQ_ROUTINE
   end
 
-  # ...and it does NOT move for a program that only sleeps until the next frame. That
+  # ...and it does not move for a program that only sleeps until the next frame. That
   # program enters it once a frame and leaves again immediately, so the room is better spent
   # on anything else — the same "has to earn its place" rule every routine is held to.
   def test_it_stays_in_the_cartridge_when_nothing_interrupts_often
@@ -413,7 +425,7 @@ class TestFastCodePlacement < Minitest::Test
   # --- and it really is faster there ---
 
   # Moving it makes bending genuinely cheaper, and it is measured rather than asserted about
-  # an estimate that had been TOLD the routine moved. Part of what an interrupt costs is the
+  # an estimate that had been told the routine moved. Part of what an interrupt costs is the
   # console's own — stopping the game, saving registers, handing control over — and that runs
   # at the console's speed however fast ours is, so the gain is real but smaller than a plain
   # routine's. What matters here is only that it is a gain.
@@ -466,26 +478,22 @@ class TestFastCodePlacement < Minitest::Test
       end
       scene(:over) { draw_number :score, 10, 30, :white, digits: 6 }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-          when_val 2, :over
-        end
+        call({ 0 => :title, 1 => :playing, 2 => :over }, number: :state)
       end
     end
     builder.finalize_program
     builder.program
   end
 
-  # WHAT A ROUTINE IS CHARGED HAS TO COVER WHAT IT COMES OUT AT, and this is the only place
+  # What a routine is charged has to cover what it comes out at, and this is the only place
   # that can say so, because being short does not fail where it happens.
   #
-  # The chooser adds up what each routine WILL come to once moved and takes routines while the
+  # The chooser adds up what each routine will come to once moved and takes routines while the
   # total still fits. It works from a throwaway pass where nothing has moved, so it has to
   # predict the one way a routine grows: a call that ends up crossing between the cartridge and
   # the quick memory stops being a four-byte branch and becomes an address built in full, a
   # move, and a jump through it. Charge less than that for any of them and nothing goes wrong
-  # until the very end of a build that FITS, where the block comes out bigger than the room it
+  # until the very end of a build that fits, where the block comes out bigger than the room it
   # was given and the author is told to mark a routine `fast: false` — advice about a program
   # that was never the problem.
   def test_a_routine_is_charged_at_least_what_it_comes_out_at
@@ -520,7 +528,7 @@ class TestFastCodePlacement < Minitest::Test
     assert_charged_at_least_emitted(program, moved: VBlank::IR::Backends::GBA::Placement::IRQ_ROUTINE)
   end
 
-  # ...and NO MORE than that, for a routine with nothing in it that can grow: no call out and
+  # ...and no more than that, for a routine with nothing in it that can grow: no call out and
   # no big number. Every byte charged that is not emitted is room the chooser thinks is gone,
   # and a routine that misses its place by a few bytes misses it entirely.
   def test_a_routine_that_cannot_grow_is_charged_exactly_what_it_comes_out_at
@@ -531,7 +539,7 @@ class TestFastCodePlacement < Minitest::Test
     assert_equal emitted, charged
   end
 
-  # A CALL BETWEEN TWO KEPT ROUTINES IS THE PLAIN CALL IT ALWAYS WAS, so it is not charged
+  # A call between two kept routines is the plain call it always was, so it is not charged
   # for. A routine is charged for every call it holds as though each crossed out to the
   # cartridge, because when the charging starts nothing is chosen yet. Once the routine it
   # calls is kept beside it, that growth never happens — and room still set aside for it is
@@ -575,7 +583,7 @@ class TestFastCodePlacement < Minitest::Test
     builder.program
   end
 
-  # A VARIABLE A KEPT ROUTINE USES IS ONE THE BASE REGISTER REACHES. A variable within 4K of
+  # A variable a kept routine uses is one the base register reaches. A variable within 4K of
   # the start of the quick memory is read in one instruction, which is room for about a
   # thousand of them; one past that needs its whole address first. Which ones land past the
   # line used to be the order the program named them in. A game with more variables than fit
@@ -632,7 +640,7 @@ class TestFastCodePlacement < Minitest::Test
     builder.program
   end
 
-  # THE MEASUREMENT HAS TO BE OF THE PROGRAM THAT IS BUILT. A variable gets its address the
+  # The measurement has to be of the program that is built. A variable gets its address the
   # first time something names it, and the pass that measures emits the routines in the order
   # they were written where the real one emits the kept ones last — so a variable the build
   # made for itself inside a routine (here, each loop's counter) used to land somewhere else
@@ -651,7 +659,7 @@ class TestFastCodePlacement < Minitest::Test
     assert_equal measuring.var_addresses, real.var_addresses
   end
 
-  # A routine kept in the quick memory written BEFORE one left in the cartridge, each with a
+  # A routine kept in the quick memory written before one left in the cartridge, each with a
   # loop whose counter has to live in memory (two calls in the body take the registers).
   private def two_loops_program
     builder = Builder.new
@@ -689,7 +697,7 @@ class TestFastCodePlacement < Minitest::Test
       clear_screen :black
       list :big, capacity: 7000, fast: true # eats nearly all of the quick memory, and insists on it
       big = var :b, 0
-      func(:work, fast: true) { 400.times { big += 1 } }
+      func(:work, fast: true) { 400.times { |n| big += 1 + (n.even? ? 5 : -5) } }
       game_loop { wait_vblank; call :work }
     end
     builder.finalize_program
@@ -697,5 +705,25 @@ class TestFastCodePlacement < Minitest::Test
     err = assert_raises(GBA::LoweringError) { GBA.new.lower(builder.program) }
     assert_match(/fast: true/, err.message)
     assert_match(/work/, err.message)
+  end
+
+  # ...and with the choosing off, where nothing measures it first, the routine is still checked
+  # against the room it came out at, and the error still names it.
+  def test_a_named_routine_that_cannot_fit_is_a_friendly_error_with_the_choosing_off
+    builder = Builder.new
+    builder.instance_eval do
+      screen :bitmap
+      clear_screen :black
+      list :big, capacity: 7000, fast: true
+      big = var :b, 0
+      func(:work, fast: true) { 400.times { |n| big += 1 + (n.even? ? 5 : -5) } }
+      game_loop { wait_vblank; call :work }
+    end
+    builder.finalize_program
+
+    err = assert_raises(GBA::LoweringError) { GBA.new(fast_code: false).lower(builder.program) }
+    assert_match(/fast: true/, err.message)
+    assert_match(/work/, err.message)
+    refute_match(/fast_code: false/, err.message, "the setting is already in use")
   end
 end

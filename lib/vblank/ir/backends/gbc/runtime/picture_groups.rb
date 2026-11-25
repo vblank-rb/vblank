@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # PICTURES GROUPED BY ROOM (Builder::PictureGroups), copied into sprite memory as a room
+          # Pictures grouped by room (Builder::PictureGroups), copied into sprite memory as a room
           # comes up.
           #
           # The Color draws its sprites from 256 tiles of picture memory, which a game of many rooms
@@ -78,8 +78,8 @@ module VBlank
             # A slot's entry of game_group_slots: the places of the group it wants, the one it holds
             # and the number the game gave; the label of its set's tiles, for their bank; its set's
             # table of groups; and how many groups the set has. In that order, SLOT_UP to SLOT_COUNT saying where each is.
-            def emit_slot(asm, wanted:, up:, said:, tiles:, groups:, count:)
-              asm.data_words(wanted, up, said)
+            def emit_slot(asm, wanted:, up:, shown:, tiles:, groups:, count:)
+              asm.data_words(wanted, up, shown)
               asm.data_bank_of(tiles)
               asm.data_words(groups)
               asm.data_bytes(count)

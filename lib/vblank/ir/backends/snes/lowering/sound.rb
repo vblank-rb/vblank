@@ -88,7 +88,7 @@ module VBlank
               end
             end
 
-            # SOME RECORDINGS ARE PLAYED BY ONE SCENE ALONE (#scene_of_recording), so a game whose
+            # Some recordings are played by one scene alone (#scene_of_recording), so a game whose
             # recordings do not all fit the sound unit's memory at once can be built loading them by
             # scene (SNES#build).
             def recordings_of_one_scene? = @recordings.any? { |kept, _| scene_of_recording(kept) }
@@ -108,7 +108,7 @@ module VBlank
               loads unless loads.empty?
             end
 
-            # WHAT A SCENE CHANGE COSTS, given once a build for each scene whose own recordings take
+            # What a scene change costs, given once a build for each scene whose own recordings take
             # more than a frame to send (Runtime::Sound::BYTES_A_FRAME): the pass that scene takes
             # over on waits for them, and nothing else shows it.
             def scene_recording_findings
@@ -169,6 +169,12 @@ module VBlank
             # What the DSP writes for this game's sound-log entries are worked out with.
             def sound_voicing = DSPWrites::Voicing.new(waves: @sound_waves, parts: @music.parts, effects: @music.effect_names)
 
+            # What a reader needs to tell which voices the sound effects hold as the game runs.
+            def sound_effect_voicing
+              Runtime::Effects::HeldVoices.new(effect_ranks: @music.effect_rank_places,
+                                               recording_voices: SNES::Music.recording_voices(@program))
+            end
+
             # The sections of the game's songs (SNES::Music), each note's sound-log entries numbered
             # among the rest, over as many banks as they need (SongBanks::Laid).
             def songs_laid_out
@@ -183,7 +189,7 @@ module VBlank
             # Runtime::Recordings keeps.
             def recorded_parts? = @music.recorded_parts?
 
-            # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+
+            # The row a note of a recorded part plays (Reference::Mixer#start_music_note): recording +name+
             # read at +frequency+, from its start, back to where it holds from at its end (or played
             # once, for one that does not hold), at its written +volume+ as a mixer voice's loudness,
             # shaped by +envelope+ (the note's or its part's), or by the recording's own when it has none:
@@ -235,7 +241,7 @@ module VBlank
               @chip_envelopes = [Runtime::Recordings::NO_CHIP_ENVELOPE] # each row of "recording_chip_envelopes"
             end
 
-            # THE ONE SCENE THAT PLAYS THE SAMPLES +kept+ (a recording's samples, or its bytes in the
+            # The one scene that plays the samples +kept+ (a recording's samples, or its bytes in the
             # chip's format), or nil where something else can play them too. A recording is a scene's
             # own when every name it is declared under is played only from that scene's routine and
             # what it calls, and from nowhere else: not from the game loop or a routine it calls
@@ -279,7 +285,7 @@ module VBlank
               end
             end
 
-            # THE SCENES THAT TAKE TURNS: those one variable picks, never two up at once. A game can
+            # The scenes that take turns: those one variable picks, never two up at once. A game can
             # pick scenes by more than one variable, and a scene another variable picks can be up
             # beside one of these, so only the variable picking the most scenes has its scenes keep
             # recordings of their own, less any scene another variable picks too; every other scene's
@@ -456,7 +462,7 @@ module VBlank
               @turn_recordings_up = keep_local(:turn_recordings_up, start: start)
             end
 
-            # THE SOURCE NUMBER A PLAY OF THE RECORDING +declared+ READS, going +back+ at its end: the
+            # The source number a play of the recording +declared+ READS, going +back+ at its end: the
             # next one the first time those samples are played that way.
             #
             # What the sound unit keeps of a recording is its samples and where it reads back to, and
@@ -465,7 +471,7 @@ module VBlank
             # (Runtime::Recordings' row). So recordings declared under several names with the same
             # samples, as one instrument's recording played with several envelopes is, are kept
             # once, and every one of them reads the same source. Which recording a place holds is
-            # still each one's own name (the row's NAME).
+            # still each one's own name (the row's name).
             #
             # A recording the game gave in the chip's own format (an Audio::SNESRecording) is kept as
             # those bytes (Samples.brr_as_given), however its samples compare with another's.
@@ -602,14 +608,25 @@ module VBlank
               emit_sound_entry([:noise, hit])
             end
 
-            # +entry+'s DSP writes, then its number into the cartridge's sound log.
+            # The voice each kind of the game's own sound plays on, as against a song's or an effect's.
+            GAME_SOUND_VOICES = { beep: DSPWrites::BEEP_VOICE, noise: DSPWrites::NOISE_VOICE,
+                                  wave: DSPWrites::WAVE_VOICE, stop_wave: DSPWrites::WAVE_VOICE }.freeze
+
+            # +entry+'s DSP writes, then its number into the cartridge's sound log. The game's own sound,
+            # in a game that strikes its effects inside the frame, first drops what the list still holds
+            # for its voice (Runtime::Strikes, DROP).
             def emit_sound_entry(entry)
+              voice = GAME_SOUND_VOICES[entry.first]
+              runtime_call("rt_strikes_drop", [Build.int(voice << 4)]) if voice && strikes_in_frame?
               DSPWrites.for_entry(entry, sound_voicing).each do |write|
                 command, *numbers = Runtime::Sound.command_for(write)
                 runtime_call(Runtime::Sound::ROUTINES.fetch(command), numbers.map { |number| Build.int(number) })
               end
               runtime_call("rt_sound_log", [Build.int(sound_entry_number(entry))])
             end
+
+            # Whether the game's sound effects are struck inside the frame (Runtime::Strikes).
+            def strikes_in_frame? = !IR::Tunes.effect_clock_step(@program, @program.described_console).nil?
 
             # The number the cartridge's sound log keeps +entry+ as, the next one the first time.
             def sound_entry_number(entry)

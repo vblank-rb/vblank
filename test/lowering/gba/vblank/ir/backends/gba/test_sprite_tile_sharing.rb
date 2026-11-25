@@ -3,19 +3,19 @@
 require "test_helper"
 require "differential"
 
-# A PART ONE POSE SHARES WITH ANOTHER IS STORED ONCE.
+# A part one pose shares with another is stored once.
 #
 # Most of a character does not change between two frames of a walk — the head, the
-# torso, the arm that is not moving — and a sprite's poses are stored as PIECES, each
+# torso, the arm that is not moving — and a sprite's poses are stored as pieces, each
 # naming its own first tile. So the pieces that did not change are stored once and
 # every frame points at them.
 #
 # This is the one saving a game written straight against the console cannot have. An
-# object reads a CONTIGUOUS run of tiles, so by hand every frame has to be its own run
+# object reads a contiguous run of tiles, so by hand every frame has to be its own run
 # and a part that did not move is kept again in each. A table of pieces is under no
 # such rule.
 #
-# The art here is NOISE, seeded so it is the same on every run. Noise because anything
+# The art here is noise, seeded so it is the same on every run. Noise because anything
 # regular shares by accident — a solid block cut into cells gives cell after cell of
 # identical bytes — and then a test would pass without the sharing doing any work.
 class TestSpriteTileSharing < Minitest::Test
@@ -83,7 +83,7 @@ class TestSpriteTileSharing < Minitest::Test
     rom.built.video_memory.sprites.used
   end
 
-  # How many instructions a program lowers to — the only way a test can see WHICH draw
+  # How many instructions a program lowers to — the only way a test can see which draw
   # a sprite got, since the two draw the same picture and differ only in what they cost.
   private def emitted(program)
     backend = VBlank::IR::Backends::GBA.new
@@ -110,14 +110,14 @@ class TestSpriteTileSharing < Minitest::Test
                  "[a b c b] should cost three pictures, where [a b c d] costs four"
   end
 
-  # THE PICTURE IS UNCHANGED, which is the whole bargain. The interpreter draws every
+  # The picture is unchanged, which is the whole bargain. The interpreter draws every
   # pose from its own image and knows nothing about which tiles the console shares, so
   # the two agreeing is the proof that sharing moved nothing.
   #
-  # WHICH FRAME IS COMPARED IS THE WHOLE TEST, since only the last one is. At rate 4 a
+  # Which frame is compared is the whole test, since only the last one is. At rate 4 a
   # cycle of four poses turns over every 16 frames, and the sprite is put on screen
   # from the pose it held at the top of the pass — so what is showing after 32 frames
-  # is the FOURTH pose, the one that repeats the second. Compared at any other moment,
+  # is the fourth pose, the one that repeats the second. Compared at any other moment,
   # a sprite reading its repeated pose from the wrong place passes.
   REPEATED_POSE_SHOWING = 32
   OWN_POSE_SHOWING = 28
@@ -132,7 +132,7 @@ class TestSpriteTileSharing < Minitest::Test
     assert_backends_agree(cycling(ping_pong_art, 32), frames: OWN_POSE_SHOWING, name: "PPONG3")
   end
 
-  # A FOUR-WAY CHARACTER WITH A REST FRAME IN EVERY DIRECTION, which is what art
+  # A four-way character with a rest frame in every direction, which is what art
   # exported from a drawing tool commonly looks like — and how Pac-Man is drawn, whose
   # shut mouth is the same disc whichever way he faces.
   private def four_way(rest_shared:)
@@ -162,7 +162,7 @@ class TestSpriteTileSharing < Minitest::Test
                  "one rest frame shared four ways should cost five pictures, not eight"
   end
 
-  # ---- a PIECE that repeats, which is the case a whole-pose test cannot reach ----
+  # ---- a piece that repeats, which is the case a whole-pose test cannot reach ----
 
   # Eight frames of a 96x96 creature: every frame is different, so nothing here is a
   # repeated pose. What repeats is the torso, which is several pieces of every frame.
@@ -182,7 +182,7 @@ class TestSpriteTileSharing < Minitest::Test
                     "a torso that stands still through eight frames should give back a quarter and more"
   end
 
-  # SHARING IS WHAT KEEPS A BIG CYCLE WHOLE. A cycle too big for sprite memory still builds,
+  # Sharing is what keeps a big cycle whole. A cycle too big for sprite memory still builds,
   # keeping one frame there at a time and copying the next in as it steps — but a cycle kept
   # whole shows its next frame by pointing at it, with nothing to copy. The two cycles here are
   # the same size, cut the same way, into the same number of objects; the only difference is
@@ -204,8 +204,8 @@ class TestSpriteTileSharing < Minitest::Test
 
   # ---- the two edges ----
 
-  # A cycle whose frames are ALL the same picture shares one run between every pose,
-  # which is an even distance of NOTHING — so it keeps the plain draw rather than
+  # A cycle whose frames are all the same picture shares one run between every pose,
+  # which is an even distance of nothing — so it keeps the plain draw rather than
   # falling to the pose table. The stride is then 0 and every pose reads the same
   # tiles, which is exactly right and is the one case where reading the stride off the
   # poses matters instead of dividing the total by how many there are.
@@ -233,8 +233,8 @@ class TestSpriteTileSharing < Minitest::Test
                     "a cycle of one picture should keep the plain draw"
   end
 
-  # A REPEAT AND A MIRROR IN ONE CYCLE. A pose that repeats an earlier one shares its
-  # tiles with no flip; a pose that is an earlier one BACKWARDS shares them with one.
+  # A repeat and a mirror in one cycle. A pose that repeats an earlier one shares its
+  # tiles with no flip; a pose that is an earlier one backwards shares them with one.
   # Both point back into the same run, so the two have to agree about where it is.
   private def mixed_cycle
     clear = CLEAR

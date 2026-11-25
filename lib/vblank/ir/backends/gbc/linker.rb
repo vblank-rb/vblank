@@ -4,10 +4,10 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # PUTS THE SECTIONS IN THE CARTRIDGE AND FILLS IN THE PLACES THEY NAME.
+        # Puts the sections in the cartridge and fills in the places they name.
         #
         # The processor can only see 64K of addresses at once, and the cartridge is far bigger
-        # than that, so it is cut into BANKS of 16K. Bank 0 is always in view, at 0x0000 to
+        # than that, so it is cut into banks of 16K. Bank 0 is always in view, at 0x0000 to
         # 0x3FFF; any one of the others is in view at 0x4000 to 0x7FFF, whichever the game last
         # asked the cartridge's memory bank controller for. So a section is either FIXED — in bank
         # 0, which is where the runtime goes, since everything has to be able to call it — or
@@ -41,7 +41,7 @@ module VBlank
           # twice, a jump that cannot reach. Nothing the author wrote can mend it.
           class Error < StandardError; end
 
-          # Raised when the GAME is more than the cartridge has room for: its tables, songs or
+          # Raised when the game is more than the cartridge has room for: its tables, songs or
           # pictures too big for the part always in view, or one of them bigger than a bank. It is
           # the game's to fix, so it is a refusal like the lowering's others (see Memory::Full),
           # and it names the game's parts by what they are, never by the sections they went in.
@@ -168,13 +168,13 @@ module VBlank
             calls.sort_by { |bank, count| [-count, bank] }.map(&:first)
           end
 
-          # HOW MANY BANKS A CARTRIDGE HAS AT MOST, as this one is driven. The cartridge's memory bank
+          # How many banks a cartridge has at most, as this one is driven. The cartridge's memory bank
           # controller (an MBC5) can switch between 512, but the runtime only ever writes the low
           # eight bits of the bank number, so bank 256 would come up as bank 0. A game that needs
           # more is refused here rather than built with jumps that land in the wrong bank.
           MOST_BANKS = 256
 
-          # A CARTRIDGE WITH A CLOCK CHIP has the memory bank controller the console's own games with
+          # A cartridge with a clock chip has the memory bank controller the console's own games with
           # a clock carried, an MBC3, which takes seven bits of the bank number: 128 banks, 2M.
           MOST_CLOCK_BANKS = 128
 

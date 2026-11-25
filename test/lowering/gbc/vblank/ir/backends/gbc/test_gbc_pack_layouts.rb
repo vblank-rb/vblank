@@ -3,8 +3,8 @@
 require "test_helper"
 require "made_up_original_layouts"
 
-# A COLOR GAME'S TILES, READ FROM ITS DATA PACK, GO INTO THE COLOR'S CARTRIDGE AS THE ORIGINAL KEEPS
-# THEM. A tile drawn by place from a list of four colours is kept place for place
+# A color game's tiles, read from its data pack, go into the color's cartridge as the original keeps
+# them. A tile drawn by place from a list of four colours is kept place for place
 # (GBC::Art#places_kept?), so the made-up Color original's tile bytes (MadeUpOriginalLayouts) are in
 # the cartridge unchanged.
 class TestGBCPackLayouts < Minitest::Test

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THE ONE VERDICT THAT COULD ONLY EVER BE ESTIMATED, now measured (lib/vblank/diagnostics/tearing.rb).
+# The one verdict that could only ever be estimated, now measured (lib/vblank/diagnostics/tearing.rb).
 #
 # The display draws each row as it reaches it, out of video memory as it stands at that
 # moment — so the picture the emulator hands back is what the screen really showed, seam and
@@ -16,7 +16,7 @@ class TestTearing < Minitest::Test
   include EmulatorSupport
 
   # A program that repaints a band the full width of the screen in a different colour every
-  # frame. The band's HEIGHT is how much drawing there is to do, which is what decides
+  # frame. The band's height is how much drawing there is to do, which is what decides
   # whether it can finish before the display arrives. Two draws under opposite tests, so the
   # colour really changes each frame — a repaint in the same colour tears invisibly.
   private def alternating_band(height)
@@ -31,6 +31,25 @@ class TestTearing < Minitest::Test
     end
   end
 
+  # A program that clears the whole screen to black +clears+ times, then paints it red or blue,
+  # a different colour each frame. A wide band alone no longer tears however tall it is: each
+  # row is one quick copy, and a fill that starts as the gap starts runs down the screen ahead
+  # of the display. The clears use up the gap and then the top of the picture, so the last
+  # coat starts after the display has shown rows black that the game then paints. More clears
+  # start it later, and more of the screen goes up stale.
+  private def painted_after_clears(clears)
+    VBlank.build("TEAR", console: :gba, code: "BTER", maker: "01", err: StringIO.new) do
+      screen :bitmap
+      c = var :c, 0
+      game_loop do
+        c = 1 - c
+        clears.times { clear_screen :black }
+        fill_rect 0, 0, 240, 160, :red if c == 0
+        fill_rect 0, 0, 240, 160, :blue if c == 1
+      end
+    end
+  end
+
   private def tearing_of(rom)
     require_emulator!
     readings = VBlank::Diagnostics::Analyzer.profile(rom.source_program, options: rom.build_options)
@@ -38,7 +57,7 @@ class TestTearing < Minitest::Test
   end
 
   def test_a_program_that_draws_far_too_much_is_measured_tearing
-    reading = tearing_of(alternating_band(90))
+    reading = tearing_of(painted_after_clears(3))
 
     assert_predicate reading, :measured?
     assert_predicate reading, :torn?
@@ -85,22 +104,22 @@ class TestTearing < Minitest::Test
     refute_predicate tearing_of(rom), :measured?
   end
 
-  # MORE DRAWING TEARS MORE OF THE PICTURE, which is what says the reading tracks the thing
+  # More drawing tears more of the picture, which is what says the reading tracks the thing
   # it claims to measure rather than answering the same way whatever it is shown.
   def test_more_drawing_shows_more_of_the_picture_stale
-    assert_operator tearing_of(alternating_band(120)).rows, :>,
-                    tearing_of(alternating_band(40)).rows,
+    assert_operator tearing_of(painted_after_clears(3)).rows, :>,
+                    tearing_of(painted_after_clears(2)).rows,
                     "a bigger overrun has to put more of the screen up stale"
   end
 
-  # THE TWO HALVES OF THE TEAR QUESTION, in the one report that carries both. The build says
-  # a game CAN tear — a fact about the screen it chose — and the run says whether it did.
+  # The two halves of the tear question, in the one report that carries both. The build says
+  # a game can tear — a fact about the screen it chose — and the run says whether it did.
   # Neither is an estimate, which is the whole change: this used to be a frame priced in
   # scanlines against the gap between frames, and it was invented arithmetic for a question a
   # run settles outright.
   def test_the_report_says_the_game_can_tear_and_then_whether_it_did
     io = StringIO.new
-    alternating_band(90).profile(out: io, frames: 10)
+    painted_after_clears(3).profile(out: io, frames: 10)
 
     assert_match(/it can tear/, io.string, "the build says it is possible")
     assert_match(/the picture tore on \d+ of the \d+ frames looked at/, io.string,

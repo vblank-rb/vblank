@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # A SHELL'S UNPACKING SPLIT FOR SEVERAL WORKERS (Original::PiecedUnpacking), played on a Ractor
+    # A shell's unpacking split for several workers (Original::PiecedUnpacking), played on a Ractor
     # for each worker, each on a core of its own, away from the window. It answers what
     # Live::Session asks of a game, as BackgroundUnpacking does, and keeps what the shell keeps in
     # the same Outcome.
@@ -14,7 +14,7 @@ module VBlank
     # each job afresh, so nothing one piece's game holds is another's; its class is made once
     # here for every worker (LiveGame.shareable_class says why).
     #
-    # WHAT CROSSES. A worker sends, at most once a frame's time, how many bytes its job has done
+    # What crosses. A worker sends, at most once a frame's time, how many bytes its job has done
     # (its BYTES_DONE, read with LiveGame#vars, which reads no list), and the main job its picture
     # too: the words and the bar it draws of its own work. The window shows that picture with the
     # bar painted over it as far as every worker's work adds up to (PiecePlan#bar_width), in the
@@ -233,9 +233,23 @@ module VBlank
         rescue Ractor::ClosedError
           nil
         end
+        wait_for_idle_workers if @ended.all?
       end
 
-      # WHO PLAYS A JOB IN ITS WORKER: it holds no buttons, and at most once every SEND_SECONDS
+      # Once every job has ended, each worker is waiting for its next, so :stop ends it at once:
+      # waited for here, nothing of the unpacking is left running when the play returns. A program
+      # that copies its process next (a film plays each side in a copy, Diagnostics::Film) copies
+      # one with no Ractor but its own. A worker stopped part way through a job is not waited for:
+      # it ends at its next frame, and a window closing should not wait on that.
+      def wait_for_idle_workers
+        @workers.each do |worker|
+          worker.join
+        rescue Ractor::RemoteError
+          nil # raised already, where its job failed
+        end
+      end
+
+      # Who plays a job in its worker: it holds no buttons, and at most once every SEND_SECONDS
       # sends how many bytes the job has done, and the main job (+index+ 0) its picture. Once the
       # window has closed the way, it stops the play.
       #

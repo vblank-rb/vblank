@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHERE A SCENE'S GROUPED PICTURES GO IN SPRITE MEMORY. Each picture has one place for as long
+# Where a scene's grouped pictures go in sprite memory. Each picture has one place for as long
 # as its scene is up, and it is copied there as one of its groups comes up; two pictures can
 # share a place only if no two of their groups can ever be up at once. So what the scene needs
 # is what the worst set of groups up together needs, not every group's pictures at once.

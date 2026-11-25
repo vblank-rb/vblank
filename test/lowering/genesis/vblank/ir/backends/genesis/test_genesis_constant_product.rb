@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# MULTIPLYING BY A NUMBER WRITTEN IN THE GAME on the Genesis: shifts, adds and subtracts, or two of the
+# Multiplying by a number written in the game on the Genesis: shifts, adds and subtracts, or two of the
 # 68000's word multiplies, written where the sum is (Lowering::Products), and a product by a comparison
 # as a branch; never the runtime's multiply, which takes three word multiplies and a call. The answers
 # are held to the interpreter's for every number past every edge, on every pass; the shortcut is read

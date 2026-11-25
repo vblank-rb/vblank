@@ -3,7 +3,7 @@
 require "test_helper"
 require "ractor_workers"
 
-# THE NAMES THE BUILD MAKES UP for routines and variables nobody wrote — a save record's
+# The names the build makes up for routines and variables nobody wrote — a save record's
 # routines, the save machinery's own, a font's digit routine, a scene's sprite routine — and
 # what a report calls each one. Made and read back through one table, so these ask the table
 # itself: no build is needed to find out whether two names can meet.
@@ -25,6 +25,7 @@ class TestMadeNames < Minitest::Test
     scene_rows_hidden_for: { state: :where },
     scene_rows_hide: { state: :where },
     scene_loop_work: { scene: :playing, number: 2 },
+    routine_piece: { place: "3_else_0_then", routine: :_scene_playing },
     still_sprites: {},
     held_sprite_table: {},
     scene_sprite_colors: {},
@@ -43,6 +44,8 @@ class TestMadeNames < Minitest::Test
     shared_rooms: { number: 0, part: :take },
     view_along_map: { background: :ground },
     view_along_map_in_scene: { background: :ground, scene: :cave },
+    map_cell_write: { background: :ground },
+    map_cell_write_in_scene: { background: :ground, scene: :cave },
     tile_run_tile: { run: :box, number: 3 },
     tile_run_pending: { number: 0 },
     painted_copies: {},
@@ -55,6 +58,7 @@ class TestMadeNames < Minitest::Test
     tile_pictures_part: { group: :water, part: :shown },
     sprite_tiles_source: { picture: :great_ball },
     draw_order: { number: 1, part: :sort },
+    array_sort: { array: :scores, line: "12", order: "y_up_x_down" },
     start_over: { part: :play },
     held_tiles: {},
     held_tiles_drop: {},
@@ -96,6 +100,9 @@ class TestMadeNames < Minitest::Test
         "bringing background :ground of the scene :cave another set of tiles",
       MadeNames.make(:view_along_map_in_scene, background: :ground, scene: :cave) =>
         "bringing the view of background :ground of the scene :cave along its map",
+      MadeNames.make(:map_cell_write, background: :ground) => "changing a cell of the map of background :ground",
+      MadeNames.make(:map_cell_write_in_scene, background: :ground, scene: :cave) =>
+        "changing a cell of the map of background :ground of the scene :cave",
       MadeNames.make(:shared_rooms, number: 0, part: :take) => "giving a sprite a room in sprite memory for the pose it shows",
       MadeNames.make(:shared_rooms, number: 0, part: :let_go) => "taking back the room of a sprite that is not shown",
       MadeNames.make(:pool_part, pool: :guard, part: :remove) => "removing an instance of pool :guard",

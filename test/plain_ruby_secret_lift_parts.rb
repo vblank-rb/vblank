@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A PART'S GAME VARIABLE ONLY SOME BUILDS HAVE, written in normal Ruby in a file of a game's own:
+# A part's game variable only some builds have, written in normal Ruby in a file of a game's own:
 # brought in by `VBlank.require_game_file` for test/all/vblank/dsl/test_plain_ruby_parts.rb.
 #
 # A lift keeps whether the secret lever called it, and only a build with a secret floor has one.

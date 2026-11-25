@@ -60,7 +60,7 @@ class TestNativeHeadlessRun < Minitest::Test
     assert_equal 4, HeadlessRun.new.hold(:left).run(program, frames: 4)[:x]
   end
 
-  # A RUN THAT IS SLOW IS NOT A RUN THAT IS STUCK. The game is talked to a frame at a time, and
+  # A run that is slow is not a run that is stuck. The game is talked to a frame at a time, and
   # each answer waits its turn among Ruby's threads, so beside busy ones a run of many frames
   # takes far longer than the game does. What is timed is how long the program takes to reach
   # its next frame once it has that frame's buttons. Here the buttons are slow to come, as they
@@ -133,7 +133,7 @@ class TestNativeHeadlessRun < Minitest::Test
 
   private def dot_column(screen) = (0...40).find { |x| screen.pixel(x, 20) == Color.resolve(:green) }
 
-  # WATCHING A RUN FRAME BY FRAME, the way a test watches the interpreter: the block is run at
+  # Watching a run frame by frame, the way a test watches the interpreter: the block is run at
   # every frame boundary with the frame's number, and the game reads then as it stood at that
   # boundary. The interpreter's own watch of the same game is the answer.
   def test_a_watched_run_reads_each_frame_as_it_stood
@@ -227,7 +227,7 @@ class TestNativeHeadlessRun < Minitest::Test
 
   private def drawn(name, x, y, picture) = VBlank::Diagnostics::DrawnSprite.new(name: name, x: x, y: y, picture: picture)
 
-  # WHICH SPRITE IS WHICH, asked the way a test asks the interpreter: every row the game drew,
+  # Which sprite is which, asked the way a test asks the interpreter: every row the game drew,
   # each saying whose it is, where it is, and which of its pictures it shows by the name the
   # author gave that picture, whatever colors it is drawn in.
   def test_the_sprites_drawn_read_back_as_the_interpreters_do
@@ -338,7 +338,7 @@ class TestNativeHeadlessRun < Minitest::Test
     assert_equal Color.resolve(:black), run.screen.pixel(11, 20)
   end
 
-  # The picture as it is STORED is not the one shown once the window has moved or a fade is on:
+  # The picture as it is stored is not the one shown once the window has moved or a fade is on:
   # to_a gives the stored one, as the interpreter's does, and whether the screen is tear-free
   # reads back too.
   def test_the_stored_picture_and_the_kind_of_screen_read_back_as_the_interpreters_do

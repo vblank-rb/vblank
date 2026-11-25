@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/chip_band").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/chip_band").to_s)
 
 # examples/chip_band.rb built for the desktop shows the interpreter's picture and logs its sound,
 # frame by frame, while the cursor moves down the list of tunes and each one plays a while: the

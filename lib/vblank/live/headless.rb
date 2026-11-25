@@ -2,17 +2,17 @@
 
 module VBlank
   module Live
-    # A DEVICE WITH NO SCREEN: it keeps every picture it is shown and every frame's sound it is
+    # A device with no screen: it keeps every picture it is shown and every frame's sound it is
     # handed, holds the buttons a script gives it by frame (+buttons+, frame number to the buttons
     # held on it), and stops the play after +frames+ pictures.
     #
-    # ITS CLOCK MOVES ONLY WHEN SOMETHING MOVES IT, so a test never waits for real time.
+    # Its clock moves only when something moves it, so a test never waits for real time.
     # Waiting moves it straight to the moment waited for, and every pass then takes
     # +pass_seconds+ — none unless the test asks otherwise, a machine infinitely fast — or, given
     # something callable, what it answers for the pass's number (1, 2, 3, …). Kept as an exact
     # fraction, so a pass set to take two frames takes two and not a hair more.
     #
-    # WITH +speaker: true+ IT HAS A SPEAKER, which plays what it is handed on the same clock, a
+    # WITH +speaker: true+ it has a speaker, which plays what it is handed on the same clock, a
     # second of samples in a second: #sound_waiting is how much is left to play, #gaps how many
     # times sound arrived after the speaker had run out (a gap a person would hear), and
     # #most_waiting the most there ever was waiting. Without one, #sound_waiting is nil.
@@ -24,7 +24,7 @@ module VBlank
     # +fast_forward+ holds the numbers of the passes (1, 2, 3, …) fast forward is held through, at
     # +fast_forward_speed+.
     #
-    # IT IS ASKED WHAT THE WINDOW (SDL) IS ASKED, so a play that passes here does not stop in a
+    # It is asked what the window (SDL) is asked, so a play that passes here does not stop in a
     # window over a question only the window put to the game. It is told how many players each play
     # seats (#seat_counts), keeps the game's save memory as the window's save file does (#saved;
     # +save+ is what an earlier play left), and, given the +screen+ the window would be opened at
@@ -41,7 +41,7 @@ module VBlank
     class Headless
       Picture = Data.define(:pixels, :width, :height)
 
-      # THE GAME'S SAVE MEMORY, kept as bytes where the window keeps it in a file (SaveFile): the
+      # The game's save memory, kept as bytes where the window keeps it in a file (SaveFile): the
       # session reads it as the game starts and writes it soon after it changes and as the play ends.
       class SaveMemory
         # +bytes+ are what an earlier play left, or nil for a new cartridge.
@@ -67,6 +67,9 @@ module VBlank
       # a game that names none), one a play, in the order they were played.
       attr_reader :pictures, :sounds, :sound_rate, :now, :gaps, :most_waiting, :notices, :seat_counts
 
+      # The lines shown while the window waited for its game (#show_waiting), a list a frame.
+      attr_reader :waiting
+
       # The game's save memory (a SaveMemory), or nil when +keeps_save+ is false. The session asks
       # for it as each play starts (Session#read_save_file), as it asks the window for its SaveFile.
       attr_reader :save_file
@@ -88,6 +91,7 @@ module VBlank
         @pass_seconds = pass_seconds.respond_to?(:call) ? pass_seconds : ->(_pass) { pass_seconds }
         @speaker = speaker
         @pictures = []
+        @waiting = []
         @notices = []
         @sounds = []
         @sound_rate = nil # until the first frame's sound gives it
@@ -98,6 +102,10 @@ module VBlank
         @speaker_done_at = nil # when what the speaker holds has all been played; nil before any sound
       end
 
+      # Lines of words in place of a picture, while a game is built elsewhere (BuildWatch): kept,
+      # and counted among the frames this device shows.
+      def show_waiting(lines) = @waiting << lines.dup
+
       # The picture is the game's own and is drawn over next frame, so a copy is kept.
       def show(pixels, width, height)
         refusal = SDL.picture_refusal_message(pixels, width, height, screen: @screen) and raise ArgumentError, refusal
@@ -107,8 +115,8 @@ module VBlank
       # The game's save memory as it stands: the bytes it last wrote, else those +save+ handed in, else nil.
       def saved = @save_file&.bytes
 
-      # The game seats +most_players+ (0 for none named), told by the session before the first pass.
-      def seat_players(most_players) = @seat_counts << most_players
+      # The game seats +max_players+ (0 for none named), told by the session before the first pass.
+      def seat_players(max_players) = @seat_counts << max_players
 
       # The left speaker's sound is kept. The right one's is as long, so it shows nothing more about
       # when the speaker runs out. The sound is the game's own and is written over next frame, so a
@@ -138,7 +146,7 @@ module VBlank
         @on_notice&.call(words)
       end
 
-      def stop? = @pictures.size >= @frames
+      def stop? = @pictures.size + @waiting.size >= @frames
 
       def fast_forward_speed(pass) = @fast_forward.include?(pass) ? @fast_forward_speed : 1
 

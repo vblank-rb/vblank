@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # WHERE ON A PAINTED SCREEN EACH DRAWING CAN PAINT, and in what colours, worked out from
+          # Where on a painted screen each drawing can paint, and in what colours, worked out from
           # the program before any of it is lowered: what GBC::SquareColors picks each 8×8 square's
           # list of colours from. Mixed into Lowering.
           #
@@ -19,7 +19,7 @@ module VBlank
           module PaintReach
             # Each kind that paints...
             PAINTING_KINDS = %i[
-              clear_screen fill_rect dma_fill_rect draw_rect_at pixel draw_text draw_digit blit blit_pose
+              clear_screen fill_rect draw_rect_at pixel draw_text draw_digit blit blit_pose
               draw_column_at background
             ].freeze
 
@@ -30,7 +30,6 @@ module VBlank
               case node.kind
               when :clear_screen then clear_reach(node)
               when :fill_rect then rect_reach(node)
-              when :dma_fill_rect then rect_reach(node)
               when :draw_rect_at then rect_reach(node)
               when :pixel then pixel_reach(node)
               when :draw_text then text_reach(node)

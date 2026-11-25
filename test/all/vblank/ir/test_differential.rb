@@ -104,7 +104,7 @@ class TestDifferential < Minitest::Test
       assert_backends_agree(build do
         screen :bitmap
         clear_screen :black
-        dma_fill_rect x, 40, 8, 8, Color.resolve(:white)
+        fill_rect x, 40, 8, 8, Color.resolve(:white)
         halt
       end, name: "DMAFILL")
 
@@ -150,7 +150,7 @@ class TestDifferential < Minitest::Test
 
   # The tear-free screen draws to a hidden page and shows it whole. Different
   # machinery, same picture — and it's the mode where a page-flip bug would show
-  # the wrong page. The rect steps by an ODD number, so it visits both parities:
+  # the wrong page. The rect steps by an odd number, so it visits both parities:
   # on this screen a pixel is one byte and video memory refuses a lone byte write,
   # so landing on an odd column takes read-modify-write at the rect's two edges.
   def test_the_tear_free_screen_paints_the_same_picture
@@ -259,7 +259,7 @@ class TestDifferential < Minitest::Test
   # --- the comparison itself has to be able to fail ---
 
   # A differential test that can't fail is worse than none, because it reads like
-  # coverage. Feed the differ two programs that draw DIFFERENT pictures — standing
+  # coverage. Feed the differ two programs that draw different pictures — standing
   # in for a lowering that put the rectangle in the wrong place — and it has to
   # report exactly the pixels that moved.
   def test_the_comparison_catches_a_screen_that_does_not_match

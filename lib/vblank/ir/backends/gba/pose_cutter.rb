@@ -12,7 +12,7 @@ module VBlank
         MAX_OBJECT_CANVAS = SpriteCut::MAX_OBJECT_CANVAS
         MAX_OBJECT_PIECES = SpriteCut::MAX_OBJECT_PIECES
 
-        # HOW A SPRITE'S PICTURES ARE CUT INTO THE RECTANGLES THE CONSOLE DRAWS, and packed
+        # How a sprite's pictures are cut into the rectangles the console draws, and packed
         # into tiles the way it reads them. Nothing here knows about memory or about where a
         # sprite ends up: it is the art and the twelve shapes the hardware has.
         #
@@ -20,6 +20,10 @@ module VBlank
         # SpriteCut's, since the interpreter reads it too. What is here is what only a
         # cartridge needs: refusing a picture that cannot be cut, and packing the tiles.
         class PoseCutter
+          # What #cut makes of a sprite: the canvas its poses are drawn on, and each pose's boxes and mirrors
+          # (SpriteCut::Cut).
+          PoseCut = Data.define(:width, :height, :boxes, :mirrors)
+
           include Console::Hardware
 
           Mirror = SpriteCut::Mirror # A pose that is another pose turned
@@ -28,12 +32,12 @@ module VBlank
             @bitmaps = bitmaps
           end
 
-          # EVERYTHING ABOUT A SPRITE'S POSES THAT DOES NOT DEPEND ON MEMORY: which poses are
+          # Everything about a sprite's poses that does not depend on memory: which poses are
           # another pose mirrored, and the boxes each pose is drawn from. Worked out before
           # any sprite is given a place in the console's table, because a picture too big for
-          # one object is drawn as SEVERAL and each of them takes a place of its own.
+          # one object is drawn as several and each of them takes a place of its own.
           #
-          # A SPRITE THAT TURNS OR RESIZES IS NEITHER TRIMMED NOR MIRRORED, and that is
+          # A sprite that turns or resizes is neither trimmed nor mirrored, and that is
           # about being right rather than about being easy. The console spins an object
           # about the middle of its own box, so trimming the blank away would move the
           # pivot and the sprite would swing around a different point than the author drew
@@ -44,10 +48,10 @@ module VBlank
             # top-left corner (see SpriteCut.canvas_of).
             width, height = SpriteCut.canvas_of(@bitmaps, node.poses)
             guard_canvas!(node, width, height, transformed: transformed)
-            # EACH POSE IS STORED AT ITS OWN SIZE, trimmed to what it actually draws
+            # Each pose is stored at its own size, trimmed to what it actually draws
             # (see SpriteCut#pieces_of) rather than at the canvas they were all drawn on.
-            { width: width, height: height,
-              **SpriteCut.new(@bitmaps).cut(node.poses, width: width, height: height, whole: transformed) }
+            cut = SpriteCut.new(@bitmaps).cut(node.poses, width: width, height: height, whole: transformed)
+            PoseCut.new(width: width, height: height, boxes: cut.boxes, mirrors: cut.mirrors)
           end
 
           # Pack a sprite's picture into tiles the way sprite hardware reads them: 8x8
@@ -56,11 +60,11 @@ module VBlank
           # see-through pixel becomes 0. Because we use 1D mapping, the tiles simply sit
           # one after another in memory.
           #
-          # A NARROW sprite packs two pixels into every byte — the left one in the low
+          # A narrow sprite packs two pixels into every byte — the left one in the low
           # half, the right one in the high half, which is the order the console reads
           # them back in — so its picture is half the size for the same pixels. (In this
           # console's own words: 4bpp, low nibble first. A 4bpp OBJ tile is 32 bytes and an
-          # 8bpp one 64, but OBJ tile NUMBERS count in 32s either way — which is why a wide
+          # 8bpp one 64, but OBJ tile numbers count in 32s either way — which is why a wide
           # sprite has to start on an even one, see ScreenLayout#prepare_objects.)
           #
           # The same picture stored from the same box with the same colour numbers comes out
@@ -110,10 +114,10 @@ module VBlank
             bytes
           end
 
-          # WHICH NUMBER ONE PIXEL IS STORED AS.
+          # Which number one pixel is stored as.
           #
-          # A picture that got a BANK of sixteen reads its colors out of the author's own
-          # list, so a place in that list IS the number to write — which is what keeps two
+          # A picture that got a bank of sixteen reads its colors out of the author's own
+          # list, so a place in that list is the number to write — which is what keeps two
           # places holding the same color apart. A picture stored the big way reads the
           # whole shared table instead, where the same color is one entry however many
           # places the author's list gave it, so there is nothing to keep apart and the
@@ -123,12 +127,31 @@ module VBlank
             place || indices.fetch(bmp.color_at(index))
           end
 
+          # One piece of a pose of several banks as its sprite entry's tiles (SpriteCut#piece_places_of):
+          # the piece's own places, never the picture's, so where it is see-through over a piece of
+          # another bank behind it the entry holds nothing and the entry behind shows through. Each
+          # place is counted within its own bank, +bank_places+ to a bank, half a byte a pixel, the
+          # left pixel in the low half, in 8x8 tiles in reading order.
+          def encode_piece(own, bank_places)
+            side = Assets::Image.side(own)
+            places = own.bytes.map { |place| place.zero? ? 0 : place % bank_places }
+            tiles = side / TILE_PX
+            (0...tiles).flat_map do |tile_row|
+              (0...tiles).flat_map do |tile_col|
+                (0...TILE_PX).flat_map do |row|
+                  line = places[(((tile_row * TILE_PX) + row) * side) + (tile_col * TILE_PX), TILE_PX]
+                  line.each_slice(2).map { |left, right| left | (right << 4) }
+                end
+              end
+            end.pack("C*")
+          end
+
           private
 
-          # THE PICTURE THE AUTHOR DREW HAS TO BE MADE OF WHOLE TILES, and small enough that
+          # The picture the author drew has to be made of whole tiles, and small enough that
           # the pose table can hold where each of its pieces sits. Everything between those
           # two the framework cuts up for itself, so this is the whole of what it refuses.
-          # The message names the PICTURE rather than the sprite, since a sprite's own name
+          # The message names the picture rather than the sprite, since a sprite's own name
           # is the framework's and the author named the art.
           def guard_canvas!(node, width, height, transformed:)
             art = node.poses.first

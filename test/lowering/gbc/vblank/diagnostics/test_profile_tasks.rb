@@ -6,7 +6,7 @@ require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/profile_tasks"
 
-# A GAME'S `rake profile TAPE=... FRAMES=...`: the tapes in its folder played on the cartridge its
+# A game's `rake profile TAPE=... FRAMES=...`: the tapes in its folder played on the cartridge its
 # Rakefile names, each frame asked for read by itself.
 class TestProfileTasks < Minitest::Test
   # The task is defined in a rake application of the test's own.

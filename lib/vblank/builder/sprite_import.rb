@@ -8,7 +8,7 @@ module VBlank
       private
 
       # A sprite's `colors:` for its imported pictures: the colours, and the list's name where given one
-      ImportedColors = Data.define(:colors, :colors_name)
+      ImportedColors = Data.define(:colors, :colors_name)  # :nodoc:
 
       # The list of colours every picture a sprite imports is drawn from; its colours are nil where
       # the sprite was given none. A name is a list declared with `colors`, and each picture keeps
@@ -45,7 +45,7 @@ module VBlank
       end
 
       # Import a directional sprite sheet into facing: poses. The sheet is a grid: each
-      # ROW is a direction (in the order dirs: gives, top to bottom), and the COLUMNS of
+      # ROW is a direction (in the order dirs: gives, top to bottom), and the columns of
       # that row are its frames. So a one-column sheet gives one still pose per direction
       # (a plain facing: sprite), and a several-column sheet gives a per-direction
       # animation (a walk cycle each way it faces). Returns the facing: hash the normal

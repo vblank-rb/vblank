@@ -1,11 +1,11 @@
 /*
  * Asks runtime/rg_pause.h its two questions, a line of standard input each. See test_native_pause.rb.
  *
- *   owed OWED EVENT   how many drawings of the window are owed after a time round the pause's wait,
+ *   owed owed event   how many drawings of the window are owed after a time round the pause's wait,
  *                     OWED being the number before it and EVENT 1 when the window had an event
  *
- *   wait OWED OPEN OWES LEFT_NS
- *                     how many milliseconds the pause sleeps waiting for an event: OWED drawings
+ *   wait owed open owes LEFT_NS
+ *                     how many milliseconds the pause sleeps waiting for an event: owed drawings
  *                     owed, OPEN 1 when the menu or a window over the picture is open, OWES 1 when
  *                     a file is owed, and LEFT_NS nanoseconds of the frame left
  */

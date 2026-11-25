@@ -6,6 +6,20 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a `game_loop` that never waits for the screen to be drawn:
+        #
+        # > This game loop never waits for the screen to refresh. So it runs thousands of
+        # > times a second, not 60. The usual signs are a game that plays too fast, and a
+        # > picture that tears or flickers. To fix this, add `wait_vblank` as the first line
+        # > inside the loop. Then each pass runs in step with the display.
+        #
+        # The screen shows a new picture 60 times a second. A loop that does not wait for it
+        # moves everything many times between two pictures, so the game races, and what it
+        # draws can show half old and half new. A wait in a scene or routine the loop calls
+        # counts too. This is a warning and the build goes on, since a game can have its own
+        # reason to run flat out.
+        #
+        #--
         # A game loop that never waits for the screen's vertical blank runs flat
         # out — thousands of passes a second instead of 60 — rather than once per
         # frame. Three things go wrong at once: the picture tears or flickers
@@ -14,10 +28,11 @@ module VBlank
         # input, a beat counted in passes — races at absurd speed. The classic report
         # is "my game runs way too fast / it flickers."
         #
-        # This is a SOFT, advisory warning, not an error: there are legitimate
+        # This is a soft, advisory warning, not an error: there are legitimate
         # reasons to have no wait_vblank (a raw block hand-rolling its own sync, a
         # deliberate benchmark loop, or — later — VBlank-IRQ / IntrWait timing), so
         # we point it out and let the build proceed rather than block it.
+        #++
         class VblankSync
           NAME = :vblank_sync
           PLAIN_NAME = "a game loop that never waits for the screen"

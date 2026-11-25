@@ -3,7 +3,7 @@
 require "test_helper"
 require "note_envelope_tests"
 
-# THE VOICES A FALLING NOTE HOLDS ON THE ADVANCE'S CARTRIDGE, read in the emulator. What every run
+# The voices a falling note holds on the Advance's cartridge, read in the emulator. What every run
 # of an Advance game has sounding is in
 # test/console/gba/vblank/audio/test_note_envelope_on_the_advance.rb.
 class TestNoteEnvelopeOnTheAdvanceCartridge < Minitest::Test

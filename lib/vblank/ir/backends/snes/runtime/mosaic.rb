@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE BACKGROUNDS IN BLOCKS (`pixelate size, sprites: false`), which the console's display
+          # The backgrounds in blocks (`pixelate size, sprites: false`), which the console's display
           # does as it draws: one register, MOSAIC ($2106), whose top four bits are a block's size
           # less one and whose low four bits switch it on for BG1 to BG4. It has no switch for the
           # sprites, which is why a game for this console says `sprites: false`. Nothing in memory
           # moves, so a size costs a store in the blank however much is on the screen.
           #
-          # THE RULE THE DISPLAY KEEPS, which the interpreter draws (Reference#paint_scenery_in_blocks):
+          # The rule the display keeps, which the interpreter draws (Reference#paint_scenery_in_blocks):
           # a block starts at every column and every line of the screen that is a multiple of its size,
           # counted from the screen's top left, and shows the pixel its background has at the block's
           # first column on the block's first line. Across, bsnes's background renderer reloads a
@@ -28,7 +28,7 @@ module VBlank
           # The blank writes the byte noted (#emit_write), where it writes the brightness, so a
           # size set in a pass shows on that pass's picture as a fade's level does.
           #
-          # A SCREEN SPLIT IN TWO keeps the one grid. The bar's line table (Picture#emit_bar_table)
+          # A screen split in two keeps the one grid. The bar's line table (Picture#emit_bar_table)
           # switches layers between two lines, and MOSAIC is not written there, so the display's
           # count of a block's lines runs on through the split, as it does in Super Bomberman, whose
           # line interrupt changes the layers and the scroll at its bar's last line and never MOSAIC.

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHICH SPEAKER A VOICE IS HEARD FROM, read off a cartridge's sound in the emulator: a voice on one
+# Which speaker a voice is heard from, read off a cartridge's sound in the emulator: a voice on one
 # speaker is far louder there than on the other, which hears only what the emulator's filter leaves
 # of nothing, and a voice on both is as loud from each.
 module Speakers

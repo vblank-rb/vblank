@@ -1,5 +1,5 @@
 /*
- * THE MENU OVER THE WINDOW (Live::WindowMenu in the library says what it holds and how it looks;
+ * The menu over the window (Live::WindowMenu in the library says what it holds and how it looks;
  * Live::Menu is the same menu written in Ruby, for vblank run): how it behaves, and where each of
  * its boxes and words goes. This file is that Ruby written again in C, line for line, and a test
  * (test_native_window_menu.rb) plays the same keys through both and fails at the first thing they
@@ -37,7 +37,8 @@ typedef enum {
   RG_MENU_RESUME,
   RG_MENU_QUIT,
   RG_MENU_RESET_KEYS,
-  RG_MENU_RESET_HOTKEYS
+  RG_MENU_RESET_HOTKEYS,
+  RG_MENU_VARIABLES
 } rg_menu_does;
 /* The settings a line shows, each one of rg_window.c's. */
 typedef enum {
@@ -47,7 +48,8 @@ typedef enum {
   RG_MENU_FULLSCREEN,
   RG_MENU_VOLUME,
   RG_MENU_MUTED,
-  RG_MENU_FRAME_RATE
+  RG_MENU_FRAME_RATE,
+  RG_MENU_FRAME_TIME
 } rg_menu_setting;
 /* How a slider writes its number: "4x", "90%", or "3x  (720 × 480)", the window's size then. */
 typedef enum { RG_MENU_NOT_WRITTEN, RG_MENU_TIMES, RG_MENU_PERCENT, RG_MENU_WINDOW } rg_menu_written;
@@ -79,7 +81,7 @@ typedef struct {
 /* Sizes in points, which are made pixels by the screen's density. */
 typedef struct {
   int bar, row, pad, heading_gap, heading_pad, least_width, label_gap, slider, grab, check, corner, frame_corner, line_before,
-    status_gap, status_pad, status_line;
+    status_gap, status_pad, status_line, variables_width, message_width, message_gap;
 } rg_menu_sizes;
 
 /* Colours as red, green, blue and opacity, 0 to 255 each. */
@@ -93,6 +95,11 @@ extern const rg_menu_sizes rg_menu_size;
 extern const rg_menu_colors rg_menu_color;
 /* The most times the picture's size a window can be made (Live::WindowMenu::SCALES). */
 extern const int rg_menu_scale_least, rg_menu_scale_most;
+/* The window of the game's variables (Live::WindowMenu::VARIABLE_ROWS and the rest): how many of
+ * them it shows at once, the most letters typed to find one, and the widest number it has room
+ * for. */
+extern const int rg_menu_variable_rows, rg_menu_filter_most;
+extern const char rg_menu_widest_value[];
 /* Whether the game has a menu at all: a game that sets menu: false has none. */
 extern const int rg_game_has_menu;
 /* Whether the window keeps save states, and so has Save and Load in its menu and F5 and F9. */
@@ -119,6 +126,29 @@ int rg_window_menu_quit_chosen(void);
 /* A key pressed while the menu is open. */
 void rg_window_menu_press(rg_menu_key key);
 
+/* The window of the game's variables, which Developer, Game variables opens over the game as it plays
+ * (rg_window.h's RG_PANEL_VARIABLES, which rg_sdl.c reads the variables for). While it is open and
+ * the menu is not, up and down scroll it and close shuts it, and the keys that type a name (a
+ * letter, a digit, the minus key for an underscore, and Backspace, by SDL's scancodes) find the
+ * variables whose names have those letters. Each gives whether the key was the window's: a key that
+ * was is not the game's. */
+int rg_window_menu_variables_open(void);
+int rg_window_menu_press_on_variables(rg_menu_key key);
+int rg_window_menu_type_key(int key);
+
+/* What the window says over the picture until the player presses a button (Live::Menu#problems=
+ * and #tell): what could not be used in the settings file (rg_window_problems, while it is unseen),
+ * in the middle, and what the window tells the player (rg_window_told), at the foot of the window.
+ * Each has an OK, and a console button pressed answers both. Nothing waits for them.
+ *
+ * rg_window_menu_messages_fit: whether every box shown fits a window +width+ by +height+ pixels at
+ * +pixels_a_point+, its words broken to the box (Live::Menu#messages_fit?). A window too
+ * small for one is made bigger rather than a word being cut off (rg_sdl.c's
+ * grow_window_for_messages). */
+void rg_window_menu_answer_messages(void);
+int rg_window_menu_message_shown(void);
+int rg_window_menu_messages_fit(int width, int height, double pixels_a_point);
+
 /* --- drawing it --- */
 
 /* Where a letter of a word goes: the rectangle of the font's picture it is in (+from+, as x, y,
@@ -137,8 +167,8 @@ typedef struct {
   int first_letter, letter_count;
 } rg_menu_part;
 
-#define RG_MENU_PARTS_MOST 96
-#define RG_MENU_LETTERS_MOST 1024
+#define RG_MENU_PARTS_MOST 256
+#define RG_MENU_LETTERS_MOST 4096
 typedef struct {
   rg_menu_part parts[RG_MENU_PARTS_MOST];
   int part_count;
@@ -146,14 +176,16 @@ typedef struct {
   int letter_count;
 } rg_menu_drawing;
 
-/* WHAT A WINDOW DRAWS over the game, in its own pixels: the menu when it is open, and in the top
- * right corner what the window is doing — the frame rate when it is asked for (+frame_rate+, its
- * number as words, or NULL), how long the game's own work took a frame (+frame_work+, in
- * milliseconds, or NULL), and PAUSED while the game is +held+ or the speed while it is played
- * +fast_forward+ times as fast (0 for not). +width+ is the window's in pixels, and +density+ how
- * many pixels a point is (two on a Retina screen). Parts go into +out+ back to front. */
-void rg_window_menu_draw(rg_menu_drawing *out, int width, double density, int held, int fast_forward, const char *frame_rate,
-                         const char *frame_work);
+/* What a window draws over the game, in its own pixels: the window of the game's variables when it
+ * is open (as rg_window_watch_* last read them), what the window says until a button answers it,
+ * the menu when it is open, and in the top right
+ * corner what the window is doing — the frame rate when it is asked for (+frame_rate+, its number as
+ * words, or NULL), how long the game's own work took a frame (+frame_work+, in milliseconds, or
+ * NULL), and paused while the game is +held+ or the speed while it is played +fast_forward+ times as
+ * fast (0 for not). +width+ and +height+ are the window's in pixels, and +density+ how many pixels a
+ * point is (two on a Retina screen). Parts go into +out+ back to front. */
+void rg_window_menu_draw(rg_menu_drawing *out, int width, int height, double density, int held, int fast_forward,
+                         const char *frame_rate, const char *frame_work);
 
 #ifdef __cplusplus
 }

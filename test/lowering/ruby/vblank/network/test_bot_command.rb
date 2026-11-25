@@ -7,7 +7,7 @@ require "timeout"
 require "tmpdir"
 require "English"
 
-# `vblank bot BOT_FILE` AS A PROGRAM: a bot joins a match with a person (here a `vblank run` with no window,
+# `vblank bot BOT_FILE` as a program: a bot joins a match with a person (here a `vblank run` with no window,
 # holding a key) through an address and through the stand-in relay, and what it says when it cannot. The bot is
 # examples/chaser_bot.rb. The bot's own reading of the game, and what it does about it, is test_bots.rb.
 class TestBotCommand < Minitest::Test

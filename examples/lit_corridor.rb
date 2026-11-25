@@ -40,31 +40,31 @@ module LitCorridor
   ART
 
   # The four corners of a whole picture, top left first and round to the right.
-  WHOLE = Ractor.make_shareable([[0, 0], [16, 0], [16, 16], [0, 16]])
+  WHOLE = [[0, 0], [16, 0], [16, 16], [0, 16]]
 
   # The pictures' colours, each as red, green and blue from 0 to 31: the stone's mortar and blocks,
   # and the floor's.
-  COLORS = Ractor.make_shareable([[8, 8, 9], [20, 20, 22], [10, 6, 3], [18, 12, 6]])
+  COLORS = [[8, 8, 9], [20, 20, 22], [10, 6, 3], [18, 12, 6]]
 
   # Eight levels of light. Level 7 is each colour as it is; each level below is an eighth darker.
   LEVELS = 8
 
   # The shading's colours: each picture colour at every level, brightest first, so colour
   # +color+ at level +level+ is at place color * LEVELS + (LEVELS - 1 - level).
-  SHADES = Ractor.make_shareable(COLORS.flat_map do |red, green, blue|
+  SHADES = COLORS.flat_map do |red, green, blue|
     (0...LEVELS).map { |dark| [red, green, blue].map { |part| part * (LEVELS - dark) / LEVELS } }
-  end)
+  end
 
   # For each level, the place of the colour each of the shading's colours becomes: a picture colour
   # becomes itself darkened to that level, and a darkened one (no picture has it) stays as it is.
-  SHADE_LEVELS = Ractor.make_shareable((0...LEVELS).map do |level|
+  SHADE_LEVELS = (0...LEVELS).map do |level|
     (0...SHADES.length).map { |place| (place % LEVELS).zero? ? place + (LEVELS - 1 - level) : place }
-  end)
+  end
 
   # The corridor's sections: a ring of four points every two wholes ahead, from just behind you to
   # the end wall. The lamp hangs over the middle ring.
-  RINGS = Ractor.make_shareable([0.0, 2.0, 4.0, 6.0, 8.0, 10.0])
-  RING_CORNERS = Ractor.make_shareable([[-1.0, 1.0], [1.0, 1.0], [1.0, -1.0], [-1.0, -1.0]])
+  RINGS = [0.0, 2.0, 4.0, 6.0, 8.0, 10.0]
+  RING_CORNERS = [[-1.0, 1.0], [1.0, 1.0], [1.0, -1.0], [-1.0, -1.0]]
   LAMP = 3
 
   # How lit a point is: full under the lamp, less with each whole away, never quite dark.

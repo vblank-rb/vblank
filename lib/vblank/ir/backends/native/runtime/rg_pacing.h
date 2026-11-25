@@ -1,5 +1,5 @@
 /*
- * WHAT PACES THE WINDOW'S FRAMES: the monitor, or the console's own clock.
+ * What paces the window's frames: the monitor, or the console's own clock.
  *
  * The console draws a frame every so many ticks of its clock (rg_console.h: on the Advance 280,896
  * of 2^24 a second), which is a little under sixty frames a second, and a game is written to that
@@ -10,7 +10,7 @@
  * finished just before or just after a refresh, by chance, so some pictures are shown twice and
  * some never. A game that slides its whole screen at a steady speed shows that as a stutter.
  *
- * So where the monitor's rate is very nearly a WHOLE NUMBER of the console's — sixty a second,
+ * So where the monitor's rate is very nearly a whole number of the console's — sixty a second,
  * a hundred and twenty, two hundred and forty, and the rates television left behind just under
  * each — the monitor paces the game instead: each picture is shown for that whole number of
  * refreshes, and the game runs faster or slower by however much the two rates differ, which at
@@ -21,7 +21,7 @@
  * frames evenly whatever is done: each picture is up for one refresh or two on the first of
  * those, and for two or three on the second, as they fall.
  * Those keep the console's clock, which at least keeps the game at its own speed. A picture
- * still WAITS FOR A REFRESH there, so that the monitor never shows the top of one picture over
+ * still waits for a refresh there, so that the monitor never shows the top of one picture over
  * the bottom of the one before — but only on a monitor faster than the console, where the wait
  * is shorter than a frame. On a slower one (fifty a second) the wait would hold the game back to
  * the monitor's pace, and a monitor that does not report its rate could be either, so those are
@@ -71,7 +71,7 @@ static inline rg_pacing rg_pacing_for(double refreshes_a_second) {
 }
 
 /* How many times the window is drawn and presented for each picture, and how many refreshes the
- * display is told to wait each time. A picture shown for several refreshes is drawn ONCE where the
+ * display is told to wait each time. A picture shown for several refreshes is drawn once where the
  * display accepted a wait for that many (SDL's vsync takes the number, and not every driver takes
  * every one); where it took only a wait for one refresh, the picture is drawn once for each of its
  * refreshes. +took_interval+ and +took_one+ are whether the display accepted each. A display that
@@ -91,7 +91,7 @@ static inline rg_handover rg_handover_for(rg_pacing pacing, int took_interval, i
 }
 
 /*
- * A CLOCK STANDS BEHIND THE MONITOR. Showing a picture comes straight back, without waiting for
+ * A clock stands behind the monitor. Showing a picture comes straight back, without waiting for
  * a refresh, while the window is hidden or minimised, and a game must never run as fast as the
  * computer can go. So where the monitor paces the frames the game is also held to a pace of the
  * window's own: a shade faster than the monitor's frames, so that it never holds back a game the

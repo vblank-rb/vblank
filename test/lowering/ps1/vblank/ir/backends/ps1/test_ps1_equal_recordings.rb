@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# RECORDINGS WITH THE SAME SAMPLES ARE KEPT ONCE IN THE PLAYSTATION'S SOUND MEMORY. A play's row carries
+# Recordings with the same samples are kept once in the PlayStation's sound memory. A play's row carries
 # how fast its voice reads them, how loud and which recording it is to the game, so the samples are
 # needed once however many names play them.
 class TestPS1EqualRecordings < Minitest::Test

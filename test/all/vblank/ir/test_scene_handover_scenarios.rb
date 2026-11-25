@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT A SCENE PUTS UP AS IT TAKES OVER, asked the same way of both backends.
+# What a scene puts up as it takes over, asked the same way of both backends.
 #
 # A scene owns its scenery, its sprites' pictures and the tiles it paints, and they go up as
 # declared each time it takes over (see IR::SceneHandover). The interpreter and the console do
@@ -34,7 +34,7 @@ class TestSceneHandoverScenarios < Minitest::Test
     def initialize(name:, program:, frames:, probe:, color:, console_frames: nil, broken: nil) = super
   end
 
-  # WHAT A BROKEN SCENARIO DOES TODAY, pinned exactly, so the row fails if it gets better — the
+  # What a broken scenario does today, pinned exactly, so the row fails if it gets better — the
   # day it does, the broken: comes out — and also if it goes wrong some other way, which a row
   # that merely expected to fail would hide. +why+ is the fault in words. +interpreter_shows+ is
   # the colour the interpreter shows at the probe instead of the right one (nil when it is
@@ -285,10 +285,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       instance_eval do
         game_loop do
           tick.increase! 1
-          case_var(:state) do
-            when_val 0, first
-            when_val 1, second
-          end
+          call({ 0 => first, 1 => second }, number: :state)
         end
       end
     end
@@ -313,11 +310,9 @@ class TestSceneHandoverScenarios < Minitest::Test
         game_loop do
           tick += 1
           yield tick, state if block_given?
-          case_var(:state) do
-            when_val 0, :tiled_screen
-            when_val 1, :bitmap_screen
-            when_val 2, third if third
-          end
+          screens = { 0 => :tiled_screen, 1 => :bitmap_screen }
+          screens[2] = third if third
+          call screens, number: :state
         end
       end
     end
@@ -438,7 +433,7 @@ class TestSceneHandoverScenarios < Minitest::Test
         clear_screen :blue
         background :field, tiles: :set, map: Array.new(4) { "#" * 4 }
       end
-      game_loop { case_var(:state) { when_val 0, :field } }
+      game_loop { call({ 0 => :field }, number: :state) }
     end
   end
 
@@ -462,10 +457,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :paint
-          when_val 1, :play
-        end
+        call({ 0 => :paint, 1 => :play }, number: :state)
       end
     end
   end
@@ -493,10 +485,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :paint
-          when_val 1, :play
-        end
+        call({ 0 => :paint, 1 => :play }, number: :state)
       end
     end
   end
@@ -517,10 +506,7 @@ class TestSceneHandoverScenarios < Minitest::Test
       end
       game_loop do
         tick += 1
-        case_var(:state) do
-          when_val 0, :tiled_screen
-          when_val 1, :bitmap_screen
-        end
+        call({ 0 => :tiled_screen, 1 => :bitmap_screen }, number: :state)
       end
     end
   end

@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "png_reading"
 
-# A PLAYTHROUGH ON A GAME BOY COLOR CARTRIDGE: the same script, played the same way, on the
+# A playthrough on a Game Boy Color cartridge: the same script, played the same way, on the
 # cartridge a game built for the Color too makes. What a script says is in frames and buttons,
 # and both consoles have both, so nothing about the script changes.
 class TestPlaythroughColor < Minitest::Test
@@ -68,7 +68,7 @@ class TestPlaythroughColor < Minitest::Test
     end
   end
 
-  # WHAT A MOMENT CAN ASK OF A COLOR GAME: the sprites it drew, by the names the game gave them
+  # What a moment can ask of a color game: the sprites it drew, by the names the game gave them
   # and where the game put them; the colours the Color draws from, in its own lists of four;
   # and how many times round the game loop it got, which is the count of ticks.
   def test_a_moment_asks_a_color_game_for_its_sprites_colours_and_passes
@@ -97,7 +97,7 @@ class TestPlaythroughColor < Minitest::Test
     assert_equal looked[:ticks], looked[:passes]
   end
 
-  # WHILE THE BLOCK WALKS, the sprite stands where the last pass put it. The Color places each
+  # While the block walks, the sprite stands where the last pass put it. The Color places each
   # pass's sprites at the end of the pass, before its wait, so the picture is the pass just ended
   # and the sprite stands at the number it counted to; the Advance would show it a step, two
   # pixels, behind (Console::Description#sprites_placed_before_wait).

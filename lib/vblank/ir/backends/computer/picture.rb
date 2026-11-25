@@ -4,12 +4,12 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE PICTURE, written as C: the drawing statements, a scene taking the screen over, and
+        # The picture, written as C: the drawing statements, a scene taking the screen over, and
         # the art they draw with. Mixed into Lowering, beside the logic.
         #
         # The drawing itself is done by runtime/rg_screen.c, a port of the interpreter's picture;
         # what this half does is lay it out in the interpreter's order and hand over the art. All of
-        # the art is worked out HERE, in Ruby, with the interpreter's own readings of it — which
+        # the art is worked out here, in Ruby, with the interpreter's own readings of it — which
         # pixel of a tile shows what is behind, which color a pixel of a picture is — so the C
         # never has a second opinion about a pixel.
         module Picture
@@ -18,7 +18,7 @@ module VBlank
 
           # rg_screen.h's own numbers: whose a background is (RG_EVERY_SCENE, RG_NEVER_ARRIVES),
           # a background that named no layer, a pixel of a sprite's picture that is not drawn,
-          # a cell of a map with no tile, and how many backgrounds and sprites there is room for.
+          # a cell of a map with no tile, and how many backgrounds there is room for.
           EVERY_SCENE = -1
           NEVER_ARRIVES = -2
           NO_LAYER = -1
@@ -33,7 +33,22 @@ module VBlank
           # rows, and the columns and rows of the grid it comes round at.
           MAP_FIELDS = 5
           MAX_BACKGROUNDS = 64
-          MAX_SPRITES = 512
+          # The runtimes' sprite tables (RG_MAX_SPRITES, handed to each runtime with the build's own
+          # numbers, StateFile#values) hold a row for every sprite the game declares, each scene's
+          # apart: where each was last drawn, and the sprites on screen this frame. A console counts
+          # only the sprites a screen shows together
+          # (Console::Description#sprite_places, held by the build checks), so a game whose scenes
+          # take turns can declare more than any console's table and still be one it plays. The
+          # tables are sized by the game, never smaller than LEAST_SPRITE_ROWS, so a game of fewer
+          # sprites keeps the tables it always had.
+          LEAST_SPRITE_ROWS = 512
+
+          # How many rows the runtimes' sprite tables have for +program+: one for every sprite name it
+          # declares, as #prepare_picture numbers them, and LEAST_SPRITE_ROWS at the fewest.
+          def self.sprite_rows(program)
+            declared = program.walk.select { |node| node.kind == :object }.map(&:name).uniq.size
+            [declared, LEAST_SPRITE_ROWS].max
+          end
           # A thing in no see-through layer (RG_SOLID), and how many of those layers there is
           # room for (RG_MAX_SEE_THROUGH).
           SOLID = -1
@@ -73,7 +88,10 @@ module VBlank
             # A background's name -> the entry that keeps what the game does to it. That is the
             # last one declared by the name, in the order the program declares them, as the
             # interpreter's @bg_by_name keeps it; the stack's order can differ once layers are named.
-            @last_declared = @program.walk.select { |node| node.kind == :background }.to_h { |bg| [bg.name, bg] }
+            # One declared where no run reaches is on no screen (Stacking.scenery_reached), so it
+            # has no entry.
+            drawn = Set.new(@stacking.scenery).compare_by_identity
+            @last_declared = @program.walk.select { |node| node.kind == :background && drawn.include?(node) }.to_h { |bg| [bg.name, bg] }
             @backgrounds = @last_declared.transform_values { |bg| entry_of(bg) }
             @objects = by_name(@program.walk, :object)
             @sprites = @objects.each_key.with_index.to_h # sprite name -> the number rg_screen.c knows it by
@@ -96,8 +114,11 @@ module VBlank
             # The layers the game can be seen through, and the number rg_screen.c knows each by.
             @see_through = SeeThrough.layers(@program)
             @see_through_numbers = @see_through.each_with_index.to_h { |layer, number| [layer.name, number] }
-            # By name, the furthest forward anything of that name was declared (see #fade_place).
-            @fade_places = (@stacking.scenery + @stacking.objects).group_by(&:name).transform_values do |named|
+            # By name, the furthest forward anything of that name was declared (see #fade_place),
+            # leaving out a sprite that changes layer: its place is the layer it is in as it is
+            # drawn (#fade_place_drawn_at).
+            settled = @stacking.objects.reject { |obj| changes_layer?(obj) }
+            @fade_places = (@stacking.scenery + settled).group_by(&:name).transform_values do |named|
               named.filter_map { |thing| @stacking.stack.index(thing.layer) }.max || NO_LAYER
             end
             # The patches of picture saved under sprites on a painted screen, as the program
@@ -114,21 +135,6 @@ module VBlank
           def refuse_unsupported_picture!
             refuse_picture!("more than #{MAX_SEE_THROUGH} see-through layers") if @see_through.size > MAX_SEE_THROUGH
             refuse_picture!("more than #{MAX_BACKGROUNDS} backgrounds") if @stacking.scenery.length > MAX_BACKGROUNDS
-            refuse_unmade_sprite_count!
-          end
-
-          # THE RUNTIMES NUMBER EVERY SPRITE THE GAME DECLARES, each scene's apart, in a table of
-          # MAX_SPRITES (RG_MAX_SPRITES in each runtime). A console counts only the sprites a screen
-          # shows together (Console::Description#sprite_places), so a game whose scenes take turns
-          # can declare more than the table holds and still be one its console plays. Numbering a
-          # scene's sprites over another's, or sizing the table by the game, is still to be written:
-          # until then such a game is not made yet, which a test run skips on.
-          def refuse_unmade_sprite_count!
-            return if @sprites.size <= MAX_SPRITES
-
-            raise NotMadeYet.new("This program declares #{@sprites.size} sprites. #{build_name.sub(/\A\w/, &:upcase)} has " \
-                                 "room for #{MAX_SPRITES} and cannot draw more yet. The cartridge build can.",
-                                 part: "more than #{MAX_SPRITES} sprites")
           end
 
           # Reference#place_blocks: where this program's blocks stop. A program that pixelates
@@ -188,13 +194,13 @@ module VBlank
           # --- the art, for rg_screen.c ---
 
           def picture_data
-            [*image_arrays, *background_arrays, *see_through_arrays, sprite_fade_places_array, sprites_in_front_array,
+            [*image_arrays, *background_arrays, see_through_array, sprites_in_front_array,
              *sprite_block_arrays,
              *run_arrays, image_pieces_array,
              runtime_array("picture_sizes", "int32_t",
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
                      rebuilt_every_frame? ? 1 : 0, @see_through.size,
-                     Modes.resolve(@program).crosses_display_systems? ? 1 : 0, Blocks::LARGEST,
+                     Modes.resolve(@program).crosses_display_systems? ? 1 : 0, Blocks.largest_for(@program.pixel_size || 1),
                      @tile_runs.size, @tile_runs.each_value.sum { |run| run_pixels(run) }, @images.size,
                      sprites_over_picture? ? 1 : 0]),
              runtime_array("always_up", "int32_t", @handover.always_up.scenery.map { |bg| entry_of(bg) }),
@@ -203,7 +209,7 @@ module VBlank
              runtime_array("border_pixels", "int16_t", border_pixels)]
           end
 
-          # THE BORDER ROUND THE GAME'S SCREEN, where the console shows that screen in the middle of a
+          # The border round the game's screen, where the console shows that screen in the middle of a
           # bigger one (Console::Description#bordered?): a picture of the whole screen, a colour a
           # pixel row by row, which the window shows with the game's screen over its middle
           # (rg_screen_framed). The game's own (`border`) or VBlank's, as the cartridge draws it
@@ -233,13 +239,13 @@ module VBlank
           # is fifteen bits of colour or -1 for see-through, so sixteen signed bits hold it: a
           # game's pictures are most of its program, and four bytes a pixel doubled them.
           #
-          # A PICTURE READ FROM THE START FILE IS NOT WRITTEN AT ALL: the routine reading the file
+          # A picture read from the start file is not written at all: the routine reading the file
           # fills every pixel of it, once for each list it is drawn with, so what the program held
           # there would be thrown away. Written out, a title's poses each drawn in every set of
           # colours its lists hold are hundreds of megabytes of stand-ins. So those pictures come
           # after the pixels written, as room the game makes as it starts (StartFileFills#build_start_file_pixel_room).
           #
-          # A POSE READ FROM THE START FILE IS HELD ONCE, however many sets of colours draw it: its
+          # A pose read from the start file is held once, however many sets of colours draw it: its
           # pixels are the places of its frame, and each image of it is those pixels and a list of
           # the colours its set puts at each place, which the runtime looks each pixel up in as it
           # draws (rg_game_images' fourth number). A title's actors followed through sixty sets of
@@ -341,7 +347,7 @@ module VBlank
 
             width, height = sprite_canvas(obj)
             whole = obj.poses.any? { |pose| painted_picture?(pose) }
-            cut = SpriteCut.new(sprite_pictures).cut(obj.poses, width: width, height: height, whole: whole)[:boxes]
+            cut = SpriteCut.new(sprite_pictures).cut(obj.poses, width: width, height: height, whole: whole).boxes
             pictures = obj.poses.uniq
             [pictures.length, *pictures.flat_map do |pose|
               boxes = cut.fetch(obj.poses.index(pose))
@@ -495,10 +501,11 @@ module VBlank
           # as art that was drawn ahead of time.
           def every_place_of(run) = painted_image(run, (0...PLACES_IN_RUN_COLORS).to_a, width: PLACES_IN_RUN_COLORS, height: 1)
 
-          # The run whose list is +name+, or nil. Only a run of tiles is painted from a list: a pose
-          # drawn from sprite tiles (PoseRun) takes its tiles from a load of its set
-          # (rg_tile_pose_load), has no list, and so no cell of the file is ever pointed at it.
-          def run_painted_from(name) = @runs_painted_from_lists.each_value.find { |run| run.list == name }
+          # The runs whose list is +name+: one, or several that show the same bytes, or none. Only a
+          # run of tiles is painted from a list: a pose drawn from sprite tiles (PoseRun) takes its
+          # tiles from a load of its set (rg_tile_pose_load), has no list, and so no cell of the file
+          # is ever pointed at it.
+          def runs_painted_from(name) = @runs_painted_from_lists.each_value.select { |run| run.list == name }
 
           # The run that paints the tile +name+, or nil for a tile that is a picture.
           def run_painting(name) = @tile_runs.each_value.find { |run| run.tiles.include?(name) }
@@ -575,22 +582,24 @@ module VBlank
               bg.every_map.each_with_index do |map, number|
                 # A background that never comes round again has no grid to come round at.
                 maps.push(cells.length, *TileMap.size_of(map), *(bg.streams? ? [0, 0] : TileMap.grid(map)))
-                # Read from the start file, each cell names its own tile, in order, after the tiles
-                # the game holds and the cells' tiles of the sets before the map's own.
+                # Read from the start file, each cell's tile is written as the file is read, one of its
+                # pool's (StartFileFills#record_start_file_background_fill).
+                record_start_file_map_cells(bg, number, cells.length) if bg.from_file
                 cells.concat(bg.from_file ? cell_tiles_from_file(bg, number) : map_cells(map))
               end
               [bg.tile_w, bg.tile_h, first_map, Array(bg.maps).length, @backgrounds.fetch(bg.name),
                bg.streams? ? 1 : 0, tiles_start,
                bg.scene ? @scenes.fetch(bg.scene, NEVER_ARRIVES) : EVERY_SCENE, bg.bar? ? NOT_A_BAR : @stacking.depths.of_scenery(bg),
                @handover.on_arrival?(bg) ? 1 : 0, stack_place(bg.layer),
-               see_through_number(bg), @bends.key?(bg.name) ? 1 : 0, fade_place(bg),
+               see_through_number(bg), @bends.bend_for(bg.name) ? 1 : 0, fade_place(bg),
                tile_count, steps.length, background_in_blocks?(bg) ? 1 : 0, bg.affine ? 1 : 0,
                painted_start, colors_start, bg.bar_top || NOT_A_BAR, bg.above_row || NOT_A_BAR, bg.shown_above_row,
-               tiles_in_front_of(bg, tile_count, tiles_in_front)]
+               tiles_in_front_of(bg, tile_count, tiles_in_front), places_start_of(bg),
+               bg.from_file ? bg.tiles.length : NOT_READ_AT_START]
             end
             [runtime_array("tile_pixels", "uint16_t", tile_pixels, grows: @tile_pixel_count > tile_pixels.length),
              runtime_array("backgrounds", "int32_t", fields),
-             runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells),
+             runtime_array("maps", "int32_t", maps), runtime_array("map_cells", "int16_t", cells, writable: writes_map_cells?),
              runtime_array("painted_tiles", "int32_t", painted_tiles, writable: paints_moving_cells?),
              runtime_array("run_colors", "uint16_t", run_colors, writable: marked_numbers_in?(:run_colors)),
              # Writable for a background read from the start file, whose cells' marks are read as it
@@ -598,12 +607,13 @@ module VBlank
              runtime_array("tiles_in_front", "uint8_t", tiles_in_front.empty? ? [0] : tiles_in_front, writable: true)]
           end
 
-          # WHICH OF A BACKGROUND'S TILES ARE IN FRONT OF THE SPRITES (Nodes::Background#in_front): a
+          # Which of a background's tiles are in front of the sprites (Nodes::Background#in_front): a
           # byte for each of its +tile_count+ tiles, 1 for one in front, added to +tiles_in_front+;
           # hands back where they start there, the background's RG_BG_FRONT, or NOT_IN_FRONT for a
           # background that did not ask for cells in front. The runtime paints the cells showing
           # those tiles again once every level is painted (Reference#paint_cells_in_front). Read
-          # from the start file, the cells' own tiles are marked as it is read.
+          # from the start file, the told cells' tiles are marked as it is read, and a map's cell keeps
+          # its mark in its tile as drawn (StartFileFills#record_start_file_background_fill).
           def tiles_in_front_of(bg, tile_count, tiles_in_front)
             return NOT_IN_FRONT unless bg.cells_in_front?
 
@@ -613,24 +623,23 @@ module VBlank
             start
           end
 
-          # The tiles of the cells of map +number+ of +bg+, a background read from the start file:
-          # a tile of its own for each cell, in order, among those of the map's set
-          # (Nodes::Background#first_tiles_from_file).
+          # The cells of map +number+ of +bg+, a background read from the start file, until the file
+          # is read: each empty. The routine reading the file writes each cell's own, a tile as drawn
+          # of the background's (StartFileFills#record_start_file_background_fill).
           def cell_tiles_from_file(bg, number)
             set = bg.map_sets ? bg.map_sets.fetch(number) : 0
-            first = bg.first_tiles_from_file.fetch(set)
-            (first...(first + bg.from_file.fetch(set).tiles_drawn)).to_a
+            Array.new(bg.from_file.fetch(set).tiles_drawn, CELL_EMPTY)
           end
 
           # RG_BG_FRONT of a background with no cells in front of the sprites.
           NOT_IN_FRONT = -1
 
-          # EVERY BACKGROUND'S TILES, written into +tile_pixels+, and where each background's start
+          # Every background's tiles, written into +tile_pixels+, and where each background's start
           # there, by background.
           #
-          # A BACKGROUND WHOSE MAP IS READ FROM THE START FILE IS NOT WRITTEN AT ALL. Its tiles are
-          # the file's: a tile for every cell of the map, see-through until the routine reading the
-          # file fills it (StartFileFills#record_start_file_background_fill), and before them the
+          # A background whose map is read from the start file is not written at all. Its tiles are
+          # the file's: its tables of colours, and after every set its slots' tiles as places, empty until
+          # the routine reading the file fills them (StartFileFills#record_start_file_background_fill), and before them the
           # tiles the game holds, which are a tile the game paints (see-through until it does), a
           # picture read from the file, or a bank's stand-in that the map never names; all of it
           # again for each set of colours the background is drawn in. Written out, a title's screen
@@ -662,19 +671,24 @@ module VBlank
           # +start+, and whether the routine reading the start file fills all of them.
           TileChunk = Data.define(:start, :pixels, :filled_at_start)
 
-          # The tiles of +bg+ from +start+ in the tile pixels, a chunk a tile, and its cells' tiles read
-          # from the file as one chunk a set: the tiles the game holds and then those cells', once for
-          # the colours it was drawn in and once for each step (#color_swaps). Each fill and each
+          # The tiles of +bg+ from +start+ in the tile pixels, a chunk a tile, and its tables of colours
+          # read from the file as one chunk a set: the tiles the game holds and then those tables, once
+          # for the colours it was drawn in and once for each step (#color_swaps). Each fill and each
           # pixel drawn in a colour read as the game starts is noted here, where its place is known.
+          #
+          # A background whose maps are read from the start file keeps, after its tiles in every set
+          # of colours, the tiles of its slots once each as places (Nodes::Background#places_from_file),
+          # which every set draws through its own tables (#places_start_of).
           def background_tile_chunks(bg, start)
             at = start
             steps = color_swaps(bg)
             # A background whose map is read from the start file has, after the tiles the game
-            # holds for it, a tile for every cell of the map, see-through until the file is read
+            # holds for it, a table of colours for each bank of each of its pools
+            # (Nodes::Background#cell_tile_pools), filled as the file is read
             # (StartFileFills#record_start_file_background_fill).
             cell_tiles = bg.from_file ? bg.tiles_drawn_from_file : 0
-            record_start_file_background_fill(start, bg, steps) if bg.from_file
-            [nil, *steps].flat_map do |swaps|
+            sets_start = start
+            chunks = [nil, *steps].flat_map do |swaps|
               held = bg.tiles.map do |tile|
                 read_at_start = picture_from_start_file(tile)
                 record_start_file_fill(:tile, at, read_at_start, swaps && swaps[Assets::Image.of(read_at_start).list_drawn_from]) if read_at_start
@@ -690,7 +704,19 @@ module VBlank
               at += cells.pixels.length
               [*held, cells]
             end
+            return chunks unless bg.from_file
+
+            (@places_starts ||= {}.compare_by_identity)[bg] = at
+            record_start_file_background_fill(sets_start, at, bg, steps)
+            [*chunks, TileChunk.new(start: at, pixels: Array.new(bg.places_from_file * RUN_TILE_PIXELS, 0), filled_at_start: true)]
           end
+
+          # Where the places of +bg+'s slots start in the tile pixels (#background_tile_chunks), or
+          # NOT_READ_AT_START for a background the program holds.
+          def places_start_of(bg) = bg.from_file ? @places_starts.fetch(bg) : NOT_READ_AT_START
+
+          # RG_BG_PLACES and RG_BG_TABLES of a background whose maps the program holds.
+          NOT_READ_AT_START = -1
 
           # A background's tiles the game paints, added to the two arrays rg_screen.c finds them
           # by, and where each of its two parts starts there; NOT_PAINTED twice for a background
@@ -707,8 +733,9 @@ module VBlank
               painted_tiles.concat(run ? [@run_numbers.fetch(run.name), run.tiles.index(tile)] : [NOT_PAINTED, 0])
             end
             # A background read from the start file whose tiles take turns through pictures has
-            # a tile for every cell after the ones the game holds, none painted until the routine
-            # reading the file points the cells naming such a tile at a run's (StartFileFills).
+            # its tables of colours after the ones the game holds, never painted; a map's cell naming
+            # such a tile is a tile as drawn showing the run (StartFileFills), and a told cell's tile is
+            # pointed at the run as the file is read.
             if bg.from_file&.any? { |where| !where.moving.empty? }
               record_start_file_moving_cells(bg, starts.first)
               painted_tiles.concat(Array.new(bg.tiles_drawn_from_file * 2) { |at| at.even? ? NOT_PAINTED : 0 })
@@ -725,19 +752,14 @@ module VBlank
 
           # Each see-through layer as rg_screen.h's three flags (Reference#fixed_see_through?,
           # SeeThroughLayer#split, and the half of Reference#layer_has_anything? that asks
-          # about sprites), and for every sprite the see-through layer it was declared in.
-          def see_through_arrays
+          # about sprites, in any layer it can be in). Which of them a sprite is in is handed over
+          # as it is drawn (#see_through_drawn_at).
+          def see_through_array
             flags = @see_through.flat_map do |layer|
               [layer.shows.kind == :int && layer.behind.kind == :int, layer.split,
-               @objects.each_value.any? { |obj| obj.layer == layer.name }].map { |flag| flag ? 1 : 0 }
+               @objects.each_value.any? { |obj| layers_drawn_at(obj).include?(layer.name) }].map { |flag| flag ? 1 : 0 }
             end
-            [runtime_array("see_through", "int32_t", flags),
-             runtime_array("sprite_see_through", "int32_t", @objects.each_value.map { |obj| see_through_number(obj) })]
-          end
-
-          # For every sprite, whether a fade placed in the stack reaches it (see #fade_place).
-          def sprite_fade_places_array
-            runtime_array("sprite_fade_places", "int32_t", @objects.each_value.map { |obj| fade_place(obj) })
+            runtime_array("see_through", "int32_t", flags)
           end
 
           # Each sprite by its number: 1 for one drawn in front of the cells in front (Nodes::Object#in_front).
@@ -753,17 +775,17 @@ module VBlank
           # placed fade's layer can be and still leave +thing+ as drawn, or NO_LAYER when every
           # placed fade reaches it.
           #
-          # The interpreter takes the NAMES of everything declared in the fade's layer or in
+          # The interpreter takes the names of everything declared in the fade's layer or in
           # front of it, scenery and sprites in one list, and leaves a thing as drawn when its
           # name is among them (Reference#set_blend_for). So two things with one name are left or
           # reached together, by whichever of them was declared further forward, and that is the
           # place given here.
           def fade_place(thing) = @fade_places.fetch(thing.name, NO_LAYER)
 
-          # Reference#see_through_layer_of: the see-through layer a background or a sprite was
-          # declared in, by its number, or SOLID. The interpreter asks by name, and a name is
-          # first the last background declared by it, so two backgrounds of one name, or a sprite
-          # named like a background, are both drawn as that background's layer is.
+          # Reference#see_through_layer_of: the see-through layer a background was declared in,
+          # by its number, or SOLID. The interpreter asks by name, and a name is first the last
+          # background declared by it, so two backgrounds of one name are both drawn as that
+          # background's layer is. A sprite is asked by the layer it is in (#see_through_drawn_at).
           def see_through_number(thing)
             @see_through_numbers.fetch(@last_declared.fetch(thing.name, thing).layer, SOLID)
           end
@@ -788,25 +810,31 @@ module VBlank
           # goes into the bend's variable, what its block asks to run runs, and the offset is
           # worked out from there.
           def bend_offsets
-            answers = @bends.each_value.map do |bend|
-              Statements::If.new(condition: call("rg_bend_asked", Statements::Int.new(@backgrounds.fetch(bend.name))),
-                        body: [assign(bend.row, call("rg_bend_line")), *body_of(bend),
+            answers = @bends.bends.map do |bend|
+              Statements::If.new(condition: call("rg_bend_asked", Statements::Int.new(@backgrounds.fetch(bend.background))),
+                        body: [assign(bend.row, call("rg_bend_line")), *statements_of(bend.body),
                                eval_call("rg_bend_answer", value(bend.offset))])
             end
             Statements::Function.new(name: @names.own("bend_offsets"), body: answers, exported: true)
           end
 
-          # Reference#work_out_bends: every bend's line 0, then the rest of each bend in turn,
-          # which leaves each bend's row one past the bottom of the screen, the program's console's.
+          # Reference#work_out_bends, in the order every lowering works bends out in (BendSchedule).
           # Called last in every frame boundary (rg_screen_work_out_bends).
           def work_out_bends
-            height = @program.described_console.screen_height
-            first_lines = @bends.each_key.map { |name| work_out_bend_lines(name, 0, 1) }
-            the_rest = @bends.flat_map do |name, bend|
-              [work_out_bend_lines(name, 1, height), assign(bend.row, Statements::Int.new(height))]
-            end
-            Statements::Function.new(name: @names.own("work_out_bends"), body: first_lines + the_rest, exported: true)
+            Statements::Function.new(name: @names.own("work_out_bends"), body: emit_bends_worked_out, exported: true)
           end
+
+          # The game's bends, for the schedule.
+          def bends = @bends.bends
+
+          # The program's console's screen, whose rows the runtime works out.
+          def bend_screen_height = @program.described_console.screen_height
+
+          # The runtime asks #bend_offsets for each of the lines, which hands each its number in the
+          # bend's variable; the last line asked leaves it there.
+          def emit_bend_rows(bend, first, past) = work_out_bend_lines(bend.background, first, past)
+
+          def emit_row_variable_set(bend, height) = assign(bend.row, Statements::Int.new(height))
 
           # The routines rg_screen.c calls to work the game's light out (Reference#work_out_shade):
           # where the lit span of one row starts and ends, the row going into the light's
@@ -855,7 +883,7 @@ module VBlank
             Array(bg.recolors).each_index.map { |step| bg.list_swaps(step) }
           end
 
-          # A BACKGROUND THAT FOLLOWS SEVERAL LISTS THE GAME CHANGES (Background#follows_each) has its
+          # A background that follows several lists the game changes (Background#follows_each) has its
           # tiles written again for every set each of those lists can hold, list after list, the set
           # a list was declared with first, and every other list as declared in each. No set is a
           # pair of two lists' sets, which would be one list's sets times the other's. The picture is
@@ -894,11 +922,10 @@ module VBlank
           # The rules for one background and one list it follows, made once, or nil where none of
           # its tiles is drawn from the list.
           #
-          # A BACKGROUND READ FROM THE START FILE has a tile for every cell of its map after the
-          # tiles the game holds, and which bank a cell is of is in the file. So its rules are
-          # written with room for every one of those tiles, where the routine reading the file can
-          # write, and that routine adds the tiles of the cells whose bank is drawn from the list
-          # (StartFileFills#record_start_file_followed_tiles).
+          # A background read from the start file draws its maps' cells through a table of colours for
+          # each bank, so the rules name the tables of the banks drawn from the list, and leave room
+          # for the cells a slot told it, whose banks are in the file, where the routine reading the
+          # file can write (StartFileFills#record_start_file_followed_tiles).
           def followed_tile_rules(bg, name)
             (@followed_tile_rules ||= {})[[bg.object_id, name]] ||= begin
               tiles = bg.tiles.each_index.select { |at| bg.list_followed_by(tile_image(bg.tiles[at]).list_drawn_from) == name }
@@ -963,7 +990,15 @@ module VBlank
           # that is drawn: a color is still named, and the build has already refused one the
           # list does not hold.
           # The colour shown wherever nothing is drawn goes with it (IR::SceneHandover#backdrop_of).
-          def lower_screen(node) = screen_change("rg_screen_set", node.mode, node.buffered, @handover.backdrop_of(node))
+          #
+          # On a game with a screen of its own size, the line's size shown goes to the window
+          # (IR::Nodes::Screen#shown_size, rg_screen_show_size).
+          def lower_screen(node)
+            change = screen_change("rg_screen_set", node.mode, node.buffered, @handover.backdrop_of(node))
+            return change unless node.shown_size
+
+            [*change, eval_call("rg_screen_show_size", *node.shown_size.map { |side| Statements::Int.new(side) })]
+          end
 
           # A change of screen, by `screen` or by a scene arriving on its own. The C decides when
           # that put the scenery every screen shows up again as declared, and what sets which
@@ -1069,7 +1104,6 @@ module VBlank
             [eval_call("rg_screen_fill_rect", *[node.x, node.y, node.w, node.h].map { |n| value(n) }, color(node.color))]
           end
 
-          alias lower_dma_fill_rect lower_fill_rect
           alias lower_draw_rect_at lower_fill_rect
 
           def lower_pixel(node) = [eval_call("rg_screen_pixel", value(node.x), value(node.y), color(node.color))]
@@ -1130,21 +1164,50 @@ module VBlank
                        value(node.across), value(node.down))]
           end
 
-          # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
-          # the runtimes take a tile's number, and keep no table of a background's cells to index.
+          # A tile picked as the program runs is read from a table of the tiles the numbers stand for
+          # (IR::PickedTile): the number, less the first, is a place in it, and a number past either
+          # end, or standing for no tile, leaves the cell alone.
           def lower_set_tile(node)
-            if node.picked?
-              tests = PickedTile.tests(node)
-              return tests ? lower(tests) : []
-            end
+            return lower_picked_tile(node) if node.picked?
+
             # A tile of nil is the empty cell, as the map keeps one (#map_cells).
-            tile = Statements::Int.new(node.tile || CELL_EMPTY)
+            lower_tile_write(node, Statements::Int.new(node.tile || CELL_EMPTY))
+          end
+
+          # The step writing +tile+ (a statement's number) into the cell +node+ names, now or held for
+          # the end of the pass.
+          def lower_tile_write(node, tile)
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
                                 tile, Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
             end
 
             [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row), tile)]
+          end
+
+          def lower_picked_tile(node)
+            tiles = PickedTile.words(node) { |tile| tile } or return []
+
+            table = picked_tile_table(tiles)
+            which = local_name("which")
+            tile = local_name("tile")
+            in_range = call("rg_both", call("rg_ge", which, Statements::Int.new(0)), call("rg_lt", which, Statements::Int.new(tiles.length)))
+            written = lower_tile_write(node, tile)
+            [Statements::Block.new([Statements::Local.new(name: which, value: call("rg_sub", value(node.picked_by), Statements::Int.new(node.picks_from))),
+                                    Statements::If.new(condition: in_range, body: [
+                                      Statements::Local.new(name: tile, value: Statements::Index.new(table, which)),
+                                      Statements::If.new(condition: call("rg_ne", tile, Statements::Int.new(PickedTile::NO_CELL)), body: written)
+                                    ])])]
+          end
+
+          # The table of tiles +tiles+, made once however many lines pick from it: written with the
+          # game's other arrays (#picked_tile_arrays).
+          def picked_tile_table(tiles)
+            (@picked_tile_tables ||= {})[tiles] ||= @names.own("picked_tiles_#{@picked_tile_tables.length}")
+          end
+
+          def picked_tile_arrays
+            (@picked_tile_tables || {}).map { |tiles, name| Statements::ConstArray.new(name: name, type: "int32_t", values: tiles) }
           end
 
           # Reference#exec_show_held_tiles
@@ -1290,7 +1353,8 @@ module VBlank
           def sprite_placement(obj)
             pose = local_name("pose")
             in_range = call("rg_both", call("rg_ge", pose, Statements::Int.new(0)), call("rg_lt", pose, Statements::Int.new(obj.poses.length)))
-            placed = [sprite_number(obj), picture_drawn(obj, pose), value(obj.x), value(obj.y), level_drawn_at(obj)]
+            placed = [sprite_number(obj), picture_drawn(obj, pose), value(obj.x), value(obj.y), level_drawn_at(obj),
+                      see_through_drawn_at(obj), fade_place_drawn_at(obj)]
             add = if turns_or_resizes?(obj)
                     eval_call("rg_objects_add_turned", *placed, value(obj.angle), value(obj.scale),
                               yes_or_no(!constant?(obj.scale, Build::SCALE_ONE)))
@@ -1319,8 +1383,42 @@ module VBlank
             Statements::Index.new(drawing_array("levels", "int32_t", levels), pick)
           end
 
+          # Reference#set_see_through_for, for a sprite: the see-through layer it is in now, by its
+          # number, or SOLID. One that can be put in other layers has a number for each, picked as
+          # its level is (#level_drawn_at).
+          def see_through_drawn_at(obj)
+            pick_by_layer(obj, layers_drawn_at(obj).map { |layer| @see_through_numbers.fetch(layer, SOLID) }, "see_through")
+          end
+
+          # Reference#set_blend_for, for a sprite: the furthest forward a placed fade's layer can be
+          # and still leave it as drawn (#fade_place). One that can be put in other layers is left
+          # as drawn by the layer it is in now (Reference#kept_by_layer?), or by anything else of
+          # its name that is kept.
+          def fade_place_drawn_at(obj)
+            return Statements::Int.new(fade_place(obj)) unless changes_layer?(obj)
+
+            others = fade_place(obj)
+            pick_by_layer(obj, layers_drawn_at(obj).map { |layer| [stack_place(layer), others].max }, "fade_places")
+          end
+
+          # The layers a sprite can be in, in the order its levels are counted: the one it was
+          # declared in, then each it can be put in (Stacking.levels_of).
+          def layers_drawn_at(obj) = [obj.layer, *obj.layers]
+
+          # The one of +by_layer+ (a number for each of #layers_drawn_at) for the layer +obj+ is in
+          # now, picked as #level_drawn_at picks its level.
+          def pick_by_layer(obj, by_layer, what)
+            return Statements::Int.new(by_layer.first) if by_layer.uniq.one?
+
+            pick = call("rg_place_of_choice", variable(obj.layer_pick), Statements::Int.new(by_layer.length - 1))
+            Statements::Index.new(drawing_array(what, "int32_t", by_layer), pick)
+          end
+
+          # Can the game put +obj+ in another layer as it runs (`put_in_layer`)?
+          def changes_layer?(obj) = !obj.layers.nil? && !obj.layers.empty?
+
           # Which picture a sprite showing pose number +pose+ (one of its poses, already checked)
-          # is DRAWN from, in the colors it is drawn with now. Its pictures are a row of poses in
+          # is drawn from, in the colors it is drawn with now. Its pictures are a row of poses in
           # its own colors, then a row for each list it can be drawn with
           # (Reference#object_recolor), and rg_place_of_choice returns which row it is on.
           #
@@ -1372,7 +1470,7 @@ module VBlank
           # declared one first.
           def pictures_held_by(name, list) = sets_held_by(list).map { |colors| image_number(name, colors) }
 
-          # A POSE WHOSE LIST ITS FRAME PICKS AS THE GAME STARTS (IR::StartFile::Pose#bank_lists): for
+          # A pose whose list its frame picks as the game starts (IR::StartFile::Pose#bank_lists): for
           # each bank, the list of that bank where +obj+ follows it, or nil; nil for any other pose.
           # Such a pose has its own picture, in its frame's bank's colours, and then the pictures of
           # each followed bank's list; which of them it starts at, and which list it follows, are
@@ -1442,7 +1540,7 @@ module VBlank
                  picture_collided(node.b_poses, node.b_pose), value(node.b_x), value(node.b_y))
           end
 
-          # Which picture a sprite COLLIDES as: the one of +poses+ its pose names, in its own
+          # Which picture a sprite collides as: the one of +poses+ its pose names, in its own
           # colors whatever it is drawn with, since a swap of colors moves no pixel. The pose is
           # not checked first here; rg_pose_image reads it the way the interpreter does.
           def picture_collided(poses, pose)

@@ -2,7 +2,21 @@
 
 module VBlank
   module DSL
-    # The result of comparing two Values: a yes/no test the program branches on.
+    # A test the game asks as it plays
+    #
+    # Comparing two numbers the game keeps (`hp < 1`, `x >= 200`) gives a test, answered yes or
+    # no each time the game reaches it. A game asks one with `if`, `unless`, `while` or `until`,
+    # and joins two with `&&`, `||` and `!`, as in any Ruby program.
+    #
+    # ```ruby
+    # if hp < 1 && lives > 0
+    #   lives -= 1
+    # end
+    # ```
+    #
+    # Two tests can also be joined with `&` (both), `|` (either) and `^` (one but not the
+    # other), each side in parentheses.
+    #--
     # A game branches on one with `if` and joins two with `&&` and `||` (see PlainRuby).
     # Ruby lets nobody change what those mean, so the rewrite turns them into the calls
     # below: #open_branch for `if`, and & (both) and | (either) to combine tests.
@@ -11,6 +25,7 @@ module VBlank
     # (x > 5)` looks right, but a Condition is *truthy* to Ruby, so its body would emit
     # unconditionally at build time with the comparison silently ignored — no error,
     # just a ROM that always runs the branch.
+    #++
     class Condition
       Build = IR::Build
 
@@ -25,74 +40,98 @@ module VBlank
       end
 
       # The IR value node for the test (a comparison binop).
-      attr_reader :node
+      attr_reader :node # :nodoc:
+
+      # The number question this test answers where Ruby's hands back a number, not true or
+      # false (`:nonzero?`), so that a line using it as a number can be refused. Nil otherwise.
+      attr_accessor :number_question # :nodoc:
 
       # Where the author built this Condition ("file.rb:line"), or nil if it can't be
       # pinned down — used to point the orphaned-Condition diagnostic at their code.
-      attr_reader :source
+      attr_reader :source # :nodoc:
 
-      # Both tests must hold. Parenthesize the operands — `&` binds tighter than the
-      # comparisons: (a > b) & (c < d).
+      # A test that holds when both tests hold.
+      #
+      # Put each side in parentheses, because `&` is worked out before the comparisons are:
+      #
+      # ```ruby
+      # score += 1 if (x > 10) & (y < 50)
+      # ```
       def &(other)
         compose(:and, other)
       end
 
-      # Either test may hold: (a > b) | (c < d).
+      # A test that holds when either test holds, or both.
+      #
+      # ```ruby
+      # speed = -speed if (x < 0) | (x > 239)
+      # ```
       def |(other)
         compose(:or, other)
       end
 
-      # One test holds and the other does not: (a > b) ^ (c < d).
+      # A test that holds when one test holds and the other does not.
+      #
+      # ```ruby
+      # flash += 1 if (a > b) ^ (c < d)
+      # ```
       def ^(other)
         compose(:!=, other)
       end
 
-      def when_true(*)
+      def when_true(*) # :nodoc:
         raise PlainRuby::Refused, ChangingWord.old_verb_refusal(:when_true, at: Messages::AuthorSource.at_author_line)
       end
 
       # Every Ruby object has `then`, which would run the block while the game is built and
       # record its body with no test around it. A test is branched on with `if`.
-      def then(*)
+      def then(*, &) # :nodoc:
         raise ArgumentError, "`.then` does not branch on a test. To fix this, write `if`: `if x > 5 ... end`." \
                              "#{" (at #{@source})" if @source}"
       end
 
       # The library's own branch on a test, for code recording statements by hand. Records an
       # `if` node carrying the block and returns a {Branch} for the other side.
-      def record_branch(&block)
+      def record_branch(&block) # :nodoc:
         @builder.consume_condition(self)
         Branch.new(@builder, @builder.record_conditional(@node, &block))
       end
 
       # The same branch taken a step at a time, for normal Ruby's `if` (see PlainRuby), whose
       # sides are not blocks. Statements recorded until #close_branch go in it.
-      def open_branch
+      def open_branch # :nodoc:
         @builder.consume_condition(self)
         @builder.open_branch(@node)
       end
 
-      # ...and its other side, with the node #open_branch gave back.
-      def open_other_branch(if_node) = @builder.open_other_branch(if_node)
+      # The other side of the branch #open_branch opened, given the node it gave back.
+      def open_other_branch(if_node) = @builder.open_other_branch(if_node) # :nodoc:
 
-      def close_branch = @builder.close_branch
+      def close_branch = @builder.close_branch # :nodoc:
 
       # Forget a branch that turned out to hold nothing.
-      def take_back_branch(if_node) = @builder.take_back_branch(if_node)
+      def take_back_branch(if_node) = @builder.take_back_branch(if_node) # :nodoc:
 
       # A loop on this test, stopping once it holds, taken a step at a time as a branch is.
       # +test_statements+ are what working the test out recorded (Builder#open_repeat).
-      def open_repeat(most_passes, test_statements: [])
+      def open_repeat(most_passes, test_statements: []) # :nodoc:
         @builder.consume_condition(self)
         @builder.open_repeat(most_passes, @node, test_statements: test_statements)
       end
 
-      def close_repeat = @builder.close_repeat
+      def close_repeat = @builder.close_repeat # :nodoc:
 
-      def hidden_variable(why, like: nil) = @builder.hidden_variable(why, like: like)
+      def hidden_variable(why, like: nil) = @builder.hidden_variable(why, like: like) # :nodoc:
 
-      # The opposite test. A Ruby `!` on a Condition would otherwise answer plain false, and
-      # the comparison would be lost with no word said.
+      # The opposite test: it holds when this one does not.
+      #
+      # ```ruby
+      # gravity += 1 if !(y >= FLOOR)
+      # ```
+      #--
+      # A Ruby `!` on a Condition would otherwise answer plain false, and the comparison would be
+      # lost with no word said.
+      #++
       def !
         @builder.consume_condition(self)
         Condition.new(@builder, Build.binop(:==, @node, Build.int(0)))
@@ -100,7 +139,7 @@ module VBlank
 
       # This test is not needed after all: a plain value beside it decided the answer
       # (see PlainRuby::Steps.join_both). Marks it used, and answers false.
-      def discard!
+      def discard! # :nodoc:
         @builder.consume_condition(self)
         false
       end
@@ -123,7 +162,7 @@ module VBlank
 
       # The first call-stack frame outside the library — the author's line — as
       # "path:line", or nil if every frame is internal.
-      def self.author_source = Messages::AuthorSource.author_source
+      def self.author_source = Messages::AuthorSource.author_source # :nodoc:
     end
   end
 end

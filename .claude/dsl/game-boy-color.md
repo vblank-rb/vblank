@@ -19,6 +19,7 @@ and a test fails when the two differ. The Advance's answers are in
 
 - `screen` — works: `screen :tiled` and `screen :bitmap` work. A painted (bitmap) screen is made of tiles internally. Each 8×8 square of the screen holds four colours. The screen holds eight sets of four colours. The build gives each square one set for each scene. If a game paints a colour at a place that it calculates as it runs, that colour can be in every square. If a scene does not clear the screen, its squares also keep the colours of the scene before it. The build refuses a game that can paint a fifth colour into a square, and names the square. It also refuses a game that needs more than eight sets, or whose colours cannot each keep one place in every set. `tear_free: true` keeps one picture, because a Game Boy Color always shows a painted picture whole. `backdrop:` works for the whole game. The Color keeps the backdrop as the first colour of each of its colour lists, so a scene that says a different backdrop is refused. A backdrop that follows a list of colours (`backdrop:` names a list) is not made yet: the build refuses it and says so. `screen :rotozoom` is refused: a Game Boy Color cannot turn or resize a background. `pixel_size: 2` is refused: a Game Boy Color cannot show a pixel bigger. `shown_rows:` is refused: a Game Boy Color cannot switch its screen off for some rows only.
 - `setting` — works: the same as on the Advance.
+- `feature?` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :gbc.
 - `screen_width` — works: 160 on a Game Boy Color.
@@ -37,7 +38,6 @@ and a test fails when the two differ. The Advance's answers are in
 - `timer` — works: a timer ticks by the frame, as the interpreter counts it.
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
-- `dma_fill_rect` — works: the same as on the Advance.
 - `draw_rect_at` — works: the same as on the Advance.
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the cartridge. To draw it is refused: see `draw_place`.
@@ -50,7 +50,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: a painted screen on a Game Boy Color is the size of the screen, so moving the view over it shows black past the picture's edge. To move over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the camera moves the background and the sprites together.
-- `keep_showing` — works: a painted screen on a Game Boy Color is always shown whole, so a picture kept showing never tears.
+- `redraw_on_change` — works: a painted screen on a Game Boy Color is always shown whole, so a picture painted only on a change never tears.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture, as on the Advance. The background and every sprite read the same colours, so a fade reaches all of them. A Game Boy Color cannot fade part of the screen, so `under:`, `inside:` and `outside:` are refused.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
@@ -87,7 +87,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pool` — works: its sprites count towards the forty.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: tiles of four colours each.
-- `background` — works: `cells_in_front: true` is refused: this build does not make it yet. A Game Boy Color keeps a priority bit for each cell of its map. one background at a time, scrolled and changed as on the Advance, and bent row by row with `scroll_each_row`. `above_row:` is refused: this build does not make it yet. `show_only_inside` is refused: a Game Boy Color cannot hide its background outside a box. Its one window is a layer that covers the background from a corner to the bottom right of the screen. The console holds 32×32 cells of a map at once, so a bigger map is brought into view as the view moves. A second background showing at once is refused, and so are `rotate` and `scale`: a Game Boy Color cannot turn or resize a background. The console holds 512 different background tiles at once. When a game needs more, each scene's own tiles come in as the scene takes over, and each area's tiles of a background that walks between areas come in as a map of the area is shown. The display is off for that one frame. A scene or an area that needs more than 512 tiles is refused. The console holds eight lists of colours for backgrounds at once. When a game needs more, the lists of each scene and each area come in with its tiles. A fade or a tint that is on then changes them too. A scene or an area that needs more than eight lists, with the lists that every scene shares, is refused. A background that walks between areas can be told `draw_with` when the console holds the lists of every area at once. If the game uses more lists than the console holds at once, each area brings its own lists in. Then `draw_with` on a background that walks between areas is refused. `held: true` changes nothing: a Game Boy Color already keeps the cells a pass changes with `set_tile` and writes them in the gap between frames. A pass keeps 160 cells, and the gap has time for about 60 of them. The others show as the display allows on the next frame.
+- `background` — works: `cells_in_front: true` is refused: this build does not make it yet. A Game Boy Color keeps a priority bit for each cell of its map. one background at a time, scrolled and changed as on the Advance, and bent row by row with `scroll_each_row`. `above_row:` is refused: this build does not make it yet. `hide` and `show` are refused: this build does not make them yet. `show_only_inside` is refused: a Game Boy Color cannot hide its background outside a box. Its one window is a layer that covers the background from a corner to the bottom right of the screen. The console holds 32×32 cells of a map at once, so a bigger map is brought into view as the view moves. A second background showing at once is refused, and so are `rotate` and `scale`: a Game Boy Color cannot turn or resize a background. The console holds 512 different background tiles at once. When a game needs more, each scene's own tiles come in as the scene takes over, and each area's tiles of a background that walks between areas come in as a map of the area is shown. The display is off for that one frame. A scene or an area that needs more than 512 tiles is refused. The console holds eight lists of colours for backgrounds at once. When a game needs more, the lists of each scene and each area come in with its tiles. A fade or a tint that is on then changes them too. A scene or an area that needs more than eight lists, with the lists that every scene shares, is refused. A background that walks between areas can be told `draw_with` when the console holds the lists of every area at once. If the game uses more lists than the console holds at once, each area brings its own lists in. Then `draw_with` on a background that walks between areas is refused. `held: true` changes nothing: a Game Boy Color already keeps the cells a pass changes with `set_tile` and writes them in the gap between frames. A pass keeps 160 cells, and the gap has time for about 60 of them. The others show as the display allows on the next frame.
 - `status_bar` — works: the bar is a layer of its own beside the one background, so a game with a bar still has its background. The bar's tiles and the background's tiles share the room for 512 tiles. A game with a bar cannot have a `screen :bitmap`, because the bar and a painted screen use the same memory. And a sprite cannot be behind a background in it: on a Game Boy Color, a sprite behind a background is behind the bar too.
 - `canvas` — works: its colours are four, as a background's tiles' are.
 - `tile_pictures` — works: its colours are four, and each picture of 8×8 goes through a list, so a change costs what `changed` costs.
@@ -107,29 +107,10 @@ and a test fails when the two differ. The Advance's answers are in
 - `start_over` — works: the same as on the Advance.
 - `clock` — works: read from a clock chip in the cartridge, as Pokémon Gold, Silver and Crystal had. This chip counts days and keeps no date. So `clock.set?` is false and every reading is 0 until the game sets the clock with `clock.set_to`, from a screen of its own that asks the player. After that, the time moves on with the chip, and the save keeps it.
 - `saves_keep_everything` — works: the same as on the Advance.
-- `set` — works: the same as on the Advance.
-- `add` — works: the same as on the Advance.
-- `add_var` — works: the same as on the Advance.
-- `sub` — works: the same as on the Advance.
-- `sub_var` — works: the same as on the Advance.
-- `copy` — works: the same as on the Advance.
-- `negate` — works: the same as on the Advance.
-- `negate!` — works: the same as on the Advance.
-- `flip` — works: the same as on the Advance.
-- `flip!` — works: the same as on the Advance.
-- `abs` — works: the same as on the Advance.
-- `abs!` — works: the same as on the Advance.
-- `negate_abs` — works: the same as on the Advance.
-- `negate_abs!` — works: the same as on the Advance.
-- `clamp` — works: the same as on the Advance.
-- `clamp!` — works: the same as on the Advance.
-- `approach` — works: the same as on the Advance.
-- `approach!` — works: the same as on the Advance.
 - `list` — works: the same as on the Advance.
 - `func` — works: `fast:` means nothing on a Game Boy Color, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
@@ -137,7 +118,8 @@ and a test fails when the two differ. The Advance's answers are in
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Game Boy Color does not have.
 - `held` — works: the eight buttons a Game Boy Color has. `:l` and `:r` are refused: it has no shoulder buttons. `:x` and `:y` are refused too: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `pulled` — works: 0 or 100. Each button of a Game Boy Color is on or off, so a button reads 100 while it is held and 0 when it is not. The build refuses a button it does not have, as `held` does.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Color has one controller.

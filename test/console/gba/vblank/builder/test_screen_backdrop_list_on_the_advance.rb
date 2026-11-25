@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# A BACKDROP THAT FOLLOWS A LIST, ACROSS A CHANGE OF SCREEN KIND only the Advance has: a scene on
+# A backdrop that follows a list, across a change of screen kind only the Advance has: a scene on
 # `screen :rotozoom` beside scenes on `screen :tiled`. Changing kind sends the background colours
 # again, and the backdrop must still be the list's colour afterwards, not the one it was declared
 # with. The backdrop itself is test/all/vblank/builder/test_screen_backdrop_list.rb.
@@ -35,11 +35,7 @@ class TestScreenBackdropListOnTheAdvance < Minitest::Test
         recolor :screen_colors, :lit if tick >= 2
         state = 1 if tick == 4
         state = 2 if back && tick == 8
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :turn
-          when_val 2, :board
-        end
+        call({ 0 => :title, 1 => :turn, 2 => :board }, number: :state)
       end
     end
     b.finalize_program

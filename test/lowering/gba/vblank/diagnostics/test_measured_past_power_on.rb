@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# POWER-ON IS NOT PLAY. A game looks its saves over once, before its first pass, and a big record
+# Power-on is not play. A game looks its saves over once, before its first pass, and a big record
 # takes the console many frames to read. Nobody sees that again until the console is turned off,
 # so the frames a build measures start after it, however long it takes: a scene told it runs at
 # half speed has to be a scene that does, and not the first moments after the switch.
@@ -23,7 +23,7 @@ class TestMeasuredPastPowerOn < Minitest::Test
       var :where, 0
       scene(:play) { clear_screen :black }
       game_loop do
-        case_var(:where) { when_val 0, :play }
+        call({ 0 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)
@@ -40,7 +40,7 @@ class TestMeasuredPastPowerOn < Minitest::Test
         repeat(60_000) { pixel 1, 1, :red } if passes < 100
       end
       game_loop do
-        case_var(:where) { when_val 0, :play }
+        call({ 0 => :play }, number: :where)
       end
     end
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: false)

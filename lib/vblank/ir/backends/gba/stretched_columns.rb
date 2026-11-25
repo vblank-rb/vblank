@@ -16,7 +16,7 @@ module VBlank
         RUNS_START_SUFFIX = "__runstart"
         RUNS_MAX_ROWS = 256
         # The byte that ends a column's list. The tallest picture that ships one has a row of
-        # exactly this number — its bottom row — so a stretch that STARTS there would read as
+        # exactly this number — its bottom row — so a stretch that starts there would read as
         # the end of the list and everything from it would be lost. A stretch like that is
         # widened by a row when it is written (see #avoid_end_marker), and that picture's walk
         # asks each row whether its pixel is see-through. A stretch that merely
@@ -24,12 +24,12 @@ module VBlank
         RUNS_END = 255
         RUNS_MAX_BYTES = 0xFFFF
 
-        # WHAT THE BUILD COULD DO FOR ONE SEE-THROUGH PICTURE a stretched column reads:
+        # What the build could do for one see-through picture a stretched column reads:
         # whether it ships where each of its columns holds pixels, and what stopped it when
         # it does not. +held_back_by+ is nil when it ships, :too_tall for a picture past
         # RUNS_MAX_ROWS, and :too_many when its lists together run past RUNS_MAX_BYTES.
         #
-        # A picture that ships none walks EVERY row of every column it draws, and a see-through
+        # A picture that ships none walks every row of every column it draws, and a see-through
         # picture is mostly rows that draw nothing — so this is the difference between a lamp
         # costing its lit rows and costing its square. The report reads it to say what happened.
         #
@@ -42,7 +42,7 @@ module VBlank
           def stretches_are_all_pixels? = skips_empty_rows? && !widened
         end
 
-        # EVERY PICTURE A STRETCHED COLUMN DRAWS, and what the build settled about each.
+        # Every picture a stretched column draws, and what the build settled about each.
         #
         # A stretched column walks down the screen asking each row for a pixel, and for a
         # picture that is mostly see-through most of those rows answer "nothing here". A
@@ -68,7 +68,7 @@ module VBlank
           # cartridge; this walks it as the game runs, so it does.
           def reads?(name) = @drawn_as_columns.include?(name)
 
-          # MAY A COLUMN TAKE THE STEP THE COLUMN BEFORE IT WORKED OUT (see
+          # May a column take the step the column before it worked out (see
           # Framebuffer#emit_column_step)? That step is kept in memory as three numbers, read
           # and written one at a time. A timer's tick interrupts the game wherever it happens to
           # be, so a tick that draws a column could land between those reads, put a different
@@ -93,13 +93,13 @@ module VBlank
           # What the build settled for each picture, for the report.
           def to_h = @decided.dup
 
-          # WHERE EACH COLUMN OF A SEE-THROUGH PICTURE HOLDS PIXELS, as the stretches of rows
+          # Where each column of a see-through picture holds pixels, as the stretches of rows
           # that hold them. Called for every picture; one no stretched column draws, and an
           # opaque one, keep nothing.
           #
-          # THE STRETCHES AND NOT JUST THE FIRST AND LAST. A thing lying on the floor holds its
+          # The stretches and not just the first and last. A thing lying on the floor holds its
           # pixels in the bottom sixth of its column and one band would catch that — but a lamp
-          # that hangs holds them at the TOP of its column and at the bottom, with the ceiling
+          # that hangs holds them at the top of its column and at the bottom, with the ceiling
           # between, and the gap in the middle is where a player standing under it is looking.
           # Measured on a real floor: the first-and-last band leaves 30 rows walked in every
           # hundred, and the stretches leave 17.

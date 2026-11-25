@@ -18,6 +18,7 @@ and a test fails when the two differ. The Advance's answers are in
 
 - `screen` — works: `screen :tiled` and `screen :bitmap` work. A Genesis has no painted screen, so a painted (bitmap) screen is made of tiles internally, which holds fifteen colours and black: a game that paints more is refused. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. A backdrop that follows a list of colours (`backdrop:` names a list) works: where the backdrop is a colour the list keeps in its own list of sixteen, the console shows it from there, and otherwise its colour is copied in with the list's. `screen :rotozoom` is refused: a Genesis cannot turn a background. `pixel_size: 2` is refused: a Genesis cannot show a pixel bigger. `shown_rows:` is refused: the build does not give up rows of the screen yet.
 - `setting` — works: the same as on the Advance.
+- `feature?` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :genesis.
 - `screen_width` — works: 320 on a Genesis.
@@ -36,7 +37,6 @@ and a test fails when the two differ. The Advance's answers are in
 - `timer` — works: a timer ticks by the frame, as the interpreter counts it.
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
-- `dma_fill_rect` — works: the same as on the Advance.
 - `draw_rect_at` — works: the same as on the Advance.
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the cartridge. To draw it is refused: see `draw_place`.
@@ -49,7 +49,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: a painted screen is the size of the screen, so moving the view over it shows the backdrop past the picture's edge. The view can move 192 pixels across and 32 down, either way. If a game moves it further, the game stops and says so. To move over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the camera moves the backgrounds and the sprites together, with no such limit.
-- `keep_showing` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A blank holds about a tenth of the screen, so a pass that changes all of it takes about eleven frames to show.
+- `redraw_on_change` — works: a painted screen is copied to the console in the blank between frames, and only the squares that changed. A blank holds about a tenth of the screen, so a pass that changes all of it takes about eleven frames to show.
 - `fade` — works: `fade` and `tint` change the colours the console shows, not the picture: the colour memory is written again for each step, since a Genesis has no brightness control. `inside:`, `outside:` and `under:` are refused: the build cannot fade part of the screen on a Genesis.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
@@ -72,7 +72,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `rgb` — works: see `color`.
 - `rgb8` — works: see `color`.
 - `colors` — works: a list of colours holds sixteen places on a Genesis, the first see-through. The console holds four lists on each screen, for the sprites and the backgrounds together. A list that the game does not change takes one of the four, however many things draw with it: the sprites and a background told `draw_with` that list use the same one. If the pictures of all the scenes need more than four lists, each scene gets the lists that every scene does not use, and writes its own colours into them when it starts. A list that the game changes keeps the same one of the four in every scene that draws with it. If the scenes still need more, a scene that does not draw with that list uses its one for its own colours. If the scenes still need more, each picture declared with a list of 15 colours or fewer is drawn from one list that holds that list's colours in order, as a Genesis game's pieces each name a palette line. If a scene does not fit, the build stops and says what each kept list holds.
-- `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. In a game whose scenes need more than four lists, it keeps that one only in the scenes that draw with it (see `colors`). The sprites and the backgrounds drawn with it are drawn from that one list, however many sets it holds in turn. A background with tiles from other lists too draws only its tiles of that list from it, since each cell names its own list. A background that draws with several lists the game changes draws its tiles of each list from that list, so every list of a screen can change on one frame. If a background draws with more lists than the four, its short lists share one of the four. A list of three colours uses three of the fifteen places, so five such lists fit in one. A sprite's list does not share. A sprite whose pictures are drawn in the list's colours, and drawn with that list alone, keeps no list for its own colours. A sprite drawn with several lists (`draw_with [...], showing:`) takes one of the four for each list.
+- `recolor` — works: a list told to hold other colours keeps one of the four lists to itself for the whole game, written over in the blank. In a game whose scenes need more than four lists, it keeps that one only in the scenes that draw with it (see `colors`). The sprites and the backgrounds drawn with it are drawn from that one list, however many sets it holds in turn. A background with tiles from other lists too draws only its tiles of that list from it, since each cell names its own list. A background that draws with several lists the game changes draws its tiles of each list from that list, so every list of a screen can change on one frame. If a background draws with more lists than the four, its short lists share one of the four. A list of three colours uses three of the fifteen places, so five such lists fit in one. A sprite's list does not share. A sprite whose pictures are drawn in the list's colours, and drawn with that list alone, keeps no list for its own colours. A sprite drawn with several lists (`draw_with [...], showing:`) takes one of the four for each list. If those lists do not fit, and the game does not change them, the build makes a copy of the sprite's pictures for each list instead. The copies use the video memory of more pictures, and they use one of the four together when all their colours fit in fifteen.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.
 - `colors_name_of` — works: the same as on the Advance.
@@ -86,7 +86,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pool` — works: its sprites' pieces count towards the 80.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: tiles of fifteen colours each and see-through, from one of the four lists.
-- `background` — works: two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` is refused: this build does not make it yet. `show_only_inside` is refused: a Genesis cannot hide a background outside a box. Its window plane takes the place of one background in whole cells from an edge of the screen, and does not hide an ordinary background. A background is at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for all 224 rows each pass. A Genesis writes the tiles that `set_tile` changes between frames, 256 at most for one pass. If a pass changes more, each 256 are written while the pass runs, in the order the game changed them, and a frame can show part of the change. `held: true` changes nothing: up to 256 cells that a pass changes already show together. With `cells_in_front: true`, each cell that the map marks is in front of every sprite, as the console draws a cell with its priority bit set.
+- `background` — works: two backgrounds at a time, scrolled and changed as on the Advance. `above_row:` is refused: this build does not make it yet. `hide` and `show` are refused: this build does not make them yet. `show_only_inside` is refused: a Genesis cannot hide a background outside a box. Its window plane takes the place of one background in whole cells from an edge of the screen, and does not hide an ordinary background. A background is at most 64 tiles across and 64 down, as on the Advance. `rotate` and `scale` are refused: a Genesis cannot turn a background. A `scroll_each_row` block runs for all 224 rows each pass. A Genesis writes the tiles that `set_tile` changes between frames, 256 at most for one pass. If a pass changes more, each 256 are written while the pass runs, in the order the game changed them, and a frame can show part of the change. `held: true` changes nothing: up to 256 cells that a pass changes already show together. With `cells_in_front: true`, each cell that the map marks is in front of every sprite, as the console draws a cell with its priority bit set.
 - `status_bar` — works: the bar is the window, a layer the console keeps beside its two backgrounds. `set_tile` with `now: true` is refused: a Genesis writes its video memory only between frames, so a change shows on the frame after the pass.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: the same as on the Advance.
@@ -106,40 +106,22 @@ and a test fails when the two differ. The Advance's answers are in
 - `start_over` — works: the same as on the Advance.
 - `clock` — **refused**: a Genesis cartridge has no clock chip. Ask the player for the time on a screen of the game's own, if the game needs it.
 - `saves_keep_everything` — works: the same as on the Advance.
-- `set` — works: the same as on the Advance.
-- `add` — works: the same as on the Advance.
-- `add_var` — works: the same as on the Advance.
-- `sub` — works: the same as on the Advance.
-- `sub_var` — works: the same as on the Advance.
-- `copy` — works: the same as on the Advance.
-- `negate` — works: the same as on the Advance.
-- `negate!` — works: the same as on the Advance.
-- `flip` — works: the same as on the Advance.
-- `flip!` — works: the same as on the Advance.
-- `abs` — works: the same as on the Advance.
-- `abs!` — works: the same as on the Advance.
-- `negate_abs` — works: the same as on the Advance.
-- `negate_abs!` — works: the same as on the Advance.
-- `clamp` — works: the same as on the Advance.
-- `clamp!` — works: the same as on the Advance.
-- `approach` — works: the same as on the Advance.
-- `approach!` — works: the same as on the Advance.
 - `list` — works: the same as on the Advance.
 - `func` — works: `fast:` means nothing on a Genesis, which runs all of its code alike.
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Genesis has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Genesis does not have.
-- `held` — works: the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` or more is refused, and `players:` more than 1 is refused too: this build reads the first pad only.
+- `held` — works: the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads the second pad. `player: 3` and `player: 4` read the pads in a Sega Team Player in the second port. `player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` more than 4, because it reads four pads. If no Team Player is connected, players 3 and 4 hold no buttons.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `pulled` — works: 0 or 100. Each button of a Genesis pad is on or off, so a button reads 100 while it is held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as `held` does.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
-- `players_connected` — works: always 1: this build reads the first pad only.
+- `players_connected` — works: 1 at the start. A player is connected from the first frame that one of their buttons is down. Then the player stays connected. Players 3 and 4 can connect only through a Sega Team Player in the second port. If no Team Player is connected, the count is 1 or 2.
 - `rumble` — works: nothing is felt. A Genesis cartridge has no rumble motor, so the game plays the same without it.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
@@ -165,7 +147,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `fade_music_out` — works: the same as on the Advance.
 - `songs` — works: see `song`. A recorded note with `glides: true` carries on the note sounding at a new pitch, loudness and side: it goes on from where it has got to, and the voice is not struck again. It moves to the nearest speaker, as `song` says, and its new loudness is not heard, as no recording's is. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts. If the game sets its music volume, such a note is refused: this build does not make it yet.
 - `sound_effects` — works: see `song`.
-- `sample` — works: a recording is played on the FM chip's sixth voice, which can play a recording of eight bits. The sound processor sounds about 13300 samples a second, and plays each recording at the rate it was recorded at. Only one recording plays at a time, and a recording cannot have a shape (`envelope:`). A recording plays at full loudness, whatever its volume: the DAC has no volume of its own. To play it more quietly, the sound processor must scale each sample, about 13300 times a second, through a table for each volume. This build does not do that yet. Its sample loop takes about 204 of the 269 cycles it has for each sample, so the look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music volume and a sound's volume are only in the sound log.
+- `sample` — works: a recording is played on the FM chip's sixth voice, which can play a recording of eight bits. The sound processor sounds about 13300 samples a second, and plays each recording at the rate it was recorded at. Only one recording plays at a time, and a recording cannot have a shape (`envelope:`). A recording plays at full loudness, whatever its volume: the DAC has no volume of its own. To play it more quietly, the sound processor must scale each sample, about 13300 times a second, through a table for each volume. This build does not do that yet. Its sample loop takes about 192 of the 269 cycles it has for each sample, and copies the recording ahead in the rest, so the look-up fits, and 16 tables take 4 KB of its 8 KB of memory. Until then, the music volume and a sound's volume are only in the sound log.
 - `instrument` — works: see `sample`.
 
 ## Not made yet
@@ -174,7 +156,6 @@ An answer above is what the Genesis does with a verb. The build for it is still 
 and a game that reaches one of these steps is refused, naming the step, until it is made:
 
 - the status bar: `place_bar`
-- backgrounds bent row by row: `scroll_rows`
 - sprite tiles the game loads: `load_sprite_tiles`
 - layers see-through: `see_through`
 - the picture: `draw_column_at`

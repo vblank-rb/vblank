@@ -2,9 +2,10 @@
 
 module VBlank
   class Builder
-    # WHERE A COPY'S HALVES ARE, AND WRITING ONE in the order that keeps a save safe.
+    #--
+    # Where a copy's halves are, and writing one in the order that keeps a save safe.
     #
-    # Every copy of a record is kept twice, and a save goes into the OLDER half, which only
+    # Every copy of a record is kept twice, and a save goes into the older half, which only
     # counts once the whole of it is in. What makes that true is the order the half is written
     # in, and this is the one place it is written down:
     #
@@ -13,7 +14,7 @@ module VBlank
     #      rather than as never saved. Neither can make the half pass for good on its own.
     #   2. The body — whatever the caller writes between opening and closing.
     #   3. CLOSE: the sequence number (one past the copy's), the kind (saved or erased), and the
-    #      checksum LAST of all. Until the checksum matches, the half is not good, so the other
+    #      checksum last of all. Until the checksum matches, the half is not good, so the other
     #      half is still the copy. Then the copy is looked over again, which is also the read
     #      back: a half that does not come back as it should means the chip did not keep it.
     #
@@ -24,6 +25,7 @@ module VBlank
     #
     # An object of its own, made once the records are laid out, since where a half is depends
     # on the save memory they were laid out in and nothing else.
+    #++
     class SaveHalf
       include SaveProgram
 
@@ -62,22 +64,33 @@ module VBlank
         end
       end
 
-      # Step 3: the sequence, the kind and the checksum, then the read back. +kind+ is SAVED or
+      # Step 3: the sequence, the kind and the checksum, then the read back. +kind+ is saved or
       # ERASED, as a number written in the program or one the game works out. The record's
       # `copy` must already name +copy+, since looking it over reads which copy from there.
-      def emit_half_commit(layout, here, copy, kind)
+      # +read_back+ is true, or a test the game works out: where it fails the copy is not looked
+      # over, and its state and which half is newer stay as they were, for a half written once
+      # and never asked about again before the next power-on (SaveRecords#save_data_save).
+      def emit_half_commit(layout, here, copy, kind, read_back: true)
         kind_node = kind.is_a?(Integer) ? sd_int(kind) : kind
         record(Build.save_write(sd_add(here, sd_int(IR::SaveLayout::SEQUENCE_AT)),
                                 sd_add(layout.directory_at(:seq, copy), sd_int(1))))
         record(Build.save_write(sd_add(here, sd_int(IR::SaveLayout::KIND_AT)), kind_node))
         record(Build.save_write(sd_add(here, sd_int(IR::SaveLayout::CHECKSUM_AT)),
                                 Build.save_sum(sd_add(here, sd_int(IR::SaveLayout::HEADER)), sd_int(layout.body))))
+        return emit_read_back(layout, copy, kind) if read_back == true
+
+        sd_when(read_back) { emit_read_back(layout, copy, kind) }
+      end
+
+      private
+
+      # The copy looked over again, which is also the read back: failed is set when it does not
+      # come back as the write left it.
+      def emit_read_back(layout, copy, kind)
         record(Build.call(layout.routine(:scan)))
         record(Build.set(layout.scratch(:failed), sd_op(:!=, layout.directory_at(:state, copy),
                                                         expected_state_node(kind))))
       end
-
-      private
 
       # Wipe the +bytes+ of save memory from +here+, which start on a block and cover whole
       # ones. Flash can only turn bits off when it is written, so a half written over an older

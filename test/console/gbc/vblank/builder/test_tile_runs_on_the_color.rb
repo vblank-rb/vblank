@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PICTURE PAINTED FROM A LIST ON THE COLOR. The Color has no list of sizes a sprite is drawn at:
+# A picture painted from a list on the color. The Color has no list of sizes a sprite is drawn at:
 # every picture is pieces of 8×8, so a painted one can be any size in whole pieces, where the
 # Advance holds it to the twelve sizes it draws a sprite at whole.
 class TestTileRunsOnTheColor < Minitest::Test

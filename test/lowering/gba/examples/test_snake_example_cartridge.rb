@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/snake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake").to_s)
 
 # The Snake example (examples/snake.rb) on the Advance's cartridge: its first frames read back
 # in the emulator, so the classic silent-black-screen failure can't slip through. That the
@@ -12,7 +12,7 @@ class TestSnakeExampleCartridge < Minitest::Test
 
   CELL = Snake::CELL
 
-  # AC: the initial render. On boot the title screen shows "SNAKE" in green — the
+  # AC: the initial render. On boot the title screen shows "snake" in green — the
   # simplest proof the ROM isn't a black screen. Scans the title band rather than
   # pinning font pixels, so it survives font tweaks. Skips cleanly without the emulator.
   def test_the_title_screen_renders_on_the_console

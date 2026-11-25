@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # A PORT BUILT AS A SHELL: the game's code with none of the original's data in it, and what a
+    # A port built as a shell: the game's code with none of the original's data in it, and what a
     # player's machine needs to make the data pack from the player's own copy on the first run.
     #
     # Prior art is Ship of Harkinian: the program ships with no assets, and on its first run checks
@@ -26,7 +26,7 @@ module VBlank
     # +original+ the Original::Game the data pack reads, named so a check on this machine can find
     # the copy a player would pick (Live::ShellCheck). No runtime is handed it.
     #
-    # WHAT A RUNTIME DOES WITH IT (Live::Shell is the Ruby one). At start it reads the pack from the
+    # What a runtime does with it (Live::Shell is the Ruby one). At start it reads the pack from the
     # game's folder; a pack that passes the check is handed to the game, and the copy is never read.
     # Otherwise the menu plays. LOAD ROM asks for a file, and the file is refused unless it is a
     # release the game reads; the release's unpacking plays handed the bytes that were checked, and
@@ -118,7 +118,7 @@ module VBlank
           refuse_without_data_pack!(game, data_pack)
           releases = refuse_unusable_releases!(data_pack.original)
           # The first screen is made with the copies still hidden: its block is the game's code too.
-          menu = menu_program(game.title, program, releases.title, parts.first_screen)
+          menu = menu_program(game.title, program, parts.first_screen)
           unpackings = unpackings_of(data_pack, releases.readable, progress)
           splits = releases.readable.map { |release| data_pack.pieced_unpacking(release: release) }
           new(game: program, menu: menu, unpackings: unpackings, splits: splits,
@@ -183,7 +183,7 @@ module VBlank
         )
       end
 
-      # THE FOLDER THE PACK IS KEPT IN, beside the game's saves. Two VBlank games can have one title,
+      # The folder the pack is kept in, beside the game's saves. Two VBlank games can have one title,
       # so the folder is named from the title and from the releases of the original it reads, which
       # tell one port from another; a new build of the same port keeps the same folder, finds the
       # pack an older build made there, and asks for the copy again because the pack names the
@@ -219,7 +219,7 @@ module VBlank
       # (+first_line+), and the +step+ from one line down to the next.
       Rows = Data.define(:title, :needs, :first_line, :step)
 
-      # THE LINES OF A FIRST SCREEN, top to bottom, for what a game +given+ (a DSL::ShellScreen):
+      # The lines of a first screen, top to bottom, for what a game +given+ (a DSL::ShellScreen):
       # LOAD ROM, the game's lines that go under it, SETTINGS, and the game's lines under that.
       # LOAD ROM and SETTINGS keep their numbers whatever is added, since three runtimes read them.
       def self.menu_lines(given)
@@ -234,41 +234,40 @@ module VBlank
         end
       end
 
-      # THE MENU, a small game of the library's own built for the console +game+ (the game's
+      # The menu, a small game of the library's own built for the console +game+ (the game's
       # program) is built for: the title, a line naming what the game needs, and lines picked with
       # up and down and chosen with A or Start. Game code, so each runtime plays it as it plays any game.
       #
-      # A GAME MAKES IT ITS OWN with `shell_screen` (+first_screen+, what the game gave, or nil):
+      # A game makes it its own with `shell_screen` (+first_screen+, what the game gave, or nil):
       # its font, colours, a picture, its words, and lines of its own (Builder::ShellScreens, whose
       # block is run on this menu's builder). A game that gives nothing gets the screen as it
-      # always was. A LINE OF THE GAME'S OWN SHOWS A SCENE AND COMES BACK, all inside this
+      # always was. A line of the game's own shows a scene and comes back, all inside this
       # program: chosen, it shows as chosen as any line does, then its scene is called every pass
       # over the ground's colour until A, B or Start is pressed, and the menu is back with the
       # cursor where it was. The menu does not halt for it, so no runtime hears of such a line.
       #
-      # THE LINE CHOSEN SHOWS AS CHOSEN, in yellow, for CHOSEN_FRAMES frames in which no button
+      # The line chosen shows as chosen, in yellow, for CHOSEN_FRAMES frames in which no button
       # does anything. Then the menu sets MENU_CHOICE and halts, and the runtime does what was
       # chosen with that picture still up, so a file chooser opens over a menu that shows what
       # the player did.
       #
-      # THE CURSOR STARTS WHERE THE RUNTIME PUTS IT. The menu ends each time a line is chosen, and
+      # The cursor starts where the runtime puts it. The menu ends each time a line is chosen, and
       # plays again from its start when a chooser is closed with nothing picked, a file is refused or
       # the settings are shut. So the line under the cursor (MENU_LINE) is read as it halts and
       # handed back as its start file, one byte, and the menu comes back as it was left. A game
       # is handed its data pack the same way (IR::StartFile), so every runtime has the means already.
       #
-      # A PACK KEPT BY AN OLDER BUILD IS SAID HERE, AND NOWHERE ELSE. A port grows a part at a time,
+      # A pack kept by an older build is said here, and nowhere else. A port grows a part at a time,
       # and each part changes its pack, so a player who takes a new build finds the pack the old
       # one kept. Nothing went wrong and the player did nothing: the copy is read again, as on the
       # first start. So the runtime says only that such a pack is there (the start file's second
-      # byte), and the menu says under its lines, in the words of #read_again_rows, that the
-      # data must be read again from the player's copy of +original_title+, the original's own
-      # title: what the player owns, where +title+ is this program's.
-      def self.menu_program(title, game, original_title, first_screen = nil)
+      # byte), and the menu says under its lines, in the one short row of #read_again_sentence,
+      # that the player's copy must be loaded again. +title+ is this program's.
+      def self.menu_program(title, game, first_screen = nil)
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
-        sentence = read_again_sentence(original_title).upcase.gsub(MENU_LETTERS, "")
-        Builder.keeping_builder_in_use do
-          maker = Builder.new(options: options)
+        sentence = read_again_sentence.upcase.gsub(MENU_LETTERS, "")
+        # The menu shows in the game's window, so it takes the screen the game was given.
+        Builder::Session.building(-> { Builder.new(options: options, screen_size: game.screen_size) }) do |maker|
           maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: MENU_START_BYTES, checks: [])
           # The menu is played with the game's own keys too, so a web page's shell shows the same
           # Controls in its menu as in its game (the desktop's and vblank run's are the game's window).
@@ -345,7 +344,7 @@ module VBlank
                 # own drawing, each pass until a button sends the player back.
                 (scene_up > 0).record_branch do
                   clear_screen look.colors.fetch(:ground)
-                  case_var(MENU_SCENE) { shown.each_with_index { |menu_line, at| when_val at + 1, menu_line.scene } }
+                  call shown.each_with_index.to_h { |menu_line, at| [at + 1, menu_line.scene] }, number: MENU_SCENE
                   %i[a b start].each { |button| pressed(button).record_branch { scene_up.store!(0) } }
                 end.else { play_menu.call }
               end
@@ -357,10 +356,9 @@ module VBlank
       end
 
       # What the menu says when the pack kept in the game's folder is one this build does not
-      # read: what happened, then what to do, naming the original the player owns.
-      def self.read_again_sentence(original_title)
-        "This version must read the game's data again. Load your copy of #{original_title}."
-      end
+      # read: why, then what to do, in one short row. The line under the title already names the
+      # original the player owns, so this does not say it again.
+      def self.read_again_sentence = "New version: load your copy again."
 
       # +sentence+ cut into rows of words, each no wider than +width+ by the block's measure of a
       # row's words (a word wider than that has a row to itself).

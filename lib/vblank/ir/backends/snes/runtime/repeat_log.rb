@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PASS THAT PAINTS WHAT THE LAST ONE PAINTED, ON A SUPER FX CARTRIDGE: passed over whole,
+          # A pass that paints what the last one painted, on a super FX cartridge: passed over whole,
           # so nothing is painted and nothing is sent.
           #
           # A plain cartridge keeps a log of every painting and paints again only the tiles that

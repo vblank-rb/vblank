@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PICTURE THAT STOPS EARLY (`screen :bitmap, shown_rows:`): the rows given up at the top and the
+# A picture that stops early (`screen :bitmap, shown_rows:`): the rows given up at the top and the
 # bottom are black, and the rest of the picture is as the game paints it. Every run that plays games
 # as the Super Nintendo plays these, so the cartridge, and the game as C, JavaScript and Ruby, are
 # each held to the interpreter pass by pass. What the rows given up gain the cartridge is

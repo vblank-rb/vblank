@@ -5,14 +5,16 @@ require "tmpdir"
 require "vblank/live"
 require "vblank/diagnostics/film_tasks"
 require "shell_tests"
+require "heard_film"
 
-# A PORT'S SHELL FILMED FROM ITS FIRST START (Diagnostics::FilmShell), with the made-up port
+# A port's shell filmed from its first start (Diagnostics::FilmShell), with the made-up port
 # (shell_tests.rb's). On the Ruby run alone: the shell plays as Ruby whatever run it is in.
 #
 # The answer key is the shell played by Live::Shell on a Headless device, as the shell tests play
 # it, and the same game built all-in-one, played live the same way.
 class TestFilmShell < Minitest::Test
   include ShellTests
+  include HeardFilm
 
   FilmShell = VBlank::Diagnostics::FilmShell
   Headless = VBlank::Live::Headless
@@ -252,6 +254,22 @@ class TestFilmShell < Minitest::Test
     end
   end
 
+  # A film whose parts end before the shell's game begins has no frame to start the all-in-one side
+  # on. The two sides play at the same time, so the all-in-one side learns it as the shell's side ends,
+  # and the film stops saying so, rather than waiting for a frame that never comes.
+  def test_a_film_ending_before_the_shells_game_begins_is_refused
+    Dir.mktmpdir do |folder|
+      shell = FilmShell.new(port(original(folder)))
+      refused = assert_raises(ArgumentError) do
+        VBlank::Diagnostics::Film.make(File.join(folder, "never.mp4"),
+                                       sides: { "shell" => -> { shell.open }, "all-in-one" => -> { shell.all_in_one } },
+                                       parts: [1..2])
+      end
+
+      assert_match "has not shown the game yet", refused.message
+    end
+  end
+
   # Closing the side takes away the folder the copy was handed in and the pack kept, even part way
   # through the unpacking.
   def test_closing_the_side_leaves_nothing_of_the_copy
@@ -270,6 +288,56 @@ class TestFilmShell < Minitest::Test
   # The folders sides opened in this process keep the copy and the pack in (Dir.mktmpdir names them
   # with the process's number; the tests run in several processes at once).
   private def side_folders = Dir.children(Dir.tmpdir).grep(/\Afilm-shell\d+-#{Process.pid}-/)
+
+  # The game's pass a beeping port starts its tone on.
+  BEEP_PASS = 10
+
+  # Both sides heard, one on each speaker: the shell's game and the all-in-one build start their tone on
+  # the same frame of the film, the pass the game sounds it on.
+  def test_the_shell_and_the_all_in_one_build_are_heard_on_the_same_frames
+    Dir.mktmpdir do |folder|
+      shell = FilmShell.new(beeping_port(original(folder)))
+      path = VBlank::Diagnostics::Film.make(File.join(folder, "heard.mp4"),
+                                            sides: { "shell" => -> { shell.open(from: :game, sound: true) },
+                                                     "all-in-one" => -> { shell.all_in_one(sound: true) } },
+                                            parts: [1..30], sound: :side_by_side)
+      left, right = film_sound(path)
+
+      assert_in_delta BEEP_PASS - 1, onset(left), 1
+      assert_in_delta onset(left), onset(right), 1
+    end
+  end
+
+  # A shell's side opened without sound is refused when heard, saying how to open it.
+  def test_a_shell_side_opened_without_sound_cannot_be_heard
+    Dir.mktmpdir do |folder|
+      shell = FilmShell.new(beeping_port(original(folder)))
+      refused = assert_raises(ArgumentError) do
+        VBlank::Diagnostics::Film.make(File.join(folder, "never.mp4"), sides: { "shell" => -> { shell.open(from: :game) } },
+                                                                       parts: [1..2], sound: "shell")
+      end
+
+      assert_match "sound: true", refused.message
+    end
+  end
+
+  # The made-up port, sounding a tone that does not fade from its game's pass BEEP_PASS.
+  private def beeping_port(from)
+    VBlank.game("MADE UP", consoles: %i[gba]) do
+      screen :bitmap
+      enable_sound
+      pack = data_pack(from: from, version: "1") do |slots|
+        slots.numbers :heights, count: HEIGHTS.length, width: :byte, signed: false
+        slots.fill_from_copy { |copy, into| copy.unpack_rle at: RLE_AT, into: into[:heights] }
+      end
+      heights = table :heights, pack[:heights]
+      game_loop do
+        clear_screen :black
+        draw_rect_at heights[0], 40, 4, 4, :red
+        after(BEEP_PASS - 1) { beep 440, decay: :none }
+      end
+    end
+  end
 
   # The film itself, made by Film from the two sides: an MP4, and nothing else, in its folder.
   def test_film_makes_a_film_of_the_shell_beside_the_all_in_one_build

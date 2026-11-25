@@ -5,19 +5,19 @@ require "fileutils" # here and not where it is used: see the note at the top of 
 module VBlank
   module Playthroughs
     class Comparison
-      # WHAT WAS ASKED FOR, OF ONE PICTURE OF ONE FRAME ON TWO CARTRIDGES: which frame it is
+      # What was asked for, of one picture of one frame on two cartridges: which frame it is
       # of, the file it goes to, and whether it marks where the two differ.
       #
       #   tape.write_side_by_side_picture(ours, theirs, "door.png", at: 46)
       #   walk.write_side_by_side_picture(ours, theirs, "door.png", at: :at_the_door)
       #
-      # WHAT THE PICTURE IS FOR. A frame number shows that two cartridges parted and nothing about
+      # What the picture is for. A frame number shows that two cartridges parted and nothing about
       # how. The two screens beside each other, with the pixels that differ marked, is what
       # a person looks at to see it — and a drift report holds one for the frame it reports
       # (see ScreenPair, which puts the picture together). This is the same picture for any
       # frame somebody wants to look at, drift or not.
       #
-      # WHAT CAN BE KNOWN TO BE WRONG IS FOUND BEFORE A FRAME IS PLAYED, since the frame may
+      # What can be known to be wrong is found before a frame is played, since the frame may
       # be minutes of play in: what was asked for is read here, and the frame is looked for
       # on the tape before either console is switched on. A script is the one exception —
       # how long it plays is not known until it has been played, so a frame past its end is

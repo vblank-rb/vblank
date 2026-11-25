@@ -5,9 +5,9 @@ require "test_helper"
 # Scene-owned presentation: a sprite or HUD element declared inside a scene belongs to
 # that scene and is shown only while the scene is the active one — the console hides the
 # other scenes' presentation for you. This is what lets a game switch screens (play ->
-# game over) without any per-draw visibility flag: belonging to a scene IS the visibility.
+# game over) without any per-draw visibility flag: belonging to a scene is the visibility.
 #
-# The scene machinery it rides on already exists (scene + case_var + a state variable);
+# The scene machinery it rides on already exists (scene + the scene dispatch + a state variable);
 # this adds that a scene's declared sprites/HUD are scoped to it. Here a :playing scene
 # owns a red block and a :over scene owns a blue block; only the active scene's block
 # shows. On the Advance's cartridge, read in the emulator, that is in
@@ -37,10 +37,7 @@ module ScenePresentationGames
 
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :playing
-          when_val 1, :over
-        end
+        call({ 0 => :playing, 1 => :over }, number: :state)
       end
     end
     b.finalize_program

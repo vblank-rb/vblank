@@ -4,14 +4,14 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE EACH SPRITE'S PICTURES GO IN SPRITE MEMORY, and how much of it a game needs.
+        # Where each sprite's pictures go in sprite memory, and how much of it a game needs.
         #
-        # TWO SPRITES THAT SHOW THE SAME PICTURES STORE THEM ONCE.
+        # Two sprites that show the same pictures store them once.
         #
         # Sprite pictures live in 32K and every one a game might ever show is in there at
         # once. Nothing used to notice that two sprites were showing the same art, so a
         # game with twenty enemies all walking the same eight-frame walk stored that walk
-        # twenty times — and a POOL is the same thing written in one line, since each of its
+        # twenty times — and a pool is the same thing written in one line, since each of its
         # slots is a sprite of its own. Thirty-two slots of a four-picture guard was
         # thirty-two copies.
         #

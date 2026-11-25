@@ -98,7 +98,7 @@ class TestSNESChipColumns < Minitest::Test
     assert_operator run[:step], :>=, 5, "five passes or more were checked"
   end
 
-  # A VIEW WITH BLACK ABOVE AND BELOW IT has the screen switched off there (Runtime::Letterbox),
+  # A view with black above and below it has the screen switched off there (Runtime::Letterbox),
   # and what is checked is that nobody can tell: a view 64 high whose top moves every pass, so the
   # lines kept on change with it, cleared to blue on some passes, where no line may go off, and
   # left uncleared on others, where the last pass's walls stay on the screen.
@@ -221,33 +221,41 @@ class TestSNESChipColumns < Minitest::Test
   # Walls across the whole width of the screen, so the right half's tile columns (x 128 and on, a
   # plot of their own on the chip) are drawn too, running down into the last row of tiles; and the
   # same inside an area that reaches the right edge and the bottom.
-  [false, true].each do |area|
-    define_method(:"test_walls_across_the_whole_width_#{area ? 'inside_an_area_' : ''}look_as_on_the_interpreter") do
-      game = VBlank.game("CHIP WIDE", consoles: %i[snes], variants: { snes: :superfx }) do
-        screen :bitmap
-        image :wall, width: 64, height: 64, data: WALL
-        step = var :step, 0
-        tall = var :_tall, 0
-        func :walls, on_chip: true do
-          repeat(128) do |col|
-            tall = 40 + (((col * 11) + (step * 7)) % 200)
-            draw_column_at :wall, slice: col + step, x: col * 2, top: 224 - tall, height: tall, width: 2
-          end
-        end
-        game_loop do
-          clear_screen :black
-          step += 1
-          if area
-            inside(90, 100, 166, 124) { call :walls }
-          else
-            call :walls
-          end
+  #
+  # Two tests written out, not a loop: a test made in a loop is a shareable copy of its block
+  # (Testing::InRactors::ShareableMethods), and the game's block inside it could not read the loop's
+  # value as game code.
+  def test_walls_across_the_whole_width_look_as_on_the_interpreter = assert_full_width_walls_agree(area: false)
+
+  def test_walls_across_the_whole_width_inside_an_area_look_as_on_the_interpreter
+    assert_full_width_walls_agree(area: true)
+  end
+
+  private def assert_full_width_walls_agree(area:)
+    game = VBlank.game("CHIP WIDE", consoles: %i[snes], variants: { snes: :superfx }) do
+      screen :bitmap
+      image :wall, width: 64, height: 64, data: WALL
+      step = var :step, 0
+      tall = var :_tall, 0
+      func :walls, on_chip: true do
+        repeat(128) do |col|
+          tall = 40 + (((col * 11) + (step * 7)) % 200)
+          draw_column_at :wall, slice: col + step, x: col * 2, top: 224 - tall, height: tall, width: 2
         end
       end
-      run = game_player.run(superfx_program(game), frames: 40)
-
-      assert_operator run[:step], :>=, 4, "four passes or more were checked"
+      game_loop do
+        clear_screen :black
+        step += 1
+        if area
+          inside(90, 100, 166, 124) { call :walls }
+        else
+          call :walls
+        end
+      end
     end
+    run = game_player.run(superfx_program(game), frames: 40)
+
+    assert_operator run[:step], :>=, 4, "four passes or more were checked"
   end
 
   # A game that paints 255 colours besides black, and draws black on the chip: the chip needs black
@@ -388,11 +396,17 @@ class TestSNESChipColumns < Minitest::Test
     [took.sum.fdiv(took.size), took.max]
   end
 
-  # The walls of a first-person view take no more frames a pass on the chip than these, 120 columns
-  # 120 high and 40 columns 40 high, every pass of them. The 120's are sent to video RAM in the
-  # lines above and below the view, where the screen is off (Runtime::Letterbox); the rest of its
-  # time is the chip's painting. The console's processor drawing the same walls takes many times as long.
-  MOST_FRAMES = { [120, 120] => 4, [40, 40] => 1 }.freeze
+  # The walls of a first-person view take no more frames a pass on the chip than these, every pass
+  # of them. The big views are sent to video RAM in the lines above and below the view, where the
+  # screen is off (Runtime::Letterbox); the rest of their time is the chip's painting. The
+  # console's processor drawing the same walls takes many times as long.
+  #
+  # 104 columns 120 high took four frames while the chip ran its code for each column and each
+  # batch from the cartridge, five cycles a byte, rather than from its 512-byte quick memory, one a
+  # byte (fullsnes, "SNES Cart GSU-n Code-Cache"). With that code in the quick memory it takes
+  # three: the 20 pictures a second reported of the console's own Super FX games, against DOOM's 15
+  # at best (docs/snes/super-fx-picture-to-screen.md).
+  MOST_FRAMES = { [120, 120] => 4, [104, 120] => 3, [40, 40] => 1 }.freeze
 
   MOST_FRAMES.each do |(columns, tall), most|
     define_method(:"test_#{columns}_columns_#{tall}_high_take_#{most}_frames_a_pass_on_the_chip") do

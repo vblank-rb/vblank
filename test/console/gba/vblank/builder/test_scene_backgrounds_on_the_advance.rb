@@ -23,7 +23,7 @@ module SceneBackgroundsOnTheAdvanceGames
     b.program
   end
 
-  # A SCENE WITH NO SCENERY OF ITS OWN still takes the screen from the one before: the first
+  # A scene with no scenery of its own still takes the screen from the one before: the first
   # scene's backdrop goes, and what every screen shows is what is left. A file screen's plain
   # backdrop must not stay up over the game it hands over to.
   private def a_backdrop_then_a_bare_scene
@@ -43,10 +43,7 @@ module SceneBackgroundsOnTheAdvanceGames
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :menu
-          when_val 1, :walk
-        end
+        call({ 0 => :menu, 1 => :walk }, number: :state)
       end
     end
   end
@@ -80,17 +77,14 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
 
   private def shown(prog, frames) = game_player.run(prog, frames: frames).screen.pixel(*MIDDLE)
 
-  # THE CASE THIS IS FOR: four scrolling backgrounds in each of two scenes. The
+  # The case this is for: four scrolling backgrounds in each of two scenes. The
   # console never has to hold more than one scene's worth, so this is four layers at a
   # time and not eight.
   def test_two_scenes_can_have_four_scrolling_backgrounds_each
@@ -103,7 +97,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_equal RED, shown(a_backdrop_then_a_bare_scene, SWITCH_AT + 4)
   end
 
-  # SCENERY EVERY SCREEN SHOWS IS IN EVERY SCREENFUL, so it is what each scene has left
+  # Scenery every screen shows is in every screenful, so it is what each scene has left
   # that the scene's own has to fit in. A game with a backdrop up throughout and three
   # backgrounds in each of two scenes is four layers at a time, and fits exactly.
   private def a_backdrop_and_two_scenes(per_scene)
@@ -126,10 +120,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -143,10 +134,10 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_equal GREEN, screen.pixel(8, 0), "the always-there backdrop shows through its holes"
   end
 
-  # SCENES OF DIFFERENT SIZES, which is where an always-there backdrop can go wrong and
-  # evenly-sized scenes cannot show it. The backdrop is drawn once and carries ONE paint
+  # Scenes of different sizes, which is where an always-there backdrop can go wrong and
+  # evenly-sized scenes cannot show it. The backdrop is drawn once and carries one paint
   # order, while the scenes it appears over hold different numbers of layers — so an order
-  # read off the quiet scene puts the backdrop in FRONT of the busy scene's back layer.
+  # read off the quiet scene puts the backdrop in front of the busy scene's back layer.
   # Read where only the busy scene's backmost layer draws.
   private def uneven_over_a_backdrop(first, second)
     tile = SOLID_TILE
@@ -159,7 +150,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       tiles :red_set, "#" => :red_art
       tiles :blue_set, "#" => :blue_art
       full = Array.new(20) { "#" * 30 }
-      # The busy scene's layers are stacked so that only its BACKMOST one draws at the far
+      # The busy scene's layers are stacked so that only its backmost one draws at the far
       # left: each later one starts a column further in.
       column = ->(n) { Array.new(20) { |_r| (0...30).map { |c| c == n ? "#" : " " }.join } }
       background :backdrop, tiles: :green_set, map: full
@@ -170,10 +161,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -184,7 +172,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_equal BLUE, screen.pixel(0, 0), "the backdrop was drawn over the scene's back layer"
   end
 
-  # A SCENE THAT USES FEWER LAYERS THAN THE LAST ONE. This is the case scene-by-scene
+  # A scene that uses fewer layers than the last one. This is the case scene-by-scene
   # numbering introduces and a game cannot see coming: the layers the busy scene filled are
   # still switched on when the quiet one takes over, still pointed at the busy scene's
   # maps. A game walking from a parallax field into a plain room would show the field's
@@ -197,7 +185,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       image(:blue_art, "#" => :blue) { tile }
       tiles :red_set, "#" => :red_art
       tiles :blue_set, "#" => :blue_art
-      # The quiet scene's background has HOLES in it, so anything still being drawn behind
+      # The quiet scene's background has holes in it, so anything still being drawn behind
       # shows through. A full-screen one would cover a leak rather than reveal it.
       spotty = Array.new(20) { |r| (0...30).map { |c| (r + c).even? ? "#" : " " }.join }
       full = Array.new(20) { "#" * 30 }
@@ -208,16 +196,13 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
 
   # Through the holes there is nothing left to draw, so the backdrop shows — never the
-  # scene before's scenery. The map alternates by CELL and a cell is 8 pixels, so these are
+  # scene before's scenery. The map alternates by cell and a cell is 8 pixels, so these are
   # a filled cell and the hole beside it.
   BACKDROP = 0
   FILLED_CELL = [0, 0].freeze
@@ -231,7 +216,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
                  "the busy scene's layers are still showing through"
   end
 
-  # ONE SCENE THAT TURNS A BACKGROUND, BESIDE ONE THAT STACKS FOUR SCROLLING ONES.
+  # One scene that turns a background, beside one that stacks four scrolling ones.
   #
   # The console arranges its tile layers one of two ways — four that scroll, or two that
   # scroll beside one that turns and resizes — and it is told which in one register, so it
@@ -240,7 +225,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
   # turning at all.
   #
   # So the arrangement belongs to the scene, not to the cartridge. Counted for the whole
-  # program, one turning background anywhere caps EVERY screen at two scrolling layers —
+  # program, one turning background anywhere caps every screen at two scrolling layers —
   # which a game cannot trade away, because the four in its play screen are four different
   # things at four different depths.
   private def a_turning_title_and_a_scrolling_game
@@ -278,10 +263,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
@@ -338,10 +320,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       end
 
       game_loop do
-        case_var :state do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
   end
@@ -350,7 +329,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_backends_agree(a_scene_that_declares_nothing, frames: 2)
   end
 
-  # A SCENE WITH NO SCENERY OF ITS OWN HAS NO LAYER SWITCHED ON.
+  # A scene with no scenery of its own has no layer switched on.
   #
   # The one above is a scene that declares nothing while the game's scenery belongs to the
   # program, so every screen shows that scenery and every screen has a layer. This is the
@@ -392,10 +371,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       end
 
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
@@ -406,7 +382,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_backends_agree(a_title_with_no_scenery_of_its_own, frames: 2)
   end
 
-  # THE SIZE A SCENE'S BACKGROUND IS DECLARED AT IS PART OF DECLARING IT.
+  # The size a scene's background is declared at is part of declaring it.
   #
   # A turning background is what asks the console for the arrangement that holds one, and
   # only the screen that wants that arrangement should be in it — so a title whose picture
@@ -441,13 +417,13 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
       scene :title do
         sword = layer(:sword) do
           declared = background(:sword, tiles: :marks, map: map).scale(ZOOMED_IN)
-          turning ? declared.rotate(90) : declared
+          turning ? declared.rotate!(90) : declared
         end
         sword.scale.approach! 1.0, 1.0
         sword.angle.approach! 0, 10 if turning
       end
 
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
       var :state, 0
     end
   end
@@ -471,7 +447,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_backends_agree(a_sword_that_flies_at_the_player, frames: 20)
   end
 
-  # ...and a second turn written on the same line — `.scale(16.0).rotate(90)` — is part of
+  # ...and a second turn written on the same line — `.scale(16.0).rotate!(90)` — is part of
   # declaring it too, so the angle can be eased the same way the size can. It is one line
   # and it says one thing: this is how the picture starts.
   def test_a_turn_chained_onto_the_declaration_starts_the_picture_too
@@ -481,7 +457,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
                  "the picture never came upright — the angle it was declared at is put back every frame"
   end
 
-  # THE SCENERY'S MEMORY TAKES TURNS TOO, the way its layers do. The console keeps every
+  # The scenery's memory takes turns too, the way its layers do. The console keeps every
   # tile picture and every map a screen shows in 64K, and scenes that take turns never
   # need theirs there at the same time — so what has to fit is the busiest scene, not the
   # whole game. Four of the largest maps are 32K; two scenes of them are all 64K, which no
@@ -512,10 +488,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
         tick += 1
         state = 1 if tick > SECOND_SCENE_AT
         state = 0 if tick > FIRST_SCENE_AGAIN_AT
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -526,7 +499,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
     assert_equal [RED, BLUE, RED], [SECOND_SCENE_AT, FIRST_SCENE_AGAIN_AT, FIRST_SCENE_AGAIN_AT + 15].map { |at| shown(prog, at) }
   end
 
-  # ONE NAME IN TWO SCENES, BESIDE DIFFERENT SCENERY: :ground is declared behind a sky in the
+  # One name in two scenes, beside different scenery: :ground is declared behind a sky in the
   # first scene and alone in the second, so each scene lays its colours out differently, and
   # the second scene draws its :ground with other colours as it runs. Each scene shows its own
   # declaration in its own colours, and the first comes back as declared.
@@ -556,10 +529,7 @@ class TestSceneBackgroundsOnTheAdvance < Minitest::Test
         tick += 1
         state = 1 if tick == test.class::SWITCH_AT
         state = 0 if tick == test.class::SWITCH_AT * 3
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end

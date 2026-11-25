@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # A SHELL'S UNPACKING PLAYED AWAY FROM THE WINDOW. The unpacking is a game of its own built as
+    # A shell's unpacking played away from the window. The unpacking is a game of its own built as
     # Ruby (Live::Shell), and played on the window's thread it can show a frame only when it waits
     # for one: a routine that works for a second between writes (a port rendering music) freezes
     # the window for that second. So it plays in a Ractor of its own instead, on another core, as
@@ -67,7 +67,7 @@ module VBlank
       # Shows +player+ the unpacking's newest picture each frame, until the unpacking stops, when
       # it gives back the last picture, or the player stops it, when it gives back nil.
       #
-      # A STOPPED UNPACKING ENDS AT ITS NEXT FRAME, not at once: Ruby has no way to stop a Ractor
+      # A stopped unpacking ends at its next frame, not at once: Ruby has no way to stop a Ractor
       # from outside, and the routine is checked only where it waits for a frame. Until then it
       # works on, keeping a core busy but not the window, and what it makes is thrown away.
       def play(player, match_seed: nil, local_player: nil) # rubocop:disable Lint/UnusedMethodArgument -- what Session hands a game
@@ -181,7 +181,7 @@ module VBlank
         stop_receiving
       end
 
-      # WHO PLAYS THE UNPACKING IN ITS RACTOR: it holds no buttons, and sends the window the picture
+      # Who plays the unpacking in its Ractor: it holds no buttons, and sends the window the picture
       # at most once every +seconds+, which is all a window can show; the rest of the unpacking's
       # frames are played as fast as they come. Once the window has closed the way, it stops the play.
       # It asks for the picture only on a frame it sends one, and never for sound, so the runtime

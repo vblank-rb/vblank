@@ -4,6 +4,44 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a light (`spotlight`, or the light `iris_out` makes) in a game that
+        # also asks for something the light needs the same part of the display for. Beside a
+        # see-through layer:
+        #
+        # > This game has a light (a `spotlight` or an `iris_out`), and <in the scene :name,
+        # > which uses the light, >the layer :<layer> is see-through. The light darkens the
+        # > picture outside it, and the layer mixes the picture. One part of the console does
+        # > both, and it can do one of the two at a time. To fix this, <use the light in a
+        # > scene that sees through no layer, or >remove `transparency:` (or `shows:`) from
+        # > :<layer>, or remove the light. If the light can show nothing outside it (a circle
+        # > that closes on an empty screen), declare it with `spotlight outside: :nothing`
+        # > before the first `iris_out`. That light darkens nothing, and it can share the scene.
+        #
+        # Beside a fade placed in the stack (`fade ..., under:`):
+        #
+        # > This game has a light (a `spotlight` or an `iris_out`), and <it> fades under the
+        # > layer :<layer>. A fade placed in the stack and a light both use the same parts of
+        # > the console's display. To fix this, <use the light in a scene that fades under no
+        # > layer, or >fade the whole screen: remove `under: :<layer>`.
+        #
+        # On a screen that is not tiled:
+        #
+        # > This game has a light (a `spotlight` or an `iris_out`), and it shows a
+        # > `screen :<kind>`. On that screen the light's window is not switched on, so the
+        # > whole screen would go dark. To fix this, use `screen :tiled` for every screen of a
+        # > game with a light.
+        #
+        # With no frames:
+        #
+        # > This game has a light (a `spotlight` or an `iris_out`), but it has no `game_loop`.
+        # > The light is worked out again before each frame, so with no frames it is never
+        # > drawn. To fix this, put the game in a `game_loop`.
+        #
+        # Each line looks right where it is written, but the console has one of what both need,
+        # so the build stops and names both. A see-through layer or a placed fade in a scene
+        # with no light is fine: the light is off in that scene and on in the rest.
+        #
+        #--
         # A light beside something it cannot share the display with.
         #
         # A light is two things the display has one of each: its darkening, which it holds
@@ -13,21 +51,22 @@ module VBlank
         # answers from one register. Nothing at either call site shows it — each looks right
         # where it is written — so it is refused here, naming both halves.
         #
-        # A plain fade is NOT among them: a game with a light fades by walking its colours,
+        # A plain fade is not among them: a game with a light fades by walking its colours,
         # so the two are both in force (see IR::Fading).
         #
-        # A SEE-THROUGH LAYER OR A PLACED FADE IN ANOTHER SCENE IS NOT EITHER. The display is
+        # A see-through layer or a placed fade in another scene is not either. The display is
         # told what to mix afresh every frame, and a game is in one scene at a time, so the
         # light is off in such a scene and on in the rest (see IR::LightScenes). What is
         # refused is one scene with both, or a game with no scenes, which is one screen.
         #
-        # A LIGHT THAT SHOWS NOTHING OUTSIDE IT (`spotlight outside: :nothing`) IS NOT ONE EITHER,
+        # A light that shows nothing outside it (`spotlight outside: :nothing`) is not one either,
         # beside a see-through layer. It is the window alone, with no darkening, so the blend is
         # the layer's and both are on in one scene (see IR::LightScenes). Beside a fade placed in
         # the stack it is refused as any light is.
         #
         # A console that blends nothing (Console::Description#blends) has no light to share:
         # Checks::ConsoleAnswers refuses the light itself.
+        #++
         class LightCannotShare
           NAME = :light_cannot_share
           PLAIN_NAME = "a light beside something that needs the same part of the display"

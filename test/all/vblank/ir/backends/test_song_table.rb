@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE TABLE A CONSOLE'S SONG PLAYER READS, read here as numbers, with no emulator. The Super Nintendo
+# The table a console's song player reads, read here as numbers, with no emulator. The Super Nintendo
 # and the Genesis write different chips and lay a song out alike.
 class TestSongTable < Minitest::Test
   SNES = VBlank::IR::Backends::SNES

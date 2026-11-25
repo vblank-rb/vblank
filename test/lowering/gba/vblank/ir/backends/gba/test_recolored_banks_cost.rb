@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT PUTTING A LAYER'S BORROWED COLOURS BACK COSTS A TINT. A tint walks the whole colour table
+# What putting a layer's borrowed colours back costs a tint. A tint walks the whole colour table
 # from the cartridge, and a layer drawing from a borrowed list has those groups written again after
 # it (PaletteTint#emit_recolored_banks). Here a background walks from a field into a house, and the
 # house borrows six lists at once and gives them back.

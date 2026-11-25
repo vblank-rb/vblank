@@ -4,13 +4,11 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# A PLAYING COUNTED IN PASSES OF THE GAME LOOP. The game below takes one frame over some passes and
+# A playing counted in passes of the game loop. The game below takes one frame over some passes and
 # several over others on a console, and one on the ways that play a pass a frame. Counted in frames,
 # the same presses land on different passes on each; counted in passes, the game reads the same
 # buttons on the same pass on every way.
 class TestPlaythroughPasses < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
-
   HEAVY = 3000
   KEPT = 40
 
@@ -55,9 +53,9 @@ class TestPlaythroughPasses < Minitest::Test
   private def wanted = recorded.play(cartridge, on: "interpreter").game.list(:read)
 
   VBlank::Playthroughs::LoweredGame.ways.each do |way|
-    define_method(:"test_a_tape_of_passes_reads_the_same_buttons_on_#{way}") do
+    define_method(:"test_a_tape_of_passes_reads_the_same_buttons_on_#{way}", &Ractor.shareable_proc {
       assert_equal wanted, recorded.play(cartridge, on: way).game.list(:read).first(wanted.length)
-    end
+    })
   end
 
   def test_it_is_what_the_script_says_pass_by_pass

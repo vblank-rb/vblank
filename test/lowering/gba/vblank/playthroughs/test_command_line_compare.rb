@@ -30,7 +30,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # TWO CARTRIDGES THAT AGREE: it says so, and ends with 0. One is the game file and the
+  # Two cartridges that agree: it says so, and ends with 0. One is the game file and the
   # other the cartridge file built from it.
   def test_two_cartridges_that_agree_end_with_nought
     with_cartridges do |dir|
@@ -41,7 +41,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # TWO THAT DRIFT: it says the frame, the moment before it and where the report is, and
+  # Two that drift: it says the frame, the moment before it and where the report is, and
   # ends with 1. The ground turns on the forty-fifth trip round the game's loop, which is
   # that many frames in and the frame or two the console spends setting up. The report is
   # the folder for that frame, and the tape in it is that many frames long.
@@ -283,6 +283,45 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
+  # --starting-after compares from the frame after a frame of the tape, by its number or a moment's
+  # name (the colon Ruby writes before one is allowed), and finds the drift on the frame it finds from power-on. --snapshots keeps a snapshot of
+  # each cartridge's console there, one for each, which the next run loads.
+  def test_starting_after_compares_from_late_in_the_tape_from_kept_snapshots
+    with_cartridges do |dir|
+      from_power_on, = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", dir: dir)
+      by_number, number_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", "30",
+                                     "--snapshots", "snaps", dir: dir)
+      kept = Dir.glob(File.join(dir, "snaps", "*.state")).size
+      by_moment, moment_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", ":walked",
+                                     "--snapshots", "snaps", dir: dir)
+      agreed, agreed_status = cli("compare", "walker.rb", "walker.gba", "--script", "walk.rb", "--starting-after", "30",
+                                  "--snapshots", "snaps", dir: dir)
+      drifted_on = from_power_on[/drifted on frame (\d+)\./, 1]
+
+      assert_equal DRIFTED, number_status.exitstatus, by_number
+      assert_equal DRIFTED, moment_status.exitstatus, by_moment
+      assert_equal drifted_on, by_number[/drifted on frame (\d+)\./, 1]
+      assert_equal drifted_on, by_moment[/drifted on frame (\d+)\./, 1]
+      assert_equal 2, kept, "a snapshot of each cartridge"
+      assert_equal 2, Dir.glob(File.join(dir, "snaps", "*.state")).size, "the moment is the same frame"
+      assert_equal AGREED, agreed_status.exitstatus, agreed
+    end
+  end
+
+  # Without --snapshots each cartridge is played to the start, and nothing is kept; --snapshots
+  # alone is refused, naming the flag it needs.
+  def test_starting_after_without_snapshots_plays_to_the_start
+    with_cartridges do |dir|
+      played, status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--starting-after", "30", dir: dir)
+      refused, refused_status = cli("compare", "walker.gba", "red.gba", "--script", "walk.rb", "--snapshots", "snaps", dir: dir)
+
+      assert_equal DRIFTED, status.exitstatus, played
+      assert_equal NOT_COMPARED, refused_status.exitstatus, refused
+      assert_match(/--starting-after/, refused)
+      refute File.exist?(File.join(dir, "snaps")), "nothing is kept without a start"
+    end
+  end
+
   # --- what is written wrongly ---
 
   # Each ends with 2, which is not what a drift ends with, and says what was wrong in the
@@ -308,6 +347,9 @@ class TestCommandLineCompare < Minitest::Test
         ["--lead-ins", "five frames"] => /--lead-ins needs two names/,
         %w[--saves walked.sav] => /--saves needs two save files/,
         %w[--tape walk.rb] => /tape/,
+        %w[--starting-after -5] => /--starting-after -5 is not a frame/,
+        %w[--starting-after 0] => /--starting-after/,
+        %w[--starting-after nowhere] => /no moment of that name/,
       }.each do |wrong, says|
         out, status = cli("compare", "walker.rb", "walker.gba", "--script", "walk.rb", *wrong, dir: dir)
 
@@ -337,7 +379,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # A GAME FILE FOR TWO CONSOLES is asked which cartridge to compare, and ends with 2 until
+  # A game file for two consoles is asked which cartridge to compare, and ends with 2 until
   # --console says; then it is compared like any other. Only the game's own consoles are offered.
   def test_a_game_file_for_two_consoles_is_compared_on_the_console_said
     with_cartridges do |dir|
@@ -353,7 +395,7 @@ class TestCommandLineCompare < Minitest::Test
     end
   end
 
-  # THE BUILT-IN HELP describes the command, and has a flag of the same name for every
+  # The built-in help describes the command, and has a flag of the same name for every
   # setting a comparison takes: a setting added to the library with no flag fails here.
   def test_help_has_a_flag_for_every_setting_of_a_comparison
     with_game_and_scripts do |dir|

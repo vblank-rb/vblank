@@ -39,6 +39,11 @@ module RubySNESEmulator
     DSP_REGISTERS = 0x8005
     MANIFEST = 0x8006
     PROCESSOR_TIME = 0x8007
+    OBSEL = 0x8008
+    VOICES_SILENT = 0x8009
+
+    # The S-DSP's eight voices, numbered as its registers are ($x0 to $xF for voice x).
+    VOICES = (0..7)
 
     # libretro's joypad: the number it asks about each button by.
     BUTTONS = { b: 0, y: 1, select: 2, start: 3, up: 4, down: 5, left: 6, right: 7,
@@ -56,6 +61,9 @@ module RubySNESEmulator
     XRGB8888 = 1
 
     JOYPAD = 1
+    # libretro's joypad with a subclass of bsnes's own: a Super Multitap (RETRO_DEVICE_SUBCLASS of
+    # the joypad, in bsnes's target-libretro/libretro.cpp).
+    MULTITAP = 0x101
 
     # The console's picture: 256 pixels across and 224 lines down, the lines a television showed
     # of a game that does not ask for the taller 239.
@@ -81,12 +89,22 @@ module RubySNESEmulator
       load_cartridge(rom_path)
     end
 
-    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS).
+    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are
+    # read only through a Super Multitap (#plug_in_multitap); without one, nothing asks for them.
     def set_buttons(buttons, port: 0)
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Super Nintendo controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
       @frontend.set_buttons(port, buttons.sum { |button| 1 << BUTTONS.fetch(button) })
+    end
+
+    # A Super Multitap in the second port, in place of the controller there: four plugs, each a
+    # controller of its own (ports 1 to 4 of #set_buttons). The console reads two of them at a
+    # time, picked by its I/O port's top bit (WRIO, $4201), and a game finds the tap by reading
+    # the port while the latch is high (fullsnes, "SNES Controllers Multiplayer 5").
+    def plug_in_multitap
+      @frontend.set_controller_port_device(1, MULTITAP)
+      self
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
@@ -174,6 +192,16 @@ module RubySNESEmulator
       bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
     end
 
+    # THE CONSOLE'S WHOLE STATE, as bsnes saves it: every chip's memory and registers, in bsnes's
+    # own format, for #unserialize to put back on a console playing the same cartridge.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "bsnes did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
+    end
+
     # --- the memories ---
 
     def wram = memory(SYSTEM_RAM)
@@ -182,11 +210,46 @@ module RubySNESEmulator
     def oam = memory(OAM)
     def save_ram = memory(SAVE_RAM)
 
+    # OBSEL ($2101) as the cartridge last wrote it, which the console cannot read back: the two
+    # sizes its sprites come in (the top three bits), then where their tiles are in video RAM.
+    def obsel = memory(OBSEL).getbyte(0)
+
     # THE SOUND UNIT, which the console's own processor cannot see: the 64K the SPC700 runs its
     # program from and keeps its recorded sounds in, and the S-DSP's 128 registers, which say what
     # each of its eight voices is playing — the sound as it was told to sound, not as it was mixed.
     def apu_ram = memory(APU_RAM)
     def dsp_registers = memory(DSP_REGISTERS)
+
+    # The voices left out of what is heard, by number (VOICES), from the next sample on. The S-DSP adds
+    # each voice's sound into the main mix and the echo mix (fullsnes, "SNES APU DSP Mixer"); the probe
+    # patch adds nothing there for a voice left out, and changes nothing else. Its pitch, its sample,
+    # its envelope and its OUTX and ENVX go on as on the console, so a voice heard again sounds as if
+    # it had never been left out, and the game reading those registers reads the same. Empty hears all
+    # eight. It is the listener's choice and not the console's state: a save state does not keep it,
+    # and a core switched on hears every voice.
+    def silence_voices(voices)
+      unknown = voices - VOICES.to_a
+      raise ArgumentError, "the S-DSP has no voice #{unknown.join(', ')}; its voices are 0 to 7" unless unknown.empty?
+
+      refuse_core_without_voice_mask!
+      @frontend.memory_write(VOICES_SILENT, 0, [voices.uniq.sum { |voice| 1 << voice }].pack("C"))
+      self
+    end
+
+    # The voices left out of what is heard now (#silence_voices).
+    def silent_voices
+      refuse_core_without_voice_mask!
+      mask = memory(VOICES_SILENT).getbyte(0)
+      VOICES.select { |voice| mask.anybits?(1 << voice) }
+    end
+
+    # A core built from the probe patch before it could leave a voice out hands over no such byte.
+    private def refuse_core_without_voice_mask!
+      return if @frontend.memory_size(VOICES_SILENT) == 1
+
+      raise LoadError, "#{CoreLibrary.path} was built from an older probe patch, which cannot leave a voice out. " \
+                       "Build it again with `rake compile_core` in ruby-snes-emulator/."
+    end
 
     # HOW BSNES TOOK THE CARTRIDGE: the manifest its heuristics wrote from the cartridge's header (its
     # text: the board, the ROM and RAM and where each is mapped), and the board's name from it, such

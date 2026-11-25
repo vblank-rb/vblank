@@ -13,7 +13,7 @@ module VBlank
     # assembly down the pipe. The one genuinely hardware-only bit, reading the live
     # scanline, is a first-class node (read_scanline) the backend owns, not a blob.
     module Debug
-      Build = IR::Build
+      Build = IR::Build  # :nodoc:
 
       # The scanline the console is drawing right now (VCOUNT, 0..227), as a {Value}
       # you can do arithmetic on. It's how a probe measures how far into a frame the

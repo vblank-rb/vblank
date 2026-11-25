@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A GAME'S FRAME IS THE GAME'S. A pass this busy keeps one frame with no song, and it must keep one
+# A game's frame is the game's. A pass this busy keeps one frame with no song, and it must keep one
 # with seven parts sounding over it, their loudness changing on every frame. One pass in a run of
 # several may be long where all seven notes start; a stretch of long passes means the song is
 # stealing frames.

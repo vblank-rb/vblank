@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # DIVIDING BY A NUMBER WRITTEN IN THE GAME, written where the sum is rather than as a call of
+          # Dividing by a number written in the game, written where the sum is rather than as a call of
           # the runtime's divide. Mixed into Lowering.
           #
           # The runtime's rt_div32 and rt_mod32 work a quotient out a bit at a time, 32 turns of a loop of

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT THE RUBY RUNTIME ALLOCATES A PASS. Every object a pass makes, and every byte of memory one
+# What the Ruby runtime allocates a pass. Every object a pass makes, and every byte of memory one
 # takes, is work for Ruby's garbage collector: memory taken counts toward the next collection as
 # objects do, and enough of it makes Ruby mark every object the process holds, which in a big game
 # stops it for several frames. Ways a busy game took a lot: a slice of one of the screen's arrays
@@ -13,6 +13,9 @@ require "test_helper"
 # tests this run plays.
 class TestRubyObjectsAPass < Minitest::Test
   MOST_OBJECTS_A_PASS = 40
+  # The game of forty sprites over a line's limit: a record a pass for each sprite on screen (RgPlaced,
+  # which the picture kept for a rebuild holds on to), and the budget above for everything else.
+  MOST_OBJECTS_A_PASS_WITH_SPRITES = 40 + MOST_OBJECTS_A_PASS
   # Less than one speaker's frame of sound at the slowest rate a console mixes at, kept as Ruby numbers.
   MOST_BYTES_A_PASS = 1024
 
@@ -112,6 +115,39 @@ class TestRubyObjectsAPass < Minitest::Test
     end
   end
 
+  # A picture drawn sixty times a pass, more times than a pass may allocate objects: each draw finds
+  # the picture's pixels (rg_picture_of), and must do so with no new object.
+  private def picture_drawn_sixty_times
+    built do
+      screen :bitmap
+      image(:dot, "#" => :white, "." => :red) { "#.\n.#" }
+      across = var :across, 0
+      game_loop do
+        across += 1
+        clear_screen :black
+        60.times { |row| blit :dot, (across + row) & 127, row * 2 }
+      end
+    end
+  end
+
+  # Forty sprites on one row of a Super Nintendo's screen, which shows thirty-two pieces a line: the
+  # rest are left out of each line they cross (rg_mark_slices_left_out), every pass, as they move.
+  private def sprites_over_the_line_limit
+    b = Builder.new(options: VBlank::Cartridge::Options.new(console: :snes))
+    b.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :white, "." => :red) { (["#.#.#.#."] * 8).join("\n") }
+      dots = Array.new(40) { |at| sprite :"dot#{at}", image: :dot, at: [at * 6, 50] }
+      across = var :across, 0
+      game_loop do
+        across.store!(across + 1)
+        dots.each_with_index { |dot, at| dot.move_to (at * 6) + (across & 7), 50 }
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   private def assert_allocates_little(program)
     a_pass = allocated_a_pass(program)
     assert_operator a_pass.objects, :<, MOST_OBJECTS_A_PASS, "objects allocated a pass"
@@ -132,6 +168,19 @@ class TestRubyObjectsAPass < Minitest::Test
 
   def test_a_fade_that_moves_every_pass_allocates_little_a_pass
     assert_allocates_little(fading_field)
+  end
+
+  def test_a_picture_drawn_many_times_allocates_little_a_pass
+    assert_allocates_little(picture_drawn_sixty_times)
+  end
+
+  # A line's pieces past its limit are worked out every pass with buffers kept from pass to pass: what
+  # is left is a record for each sprite on screen and a list of what is left out of each sprite cut.
+  def test_sprites_over_a_lines_limit_allocate_little_a_pass
+    a_pass = allocated_a_pass(sprites_over_the_line_limit)
+
+    assert_operator a_pass.objects, :<, MOST_OBJECTS_A_PASS_WITH_SPRITES, "objects allocated a pass"
+    assert_operator a_pass.bytes, :<, MOST_BYTES_A_PASS, "bytes of memory taken a pass"
   end
 
   def test_a_tune_allocates_little_a_pass

@@ -2,14 +2,18 @@
 
 require "stringio"
 
-# WHAT A TURN OF A LOOP COSTS, for each console's own cost test. A routine called once a pass goes
+# What a turn of a loop costs, for each console's own cost test. A routine called once a pass goes
 # round a loop of 64 turns, against the same routine going round 32, so what the two differ by is 32
 # turns and nothing else: the call, the setting up and the end are the same in both. The loop is a
 # `repeat` or a game's `while i < n` with `i += 1` last (a counted while, LoopForm#counted_while),
-# and its body sets a variable (:set) or reads a list at the loop's count into one (:read).
+# and its body sets a variable (:set) or reads a list at the loop's count into one (:read). A search
+# reads the list and asks whether to `break` (:break) or to go to its `next` round (:next) on an
+# item no slot holds, so every turn is made and asks. A Ruby `times` whose rounds the build folds
+# into one loop works four numbers out from its count each round, as the rounds written out would
+# hold them (:steps, PlainRuby::Counts::KnownRounds).
 module LoopCostGames
   # The loops measured: how each is written, and what its body does.
-  LOOPS = %i[repeat_set repeat_read while_set while_read].freeze
+  LOOPS = %i[repeat_set repeat_read while_set while_read while_break while_next steps].freeze
 
   # The turns of the longer loop and of the shorter.
   MORE_TURNS = 64
@@ -41,6 +45,30 @@ module LoopCostGames
           while i < turns
             s = words[i]
             i += 1
+          end
+        when :while_break
+          i = 0
+          while i < turns
+            break if words[i] == 2
+
+            c = 1
+            i += 1
+          end
+        when :while_next
+          i = 0
+          while i < turns
+            s = words[i]
+            i += 1
+            next if s == 2
+
+            c = 1
+          end
+        when :steps
+          turns.times do |k|
+            s += (k * 3) + 1
+            c += (k * 5) + 2
+            i ^= k + 7
+            s += 100 - k
           end
         end
       end

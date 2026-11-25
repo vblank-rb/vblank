@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/animate").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/animate").to_s)
 
 # The Animate example (examples/animate.rb): a spinning coin (a flipbook `sprite`
 # with frames:/rate:) you can also walk around. This confirms the example itself

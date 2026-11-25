@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST SET TO ONE VALUE (Runtime::Lists rt_list_fill), held to the interpreter by the checked run:
+# A list set to one value (Runtime::Lists rt_list_fill), held to the interpreter by the checked run:
 # a list declared full of a value, a whole list filled and a run of it, for each width of slot, and
 # a list whose first item has moved round its ring, so the run of slots it fills comes round to the
 # first slot.

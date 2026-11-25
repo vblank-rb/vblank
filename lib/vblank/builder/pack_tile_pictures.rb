@@ -2,7 +2,8 @@
 
 module VBlank
   class Builder
-    # A TILE OF A BACKGROUND FROM THE DATA PACK TAKING TURNS THROUGH PICTURES OF THE PACK:
+    #--
+    # A tile of a background from the data pack taking turns through pictures of the pack:
     #
     #   belt = tile_pictures :belt, tiles: { pack[:video].tile(0xF3) => pack[:belt].tiles(0, across: 16),
     #                                        pack[:video].tile(0xF4) => pack[:belt].tiles(16, across: 16) }
@@ -25,28 +26,33 @@ module VBlank
     # runs are made as a background is declared, so the group is declared before any background
     # drawn from its tiles' slot.
     #
-    # WITH THE PACK LEFT OUT the map is not known as the game is built, nor which banks and turns
+    # With the pack left out the map is not known as the game is built, nor which banks and turns
     # name the tile. So each background has a run for every bank of its colours, each holding the
     # tile turned all four ways, and the cells are pointed at them as the game starts
     # (IR::StartFile::Background#moving); a told cell naming a key is written as the run's tile
     # for its bank and turn (PackBackgrounds#pack_run_tile_read_at_start). The pictures are read
     # from the file as it starts too, in the bytes a run copies (IR::StartFile::PaintedTiles).
+    #++
     module PackTilePictures
       # The four ways a tile of such a background is turned, in the order a run read at start
       # holds them; a tile's place in it is IR::StartFile::MovingTile#turn_of.
-      TURNS = IR::StartFile::MovingTile::TURNS
+      TURNS = IR::StartFile::MovingTile::TURNS  # :nodoc:
 
       # A group as the builder keeps it: +keys+ the tiles (each [slot name, tile in the slot]),
       # +pictures+ each key's picture handles, +shown+ the number showing, and +parts+ every run
       # made for it so far (TilePictures::TilePictureRun), which grows as backgrounds are declared.
-      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast)
+      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast)  # :nodoc:
 
       private
 
-      # The routine `show` calls on a frame the picture changes: a copy into every run of the group.
+      # The routine `show` calls on a frame the picture changes: a copy into every list the group's
+      # runs show from, once each (the runs read at start share one), and every run marked changed.
       def emit_pack_tile_picture_copies(group)
+        copied = Set.new
         group.parts.each do |part|
-          part.list.copy_from(part.held, at: Build.binop(:*, group.shown.node, Build.int(part.bytes_shown)), count: part.bytes_shown)
+          if copied.add?(part.list.name)
+            part.list.copy_from(part.held, at: Build.binop(:*, group.shown.node, Build.int(part.bytes_shown)), count: part.bytes_shown)
+          end
           part.run.changed
         end
       end
@@ -142,7 +148,7 @@ module VBlank
       # A background drawn from +tiles+' slot is noted, so a group declared after it is refused.
       def record_pack_background_slot(tiles) = (@pack_background_slots ||= Set.new) << tiles.layout.name
 
-      # THE RUNS OF A BACKGROUND BUILT ALL-IN-ONE: for each group and each bank +cells+ (the
+      # The runs of a background built all-in-one: for each group and each bank +cells+ (the
       # Console::CellTile each cell names, that +moving+ says take turns) name, a run of each turn
       # of each key they name it in. Hands back the name of the run's tile for each CellTile.
       def declare_moving_pack_tiles(name, cells, moving, bank_lists)
@@ -156,7 +162,7 @@ module VBlank
         end
       end
 
-      # THE RUNS OF A BACKGROUND OF 16x16 CELLS BUILT ALL-IN-ONE (PackBackgrounds#big_pack_cells?):
+      # The runs of a background of 16x16 CELLS BUILT ALL-IN-ONE (PackBackgrounds#big_pack_cells?):
       # each cell of +cells+ (the four quarters of each, Console::CellTile, a quarter or more of
       # which +moving+ says take turns, all in one group) is a 16x16 picture of a run, for each group
       # and each bank: its turning quarters the group's picture, the rest the slot's tile, each
@@ -215,7 +221,7 @@ module VBlank
         drawn.each_with_index.to_h { |cell, at| [cell, Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1)] }
       end
 
-      # THE RUNS OF A BACKGROUND READ AS THE GAME STARTS (+where+, an IR::StartFile::Background):
+      # The runs of a background read as the game starts (+where+, an IR::StartFile::Background):
       # for each group and each bank of the slot, a run of each key turned each of the four ways,
       # its pictures read from the file. Hands back the run's tiles, in order, and +where+ told
       # which cells to point at them, +first+ being where they start among the background's tiles.
@@ -223,6 +229,13 @@ module VBlank
       # A run's pictures are places, two a byte, and a bank is only the colours the places are
       # shown in, so every bank's run of a group copies from one table of its pictures
       # (#painted_pictures_read_at_start), however many banks and backgrounds draw the group.
+      #
+      # And every one of those runs shows the same bytes: each key turned the four ways, the
+      # picture shown. So they show them from one list in memory (#pictures_shown_at_start), a
+      # `show` copies into it once, and each run sends it to its own tiles. A list for each run
+      # would hold the group's picture again for every bank of every background: a slot of sixteen
+      # banks drawn by a hundred rooms keeps it sixteen hundred times, more than a console's
+      # memory, where the all-in-one build keeps only the tiles its maps draw.
       def declare_pack_tile_runs_at_start(name, moving, where, first)
         tiles = []
         groups = moving.values.map(&:first).uniq
@@ -230,10 +243,11 @@ module VBlank
           keys = group.keys.length
           start = first + tiles.length
           held = painted_pictures_read_at_start(group)
+          shown_in = pictures_shown_at_start(group, held)
           where.bank_names.each_with_index do |list, bank|
             run = :"#{group.name}_run_#{group.parts.length}" # one for each background and bank
             group.parts << declare_tile_picture_run(run, count: keys * TURNS.length, colors: list, side: Original::Slot::TILE_SIDE,
-                                                         bytes: nil, fast: group.fast, held: held)
+                                                         bytes: nil, fast: group.fast, held: held, shown_in: shown_in)
             tiles.concat(Array.new(keys * TURNS.length) { |at| Messages::MadeNames.make(:tile_run_tile, run: run, number: at + 1) })
           end
           moving.filter_map do |tile, (each, key)|
@@ -248,6 +262,19 @@ module VBlank
       # starts. Declared the first time a background asks for it.
       def painted_pictures_read_at_start(group)
         (@pack_tile_pictures_at_start ||= {})[group.name] ||= declare_painted_pictures_read_at_start(group)
+      end
+
+      # The list every run of +group+ read at start shows its picture from: one picture of
+      # +held+, the first from power-on. Declared the first time a background asks for it.
+      def pictures_shown_at_start(group, held)
+        (@pack_tile_shown_at_start ||= {})[group.name] ||= begin
+          bytes_shown = group.keys.length * TURNS.length * TilePictures::TILE_BYTES
+          name = Messages::MadeNames.make(:tile_pictures_part, group: group.name, part: :shown)
+          at_boot(Build.list_new(name, bytes_shown, width: :byte, fast: group.fast, full_of: 0))
+          # At power-on, as a run of its own list is filled (TilePictures#declare_tile_picture_run).
+          at_boot(Build.list_copy(name, table: held.name, at: Build.int(0), count: bytes_shown))
+          DSL::List.new(self, name)
+        end
       end
 
       def declare_painted_pictures_read_at_start(group)

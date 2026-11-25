@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A COLOR GAME THAT KEEPS ADDING SCREENS AND SONGS (GBC#roomier_view, indexes_in_banks). The part
+# A color game that keeps adding screens and songs (GBC#roomier_view, indexes_in_banks). The part
 # of a Color cartridge always in view holds 16384 bytes, the framework's own code among them. A game
 # that fits there no other way keeps in the banks, too, the small tables that say where each thing
 # is: each song's entry, where each sprite picture's pieces and outline are, each screen's tiles and
@@ -101,7 +101,7 @@ class TestGBCIndexesInBanks < Minitest::Test
         sfx.play :zap3 if tick == 4
         call %i[hit_low hit_high], number: tick % 2
         showing = (showing + 1) % shown.length if (tick % SCREEN_FRAMES) == 0
-        case_var(:showing) { shown.each_with_index { |name, at| when_val at, name } }
+        call shown.each_with_index.to_h { |name, at| [at, name] }, number: :showing
       end
     end
     b.finalize_program

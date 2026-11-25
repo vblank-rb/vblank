@@ -59,7 +59,7 @@ module LayerTransparencyGames
     end
   end
 
-  # The same picture with the front layer a SPRITE instead — the other mechanism, and the
+  # The same picture with the front layer a sprite instead — the other mechanism, and the
   # author writes the same thing.
   private def sprite_program(amount)
     tile = SOLID_TILE
@@ -144,7 +144,7 @@ module LayerTransparencyGames
     end
   end
 
-  # THE TWO HALVES TOGETHER, which is where a hand-back could quietly be wrong: a fade
+  # The two halves together, which is where a hand-back could quietly be wrong: a fade
   # takes the blend, and the amount to give back is one the game has gone on working out
   # while the fade ran. Mist half thick when the flash ends comes back half thick — not at
   # the amount it started the game with.
@@ -153,7 +153,7 @@ module LayerTransparencyGames
   # draws with no flash in it at all.
   # The fade here is written by hand rather than walked by `flash_screen`, and that is the
   # point: it lands at the END of the frame's work, after the amount for this frame has
-  # already been sent. So a hand-back that gave the amount the game STARTED with would
+  # already been sent. So a hand-back that gave the amount the game started with would
   # hold for the whole frame, and the next, and every one after it.
   private def thickening_program(lifting:)
     tile = SOLID_TILE
@@ -179,7 +179,7 @@ module LayerTransparencyGames
   end
 
   # A banner scene that sees through nothing, handing over to a floor with a pane of glass
-  # over it. The pane is the SIXTH thing in the program's list of scenery and the SECOND on
+  # over it. The pane is the sixth thing in the program's list of scenery and the second on
   # the hardware, which is the whole of what this is about.
   private def scenes_that_take_turns
     tile = SOLID_TILE
@@ -209,15 +209,12 @@ module LayerTransparencyGames
       game_loop do
         tick += 1
         state = 1 if tick > SWITCH_AT
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   end
 
-  # A fade PLACED in the stack is still a fade — it takes the same blend unit, whatever it
+  # A fade placed in the stack is still a fade — it takes the same blend unit, whatever it
   # leaves alone — so the rule and the hand-back have to reach it too.
   private def placed_fade_program(amount, hold)
     tile = SOLID_TILE
@@ -244,11 +241,11 @@ module LayerTransparencyGames
 
   private def walked(program, frames) = (1..frames).map { |f| shown(program, *SCENERY_XY, frames: f) }
 
-  # A TINT does not take the blend, and the warning above sends people here — so it is a
+  # A tint does not take the blend, and the warning above sends people here — so it is a
   # promise the suite has to keep. On a tiled screen a tint moves the colors themselves
   # rather than asking the display to blend, so the layer keeps seeing through them: a
   # `flash_screen :red` reaches a game the water can be seen through and a white one does
-  # not. What shows is the layer blending TINTED colors, so it is neither the plain
+  # not. What shows is the layer blending tinted colors, so it is neither the plain
   # see-through value nor the solid one.
   private def tinted_program(amount, hold)
     tile = SOLID_TILE
@@ -268,15 +265,15 @@ module LayerTransparencyGames
   end
 end
 
-# SEEING THROUGH A LAYER TO WHAT IS BEHIND IT — water, glass, fog, a dimmed backdrop
+# Seeing through a layer to what is behind it — water, glass, fog, a dimmed backdrop
 # behind a menu.
 #
 # The author says it where the layer is opened (`layer :water, transparency: 40`) and
-# never learns which of the console's two mechanisms carried it. A layer of SCENERY is
-# blended by the display's own effect unit; a layer of SPRITES carries a bit in each
+# never learns which of the console's two mechanisms carried it. A layer of scenery is
+# blended by the display's own effect unit; a layer of sprites carries a bit in each
 # sprite's own table entry. Same keyword, and these prove the same picture.
 #
-# What it MEANS is what it looks like: whatever sits directly under the layer at a pixel
+# What it means is what it looks like: whatever sits directly under the layer at a pixel
 # shows through it, anything in front draws solid, and where the layer has a see-through
 # tile what is behind shows plain. Every one of those is what a reader guesses and also
 # what the console does, so the tests below read as the picture rather than as a rule.
@@ -292,7 +289,7 @@ class TestLayerTransparency < Minitest::Test
   # --- an amount the game works out (fog that thickens) ---
   #
   # A number the author writes is sent to the display once at boot and never again. An
-  # amount the GAME works out has to be sent again before every frame — so the same
+  # amount the game works out has to be sent again before every frame — so the same
   # keyword covers fog that thickens, water that gets murkier as you go down, a menu
   # backdrop that dims in. The author writes a variable where they wrote a number.
 
@@ -350,7 +347,7 @@ class TestLayerTransparency < Minitest::Test
     assert_includes error.message, "screen :tiled"
   end
 
-  # A SCREEN has one see-through layer, and the message names both. Two on different
+  # A screen has one see-through layer, and the message names both. Two on different
   # screens are fine (see test_layer_two_amounts.rb); these two are on the same one.
   def test_a_second_see_through_layer_on_the_same_screen_is_refused
     tile = SOLID_TILE
@@ -371,7 +368,7 @@ class TestLayerTransparency < Minitest::Test
     assert_includes err.string, "one see-through layer"
   end
 
-  # Two blocks for the same layer that disagree about the amount. Saying the SAME amount
+  # Two blocks for the same layer that disagree about the amount. Saying the same amount
   # twice is fine — it is the same fact said twice, not two facts.
   def test_the_same_layer_asked_for_two_amounts_is_refused
     tile = SOLID_TILE

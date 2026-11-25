@@ -15,27 +15,28 @@ and a test fails when the two differ.
 - `built_for?` — works: true when asked about :gba.
 - `screen_width` — works: 240 on a Game Boy Advance. 120 with `pixel_size: 2`. 160 on a game built with `variants: { gba: :color_screen }`, which is laid out for a Game Boy Color.
 - `screen_height` — works: 160 on a Game Boy Advance. 80 with `pixel_size: 2`. 144 with `variants: { gba: :color_screen }`.
-- `border` — works: with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at its own size in the middle of the screen, and the border fills the 40 columns at each side and the 8 rows above and below. Without `border`, the build draws a border of its own. A fade or a tint does not change the border. That build does not make a status bar, a light, a fade held to a rectangle or under a layer, a background bent row by row or one that turns, `pixelate`, `hide_sprites` or `read_scanline` yet, and refuses each. It gives the game 32 fewer sprites, which draw the border. Without the variant, `border` does nothing.
+- `border` — works: with `variants: { gba: :color_screen }`, the build shows the game's 160×144 screen at its own size in the middle of the screen, and the border fills the 40 columns at each side and the 8 rows above and below. Without `border`, the build draws a border of its own. A fade or a tint does not change the border, and `hide_sprites` does not hide it. A status bar is in the game's screen. That build does not make a light, a fade held to a rectangle or under a layer, a background bent row by row or one that turns, `pixelate` or `read_scanline` yet, and refuses each. It gives the game 32 fewer sprites, which draw the border. Without the variant, `border` does nothing.
 - `draw_place` — works: on `screen :bitmap, tear_free: true` only. The processor turns each point and fills each face a pixel at a time. Each `perspective:` setting is made.
 - `shading` — works: the processor finds each lit pixel's colour in a table the build makes from the shading, one load a pixel. Each pixel is the colour the shading gives, exactly.
 - `recolor` — works: a background that draws with more than one list the game changes has one group of 16 background colors for each of those lists. When a list changes, the build copies its colors into that group. A background that walks between areas is refused there: this build does not make it yet.
 - `sprite` — works: a sprite with `over_picture: true` on a painted screen is the console's own sprite. The painted picture uses half of the sprites' memory, so their pictures have 16K, not 32K. A sprite whose poses are drawn from different lists of colors is refused: this build draws all the poses of one sprite from one list. Use one sprite for the poses of each list.
 - `layers` — works: a see-through layer cannot hold a background and a sprite on one screen. The display mixes a see-through sprite with one thing behind it, not two. Over the layer's own background, the sprite cannot also show what is behind the layer. The build refuses such a layer.
 - `layer` — works: see `layers`.
-- `background` — works: `cells_in_front: true` is refused: an Advance keeps one priority for a whole background, and no priority for one cell. To put a whole background in front of the sprites, use `layers`. `above_row:` is refused: this build does not make it yet. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
+- `background` — works: `cells_in_front: true` is refused: an Advance keeps one priority for a whole background, and no priority for one cell. To put a whole background in front of the sprites, use `layers`. `above_row:` is refused: this build does not make it yet. `hide` and `show` switch the layer of the background off and on in the display settings. They use no window, so a game can hide a background and have a light. `show_only_inside` uses the display's second window. One background at a time can be held to a box. A game that holds one cannot also have a light, a status bar, a fade held to part of the screen, or a fade under a layer, because these need the same windows. With `held: true`, the cells a pass changes with `set_tile` wait in work memory and go into video memory together in the gap between frames, so they all show on the next frame. Up to 1024 changes wait. A pass that makes more writes the waiting ones at once.
 - `status_bar` — works: the bar takes one of the four background layers. A game with a bar cannot also have a light, a fade held to part of the screen, or a fade under a layer, because these need the same part of the display.
 - `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — works: it lists the ARM a routine was made into.
-- `entry` — works: raw ARM for the Advance's processor (`.claude/dsl/escape-hatch.md`).
+- `entry` — works: the game can write raw ARM instructions, the machine code of the Advance's processor.
 - `held` — works: the ten buttons a Game Boy Advance has, the shoulder buttons `:l` and `:r` among them. `:x` and `:y` are refused: it has no X or Y button. `player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. `player: :any` reads that one controller.
 - `pressed` — works: see `held`.
+- `pulled` — works: 0 or 100. Each button of a Game Boy Advance is on or off, so a button reads 100 while it is held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as `held` does.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
 - `players_connected` — works: always 1: a Game Boy Advance has one controller.
-- `rumble` — works: nothing is felt. A Game Boy Advance cartridge with a rumble motor is not made yet, so the game plays the same without it.
+- `rumble` — works: the cartridge carries a rumble motor, and the motor runs on the frames the pattern says. The build marks the cartridge so the emulator it is checked in runs a motor. Other emulators run one only for the few real cartridges they know. A game can read the `clock` and rumble too: the clock and the motor share the cartridge's port.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `enable_sound` — works: `main_volume:` sets the main volume of the sound chip to the nearest of its eight steps, from an eighth to all. At 0, the sound stays off. The square, wave and noise voices can also play at a half or a quarter of each step, so a quiet main volume is nearer. Recordings play at half or at all, whichever is nearer.
@@ -44,20 +45,17 @@ and a test fails when the two differ.
 
 These work as their group files say:
 
-`setting`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
+`setting`, `feature?`, `wait_vblank`, `halt`, `debug_halt`, `game_loop`, `once_a_frame`,
 `frames_since_power_on`, `each_pass`, `every`, `after`, `repeat`, `timer`, `pixel`, `fill_rect`,
-`dma_fill_rect`, `draw_rect_at`, `draw_column_at`, `clear_screen`, `inside`, `grid`, `camera`,
-`keep_showing`, `place`, `viewer`, `screen_spot`, `change_picture`, `fade`, `tint`, `fade_in`,
-`fade_out`, `flash_screen`, `fade_level`, `shake_screen`, `pixelate`, `pixelate_in`,
+`draw_rect_at`, `draw_column_at`, `clear_screen`, `inside`, `grid`, `camera`,
+`redraw_on_change`, `place`, `viewer`, `screen_spot`, `change_picture`, `fade`, `tint`,
+`fade_in`, `fade_out`, `flash_screen`, `fade_level`, `shake_screen`, `pixelate`, `pixelate_in`,
 `pixelate_out`, `pixelate_size`, `spotlight`, `iris_in`, `iris_out`, `iris_shut?`, `pulse`,
 `camera_follows`, `image`, `color`, `rgb`, `rgb8`, `colors`, `colors_in_use`, `colors_name_of`,
 `color_walk`, `mirror`, `upside_down`, `blit`, `draw_in_order`, `hide_sprites`,
 `picture_groups`, `pool`, `box`, `tiles`, `canvas`, `tile_pictures`, `sprite_tiles`,
 `draw_text`, `draw_number`, `text_width`, `text_height`, `menu`, `var`, `save_var`, `save_data`,
-`clock`, `saves_keep_everything`, `part`, `start_over`, `set`, `add`, `add_var`, `sub`,
-`sub_var`, `copy`, `negate`, `negate!`, `flip`, `flip!`, `abs`, `abs!`, `negate_abs`,
-`negate_abs!`, `clamp`, `clamp!`, `approach`, `approach!`, `list`, `func`, `call`, `scene`,
-`case_var`, `most_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`,
-`define_sound`, `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`,
-`release_music`, `music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`,
-`instrument`.
+`clock`, `saves_keep_everything`, `part`, `start_over`, `list`, `func`, `call`, `scene`,
+`max_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `define_sound`,
+`beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `release_music`,
+`music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.

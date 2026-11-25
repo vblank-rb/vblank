@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND BIGGER THAN ONE SCREENFUL OF GRID.
+# A background bigger than one screenful of grid.
 #
 # A tiled background scrolls over a grid of fixed size, and it used to be one size: 32x32 tiles,
 # 256x256 pixels. That is already larger than the screen and it wraps, so a small game never
@@ -14,7 +14,7 @@ require "differential"
 # Nothing in the program says which: an author writes the map they want and either it fits or
 # they are told plainly that it does not.
 #
-# WHAT MAKES THIS WORTH ITS OWN TESTS is that a map past one block is not laid out the way it
+# What makes this worth its own tests is that a map past one block is not laid out the way it
 # reads. The console reads a wide map as two 32x32 SQUARES side by side, and a 64x64 one as four
 # — top-left, top-right, bottom-left, bottom-right — so a cell's place in memory depends on
 # which quarter of the map it is in. Get that wrong and the picture is not scrambled everywhere;

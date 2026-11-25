@@ -10,7 +10,7 @@ VBlank.require_game_file "effects/packs/music_fade"
 VBlank.require_game_file "effects/packs/follow_camera"
 VBlank.require_game_file "effects/packs/pulse"
 VBlank.require_game_file "effects/packs/menu"
-VBlank.require_game_file "effects/packs/keep_showing"
+VBlank.require_game_file "effects/packs/redraw_on_change"
 
 module VBlank
   # The effect registry: how a verb gets added to the DSL from outside the
@@ -33,18 +33,18 @@ module VBlank
   #   - A "pack" that reached into an IR node or a register would need lowering in
   #     every backend, and would break the next one added.
   #
-  # So the test is: DOES A BACKEND HAVE TO KNOW ABOUT IT?
+  # So the test is: does a backend have to know about it?
   #
   #   No  -> it is a pack. Register it here.
   #   Yes -> it is KERNEL. Bake it into the library: a new IR node kind, its
   #          lowering in each backend, and a conformance fixture entry.
   #
-  # Said another way, and this is the quick version to carry around: a KERNEL
-  # primitive is a new thing the machine can DO. A pack is a new way to USE what it
+  # Said another way, and this is the quick version to carry around: a kernel
+  # primitive is a new thing the machine can do. A pack is a new way to use what it
   # already does. New capability is kernel; new convenience is a pack. If writing it
   # means opening a file under ir/backends/, it was never a pack.
   #
-  # Effects come in PAIRS across that line, and that is the shape to expect — the
+  # Effects come in pairs across that line, and that is the shape to expect — the
   # primitive is one register or one blend, and everything that makes it feel like a
   # game effect is a pack on top:
   #
@@ -74,7 +74,7 @@ module VBlank
   # Most packs have nothing to report and should not be made to — a pack that says
   # nothing is not a worse pack, and the default progress ignores everything, so nobody
   # has to ask whether anybody is listening. The rule is the same one that governs the
-  # rest of a pack: what it REPORTS may never change what it BUILDS. A pack that behaved
+  # rest of a pack: what it reports may never change what it builds. A pack that behaved
   # differently when somebody was watching would be a bug that only shows up in the mode
   # nobody tests.
   module Effects
@@ -102,9 +102,20 @@ module VBlank
         raise ArgumentError, "Effects.register needs a block: Effects.register(:#{name}) { ... }" unless body
 
         refuse_taken_verb!(name, :inline)
-        VERBS.define_method(name, &body)
+        VERBS.define_method(name, &verb_body(body))
         @verbs = @verbs.merge(name => :inline).freeze
         name
+      end
+
+      # The block a verb is made from. Ruby lets a method made from a plain block be called only
+      # on the Ractor that made it, and a game registers its verbs once, as it loads, while its
+      # tests may build it in any Ractor. So a block that keeps nothing of its own is copied into a
+      # shareable one. A block that keeps a value of its own (a local list, an object) cannot be,
+      # and still makes a verb for the Ractor that registered it.
+      private def verb_body(body)
+        Ractor.shareable_proc(&body)
+      rescue Ractor::IsolationError
+        body
       end
 
       # Add a module of verbs. This is the pack form: several related verbs, their
@@ -244,7 +255,7 @@ module VBlank
       Packs::FollowCamera,  # camera_follows — built on a background's own scrolling
       Packs::Pulse,         # pulse — a sprite that breathes, built on `sprite.scale`
       Packs::Menus,         # menu — a list, a selector and what each row does, built on `draw_text`
-      Packs::KeepShowing,   # keep_showing — a picture drawn when it changes, on every page of the screen
+      Packs::RedrawOnChange, # redraw_on_change — a picture drawn when it changes, on every page of the screen
     ].freeze
   end
 

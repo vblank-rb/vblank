@@ -24,10 +24,7 @@ module SceneDisplayModeGames
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -37,7 +34,7 @@ end
 
 # Per-scene bitmap<->tiled switching: a game can run one scene as a direct-color
 # BITMAP screen (a linear framebuffer — plain draws, software sprites) and another
-# as a TILED screen (a tilemap the console composites with hardware sprites), and
+# as a tiled screen (a tilemap the console composites with hardware sprites), and
 # switching scenes flips which display system is live. The classic shape is a
 # direct-color bitmap title handing off to a tiled hardware-sprite game.
 #
@@ -72,7 +69,7 @@ class TestSceneDisplayMode < Minitest::Test
   end
 
   # The per-scene mode is decided by what a scene declares, not by which scene was
-  # built before it. Here the TILED scene is declared (and built) first, so a leaky
+  # built before it. Here the tiled scene is declared (and built) first, so a leaky
   # global mode would infect the later BITMAP scene and make its sprite a hardware
   # one. Each scene's `sprite` picks its own backend from its own mode: the tiled
   # scene's is a hardware sprite, the bitmap scene's a software one.
@@ -95,10 +92,7 @@ class TestSceneDisplayMode < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :menu
-          when_val 1, :play
-        end
+        call({ 0 => :menu, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

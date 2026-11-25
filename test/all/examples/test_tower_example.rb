@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/tower").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/tower").to_s)
 
 # The tower example (examples/tower.rb): three floors, each a scene declaring its own :floor with
 # a map, tiles and walls of its own, climbed by their stairs, and a gate on the roof that A opens.

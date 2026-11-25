@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # The buffered-bounce example (examples/buffered_bounce.rb): the worked demo that
 # the tear-proof double-buffered screen is usable today with the fill/clear verbs.
@@ -17,7 +17,7 @@ class TestBufferedBounceExample < Minitest::Test
   BALL_COLORS = %i[yellow cyan magenta].freeze
 
   # VBlank.build runs the guardrails (raising on any fatal footgun) and the
-  # ROM-image validation, so a clean build IS the check.
+  # ROM-image validation, so a clean build is the check.
   def test_the_example_builds_clean
     rom = BufferedBounce.build_rom(out: nil, err: nil)
     assert_operator rom.size, :>, 0, "the built ROM should be non-empty"

@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# WHAT A PAUSED GAME'S WINDOW DOES WHILE IT WAITS (runtime/rg_pause.h). Nothing in a paused game
+# What a paused game's window does while it waits (runtime/rg_pause.h). Nothing in a paused game
 # moves, so the window sleeps until it has an event instead of drawing sixty times a second: a few
-# frames are drawn after each event, since Dear ImGui settles a hover or a click over several, and
-# one a frame while the menu or a window over the picture is open. The sleep has a timeout, so a file
+# frames are drawn after each event, so a window resized or uncovered is drawn again as it settles,
+# and one a frame while the menu or a window over the picture is open. The sleep has a timeout, so a file
 # still owed is written, and a pause with nothing owed sleeps for a tenth of a second at a time.
 class TestNativePause < Minitest::Test
   Zig = VBlank::IR::Backends::Native::Zig

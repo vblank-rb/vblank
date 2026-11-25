@@ -181,8 +181,12 @@ not the copy: the copy would fit a pass of three frames.
 
 ## Not done
 
-- **The chip paints 14,400 pixels in 617 lines**, 58 of its clocks a pixel. Three frames a pass
-  needs that under about 420 lines.
+- **The chip paints 14,400 pixels in about 463 lines** (measured 2026-11-22, from 617 before its
+  code for each column and each batch was put in its quick memory, `Runtime::ChipColumns`): 120
+  columns 120 high stay at four frames a pass, 104 columns 120 high went from four to three. Of
+  those lines, walking the picture's columns into bytes is about 130 and plotting them about 116;
+  the game's own code for its columns about 47, and making the tiles ready about 40. Three frames a
+  pass for 120 by 120 needs the chip about 50 lines quicker still.
 - **A game that fades to black, changes colours as it runs, or draws text in a picked colour** keeps
   the whole screen on (`Carries#letterboxes?`). The black of the bars would have to follow the
   colours, and the display's brightness is the fade's to set.

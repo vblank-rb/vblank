@@ -13,11 +13,14 @@ require_relative "backends/reference"
 require_relative "backends/run_comparison"
 require_relative "backends/sprite_names"
 require_relative "backends/loop_form"
+require_relative "backends/row_bends"
 require_relative "backends/lowering_plan"
 require_relative "backends/number_ranges"
 require_relative "backends/variable_use"
 require_relative "backends/control_flow"
 require_relative "backends/timer_steps"
+require_relative "backends/bend_schedule"
+require_relative "backends/list_pack_blocks"
 require_relative "backends/pool_layout"
 require_relative "backends/scenery_writes"
 require_relative "backends/draw_order_walk"
@@ -33,6 +36,7 @@ require_relative "backends/cartridge_faults"
 require_relative "backends/cartridge_start_file" # a cartridge is never handed a file as it starts
 require_relative "backends/cartridge_headless_run"
 require_relative "backends/cartridge_check"
+require_relative "backends/routine_size"
 require_relative "backends/gba"
 # Must load before native, js and ruby: each takes in the runtime features a game uses.
 require_relative "backends/runtime_features"
@@ -67,7 +71,7 @@ module VBlank
     # that writes a game out as a Ruby program to play fast, which Reference never
     # tries to be.
     #
-    # EVERY BACKEND IS FIRST-CLASS. `rake test` plays the suite once for each lowering — GBA (the
+    # Every backend is first-class. `rake test` plays the suite once for each lowering — GBA (the
     # cartridge), Native (the game as a desktop program), JS (the game as a web page), Ruby (the
     # game as a Ruby program) and GBC (the Color cartridge) — and checks each against Reference, so
     # a feature is not done until it works on all of them: a test that one of them cannot pass fails

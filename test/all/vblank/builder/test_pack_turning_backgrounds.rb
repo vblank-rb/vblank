@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_turning_background_games"
 
-# WHAT A GAME IS TOLD when it asks for a background of bytes from the data pack that cannot be
+# What a game is told when it asks for a background of bytes from the data pack that cannot be
 # made: a map of one byte a cell, or tiles of a byte a pixel (Builder::PackBackgrounds). What such
 # a background shows, turned and resized, is
 # test/console/gba/vblank/builder/test_pack_turning_backgrounds_on_the_advance.rb's, on the runs

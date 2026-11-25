@@ -3,7 +3,7 @@
 module VBlank
   module Original
     module Packing
-      # WHAT A FORMAT'S ROUTINE WRITES WITH, the same for every format, the library's and a port's:
+      # What a format's routine writes with, the same for every format, the library's and a port's:
       # the copy read with its fault past the end, the slot written with its fault past the end,
       # variables of the routine's own, and the bytes written counted toward the progress bar, with
       # a wait for the next frame every PROGRESS_BYTES so a shell can show how far it has got.
@@ -31,7 +31,7 @@ module VBlank
       # the build stops on (the first byte that does not fit, whether +expect_size+ or +write+ finds
       # it), and it finishes the block. This file is read as game code.
       #
-      # A ROUTINE'S COUNTERS ARE ITS LOCALS. A format's file is game code (VBlank.require_game_file),
+      # A routine's counters are its locals. A format's file is game code (VBlank.require_game_file),
       # so its routine is a method of a game file, and `block.repeat` is the game verb `repeat`
       # (DSL::PlainRuby::LocalNames::GAME_VERBS). The rewrite that reads every game file therefore
       # makes a local the routine changes inside a `block.repeat` into a variable of the unpacking,
@@ -135,7 +135,7 @@ module VBlank
         end
       end
 
-      # THE WORKINGS BEHIND A BlockKit, which only CopyReader holds: the variables a block is handed,
+      # The workings behind a BlockKit, which only CopyReader holds: the variables a block is handed,
       # the start and end of its routine, the progress count and the waits. A format never sees this.
       class BlockKitInternals
         # How many bytes a block writes between one wait for the next frame and the next.
@@ -171,7 +171,7 @@ module VBlank
           @format_building = nil
         end
 
-        # A WORKING LIST DECLARED AT A SHAPE ANOTHER DECLARATION OF ITS NAME DID NOT GIVE. Formats
+        # A working list declared at a shape another declaration of its name did not give. Formats
         # share a list of one name, and the build makes the list once, at the first declaration's
         # capacity and width, so a block of a format that declared it bigger would run off its end,
         # or would pass only while a format that declared it smaller runs second.
@@ -267,25 +267,26 @@ module VBlank
           end
         end
 
-        # WHAT A BLOCK MAY READ: from the copy's first byte to its end, or, for a block given its
+        # What a block may read: from the copy's first byte to its end, or, for a block given its
         # place in one file of a copy that is several (+file+, a FileReader), from that file's first
         # byte to its end. So a block read at a place worked out as it runs cannot read on into the
         # next file. The block's routine checks each read against the two ends (#outside_block_reads),
         # the same two tests whether the block reads the whole copy or one file.
         #
-        # What a block is handed, set before its routine is called.
-        def emit_block_arguments(at:, slot:, start:, count:, format_number:, file: nil)
-          routine_variable(:read_first).store!(file ? file.start : 0)
-          routine_variable(:read_ends).store!(file ? file.start + file.size : copy.length)
-          # The file's number, 1 first, or 0 for the whole copy.
-          routine_variable(:read_file).store!(file ? file.number + 1 : 0)
-          routine_variable(:from).store!(at)
-          routine_variable(:to).store!(slot.place(start))
-          routine_variable(:ends).store!(slot.place(slot.byte_size))
-          routine_variable(:slot_first).store!(slot.place(0))
-          routine_variable(:slot_number).store!(slot.number)
-          routine_variable(:count).store!(count)
-          routine_variable(:format_number).store!(format_number)
+        # What a block is handed, set before its routine is called: each variable of the routine's
+        # and what it is set to, in the order they are set (Original::StepTables stores them).
+        def block_arguments(at:, slot:, start:, count:, format_number:, file: nil)
+          [[routine_variable(:read_first), file ? file.start : 0],
+           [routine_variable(:read_ends), file ? file.start + file.size : copy.length],
+           # The file's number, 1 first, or 0 for the whole copy.
+           [routine_variable(:read_file), file ? file.number + 1 : 0],
+           [routine_variable(:from), at],
+           [routine_variable(:to), slot.place(start)],
+           [routine_variable(:ends), slot.place(slot.byte_size)],
+           [routine_variable(:slot_first), slot.place(0)],
+           [routine_variable(:slot_number), slot.number],
+           [routine_variable(:count), count],
+           [routine_variable(:format_number), format_number]]
         end
 
         # The start of a block's routine: the cursor at its first byte, no size expected yet.
@@ -344,7 +345,7 @@ module VBlank
           false
         end
 
-        # Whether the block may not read the copy at +at+ (#emit_block_arguments): a test the routine
+        # Whether the block may not read the copy at +at+ (#block_arguments): a test the routine
         # makes.
         def outside_block_reads(at) = at < routine_variable(:read_first) || at >= routine_variable(:read_ends)
 

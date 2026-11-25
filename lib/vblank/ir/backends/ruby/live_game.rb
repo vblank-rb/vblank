@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Ruby
-        # A GAME BUILT AS RUBY, IN THIS PROCESS, to be played live: the printed program and its
+        # A game built as Ruby, in this process, to be played live: the printed program and its
         # runtime made into a class of its own each time, so two games never share a thing, with
         # the live driver (runtime/rg_live.rb) as the machine it runs on.
         #
@@ -34,7 +34,7 @@ module VBlank
             @program = program
           end
 
-          # A CLASS OF THE GAME'S RUBY THAT GAMES IN SEVERAL RACTORS ARE EACH MADE FROM (#initialize's
+          # A class of the game's Ruby that games in several ractors are each made from (#initialize's
           # +game_class+): made once, its constants made shareable, so a Ractor can read them.
           #
           # Why one class and not one in each Ractor: what YJIT compiles is kept for the class's
@@ -104,7 +104,7 @@ module VBlank
           rescue @game.class::RgFault => e
             raise IR::ProgramError, e.message
           end
-          # THE GAME'S SAVE MEMORY, for whoever keeps it in a file (Live::Session): how many bytes it has
+          # The game's save memory, for whoever keeps it in a file (Live::Session): how many bytes it has
           # (none for a game with no save), the bytes as a String, and a file's bytes put in as the game starts.
           # +save_file_due?+ is asked once a frame, and +save_file_written+ says the file holds it now.
           def save_size = @game.rg_live_save_size
@@ -129,7 +129,7 @@ module VBlank
           # lists: #state's +vars+, cheaply enough to ask each frame of a game whose lists are large.
           def vars = @game.rg_live_vars
 
-          # CALLS INTO THE RUNTIME, COUNTED FOR A TEST THAT ASKS. A test of how much work a pass does
+          # Calls into the runtime, counted for a test that asks. A test of how much work a pass does
           # counts it, since a count is the same on a busy machine as on an idle one where a time is
           # not: how often the runtime's routines +names+ (`:rg_set_pixel`) are called from now on,
           # read back by #call_counts. Each named routine is wrapped, on this game alone, in one that

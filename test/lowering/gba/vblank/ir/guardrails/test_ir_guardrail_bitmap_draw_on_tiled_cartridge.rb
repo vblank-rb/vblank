@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/ir/guardrails/test_ir_guardrail_bitmap_draw_on_tiled"
 
-# The footgun the BitmapDrawOnTiled guardrail exists for, PROVED on the emulated console
+# The footgun the BitmapDrawOnTiled guardrail exists for, proved on the emulated console
 # before any guardrail is involved. It builds the ROM straight from the builder's IR, not
 # through VBlank.build, so it bypasses the validation pass and keeps proving the hardware
 # behavior now that the guardrail stops such a program from being built. The guardrail's own

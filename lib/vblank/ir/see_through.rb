@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # THE LAYERS A PROGRAM CAN BE SEEN THROUGH, and how an amount becomes a mix.
+    # The layers a program can be seen through, and how an amount becomes a mix.
     #
     # A display blends a see-through layer with what is behind it as it draws, taking a
     # share of each: so much of the layer, so much of what is under it, added together
@@ -28,10 +28,11 @@ module VBlank
         layers(program).find { |node| node.name == name }
       end
 
-      # The see-through layers +screenful+ (an IR::Stacking screenful) shows something of.
-      # A screen can show one; a game can have one on each of its screens.
+      # The see-through layers +screenful+ (an IR::Stacking screenful) shows something of, or can:
+      # a sprite the game can put in a layer (`put_in_layer`) is counted in it as it is in the layer
+      # it was declared in. A screen can show one; a game can have one on each of its screens.
       def on_screen(screenful, layers)
-        held = (screenful.scenery + screenful.objects).map(&:layer)
+        held = screenful.scenery.map(&:layer) + screenful.objects.flat_map { |node| [node.layer, *node.layers] }
         layers.select { |layer| held.include?(layer.name) }
       end
 

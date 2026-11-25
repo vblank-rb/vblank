@@ -31,7 +31,7 @@ module ListFillWordGames
   READINGS = %i[first before inside after last held].freeze
 end
 
-# A LIST SET TO ONE VALUE IN ONE STEP: `list.fill value`, or a run of it, `list.fill value,
+# A list set to one value in one step: `list.fill value`, or a run of it, `list.fill value,
 # from: f, count: n`. Clearing a box a game letters text into is the case: thousands of bytes
 # set to one value when the box opens, which a loop setting them one at a time spends most of
 # a frame on. The same fills on the Advance's cartridge, and what one costs there, are in
@@ -60,13 +60,45 @@ class TestListFillWord < Minitest::Test
     assert_equal [0, 0, -1, 0, 0, SIZE], interpreted(game)
   end
 
+  # Wider slots take the value's low bytes, as many as a slot keeps: a list of halves and one of
+  # words, each declared full of a number below nought, then a run of each filled with a number
+  # worked out as the game runs. A list of more than 256 is made full too.
+  def test_halves_and_words_are_filled_with_the_low_bytes_of_the_value
+    builder = Builder.new
+    builder.instance_eval do
+      halves = list :halves, capacity: 40, width: :half, full_of: -3
+      words = list :words, capacity: 40, width: :word, full_of: -70_000
+      long = list :long, capacity: 300, width: :half, full_of: 0x1234
+      shade = var :shade, 0x12345
+      last = var :last, 0
+      readings = %i[half_first half_run half_after word_first word_run word_after].to_h { |name| [name, var(name, 0)] }
+      game_loop do
+        halves.fill shade, from: 7, count: 30
+        words.fill shade * -3, from: 7, count: 30
+        readings[:half_first] = halves[6]
+        readings[:half_run] = halves[36]
+        readings[:half_after] = halves[37]
+        readings[:word_first] = words[0]
+        readings[:word_run] = words[7]
+        readings[:word_after] = words[39]
+        last = long[299]
+      end
+    end
+    builder.finalize_program
+    run = game_player.run(builder.program, frames: 3)
+
+    assert_equal [-3, 0x2345, -3, -70_000, -0x12345 * 3, -70_000],
+                 %i[half_first half_run half_after word_first word_run word_after].map { |name| run[name] }
+    assert_equal 0x1234, run[:last]
+  end
+
   private def refused(&game)
     builder = Builder.new
     assert_raises(ArgumentError) { builder.instance_eval(&game) }.message
   end
 
   def test_a_fill_that_cannot_be_made_is_a_friendly_error
-    assert_match(/holds 4/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: 2, count: 3 })
+    assert_match(/room for 4/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: 2, count: 3 })
     assert_match(/from: -1/, refused { list(:l, capacity: 4, width: :byte).fill 1, from: -1, count: 2 })
     assert_match(/read-only/, refused { table(:t, [1, 2], width: :byte).fill 0 })
     assert_match(/fraction/, refused { list(:l, capacity: 4).fill var(:f, 1.5) })

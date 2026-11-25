@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "comparison_games"
 
-# A PLAYTHROUGH THAT WAS NOT ASKED FOR PICTURES WRITES NO FILE. What it would get wrong is
+# A playthrough that was not asked for pictures writes no file. What it would get wrong is
 # writing them somewhere nobody named — a folder of its own beside whatever ran it — so the
 # test plays one from inside an empty folder and looks at what is in it afterwards.
 class TestPlaythroughWritesNoFile < Minitest::Test

@@ -55,7 +55,7 @@ class TestConsoleLineUp < Minitest::Test
       image(:floor, "#" => :blue) { SOLID_TILE }
       tiles :set, "#" => :brick, "." => :floor
       bg = background :bg, tiles: :set, map: FULL_MAP # square, which a turning map must be
-      game_loop { bg.rotate bg.angle + 5 }
+      game_loop { bg.rotate! bg.angle + 5 }
     end
 
     assert_equal BOOT_FRAMES[:bitmap], measured_offset(bitmap, "OFSBMP"), "bitmap boot cost changed"
@@ -88,7 +88,7 @@ class TestConsoleLineUp < Minitest::Test
     assert_backends_agree(over_budget(tear_free: true), frames: 6, name: "SLOW", keys: [:right])
   end
 
-  # THE FRAME A PASS ENDS ON SHOWS THE PASS BEFORE IT. The game finishes a pass part-way down a
+  # The frame a pass ends on shows the pass before it. The game finishes a pass part-way down a
   # frame, and the page it drew is shown from the next frame on, so on that one frame the count of
   # passes is one more than the picture's. Read pass by pass, every frame agrees, that one too:
   # each frame over several passes is compared here with no second try. A fill that got a little
@@ -120,7 +120,7 @@ class TestConsoleLineUp < Minitest::Test
     (9..20).each { |frame| assert_backends_agree(program, frames: frame, console_frames: frame, name: "SLOWMOVE") }
   end
 
-  # A TILED GAME WHOSE PASS TAKES SEVERAL FRAMES shows the passes counted a frame earlier too, and
+  # A tiled game whose pass takes several frames shows the passes counted a frame earlier too, and
   # the interpreter shows the scroll and the sprites a pass late on every console (see "Which
   # frame's numbers the picture was drawn from" in .claude/rules/testing.md), so it is played one
   # pass further. Read by the passes counted on the frame itself, every frame inside a pass was a
@@ -187,7 +187,7 @@ class TestConsoleLineUp < Minitest::Test
     assert_operator ran, :<, 6, "the console reached its loop late, and the interpreter played the passes it managed"
   end
 
-  # ...and then it draws the same picture WHILE STILL MOVING, which is the thing a fixed
+  # ...and then it draws the same picture while still moving, which is the thing a fixed
   # offset could not do. Every frame is compared, so a rule that happened to suit one of
   # them cannot pass.
   def test_a_game_that_boots_late_still_matches_frame_for_frame
@@ -230,10 +230,7 @@ class TestConsoleLineUp < Minitest::Test
         background :bg, tiles: :set, map: FULL_MAP
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     err = assert_raises(ArgumentError) { console_frames_for(prog, 4) }

@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/two_rooms").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/two_rooms").to_s)
 
 # examples/two_rooms.rb built for the desktop shows the interpreter's picture pixel for pixel,
 # frame by frame, while the viewer turns and flies: the far room is drawn through the doorway's

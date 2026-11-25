@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # A SUPER NINTENDO TILE'S BYTES, from its pixels. Each of the 64 pixels is a place in a list
+        # A Super Nintendo tile's bytes, from its pixels. Each of the 64 pixels is a place in a list
         # of sixteen colours (0 to 15), row by row. The console keeps the four bits of a place in
         # four planes: each row's bits 0 and 1 as two bytes, all eight rows, then bits 2 and 3 the
         # same way. The leftmost pixel is the top bit of each byte: 32 bytes.

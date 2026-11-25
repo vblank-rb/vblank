@@ -3,14 +3,14 @@
 require "test_helper"
 require "prism"
 
-# THE LINE THROUGH THE SOUND MODULE, which its own comment draws: the musical half is what a
+# The line through the sound module, which its own comment draws: the musical half is what a
 # "beep" or a note means, and every backend reads it; Backends::GameBoySound is the bit patterns of
 # the sound chip two consoles have, and only the lowerings for those two have any business there.
 #
 # The comment said that before this test did, and the comment was WRONG — twice. The headless
 # interpreter was asking Registers how loud a wave note is, and a guardrail that runs before
 # any cartridge exists was asking it for the lowest note a square voice reaches. Neither wanted
-# an encoding. Both wanted a LIMIT: the wave voice has five loudnesses, the square voices stop
+# an encoding. Both wanted a limit: the wave voice has five loudnesses, the square voices stop
 # at 64 Hz. Those are facts about the console every backend has to agree on, so they moved out
 # to the shared half where anything may read them.
 #

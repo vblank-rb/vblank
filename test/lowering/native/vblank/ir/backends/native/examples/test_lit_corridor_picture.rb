@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/lit_corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lit_corridor").to_s)
 
 # examples/lit_corridor.rb built for the desktop shows the interpreter's picture pixel for pixel,
 # frame by frame, while the viewer flies down the corridor and turns, and the lamp flickers: the

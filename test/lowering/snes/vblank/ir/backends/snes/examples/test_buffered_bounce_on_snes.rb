@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # examples/buffered_bounce.rb on a Super Nintendo: three balls on a tear-free screen, cleared and
 # repainted every pass, bouncing off the bigger screen's walls, held to the interpreter — every

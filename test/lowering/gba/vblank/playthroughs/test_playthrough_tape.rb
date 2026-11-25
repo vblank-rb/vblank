@@ -4,9 +4,9 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 require "zlib"
-require VBlank.root.join("examples/hero").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/hero").to_s)
 
-# A TAPE: THE PRESSES OF A PLAYTHROUGH, WRITTEN DOWN. A script says what to do; a tape says
+# A tape: the presses of a playthrough, written down. A script says what to do; a tape says
 # what was done — which buttons were down on each frame, and the frame each named moment fell
 # on. Playing a script makes one, and any cartridge can be fed one in place of a script, which
 # is what lets two cartridges be given exactly the same presses on exactly the same frames.
@@ -58,7 +58,7 @@ class TestPlaythroughTape < Minitest::Test
     end
   end
 
-  # THE TAPE PLAYS THE GAME THE SCRIPT PLAYED: the same moments on the same frames, and at
+  # The tape plays the game the script played: the same moments on the same frames, and at
   # each the same picture and the same numbers.
   def test_a_tape_plays_back_what_the_script_played
     cartridge = hero_cartridge
@@ -74,7 +74,7 @@ class TestPlaythroughTape < Minitest::Test
     assert_equal Hero::START_X + 40, from_tape[:walked][1], "and it did walk"
   end
 
-  # ...ON EVERY FRAME, not only at the ones somebody thought to name. A script that names each
+  # ...ON every frame, not only at the ones somebody thought to name. A script that names each
   # of thirty frames of walking gives a tape that names them too, and the picture on every one
   # of them is the picture the script showed.
   def test_a_tape_shows_the_same_picture_on_every_frame
@@ -98,7 +98,7 @@ class TestPlaythroughTape < Minitest::Test
     refute_equal from_script[:walking_0][0], from_script[:walking_29][0], "and the picture did change as he walked"
   end
 
-  # THE TEXT OF A TAPE, whole: what it is, what it was recorded on, where it started, then a
+  # The text of a tape, whole: what it is, what it was recorded on, where it started, then a
   # line for each stretch of frames with the same buttons down and a line for each moment.
   # A hold of twenty frames is one line, and so are two waits that run on from each other.
   # The checksum is of the cartridge's own bytes, as a file of it holds them.
@@ -123,7 +123,7 @@ class TestPlaythroughTape < Minitest::Test
     assert_equal ["10 -", "1 a", "1 -", "20 right up", "moment walked", "3 -"], text.lines(chomp: true).drop(4)
   end
 
-  # A SCRIPT THAT WATCHED THE GAME LEAVES A TAPE THAT ONLY COUNTS: what is written down is the
+  # A script that watched the game leaves a tape that only counts: what is written down is the
   # frames the wait turned out to be. The game's first tick is on its second frame, so it has
   # ticked fifty times on frame 51: five frames waited, then forty-six with RIGHT down. The
   # tape needs nothing to watch, and played again it stops where the script stopped.
@@ -158,7 +158,7 @@ class TestPlaythroughTape < Minitest::Test
     end
   end
 
-  # A TITLE IS WHATEVER BYTES THE CARTRIDGE'S HEADER HOLDS, and a cartridge somebody else made
+  # A title is whatever bytes the cartridge's header holds, and a cartridge somebody else made
   # can hold anything there. On a tape it is a line for a person to read, so what cannot be
   # printed is written as `?` — and the tape still reads back as itself.
   def test_a_cartridge_title_that_cannot_be_printed_still_makes_a_tape_that_reads_back
@@ -170,7 +170,7 @@ class TestPlaythroughTape < Minitest::Test
     assert_equal tape, Tape.parse(tape.to_s)
   end
 
-  # A TAPE RECORDED ON ONE CARTRIDGE PLAYS ON ANOTHER, which is the point of one. What it says
+  # A tape recorded on one cartridge plays on another, which is the point of one. What it says
   # it was recorded on is for a person to read, and nothing holds the tape to it.
   def test_a_tape_recorded_on_one_cartridge_plays_on_another
     script = VBlank.playthrough "walk" do
@@ -216,7 +216,7 @@ class TestPlaythroughTape < Minitest::Test
     assert_equal tape.steps, played.tape.steps, "and it is the tape its own playing makes"
   end
 
-  # A TAPE CUT AT A FRAME IS THE SAME PRESSES UP TO THAT FRAME AND NO FURTHER, which is how a
+  # A tape cut at a frame is the same presses up to that frame and no further, which is how a
   # frame part way through is got back to. A hold the frame falls inside is cut short. A
   # moment is kept when the frame it names is still on the tape — the very last frame
   # included — and dropped when it is not.
@@ -254,7 +254,7 @@ class TestPlaythroughTape < Minitest::Test
     assert_equal 25, ticks_after.call(whole) - ticks_after.call(whole.up_to(15)), "twenty-five frames fewer, twenty-five ticks fewer"
   end
 
-  # WHAT WAS DOWN ON A RANGE OF FRAMES, a stretch for each run with the same buttons down. A
+  # What was down on a range of frames, a stretch for each run with the same buttons down. A
   # moment between two lines of the same buttons is no frames long, so it does not split a
   # run; and a run that starts before the range or ends after it is cut to the range.
   def test_a_tape_says_what_was_down_on_a_range_of_frames

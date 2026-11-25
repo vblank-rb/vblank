@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # FROM THE PROGRAM'S FIRST INSTRUCTION TO THE GAME'S FIRST LINE.
+          # From the program's first instruction to the game's first line.
           #
           # Whatever loaded the program (the BIOS from a disc, an emulator, a loader over a serial cable)
           # jumps to its entry point with the stack pointer set and nothing else promised. So the
@@ -14,7 +14,7 @@ module VBlank
           # It makes no call into the BIOS, then or later, so the program behaves the same whichever BIOS
           # is in the console, or none.
           #
-          # THE INTERRUPT HANDLER. On an interrupt the R3000 jumps to 80000080h, in the part of RAM the
+          # The interrupt handler. On an interrupt the R3000 jumps to 80000080h, in the part of RAM the
           # BIOS's kernel keeps for itself. The runtime writes four instructions there that jump to its own
           # handler (Frame#emit_interrupt): a LUI and an ORI to put the handler's address in k0, a JR k0,
           # and a NOP for its delay slot. k0 is the one register the handler may change before it has
@@ -22,9 +22,9 @@ module VBlank
           # words an interrupt runs and not the BIOS's, which it may still hold
           # (#emit_instruction_cache_emptied).
           #
-          # THE BUTTONS HELD FROM POWER-ON are read before anything that takes a frame: a player's hand is
+          # The buttons held from power-on are read before anything that takes a frame: a player's hand is
           # on the pad before the console is on. They are the first pass's (Frame::HELD), kept in s0 until
-          # the game's region of RAM is cleared.
+          # the game's region of RAM is cleared, and the third and fourth players' on the stack.
           module Boot
             module_function
 
@@ -45,31 +45,62 @@ module VBlank
               emit_instruction_cache_on(asm, h)
               asm.lui(:s1, h::IO >> 16) # s1: the ports, for the rest of the boot
               emit_interrupts_quiet(asm, h)
-              emit_port_word(asm, h::TIMER1_MODE, h::TIMER1_COUNTS_LINES) # for Frame::END_LINES
+              # For Frame::END_LINES, and, raising its interrupt at its target, for Strikes.
+              timer1 = h::TIMER1_COUNTS_LINES | (Strikes.strikes?(memory) ? h::TIMER1_EVERY_TARGET : 0)
+              emit_port_word(asm, h::TIMER1_MODE, timer1)
               emit_handler_installed(asm, h)
               emit_instruction_cache_emptied(asm, h)
               emit_counting_on(asm, h) if counted
               asm.jal("rt_pads_start")
-              asm.jal("rt_buttons_now")
+              asm.jal("rt_pads_now")
               asm.move(:s0, :v0)
+              pads = Pads.pads(memory)
+              # The third and fourth players' buttons wait on the stack, which the clearing leaves alone.
+              if pads == 4
+                asm.addiu(:sp, :sp, -4)
+                asm.sw(:v1, 0, :sp)
+              end
               emit_sound_quiet(asm, h)
               emit_graphics_chip(asm, h)
               emit_region_cleared(asm, memory)
               asm.sw(:s0, Runtime.at(memory, Frame::HELD), :gp)
+              emit_other_players_from_power_on(asm, memory, pads) if pads > 1
+              asm.li(:t0, 1)
+              asm.sw(:t0, Runtime.at(memory, Pads::READ_AT_POWER_ON), :gp)
               # Must start after the region and the scratchpad are cleared, which would wipe its state. The
               # chip's drawing settings are its first commands.
               asm.jal("rt_draw_list_start")
               emit_drawing_settings(asm, h)
               asm.jal("rt_start")
               emit_counting_handed_over(asm, memory) if counted
-              emit_interrupts_on(asm, h, counted: counted)
+              emit_interrupts_on(asm, h, counted: counted, strikes: Strikes.strikes?(memory))
               # The game starts as a frame starts, so its first pass ends in a frame after the one the
-              # program was loaded in, where a reader of the run finds it waiting.
+              # program was loaded in, where a reader of the run finds it waiting. It waits for two
+              # blanks: the pads' reading the second begins is the second pass's buttons (Pads), and the
+              # first comes too soon after power-on for the pads to have moved on from the buttons held
+              # then, which the first pass has already.
+              asm.jal("rt_sleep_until_vblank")
               asm.jal("rt_sleep_until_vblank")
               asm.jal(main)
               asm.label("rt_main_returned")
               asm.j("rt_halt")
               emit_gp0_port_word(asm, h)
+            end
+
+            # The players past the first, from power-on, in a game that reads them (Pads.pads): the third and
+            # fourth's buttons off the stack, and the players connected counted from the buttons held, as the
+            # interpreter counts a button held from the start.
+            def emit_other_players_from_power_on(asm, memory, pads)
+              if pads == 4
+                asm.lw(:v1, 0, :sp)
+                asm.addiu(:sp, :sp, 4)
+                asm.sw(:v1, Runtime.at(memory, Pads::TAP_HELD), :gp)
+              else
+                asm.move(:v1, :zero)
+              end
+              asm.jal("rt_pads_connected") { asm.move(:v0, :s0) }
+              asm.lw(:t0, Runtime.at(memory, Pads::PAD_CONNECTED), :gp)
+              asm.sw(:t0, Runtime.at(memory, Pads::CONNECTED), :gp)
             end
 
             # rt_gp0_port_word: the word in a0 stored to the graphics chip's drawing port by the processor,
@@ -78,7 +109,7 @@ module VBlank
             # pictures into video RAM at power-on (Paint's rt_paint_upload), and the faces of a place
             # (Faces#emit_port_command says why). Everything else drawn goes in that list.
             #
-            # A COMMAND OF SEVERAL WORDS is sent whole: its first word through rt_gp0_port_word, and the
+            # A command of several words is sent whole: its first word through rt_gp0_port_word, and the
             # rest stored to GP0 straight after, through t1, which it leaves holding the ports' base. The
             # chip signals it has no room for a command's last word until it holds the whole command
             # (Beetle PSX measured: a copy into video RAM, asked for between its words, waited for ever).
@@ -94,7 +125,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # THE INSTRUCTION CACHE ON. The processor keeps the last 4K of code it ran in a cache inside
+            # The instruction cache on. The processor keeps the last 4K of code it ran in a cache inside
             # itself, and runs code from there without going out to RAM for each instruction, but only
             # once the cache control register (FFFE0130h) allows it. Sony's BIOS sets it to 0001E988h
             # before it starts a program (psx-spx, "Cache Control"), so a program loaded from a disc or by
@@ -133,7 +164,7 @@ module VBlank
               asm.sw(:zero, 12, :t3)
             end
 
-            # THE INSTRUCTION CACHE EMPTIED, so the handler just written is the one an interrupt runs.
+            # The instruction cache emptied, so the handler just written is the one an interrupt runs.
             #
             # The cache holds copies of the instructions the processor ran last, and a word stored to RAM
             # does not reach the copy. A console that took an interrupt under its BIOS has the BIOS's
@@ -147,7 +178,7 @@ module VBlank
             # nothing; then, in its ordinary mode (800h), a nought is stored over every word. That is the
             # BIOS's own FlushCache, step for step (psx-spx, "CPU Specifications", cache isolation).
             #
-            # THREE THINGS IT MUST MIND. It runs from the uncached mirror of RAM (the same bytes at
+            # Three things it must mind. It runs from the uncached mirror of RAM (the same bytes at
             # A0000000h as at 80000000h, never fetched through the cache), since a processor with its
             # cache isolated runs whatever the cache holds and asks RAM for nothing; so it is written with
             # no jump that names an address, only branches, which count from where they are. It touches
@@ -255,7 +286,7 @@ module VBlank
               end
             end
 
-            # THE FRAMES SETTING UP TAKES, COUNTED IN k1. The region the interrupt keeps FRAMES in is not
+            # The frames setting up takes, counted in k1. The region the interrupt keeps FRAMES in is not
             # cleared yet, and is cleared later, so while setting up the count is kept in k1, a register that
             # is the interrupt's alone (R3000::REGISTERS): nought means the interrupt does all its work, and
             # anything else that it only counts blanks, k1 being one more than the blanks counted
@@ -283,8 +314,8 @@ module VBlank
             # processor told to take them. +counted+ keeps a blank that began while setting up handed its
             # count over waiting (#emit_counting_handed_over), so the interrupt counts it as soon as it is on,
             # and clears only the pad's, which the pad's reading while setting up left behind with no
-            # conversation of the interrupt's under way.
-            def emit_interrupts_on(asm, h, counted: false)
+            # conversation of the interrupt's under way. +strikes+ lets the line timer's through too (Strikes).
+            def emit_interrupts_on(asm, h, counted: false, strikes: false)
               asm.lui(:t1, h::IO >> 16)
               if counted
                 asm.li(:t0, ~h::IRQ_PAD & 0xFFFF_FFFF)
@@ -292,7 +323,7 @@ module VBlank
               else
                 asm.sw(:zero, h::I_STAT & 0xFFFF, :t1)
               end
-              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD)
+              asm.li(:t0, h::IRQ_VBLANK | h::IRQ_PAD | h::IRQ_TIMER2 | (strikes ? h::IRQ_TIMER1 : 0))
               asm.sw(:t0, h::I_MASK & 0xFFFF, :t1)
               asm.li(:t0, h::SR_INTERRUPTS_ON)
               asm.mtc0(:t0, R3000::COP0_STATUS)

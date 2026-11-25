@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A ROUTINE OF A POOL THAT WALKS ITS OWN POOL knows which thing it runs for at no cost. Its thing
+# A routine of a pool that walks its own pool knows which thing it runs for at no cost. Its thing
 # is kept for the walk by the store every walk makes before it starts (DSL::Pool#build_routine_body),
 # so a routine called many times a pass pays nothing for it, and reads its own thing's fields inside
 # the walk as cheaply as a routine reading the pool's current thing does.

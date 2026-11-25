@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SPRITE OF SEVERAL POSES WALKING MANY LISTS OF COLOURS keeps a row for every pose under every list,
+# A sprite of several poses walking many lists of colours keeps a row for every pose under every list,
 # poses times lists, and a few such sprites fading through a screen's worth of lists come to more than
 # the part of a Color cartridge always in view holds beside the game's code. Such a game is built
 # with those rows in the cartridge's banks (GBC#build), read with their bank put in view, and plays as

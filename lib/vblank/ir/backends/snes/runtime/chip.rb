@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE SUPER FX, PUT TO WORK BY THE CONSOLE (a cartridge with that chip only).
+          # The super FX, put to work by the console (a cartridge with that chip only).
           #
           # The Super FX is a second processor inside the cartridge (SNES::GSU says what it is). The
           # console's processor hands it a program address and lets it go; it runs from the
@@ -13,12 +13,12 @@ module VBlank
           # the handing over safe on a real console, both from how the board is wired (fullsnes,
           # "SNES Cart GSU-n Memory Map" and "I/O Ports"; bsnes, sfc/coprocessor/superfx/bus.cpp):
           #
-          #   - WHILE IT RUNS IT OWNS THE ROM AND ITS RAM (SCMR's RON and RAN bits). The console's
+          #   - While it runs it owns the ROM and its RAM (SCMR's RON and ran bits). The console's
           #     processor reading the ROM then gets nothing useful (bsnes hands it the same few
           #     bytes, whatever the address), so the console cannot run its own code from the
           #     cartridge while it waits: the waiting loop is copied into work RAM at power-on and
           #     runs from there (rt_chip_wait, at WAIT).
-          #   - ITS INTERRUPTS GO TO WORK RAM. The console finds an interrupt's routine by reading
+          #   - Its interrupts go to work RAM. The console finds an interrupt's routine by reading
           #     its address (its "vector") from the end of the ROM's first bank. While the chip owns
           #     the ROM, the cartridge answers every read of the ROM with the same sixteen bytes,
           #     picked by the address's last four bits, and those bytes are laid out so that each
@@ -56,24 +56,24 @@ module VBlank
 
             module_function
 
-            # +extra_buttons+ and +second_controller+ set what the interrupt reads, as Frame.emit is
+            # +extra_buttons+ and +controllers+ set what the interrupt reads, as Frame.emit is
             # told. Its size does not hang on which byte of the direct page it reads the controller
-            # in, so it is measured with any.
-            def reserve(memory, extra_buttons: false, second_controller: false)
+            # in, so it is measured with any (and a Super Multitap's words with any).
+            def reserve(memory, extra_buttons: false, controllers: 1)
               memory.reserve(WAIT, WAIT_BYTES)
-              size = interrupt_code(memory, pad: 0, extra_buttons: extra_buttons, second_controller: second_controller).bytesize
+              size = interrupt_code(memory, pad: 0, tap: 0, extra_buttons: extra_buttons, controllers: controllers).bytesize
               memory.reserve_far(INTERRUPT, size)
             end
 
             # rt_chip_start: the chip set up, and the waiting loop and the interrupt copied into work
             # RAM with the jumps to the interrupt written, once, at power-on. rt_chip_run: the GSU
-            # program at the 24-bit address in R0's low three bytes run to its STOP, with R0's fourth
+            # program at the 24-bit address in R0's low three bytes run to its stop, with R0's fourth
             # byte the picture's layout bits for SCMR (its colours and height; nought when it plots
             # nothing). Both are called long (JSL) with A, X and Y 16 bits wide, and give them back
             # so. The chip's other registers ($3000-$301D) are the caller's to set before
-            # rt_chip_run. +pad+, +extra_buttons+ and +second_controller+ are what Frame.emit is told.
-            def emit(asm, memory, pad:, extra_buttons: false, second_controller: false)
-              interrupt = interrupt_code(memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+            # rt_chip_run. +pad+, +tap+, +extra_buttons+ and +controllers+ are what Frame.emit is told.
+            def emit(asm, memory, pad:, tap: nil, extra_buttons: false, controllers: 1)
+              interrupt = interrupt_code(memory, pad: pad, tap: tap, extra_buttons: extra_buttons, controllers: controllers)
               emit_start(asm, memory, interrupt)
               emit_run(asm, memory)
             end
@@ -178,9 +178,9 @@ module VBlank
 
             # The vertical blank's interrupt whole (Frame#emit_interrupt_whole), as bytes to copy
             # into work RAM.
-            def interrupt_code(memory, pad:, extra_buttons:, second_controller:)
+            def interrupt_code(memory, pad:, tap:, extra_buttons:, controllers:)
               asm = W65816.new("rt chip interrupt")
-              Frame.emit_interrupt_whole(asm, memory, pad: pad, extra_buttons: extra_buttons, second_controller: second_controller)
+              Frame.emit_interrupt_whole(asm, memory, pad: pad, tap: tap, extra_buttons: extra_buttons, controllers: controllers)
               Linker.new([asm.section]).link.bytes.byteslice(0, asm.here)
             end
           end

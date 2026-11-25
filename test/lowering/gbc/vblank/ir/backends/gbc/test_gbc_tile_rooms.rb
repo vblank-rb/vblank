@@ -29,10 +29,7 @@ class TestGBCTileRooms < Minitest::Test
       scene(:hut) { background :hut, tiles: :small_tiles, map: small }
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :vast
-          when_val 1, :hut
-        end
+        call({ 0 => :vast, 1 => :hut }, number: :state)
       end
     end
     error = assert_raises(GBC::LoweringError) { GBC.new.build(program) }
@@ -41,7 +38,7 @@ class TestGBCTileRooms < Minitest::Test
     assert_match(/room for 512/, error.message)
   end
 
-  # A SCENE'S OWN COLOURS ARE COUNTED THE SAME WAY: one scene drawing from nine lists of four is more
+  # A scene's own colours are counted the same way: one scene drawing from nine lists of four is more
   # than the Color's eight at one time, whatever the other scene draws from, and the build names it.
   # Lists of four colours, place 0 see-through, numbered from +first+: no two alike, black in each.
   private def lists_from(first, count)
@@ -58,10 +55,7 @@ class TestGBCTileRooms < Minitest::Test
       end
       var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :vast
-          when_val 1, :hut
-        end
+        call({ 0 => :vast, 1 => :hut }, number: :state)
       end
     end
     error = assert_raises(GBC::LoweringError) { GBC.new.build(program) }
@@ -70,7 +64,7 @@ class TestGBCTileRooms < Minitest::Test
     assert_match(/lists of colours/, error.message)
   end
 
-  # TILES DRAWN FROM ONE LIST OF FOUR take one list of colours between them, whether or not each
+  # Tiles drawn from one list of four take one list of colours between them, whether or not each
   # draws its see-through place: a field drawn from seven lists and a bar drawn from one list of
   # four, place 0 see-through, whose tiles draw some see-through and some solid, fit the eight.
   # The backdrop is white, so the list's black is a colour of its own. The run checks the
@@ -93,7 +87,7 @@ class TestGBCTileRooms < Minitest::Test
     game_player.run(program, frames: 3)
   end
 
-  # ONE BACKGROUND WALKING BETWEEN TWO AREAS OF SIX LISTS OF COLOURS EACH: twelve between them, and
+  # One background walking between two areas of six lists of colours each: twelve between them, and
   # each area's lists come in with its tiles as a map of that area is shown. The run checks the
   # cartridge against the interpreter after every pass.
   def test_a_walking_background_whose_areas_have_their_own_colours_plays_as_the_interpreter_does
@@ -127,17 +121,14 @@ class TestGBCTileRooms < Minitest::Test
       scene(:two) { background :two, tiles: :second_tiles, map: second }
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
     refute_empty GBC.new.build(program).bytes
   end
 
-  # ONE BACKGROUND WALKING BETWEEN TWO AREAS OF 300 TILES, declared in each of two scenes that show
+  # One background walking between two areas of 300 TILES, declared in each of two scenes that show
   # it: each scene's areas have rooms of their own, and the second scene arrives in its first area
   # after the first scene walked into its second. Every lowering plays one such background with few
   # tiles (test/all/vblank/builder/test_background_tile_sets.rb); this is the Color's rooms for it. The run
@@ -161,10 +152,7 @@ class TestGBCTileRooms < Minitest::Test
         tick += 1
         where = 1 if tick == 3
         state = 1 if tick == 7
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 

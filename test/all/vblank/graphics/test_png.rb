@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "png_reading"
 
-# WRITING A PICTURE TO A FILE. The framework reads art out of PNG files; this is the other
+# Writing a picture to a file. The framework reads art out of PNG files; this is the other
 # direction — a screen, or any block of the console's colours, written as a PNG a person can
 # open.
 #
@@ -57,7 +57,7 @@ class TestPNG < Minitest::Test
     end
   end
 
-  # A PICTURE WITH SEE-THROUGH PARTS, which is what a sprite's art is: how solid each pixel is
+  # A picture with see-through parts, which is what a sprite's art is: how solid each pixel is
   # is handed over beside its colour, 0 for see-through up to 255 for solid. Read back as a
   # cut-out, the see-through pixels are the marker that means "draw nothing here".
   def test_a_picture_can_have_see_through_pixels

@@ -7,20 +7,22 @@ module VBlank
   module IR
     module Backends
       class JS
-        # THE PAGE A GAME PLAYS IN: one HTML file holding the game and its runtime, with nothing
+        # The page a game plays in: one HTML file holding the game and its runtime, with nothing
         # to fetch unless its data was built separate (JS#build_page), so it opens from a disk as
         # well as from a server. The picture is a <canvas> the
         # size of the console's screen, enlarged without smoothing so a pixel stays a square; the
         # keyboard and any controller are the gamepad (runtime/rg_page.js says which is which).
         #
-        # THE PAGE IS A TEMPLATE, page.html.erb unless the build names another (`vblank build
-        # --format=web --template FILE`). A template is ERB, and it is handed these, each a piece of
+        # The page is a template, page.html.erb unless the build names another (`vblank build
+        # --format=web --template file`). A template is ERB, and it is handed these, each a piece of
         # finished HTML:
         #
         #   game        the canvas and the script: the one piece a page must have
         #   title       the game's name, as text
         #   style       the default look: dark, the picture centred and enlarged
         #   keys        which key is which button
+        #   controls    the screen's size and every button's keys as data: `<%= controls.to_json %>`
+        #               (Controls), to show the controls in the template's own design
         #   controller  where the page says whether a controller is in use
         #   fullscreen  a button that fills the screen with the game (the F key does too)
         #   pause       a checkbox, ticked, for pausing the game while another window has the
@@ -29,9 +31,13 @@ module VBlank
         #   touchpad    the console's buttons on the screen, for a phone or a tablet, shown only
         #               while a finger is the screen's main pointer; with it on the page, the full
         #               screen button fills the screen with the whole page, so the pad comes too
-        #   message     where a game that stops, or a page waiting for a click, says so
-        #   extras      touchpad, keys, controller, fullscreen, pause and message together, in
-        #               that order
+        #   saves       two buttons that export the game's save as a .sav file and import one; empty
+        #               for a game with no save memory (runtime/rg_mount.js)
+        #   message     where a game that stops, or a page waiting for a click, says so, and a button,
+        #               hidden, that copies the page's address where the browser cannot keep a
+        #               shell's data (runtime/rg_mount.js)
+        #   extras      touchpad, keys, controller, fullscreen, pause, saves and message together,
+        #               in that order, those that are not empty
         #
         # The script finds the pieces it fills in by their id, and a page without one of them plays
         # the same, with nothing given there.
@@ -56,9 +62,9 @@ module VBlank
           # A template that leaves the game out is a LoweringError, as anything else that stops a
           # web build is.
           def html(title:, script:, screen:, scale: 3, pixel_size: 1, template: DEFAULT, buttons: Console::ADVANCE.buttons,
-                   players: 1)
+                   players: 1, saves: false)
             pieces = pieces(title: title, script: script, scale: scale, screen: screen, pixel_size: pixel_size,
-                            buttons: buttons, players: players)
+                            buttons: buttons, players: players, saves: saves)
             page = ERB.new(File.read(template, encoding: Encoding::UTF_8), trim_mode: "-").result_with_hash(pieces)
             return page if page.include?(pieces[:game])
 
@@ -66,18 +72,87 @@ module VBlank
                                  "play it. Put <%= game %> in the template where the game goes."
           end
 
-          # The keys of the buttons beside the pad, in words, by the button each is for: player 1's
-          # (rg_page.js's PAGE_KEYS) and player 2's (PAGE_SECOND_PLAYER_KEYS). L and R are said
-          # together, under :l.
-          FIRST_PLAYER_WORDS = { a: "<kbd>X</kbd> is A", b: "<kbd>Z</kbd> is B", start: "<kbd>Enter</kbd> is Start",
-                                 select: "<kbd>Backspace</kbd> is Select", l: "<kbd>A</kbd> and <kbd>S</kbd> are L and R",
-                                 x: "<kbd>W</kbd> is X", y: "<kbd>Q</kbd> is Y", c: "<kbd>C</kbd> is C" }.freeze
-          SECOND_PLAYER_WORDS = { a: "<kbd>O</kbd> is A", b: "<kbd>U</kbd> is B", l: "<kbd>7</kbd> and <kbd>9</kbd> are L and R",
-                                  start: "<kbd>0</kbd> is Start", select: "<kbd>8</kbd> is Select", x: "<kbd>H</kbd> is X",
-                                  y: "<kbd>Y</kbd> is Y", c: "<kbd>B</kbd> is C" }.freeze
+          # The screen and the keys as data, which a template writes out with `<%= controls.to_json %>`
+          # so a site can show the controls in its own design and size the frame before the game
+          # loads. +screen+ is the canvas's size and the pixel size in the console's pixels;
+          # +first_player+ and +second_player+ (nil unless the game seats more than one) are each
+          # button's browser key codes, for the console's buttons alone, the arrows among them;
+          # +page_keys+ are the keys the page itself reads.
+          Controls = Data.define(:screen, :first_player, :second_player, :page_keys) do
+            def to_json(*args)
+              { screen: screen.to_h, first_player: first_player, second_player: second_player, page_keys: page_keys }.to_json(*args)
+            end
+          end
 
-          def pieces(title:, script:, scale:, screen:, pixel_size: 1, buttons: Console::ADVANCE.buttons, players: 1)
-            said = FIRST_PLAYER_WORDS.slice(*buttons).values.join(", ")
+          # The canvas's width and height in pixels, and how many of the console's pixels across and
+          # down each of the picture's is shown as.
+          Screen = Data.define(:width, :height, :pixel_size)
+
+          # The keys the page reads for itself, by what each does (rg_page.js: fullscreenKey, and
+          # rg_page_menu.js's PAGE_HOTKEY_KEYS).
+          PAGE_KEYS = { fullscreen: "KeyF", menu: "F1" }.freeze
+
+          # The order the buttons are said in beside the pad: player 1's, and player 2's, whose L and
+          # R come before Start. L and R are said together, under :l, and L2 and R2 under :l2.
+          FIRST_PLAYER_SAID = %i[a b start select l x y c l2].freeze
+          SECOND_PLAYER_SAID = %i[a b l start select x y c l2].freeze
+
+          # The one source of the keys, the same table the desktop window reads: player 1's layout and
+          # player 2's, by button, as the names IR::ComputerControls gives them.
+          SECOND_PLAYER_LAYOUT = IR::ComputerControls::SECOND_PLAYER_KEYS.each_with_object({}) do |(key, button), by_button|
+            (by_button[button] ||= []) << key
+          end.freeze
+
+          # The browser's name for a key IR::ComputerControls names (a letter, a digit, enter, backspace,
+          # right_shift or an arrow), as rg_page.js reads it.
+          def key_code(name)
+            case name
+            when Integer then "Digit#{name}"
+            when :enter then "Enter"
+            when :backspace then "Backspace"
+            when :right_shift then "ShiftRight"
+            when :minus then "Minus"
+            when :right, :left, :up, :down then "Arrow#{name.to_s.capitalize}"
+            else "Key#{name.to_s.upcase}"
+            end
+          end
+
+          # The key's name as the page says it in words.
+          def key_word(name)
+            case name
+            when :enter then "Enter"
+            when :backspace then "Backspace"
+            when :minus then "-"
+            else name.to_s.upcase
+            end
+          end
+
+          def controls(screen:, pixel_size: 1, buttons: Console::ADVANCE.buttons, players: 1)
+            codes = ->(layout) { layout.slice(*buttons).transform_values { |keys| keys.map { |key| key_code(key) } } }
+            Controls.new(screen: Screen.new(width: screen[0], height: screen[1], pixel_size: pixel_size),
+                         first_player: codes.call(IR::ComputerControls::LAYOUT_KEYS),
+                         second_player: (codes.call(SECOND_PLAYER_LAYOUT) if players > 1), page_keys: PAGE_KEYS)
+          end
+
+          # The words for the buttons of +layout+ the console has, in +order+: "X is A", and L and R
+          # together as "A and S are L and R".
+          def words(layout, order, buttons)
+            order.filter_map do |button|
+              next unless buttons.include?(button)
+
+              if %i[l l2].include?(button)
+                pair = button == :l ? %i[l r] : %i[l2 r2]
+                "<kbd>#{key_word(layout.fetch(pair[0]).first)}</kbd> and <kbd>#{key_word(layout.fetch(pair[1]).first)}</kbd> " \
+                  "are #{pair[0].upcase} and #{pair[1].upcase}"
+              else
+                "<kbd>#{key_word(layout.fetch(button).first)}</kbd> is #{button.to_s.capitalize}"
+              end
+            end
+          end
+
+          def pieces(title:, script:, scale:, screen:, pixel_size: 1, buttons: Console::ADVANCE.buttons, players: 1,
+                     saves: false)
+            said = words(IR::ComputerControls::LAYOUT_KEYS, FIRST_PLAYER_SAID, buttons).join(", ")
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. #{said}, <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
               Press a key or click to hear the sound.#{more_players_words(buttons) if players > 1}</p>
@@ -86,20 +161,30 @@ module VBlank
             fullscreen = '<button id="fullscreen" type="button">Full screen</button>'
             pause = '<label><input type="checkbox" id="pause" checked> Pause when another window is in front</label>'
             touchpad = touchpad(buttons: buttons)
-            message = '<p id="said" hidden></p>'
+            saves = saves ? saves_buttons : ""
+            message = %(<p id="said" hidden></p>\n<button id="copy-link" type="button" hidden>Copy the link</button>)
             { title: CGI.escapeHTML(title.to_s), style: style(scale * pixel_size, screen), game: game(script, screen), keys: keys,
-              controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, message: message,
-              extras: [touchpad, keys, controller, fullscreen, pause, message].join("\n") }
+              controls: controls(screen: screen, pixel_size: pixel_size, buttons: buttons, players: players),
+              controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, saves: saves,
+              message: message,
+              extras: [touchpad, keys, controller, fullscreen, pause, saves, message].reject(&:empty?).join("\n") }
+          end
+
+          # The buttons that export the game's save and import one (runtime/rg_mount.js, mount_saves),
+          # hidden until the page finds the game has save memory.
+          def saves_buttons
+            '<p id="saves" hidden><button id="save-export" type="button">Export save</button> ' \
+              '<button id="save-import" type="button">Import save</button></p>'
           end
 
           # Player 2's keys (rg_page.js's PAGE_SECOND_PLAYER_KEYS) and the controllers' players, for
           # a game more than one person plays, for the console's +buttons+.
           def more_players_words(buttons)
-            "\nPlayer 2: <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> move, #{SECOND_PLAYER_WORDS.slice(*buttons).values.join(', ')}. " \
+            "\nPlayer 2: <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> move, #{words(SECOND_PLAYER_LAYOUT, SECOND_PLAYER_SAID, buttons).join(', ')}. " \
               "Each controller is one player, in the order you connect them."
           end
 
-          # THE PAD ON THE SCREEN, for a phone or a tablet, which has no keys: the console's buttons
+          # The pad on the screen, for a phone or a tablet, which has no keys: the console's buttons
           # laid out as a GBA lays them out — L and R along the top, the cross on the left, B and A
           # on the right, Select and Start between. runtime/rg_mount.js finds them by id, "pad-" and
           # the button's name, and the cross, "pad-cross", is one piece a thumb rocks round; its

@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # THE PLACES A GAME'S SAVE STATES ARE KEPT IN, as the window's menu shows them: the quick one and
+    # The places a game's save states are kept in, as the window's menu shows them: the quick one and
     # slots 1 to 10, a file each in one folder (state-quick, state-1 ... state-10). The desktop build
     # keeps the same files the same way (rg_sdl.c), so a state saved there is in the menu here.
     #

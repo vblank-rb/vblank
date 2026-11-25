@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # A PAINTED SCREEN, lowered for a PlayStation: each drawing statement a call into Runtime::Paint,
+          # A painted screen, lowered for a PlayStation: each drawing statement a call into Runtime::Paint,
           # and what it draws with — its pictures, its text — made into PS1::PaintedArt while the program
           # is built. Mixed into Lowering.
           #
@@ -15,7 +15,7 @@ module VBlank
           # game runs is one of two.
           module Paint
             STATEMENT_KINDS = %i[
-              screen clear_screen fill_rect dma_fill_rect draw_rect_at pixel inside blit blit_pose draw_text
+              screen clear_screen fill_rect draw_rect_at pixel inside blit blit_pose draw_text
               draw_digit save_region restore_region
             ].freeze
 
@@ -24,7 +24,6 @@ module VBlank
               when :screen then emit_screen(node)
               when :clear_screen then emit_clear_screen(node)
               when :fill_rect then emit_fill_rect(node)
-              when :dma_fill_rect then emit_fill_rect(node)
               when :draw_rect_at then emit_fill_rect(node)
               when :pixel then emit_pixel(node)
               when :inside then emit_inside(node)
@@ -53,7 +52,7 @@ module VBlank
                                                 Build.int(patch.corner)])
             end
 
-            # A PATCH: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
+            # A patch: where its state is in RAM (Runtime::Paint::PATCH_STATE_BYTES), where it is in video RAM
             # (y << 16 | x), and its size.
             Patch = Data.define(:state, :corner, :width, :height)
 
@@ -86,7 +85,7 @@ module VBlank
               !Picture.tiled?(program) && program.walk.any? { |node| %i[fade tint].include?(node.kind) }
             end
 
-            # A PAINTED SCREEN DRAWN BY NUMBER: its numbers' colour table, and two pages to show it from, right of
+            # A painted screen drawn by number: its numbers' colour table, and two pages to show it from, right of
             # the pages it is drawn in (Runtime::Paint::PAGE_X), each kept from power-on where the runtime reads it.
             # A place's faces are drawn in colours the graphics chip works out as it draws, which have no number.
             # A painted screen with sprites over it is shown from two pages of its own too (Runtime::Paint's
@@ -197,7 +196,7 @@ module VBlank
             # Reference#exec_clear_screen: the whole area drawing is held to, the whole screen outside any.
             def emit_clear_screen(node) = runtime_call("rt_paint_clear", [rectangle_command(node.color)])
 
-            # Reference#exec_fill_rect, #exec_dma_fill_rect and #exec_draw_rect_at: the same rectangle.
+            # Reference#exec_fill_rect and #exec_draw_rect_at: the same rectangle.
             def emit_fill_rect(node)
               runtime_call("rt_paint_fill", [*[node.x, node.y, node.w, node.h].map { |edge| build_value_node(edge) },
                                              rectangle_command(node.color)])

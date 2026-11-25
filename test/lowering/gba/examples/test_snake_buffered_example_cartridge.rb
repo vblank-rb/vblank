@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/snake_buffered").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake_buffered").to_s)
 
 # The buffered Snake example (examples/snake_buffered.rb) on the Advance's cartridge: its frame
 # rate measured by the profiler, and its title and playing board read in the emulator — through
@@ -21,7 +21,7 @@ class TestSnakeBufferedExampleCartridge < Minitest::Test
     refute_predicate VBlank::Diagnostics::Profiler.run(rom, frames: 30, picture: false), :dropping_frames?
   end
 
-  # The title screen shows "SNAKE" in green — the simplest proof it isn't a black
+  # The title screen shows "snake" in green — the simplest proof it isn't a black
   # screen, and that draw_text renders through the buffered (indexed) screen.
   def test_the_title_renders_on_the_console
     v = assert_emulator_loads_rom(BufferedSnake.build_rom(err: StringIO.new), frames: 4)

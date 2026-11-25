@@ -7,11 +7,12 @@ require "layer_over_sprites_tests"
 # emulator, and what the cartridge tells the display to mix. What every run that plays games as
 # the Advance is held to is in test/console/gba/vblank/builder/test_layer_over_sprites_on_the_advance.rb.
 #
-# THE DISPLAY MIXES A LAYER WITH THE ONE DIRECTLY BEHIND IT AT EACH PIXEL, and only where that one
+# The display mixes a layer with the one directly behind it at each pixel, and only where that one
 # is among the layers its blend control names as the far side. All the sprites are one layer to
 # it. So where a sprite is behind a see-through background and the sprites are not named, the
 # background is drawn there at full strength: a solid patch the shape of the sprite.
 class TestLayerOverSpritesCartridge < Minitest::Test
+  include Differential
   include LayerOverSpritesGames
 
   BLEND_CONTROL = VBlank::Console::Hardware::REG_BLDCNT
@@ -80,5 +81,19 @@ class TestLayerOverSpritesCartridge < Minitest::Test
 
     assert_equal 0, console.mem16(BLEND_CONTROL) & SPRITES_ON_THE_FAR_SIDE
     assert_equal YELLOW, console.pixel_gba(*under_cloud(:front))
+  end
+
+  # A sprite a scene owns is put behind the cloud on the scene's own passes. Told from the game
+  # loop instead, which is outside the scene, it is not behind the cloud: the cartridge leaves it
+  # in front, drawn over the cloud, as the interpreter does. Both are held to the same picture, so
+  # a change to either shows here.
+  def test_sprites_a_scene_owns_told_from_the_game_loop_stay_in_front_of_the_cloud
+    room = clouded_room(%i[moved moved_pool], scenes: true, told_in_game_loop: true)
+    console = cartridge(room, "OVRLOP", frames: SWITCH_AT + CONSOLE_FRAMES)
+
+    %i[moved moved_pool].each do |way|
+      assert_equal SPRITE_COLORS.fetch(way), console.pixel_gba(*under_cloud(way)), "#{way}, over the cloud"
+    end
+    assert_backends_agree(room, frames: SWITCH_AT + 4)
   end
 end

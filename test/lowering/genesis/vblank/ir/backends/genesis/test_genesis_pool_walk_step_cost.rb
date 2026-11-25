@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A WALK OF TWENTY-FOUR THINGS, AND THEIR FIELDS MOVED ON: what the walk's own step costs a thing,
+# A walk of twenty-four things, and their fields moved on: what the walk's own step costs a thing,
 # with nothing in its body, and what each `thing.field += 1` in the body adds. The profiler reads
 # the game's share against the same game with no walk.
 class TestGenesisPoolWalkStepCost < Minitest::Test

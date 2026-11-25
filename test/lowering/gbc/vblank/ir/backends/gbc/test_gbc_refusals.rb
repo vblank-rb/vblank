@@ -24,7 +24,7 @@ class TestGBCRefusals < Minitest::Test
     assert_match(/cannot show one layer through another/, error.message)
   end
 
-  # A FADE PLACED UNDER A LAYER needs a display that blends. The Color fades by changing its
+  # A fade placed under a layer needs a display that blends. The Color fades by changing its
   # colours, which the background and every sprite read alike, so it cannot keep one layer out of
   # a fade, and its answer for `fade` says so (IR::Fading#walk_every_fade).
   def test_a_fade_under_a_layer_is_refused_and_the_answer_says_so
@@ -83,7 +83,7 @@ class TestGBCRefusals < Minitest::Test
     assert_match(/cannot turn or resize a sprite/, error.message)
   end
 
-  # NINE LISTS OF THE SAME COLOURS IN NINE ORDERS, each drawing a tile and each drawn with a list
+  # Nine lists of the same colours in nine orders, each drawing a tile and each drawn with a list
   # of its own: the Color draws them from nine palettes, one more than it holds, and the refusal
   # names that.
   def test_nine_lists_drawn_with_other_colours_are_refused_naming_the_eight
@@ -105,7 +105,7 @@ class TestGBCRefusals < Minitest::Test
     assert_match(/8 lists of colours/, error.message)
   end
 
-  # A TILE WITH SEE-THROUGH PIXELS THAT DRAWS FOUR PLACES, two of them one colour: three colours
+  # A tile with see-through pixels that draws four places, two of them one colour: three colours
   # and the backdrop fit a Color tile, but drawn with another list the four places are four
   # colours, and the refusal names the three a tile holds.
   def test_a_see_through_tile_of_four_places_drawn_with_other_colours_is_refused_naming_the_three

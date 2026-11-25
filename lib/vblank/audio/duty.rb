@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # A SQUARE NOTE'S TONE SHAPE — its duty, how much of each wave the voice holds high — or a shape
+    # A square note's tone shape — its duty, how much of each wave the voice holds high — or a shape
     # that changes while the note holds.
     #
     # A square voice's wave is high for part of each wave and low for the rest: an eighth of it is
@@ -33,7 +33,7 @@ module VBlank
       # One shape, every frame.
       def self.one(shape) = new(shapes: ([named(shape)] * FRAMES).freeze)
 
-      # THE SHAPE A NOTE GAVE: a shape's name (:eighth, :quarter, :half, :three_quarter), or a list
+      # The shape a note gave: a shape's name (:eighth, :quarter, :half, :three_quarter), or a list
       # of two or four of them to step through, or nil when it gave nothing. +where+ names who gave
       # it, as the start of a sentence.
       def self.said(value, where:)
@@ -45,7 +45,7 @@ module VBlank
         new(shapes: (names * (FRAMES / names.length)).freeze)
       end
 
-      # WHAT A PART GAVE AS ITS DUTY, as a part keeps it: its one shape, and its shapes when it gave a
+      # What a part gave as its duty, as a part keeps it: its one shape, and its shapes when it gave a
       # list to step through (nil when it gave one shape, which is what a part always did).
       def self.of_part(value, where:)
         return [value, nil] unless value.is_a?(Array)

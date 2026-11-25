@@ -2,15 +2,15 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A GAME BOY COLOR (Console::Answers says what an answer is).
+    # What every verb does on a Game Boy Color (Console::Answers says what an answer is).
     #
     # The Game Boy Color is a much smaller machine than the Advance: a 160×144 screen, one background
     # layer, forty sprites (ten to a line) of four colours each, no way to turn or resize a layer,
     # to see one layer through another, or to play a recording. A game written for the Advance is
-    # mostly made of things it CAN do — tiles, sprites, the square, wave and noise voices, which the
+    # mostly made of things it can do — tiles, sprites, the square, wave and noise voices, which the
     # Advance inherited from it — and the Color build is limited and does not pretend.
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba gbc]`), and is
     # built for the Color only when it names it. A game written for a 240×160 screen that is
     # built for a 160×144 one has a third of its picture cut away, which no warning would make
     # right; so reaching the second console is a decision the author makes once, in the game's
@@ -48,6 +48,7 @@ module VBlank
                       "`shown_rows:` is refused: a Game Boy Color cannot switch its screen off for some " \
                       "rows only."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :gbc."),
         screen_width: works("160 on a Game Boy Color."),
@@ -73,7 +74,6 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works,
         fill_rect: works,
-        dma_fill_rect: works,
         draw_rect_at: works,
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
@@ -92,8 +92,8 @@ module VBlank
                       "view over it shows black past the picture's edge. To move over a bigger world, " \
                       "use a tiled background and `scroll_to`. On a tiled screen the camera moves the " \
                       "background and the sprites together."),
-        keep_showing: works("a painted screen on a Game Boy Color is always shown whole, so a picture " \
-                            "kept showing never tears."),
+        redraw_on_change: works("a painted screen on a Game Boy Color is always shown whole, so a picture " \
+                                "painted only on a change never tears."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the colours the console shows, not the picture, as on " \
@@ -177,7 +177,8 @@ module VBlank
         background: works("`cells_in_front: true` is refused: this build does not make it yet. A Game Boy Color keeps a priority bit for each cell of its map. " \
                           "one background at a time, scrolled and changed as on the Advance, and bent " \
                           "row by row with `scroll_each_row`. `above_row:` is refused: this build does not " \
-                          "make it yet. `show_only_inside` is refused: a Game Boy Color cannot hide its " \
+                          "make it yet. `hide` and `show` are refused: this build does not make them yet. " \
+                          "`show_only_inside` is refused: a Game Boy Color cannot hide its " \
                           "background outside a box. Its one window is a layer that covers the background " \
                           "from a corner to the bottom right of the screen. The console holds 32×32 cells of a map at " \
                           "once, so a bigger map is brought into view as the view moves. A second " \
@@ -238,16 +239,10 @@ module VBlank
                      "of its own that asks the player. After that, the time moves on with the chip, " \
                      "and the save keeps it."),
         saves_keep_everything: works,
-        set: works, add: works, add_var: works,
-        sub: works, sub_var: works, copy: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on a Game Boy Color, which runs all of its code alike."),
         call: works,
         scene: works("see `func` for `fast:`."),
-        case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
         shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
@@ -262,7 +257,9 @@ module VBlank
                     "`player: 2` or more is refused, and `players:` more than 1 is refused too: it has one controller. " \
                     "`player: :any` reads that one controller."),
         pressed: works("see `held`."),
-        most_players: works,
+        pulled: works("0 or 100. Each button of a Game Boy Color is on or off, so a button reads 100 while it is " \
+                      "held and 0 when it is not. The build refuses a button it does not have, as `held` does."),
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
         players_connected: works("always 1: a Game Boy Color has one controller."),
@@ -311,7 +308,7 @@ module VBlank
                             "`song`). Write the part for the square or wave voice.")
       })
 
-      # WHAT .claude/dsl/game-boy-color.md SAYS: every answer, in the order ANSWERS gives them, and
+      # What .claude/dsl/game-boy-color.md says: every answer, in the order ANSWERS gives them, and
       # what the Color's build does not make yet — +not_yet+, the lowering's own list of the
       # program's kinds it refuses for now, by what they are part of, which the Color's kit hands
       # in (Kit#answers_page).

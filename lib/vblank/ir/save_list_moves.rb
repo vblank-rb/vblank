@@ -2,8 +2,8 @@
 
 module VBlank
   module IR
-    # A WHOLE LIST MOVED TO OR FROM SAVE MEMORY (Nodes::SaveLoadList, Nodes::SaveStoreList), WRITTEN
-    # OUT AS THE LOOPS IT STANDS FOR: a save_read and a list_push for each item, or a list_get and
+    # A whole list moved to or from save memory (Nodes::SaveLoadList, Nodes::SaveStoreList), WRITTEN
+    # out as the loops it stands for: a save_read and a list_push for each item, or a list_get and
     # a save_write. This is what the step means, said once, so a backend with no routine of its own
     # for it lowers these and cannot mean anything else. The interpreter runs the step itself, and
     # a test holds the two to the same save memory and the same list.

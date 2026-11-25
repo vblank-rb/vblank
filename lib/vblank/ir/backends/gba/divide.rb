@@ -25,7 +25,7 @@ module VBlank
         # Two things make a step that cheap. The number of steps is found without
         # looping: five compares scale the divisor up under the numerator, halving the
         # search each time, and count how far it moved. And the steps are written out one
-        # after another rather than as a loop, with that count used to JUMP INTO the run
+        # after another rather than as a loop, with that count used to jump into the run
         # at the right place — so a small answer runs a few steps and stops, and no step
         # pays for a branch. A step is then just a compare, a subtract that only happens
         # if it fits, and a doubling that slides the compare's yes-or-no into the answer.
@@ -111,7 +111,7 @@ module VBlank
           # 1, -1 and 0 are written down but still come here, which is why they count.
           #
           # A sprite that changes size counts too, even though the program never wrote a
-          # division: drawing at a size means dividing BY it, and the framework does that
+          # division: drawing at a size means dividing by it, and the framework does that
           # for the author every frame (see SpriteDrawing#emit_object_scale_reciprocal).
           def needs_divide_routine?(program)
             program.walk.any? do |node|
@@ -189,7 +189,7 @@ module VBlank
             @divide_fix_routine_iwram = at
           end
 
-          # WHERE THE DIVIDE ROUTINES RUN, for a profile of the finished game to report against.
+          # Where the divide routines run, for a profile of the finished game to report against.
           #
           # These are not routines anybody wrote, and they are not among the ones the build
           # chooses to keep in the quick memory either — they are copied there unconditionally,
@@ -255,7 +255,7 @@ module VBlank
             emit_call_routine_at(@divide_fix_routine_iwram)
           end
 
-          # A FRACTION DIVIDE MADE WHOLE STRAIGHT AWAY, `(a / b).to_i` or `(a / b + 0.5).to_i`,
+          # A fraction divide made whole straight away, `(a / b).to_i` or `(a / b + 0.5).to_i`,
           # wants only the answer's whole part, so the routine is asked to widen the numerator
           # by +drop+ fewer places and its answer comes out whole: an answer a little over a
           # hundred runs eight steps rather than twenty-four.
@@ -305,7 +305,7 @@ module VBlank
           # The routine, emitted once into ROM and copied into internal memory at boot. It
           # is position-independent — relative branches, every number built an instruction
           # at a time, nothing read from a table beside it — so it runs the same wherever
-          # it is put. A routine of the game's that goes into the same memory DOES keep
+          # it is put. A routine of the game's that goes into the same memory does keep
           # such a table (see NumberTable), and can, because its table is copied with it.
           # This one is copied by its own two labels, so it has to hold all it reads.
           def emit_divide_routine
@@ -332,9 +332,9 @@ module VBlank
           # The other routine: dividing one number that holds a fraction by another.
           #
           # Two numbers multiplied up by the same amount divide that amount straight back
-          # out, so the numerator has to be multiplied up AGAIN before anything is
+          # out, so the numerator has to be multiplied up again before anything is
           # divided — and once it is, it no longer fits in a register (see Int32.div_fix).
-          # So this one divides a numerator held across TWO registers, which is why it
+          # So this one divides a numerator held across two registers, which is why it
           # cannot share the routine above.
           #
           # It is a long division of that double-width numerator, at most thirty-two steps
@@ -343,7 +343,7 @@ module VBlank
           # fits; the place that frees up at the bottom of the low half is where the answer
           # collects, a bit a step.
           #
-          # A STEP IS THREE INSTRUCTIONS, because the routine keeps the divisor NEGATED. Adding
+          # A step is three instructions, because the routine keeps the divisor NEGATED. Adding
           # minus the divisor is taking it out, and the carry an add leaves is set exactly when
           # the divisor fitted, so one add-with-carry doubles the high half, takes in the bit
           # carried up from the low one AND tries the divisor, and the carry it leaves is the
@@ -353,7 +353,7 @@ module VBlank
           # The high half never outgrows a register on the way: it stays below the divisor,
           # and the divisor is at most half of what a register counts to.
           #
-          # STEPS THAT CAN ONLY GIVE NOUGHT ARE NOT RUN. A numerator less than the divisor
+          # Steps that can only give nought are not run. A numerator less than the divisor
           # times 2**16 has nothing in the answer's top sixteen bits, so the routine asks that
           # first, and when it is, walks the numerator along sixteen places at once and enters
           # the written-out run sixteen steps in. Then the same for eight. An answer with a
@@ -526,14 +526,19 @@ module VBlank
           # the leftover follows the numerator. Both are packed into one register — the
           # numerator's sign where it already sits, the quotient's in the bottom bit —
           # rather than stacked, so nothing touches memory.
+          #
+          # The packed signs word, DIV_SIGNS:
+          #
+          #   bit 31  the numerator's sign   (the leftover will follow it)
+          #   bit 0   1 when the signs differ (the quotient will be negative)
           def emit_divide_strip_signs
-            @emitter.emit(ASM.and_imm(DIV_SIGNS, DIV_NUM, SIGN_BIT))
-            @emitter.emit(ASM.eor_reg(DIV_COUNT, DIV_NUM, DIV_DEN))
-            @emitter.emit(ASM.orr_reg_lsr(DIV_SIGNS, DIV_SIGNS, DIV_COUNT, 31))
+            @emitter.emit(ASM.and_imm(DIV_SIGNS, DIV_NUM, SIGN_BIT))                        # bit 31 = the numerator's sign
+            @emitter.emit(ASM.eor_reg(DIV_COUNT, DIV_NUM, DIV_DEN))                         # top bit = 1 when the signs differ (the count register is spare here)
+            @emitter.emit(ASM.orr_reg_lsr(DIV_SIGNS, DIV_SIGNS, DIV_COUNT, 31))             # bit 0 = that top bit, moved down
             @emitter.emit(ASM.cmp_imm(DIV_NUM, 0))
-            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_NUM, DIV_NUM, 0))
+            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_NUM, DIV_NUM, 0))                       # numerator = |numerator|
             @emitter.emit(ASM.cmp_imm(DIV_DEN, 0))
-            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_DEN, DIV_DEN, 0))
+            @emitter.emit(ASM.rsb_imm_cond(:lt, DIV_DEN, DIV_DEN, 0))                       # divisor = |divisor|
           end
 
           # Scale the divisor up under the numerator, then run that many division steps.
@@ -544,16 +549,30 @@ module VBlank
           # of how far it moved is one less than the number of steps the answer needs.
           # Entering the written-out run of steps that far from its end runs exactly that
           # many of them.
+          #
+          # Each written-out step is one place of schoolbook long division in binary:
+          #
+          #   numerator  1101 (13)      divisor lined up under it: 0011 << 2 = 1100
+          #   step: does 1100 fit in 1101? yes -> take it out, answer bit 1; halve the divisor
+          #   step: does 0110 fit in 0001? no  -> answer bit 0; halve the divisor ...
+          #
+          # Registers: DIV_NUM the numerator (what is left over at the end), DIV_DEN the divisor
+          # being slid down, DIV_ANS the answer's bits so far, DIV_COUNT how far the divisor
+          # was moved up.
           def emit_divide_ladder
             @emitter.emit(ASM.load_immediate(DIV_ANS, 0))
             @emitter.emit(ASM.load_immediate(DIV_COUNT, 0))
             SCALE_STEPS.each do |step|
+              # Is the divisor no more than the numerator shifted down +step+ places? If so
+              # (condition "lower or same") move it up that far and count the places.
               @emitter.emit(ASM.cmp_reg_lsr(DIV_DEN, DIV_NUM, step))
               @emitter.emit(ASM.mov_reg_lsl_cond(:ls, DIV_DEN, DIV_DEN, step))
               @emitter.emit(ASM.add_imm_cond(:ls, DIV_COUNT, DIV_COUNT, step))
             end
 
             @emitter.emit(ASM.rsb_imm(DIV_COUNT, DIV_COUNT, LADDER_STEPS - 1)) # steps to skip
+            # Jump forward past that many steps, by adding to the program counter: four
+            # instructions of four bytes each, so the count is shifted left four places.
             @emitter.emit(ASM.add_pc_reg_lsl(DIV_COUNT, 4))                   # four instructions each
             @emitter.emit(ASM.nop)                                            # pc reads two ahead
             LADDER_STEPS.times do
@@ -567,7 +586,7 @@ module VBlank
           # Put the signs back and leave the answers where a caller expects them: the
           # quotient in r0, the leftover in r1 (where it already is).
           def emit_divide_restore_signs
-            @emitter.emit(ASM.mov_reg(DIV_DEN, DIV_ANS))
+            @emitter.emit(ASM.mov_reg(DIV_DEN, DIV_ANS))                  # r0 = the quotient, still unsigned
             @emitter.emit(ASM.tst_imm(DIV_SIGNS, 1))
             @emitter.emit(ASM.rsb_imm_cond(:ne, DIV_DEN, DIV_DEN, 0)) # the two signs differed
             @emitter.emit(ASM.cmp_imm(DIV_SIGNS, 0))

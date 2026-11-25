@@ -4,12 +4,12 @@ module VBlank
   module IR
     module Backends
       class PS1
-        # THE PART OF VIDEO RAM BESIDE THE SCREEN'S PAGES, and the textures and colour tables kept there:
+        # The part of video RAM beside the screen's pages, and the textures and colour tables kept there:
         # what the graphics chip reads a picture from. Anything the chip draws as a texture (a painted
         # picture's pieces, a word of text, a wall of a place) is added here while the program is built,
         # and once the last is added every one is given its depth, its colour table and its place.
         #
-        # A TEXTURE IS READ THROUGH A TEXTURE PAGE: a window of video RAM 256 texels square, whose left
+        # A texture is read through a texture page: a window of video RAM 256 texels square, whose left
         # edge is a multiple of 64 halfwords (video RAM's 16-bit cells) and whose top is line 0 or 256. A
         # texel is named by a byte across (u) and a byte down (v) from the page's corner. How many texels a
         # halfword holds is the page's depth:
@@ -24,12 +24,12 @@ module VBlank
         # together fit in one table share it, so a game's words in one colour, say, all read the same
         # sixteen entries.
         #
-        # SEE-THROUGH AND BLACK. The chip leaves undrawn a texel whose colour is 0000h, whether it is in
+        # See-through and black. The chip leaves undrawn a texel whose colour is 0000h, whether it is in
         # the texture or in its table. So a pixel the picture leaves see-through is an entry of 0000h, and
         # every colour has its top bit set (Console::PS1Hardware::TEXEL_DRAWN): black is 8000h, drawn
         # black. The picture shown is read with the top bit dropped, as the television shows it.
         #
-        # WHERE THEY GO. Textures go right of the screen's pages (from column 320, the whole height of
+        # Where they go. Textures go right of the screen's pages (from column 320, the whole height of
         # video RAM), in shelves: the tallest first, each shelf as tall as its first texture, a texture
         # never crossing line 256 and never running past the end of the page it starts in. Colour tables
         # go in the rows under each page (lines 240 to 255 and 496 to 511, which no picture is drawn in),
@@ -54,7 +54,7 @@ module VBlank
           class Full < LoweringError; end
 
           # A colour table: its entries (each a colour as the chip reads it, 0000h the see-through one), how
-          # many it may hold, and once placed, where it is. A KEPT table (#reserve_table) is one thing's own:
+          # many it may hold, and once placed, where it is. A kept table (#reserve_table) is one thing's own:
           # its entries are written again as the game runs, so no texture shares it by its colours.
           Table = Struct.new(:entries, :capacity, :x, :y, :kept) do
             # The chip's name for where it is, as a textured command takes it: x / 16, and y from bit 6.
@@ -161,7 +161,7 @@ module VBlank
             @extra_uploads = []
           end
 
-          # A KEPT TABLE of +capacity+ entries (16 or 256), starting as +entries+ (each a colour as the chip
+          # A kept table of +capacity+ entries (16 or 256), starting as +entries+ (each a colour as the chip
           # reads it; the rest nought): one thing's own, which the game writes again as it runs, so it is placed
           # at once, at the left of the next row for tables, and the code that names it can be made before
           # the textures are placed. Each takes a whole row, however few its entries.
@@ -229,7 +229,7 @@ module VBlank
           # height, which must be powers of two: then the chip's texture window (GP0 E2h) can repeat it
           # across a shape larger than itself, as a face of a place repeats its picture like wallpaper.
           #
-          # READ THROUGH A KEPT TABLE (+table:+, from #reserve_table), it is given +places+ in that table instead
+          # Read through a kept table (+table:+, from #reserve_table), it is given +places+ in that table instead
           # of colours, one a texel (0 the see-through one), and takes the table's depth.
           def add_texture(width:, height:, colors: nil, align: false, places: nil, table: nil)
             given = places || colors

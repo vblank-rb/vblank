@@ -28,7 +28,6 @@ require_relative "snes/chip_code"
 require_relative "snes/tile_bytes"
 require_relative "snes/art"
 require_relative "snes/painted_art"
-require_relative "snes/row_bands"
 require_relative "snes/lowering/picture"
 require_relative "snes/lowering/paint"
 require_relative "snes/lowering/collision"
@@ -44,21 +43,21 @@ require_relative "snes/checked_run"
 module VBlank
   module IR
     module Backends
-      # The game as a SUPER NINTENDO cartridge: the same program every other backend runs, lowered
+      # The game as a Super Nintendo cartridge: the same program every other backend runs, lowered
       # to the 65816, the console's 16-bit processor, and laid out in a LoROM cartridge.
       #
-      # HOW IT IS MADE. SNES::Lowering walks the IR and emits 65816 machine code through the Ruby
+      # How it is made. SNES::Lowering walks the IR and emits 65816 machine code through the Ruby
       # assembler (SNES::W65816), as the Game Boy Color's lowering emits SM83, and shares with
       # that lowering what both work out before writing an instruction (LoweringPlan, RoutineCuts,
       # Sections). The runtime the code calls is written in 65816 here, in Ruby.
       #
-      # THE BOARD. A plain cartridge is ROM alone, with battery-backed RAM when the game saves, and
+      # The board. A plain cartridge is ROM alone, with battery-backed RAM when the game saves, and
       # runs on a plain console. A game that names the Super FX 2 (`variants: { snes: :superfx }`)
       # gets that chip's board instead (Cartridge::SNESROM::SUPER_FX): the same 65816 code, read at
       # the slow speed, with the chip's registers and RAM beside it, and the routines the game marks
       # `on_chip: true` lowered to the chip's own code (ChipCode). The SA-1 and the MSU-1 are not made.
       class SNES
-        # WHERE A RUNNING CARTRIDGE KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every
+        # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows: every
         # variable by the game's name (its address in work RAM), every list ([its 24-bit place, its
         # capacity, the bytes a slot, its name]), where the runtime keeps how the run stands
         # (Runtime::Frame's names), where every label of the code went, the program it was built
@@ -72,17 +71,29 @@ module VBlank
         # +slot_places+ is where each list a pool's layout moved keeps its slots, counted from the end
         # of its header (Backends::PoolLayout::SlotPlace, CartridgeHeadlessRun#slot_place_of).
         # +half_variables+ is the variables kept in two bytes (HalfVariables), read back with their
-        # sign spread upward.
+        # sign spread upward; +unsigned_lists+ the lists kept in two-byte slots read back with no sign.
+        # +bytes+ gives what the cartridge's sections come to, as :code (what the processor runs) and
+        # :data (what it only reads or sends on), for the size check (tools/emitted_snes_probe.rb).
+        # +sound_effect_voicing+ says how to read which voices the sound effects hold as it runs
+        # (Runtime::Effects::HeldVoices).
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :sprite_picture_names, :sprite_pieces, :console_voice_bits,
-                             :sound_memory, :slot_places, :half_variables) do
+                             :sound_memory, :slot_places, :half_variables, :unsigned_lists, :bytes,
+                             :sound_effect_voicing) do
+          # The voices, by number, the game's sound effects hold now, read through +read16+ (a word of
+          # work RAM at an address).
+          def sound_effect_voices(&read16) = sound_effect_voicing.voices(runtime, &read16)
+
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
           # How many bytes the variable +name+ is kept in.
           def variable_bytes(name) = half_variables.include?(name) ? 2 : 4
 
-          # THE SPRITES THE GAME PLACED IN ITS LAST PASS, as the interpreter gives them
+          # The sprites the game placed in its last pass, as the interpreter gives them
           # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
           # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
           # memory, given its address. A picture copied in other colours is named as the picture
@@ -140,7 +151,7 @@ module VBlank
 
         # +program+ as a cartridge (Cartridge::SNESROM), carrying its Places.
         #
-        # A BUILD IS A SERIES OF TRIES (BuildTries), each a whole lowering with one Tried, until one
+        # A build is a series of tries (BuildTries), each a whole lowering with one Tried, until one
         # fits; what each try finds it needs is kept for every try after it (#settings_after says
         # what each thing that does not fit changes).
         #
@@ -194,7 +205,7 @@ module VBlank
         # How many times the last #build lowered the game: one for a game that fits as it first tries.
         def tries = @build_tries&.count || 0
 
-        # THE SPRITE PIECES THE BUILD MAKES OF EACH PICTURE OF +program+ (SpriteLines.pieces_built,
+        # The sprite pieces the build makes of each picture of +program+ (SpriteLines.pieces_built,
         # Lowering::Picture#sprite_pieces_built), which can differ from the console's rule for
         # cutting a picture wherever the build gives up squares: worked out by building the game,
         # or nil where it cannot be built. A build records them on the program as it finishes
@@ -267,7 +278,8 @@ module VBlank
                              sprite_picture_names: lowering.sprite_picture_names, sprite_pieces: sprite_pieces,
                              console_voice_bits: Music.voice_bits(DSPWrites::CONSOLE_VOICES.to_a - carries.recording_voices),
                              sound_memory: runtime.sound_memory, slot_places: lowering.slot_places,
-                             half_variables: lowering.half_variables_kept)
+                             half_variables: lowering.half_variables_kept, unsigned_lists: lowering.unsigned_lists,
+                             bytes: byte_counts(linked), sound_effect_voicing: lowering.sound_effect_voicing)
           vectors = { reset: linked.address_of("rt_reset"), nmi: linked.address_of("rt_nmi"),
                       irq: linked.address_of("rt_irq"), brk: linked.address_of("rt_irq"),
                       cop: linked.address_of("rt_irq") }
@@ -382,6 +394,21 @@ module VBlank
                                  "build cannot make a cartridge with that chip yet. To fix this, remove the chip " \
                                  "from variants: or from --variant."
           end
+        end
+
+        # The sections that hold what the processor runs: the runtime's own (which name nothing they
+        # hold), the game's routines, and the code that paints a picture a column at a time.
+        CODE_HOLDINGS = [nil, Lowering::ROUTINES, Lowering::Paint::COLUMN_CODE].freeze
+
+        # How many bytes of the cartridge are code and how many are data: the game's tables, pictures,
+        # songs and recordings are data, and so is the sound unit's program, which the processor only
+        # sends across (Runtime::Sound#sections); the rest is code.
+        def byte_counts(linked)
+          code, data = linked.sections.values.partition do |placed|
+            section = placed.section
+            CODE_HOLDINGS.include?(section.holds) && !section.name.start_with?(Runtime::Sound.start_piece_label(""))
+          end
+          { code: code.sum { |placed| placed.section.size }, data: data.sum { |placed| placed.section.size } }
         end
       end
     end

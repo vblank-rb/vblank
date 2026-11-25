@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # The Pac-Man example (examples/pacman.rb) as the Advance's cartridge: built, and read back in
 # the emulator. What the game does on every run is in test/all/examples/test_pacman_example.rb.

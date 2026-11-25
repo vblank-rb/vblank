@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "made_up_original"
 
-# WHICH OF VBLANK'S OWN FILES A KEPT PACK IS KEYED ON. A pack is made by building the port's
+# Which of VBLANK's own files a kept pack is keyed on. A pack is made by building the port's
 # routine and playing it, so a change to the code that does either must make it again; a change
 # to code that does neither (a console's lowering, the tests' own kit) must not, or every commit
 # to VBlank replays a port's whole copy. The files are read from a library folder the test makes

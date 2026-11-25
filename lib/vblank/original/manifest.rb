@@ -9,11 +9,11 @@ module VBlank
     # An asset the manifest does not hold. The message names the assets nearest it.
     class UnknownAsset < KeyError; end
 
-    # A MANIFEST THAT CANNOT BE TRUE: two assets on the same bytes, or a copy that does not hold an
+    # A manifest that cannot be true: two assets on the same bytes, or a copy that does not hold an
     # asset where the manifest says. The message names each asset.
     class ManifestRefused < StandardError; end
 
-    # WHERE EACH ASSET LIES IN THE ORIGINAL: its offset in the copy, its length and the SHA-256 of its
+    # Where each asset lies in the original: its offset in the copy, its length and the SHA-256 of its
     # bytes (never the bytes, which a port may not keep). A port's harvest makes it from the extents
     # Decompilation proved, saves it, and its tests hold the player's copy to it:
     #

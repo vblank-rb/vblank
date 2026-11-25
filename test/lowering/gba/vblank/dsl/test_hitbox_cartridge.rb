@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_hitbox"
 
-# A SPRITE'S COLLISION BOX ON THE ADVANCE'S CARTRIDGE, seen in the emulator. Which boxes collide
+# A sprite's collision box on the Advance's cartridge, seen in the emulator. Which boxes collide
 # on every run is in test/all/vblank/dsl/test_hitbox.rb.
 class TestHitboxCartridge < Minitest::Test
   include HitboxGames

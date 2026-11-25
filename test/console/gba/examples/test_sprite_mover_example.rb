@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/sprite_mover").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sprite_mover").to_s)
 
 # Where the example lays itself out, kept once for the cartridge's tests
 # (test/lowering/gba/examples/test_sprite_mover_example_cartridge.rb).
@@ -59,7 +59,7 @@ class TestSpriteMoverExample < Minitest::Test
 
   # --- the two posts, which is what the stack is here to show ---
   #
-  # Both posts are written AFTER the heart, so declaration order alone would put both in
+  # Both posts are written after the heart, so declaration order alone would put both in
   # front of it. The stack overrules that for one of them. ON_A_POST frames of holding a
   # direction is where the heart sits on a post.
 

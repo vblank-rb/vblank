@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/raycaster").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/raycaster").to_s)
 
 # examples/raycaster.rb on a Super Nintendo: a first-person view of a maze, a ray cast for each
 # of the 32 strips of the wider screen and every strip a wall drawn as tall as its distance says,

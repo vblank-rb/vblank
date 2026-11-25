@@ -6,7 +6,7 @@ require "tmpdir"
 require "many_tiles"
 require "made_up_original_layouts"
 
-# A SPRITE WHOSE POSES DO NOT ALL FIT IN VIDEO MEMORY beside the scene's other pictures. A Genesis
+# A sprite whose poses do not all fit in video memory beside the scene's other pictures. A Genesis
 # holds 1471 tiles at once, and the console's own games keep room for the one frame a big character
 # shows, copying that frame's tiles in from the cartridge in the blank as he changes to it. Every
 # pass is held to the interpreter's picture, so a pose drawn from the wrong tiles, or from tiles

@@ -3,7 +3,7 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # WHICH PIXELS OF THE SCREEN A COMPARISON LOOKS AT, frame by frame.
+      # Which pixels of the screen a comparison looks at, frame by frame.
       #
       # With nothing set it is every pixel. Three settings narrow it, and they go together:
       #
@@ -11,13 +11,13 @@ module VBlank
       #   ignoring_rectangles:  the parts to leave out, inside whatever is looked within
       #   pixels_apart:         only every few pixels across and down, 1 for every pixel
       #
-      # WHY A PORT NEEDS MORE THAN FIXED RECTANGLES. A rebuilt game matches its original one
+      # Why a port needs more than fixed rectangles. A rebuilt game matches its original one
       # part at a time: the room before the status bar, the status bar before the menus. What
       # is ready changes with the stretch of the game, so a part can be given for a stretch of
       # frames. And a part that belongs to the scenery moves when the view scrolls, so a part
       # can be worked out on every frame from the two running cartridges, by a block.
       #
-      # EACH OF THE FIRST TWO TAKES ONE OF THREE THINGS:
+      # Each of the first two takes one of three things:
       #
       #   [[x, y, width, height], ...]                 the same rectangles on every frame
       #   { 1..120 => [...], :door.. => [...] }        rectangles for each stretch of frames, a
@@ -28,13 +28,15 @@ module VBlank
       #                                                (and the frame's number, if it takes three)
       #                                                and asked on every frame, those left out too,
       #                                                in order, so it can remember the frame before
-      #                                                (once a step, for two lined up step by step)
+      #                                                (once a step, for two lined up step by step;
+      #                                                from the frame after the start, for one
+      #                                                started after a frame of its tape)
       #
       # A rectangle given in a list or for a stretch has to lie on the screen, since a part off
       # it is a slip. One a block answers is cut to the screen, since a part that moves with
       # the scenery slides off the edge.
       #
-      # A DECIDED FRAME IS A Part: a byte for each pixel, a row at a time, 1 where the pixel is
+      # A decided frame is a Part: a byte for each pixel, a row at a time, 1 where the pixel is
       # looked at and 0 where it is not — the form the emulator counts a difference in — and
       # how many pixels are looked at, which is what a share of the picture is a share of.
       # Parts are cached by the rectangles that made them, so a part that does not change is
@@ -106,7 +108,7 @@ module VBlank
         # The part looked at on every frame, for a part that does not change with the frame.
         def fixed_part = part_of(@within&.rectangles, @outside.rectangles || [])
 
-        # THE PART LOOKED AT ON EACH FRAME OF +tape+: what a comparison asks on every frame,
+        # The part looked at on each frame of +tape+: what a comparison asks on every frame,
         # with the stretches written in moments turned into the frames those name on it.
         def on_tape(tape) = OnTape.new(self, choices.to_h { |choice| [choice, choice.frame_ranges_on(tape)] })
 
@@ -119,7 +121,7 @@ module VBlank
           part_of(within, left_out.empty? ? outside : outside + left_out)
         end
 
-        # WHAT WAS LOOKED AT, AS SENTENCES, for a report a person reads: nothing when it was
+        # What was looked at, as sentences, for a report a person reads: nothing when it was
         # every pixel.
         def sentences
           [*@within&.sentences("Only these parts of the screen were looked at", "chose the parts of the screen that were looked at"),
@@ -127,7 +129,7 @@ module VBlank
            *(["Only every #{ordinal(@pixels_apart)} pixel across and down was looked at."] if @pixels_apart > 1)]
         end
 
-        # THE PART ON EACH FRAME OF ONE TAPE. See LookedAt#on_tape.
+        # The part on each frame of one tape. See LookedAt#on_tape.
         OnTape = Data.define(:looked_at, :ranges) do
           def part_on(frame, first, second, left_out = []) = looked_at.part_on(frame, first, second, ranges, left_out)
         end
@@ -177,7 +179,7 @@ module VBlank
                                "comparison looks at every other pixel across and down. With 1, it looks at every pixel."
         end
 
-        # ONE OF THE TWO SETTINGS OF RECTANGLES, as it was written: a list, a list for each
+        # One of the two settings of rectangles, as it was written: a list, a list for each
         # stretch of frames, or a block. See LookedAt.
         class Choice
           # One stretch's rectangles: the range as it was written, the same as frames to be

@@ -14,6 +14,7 @@ require "pack_slot_view_games"
 require "pack_table_tile_background_games"
 require "all/vblank/builder/test_pack_backdrops"
 require "all/vblank/builder/test_pack_color_lists"
+require "all/vblank/builder/test_pack_pixel_color_lists"
 require "all/vblank/builder/test_pack_poses"
 require "all/vblank/builder/test_pack_poses_of_words"
 require "pack_pose_of_shapes_games"
@@ -29,14 +30,14 @@ require "brr_recordings"
 
 VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 
-# EVERY SMALL GAME THAT READS A DATA PACK, REGISTERED ONCE. A game's data is read from its pack two
+# Every small game that reads a data pack, registered once. A game's data is read from its pack two
 # ways: all-in-one, the pack read as the game is built, and with the pack left out
 # (`pack_at_start: true`), the pack handed as a file as the game starts, which is what a shell
 # build is. Each verb that takes a pack handle was taught the second way separately, so each needs
 # a game here: PackParityTests (test/pack_parity_tests.rb) builds every one both ways on each run
 # that hands a game a file, and holds the second build to the first, or to a refusal in plain words.
 #
-# TO REGISTER A GAME, add one `game` line to the kit whose made-up original it reads (or a kit of
+# To register a game, add one `game` line to the kit whose made-up original it reads (or a kit of
 # its own for a new original):
 #
 #   game(:sprite_of_pack_tiles, passes: 3) do |folder, options|
@@ -49,16 +50,16 @@ VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 # handed is the first build's. `passes:` is how long to play it, and `presses:` the buttons held
 # on each frame that has any (`{ 1 => [:a], 20 => [:b] }`).
 #
-# A GAME THAT NAMES FRAMES OF ITS ORIGINAL (`pack[:frames].frame(at, layout:)`) gives back
+# A game that names frames of its original (`pack[:frames].frame(at, layout:)`) gives back
 # `built_by(builder)`, which keeps its data pack: the parity check then plays the pack's unpacking
 # from the copy and hands the build with its pack left out the file that writes, as a shell does,
 # so the layout (a reader the game wrote among them) runs as game code on the copy's bytes.
 #
-# A VERB NOT MADE FOR A PACK LEFT OUT YET is registered too, marked `refused:` with a phrase of
+# A verb not made for a pack left out yet is registered too, marked `refused:` with a phrase of
 # its refusal and which runs refuse it. Once the verb is made the game builds, the test fails
 # saying so, and taking the mark off makes the test hold the two builds alike.
 #
-# A GAME THE TWO BUILDS SHOW DIFFERENTLY TODAY, a fault not yet mended, is marked `differs:` with
+# A game the two builds show differently today, a fault not yet mended, is marked `differs:` with
 # what differs (a Difference), and the consoles it differs on where not all. The test then requires
 # that they differ there, so it fails when the fault is mended and the mark comes off. It is not a
 # skip: the game is built and played both ways on every run.
@@ -69,7 +70,7 @@ module PackGames
   ALL_IN_ONE = VBlank::Cartridge::Options.new
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
-  # WHICH RUNS REFUSE A GAME BUILT WITH ITS PACK LEFT OUT. The builder refuses on every run. A
+  # Which runs refuse a game built with its pack left out. The builder refuses on every run. A
   # lowering refuses only where a build for a computer is made, so the interpreter plays the game,
   # and must play it as the all-in-one build. A build for a computer refuses some games only as a
   # console whose sound chip does what the Advance's does not: mixing recordings at their own rates.
@@ -121,7 +122,7 @@ module PackGames
     end
   end
 
-  # THE MADE-UP ADVANCE ORIGINAL'S PICTURES (MadeUpOriginal): its sprite picture of four tiles and
+  # The made-up Advance original's pictures (MadeUpOriginal): its sprite picture of four tiles and
   # its colours, drawn each way a picture is, and its bytes as pixels and as letters.
   class Pictures < Kit
     include PackAtStartPictures
@@ -301,7 +302,7 @@ module PackGames
     ].freeze
   end
 
-  # A WHOLE SCREEN OF A COMPUTER GAME: a picture 320 by 200, one byte a pixel, in a table of 256
+  # A whole screen of a computer game: a picture 320 by 200, one byte a pixel, in a table of 256
   # colours, both in the original's data and neither in its program, as a DOS game keeps its
   # title. It is wider and taller than some consoles' screens, and what is past an edge is not drawn.
   class ScreenPictures < Kit
@@ -347,7 +348,7 @@ module PackGames
     ].freeze
   end
 
-  # A FONT CUT FROM A STRIP THAT IS A PICTURE OF THE PACK: a row of numerals as an original keeps
+  # A font cut from a strip that is a picture of the pack: a row of numerals as an original keeps
   # it, one picture cut into a picture for each character. The strip is eleven characters, each
   # 4x6, cut from a slot of pixels that starts before it, so a piece read from the wrong row or
   # column of the slot shows; the made-up copy's bytes there differ from each to the next.
@@ -424,7 +425,7 @@ module PackGames
     ].freeze
   end
 
-  # EACH CONSOLE'S LAYOUT (MadeUpOriginalLayouts): tiles, a bank of colours, and tables of numbers
+  # Each console's layout (MadeUpOriginalLayouts): tiles, a bank of colours, and tables of numbers
   # of two and four bytes, signed and not, as each console keeps them.
   class Layouts < Kit
     include MadeUpOriginalLayouts
@@ -451,7 +452,7 @@ module PackGames
     ].freeze
   end
 
-  # VBLANK'S OWN LAYOUT (MadeUpVBlankLayoutOriginals): a PlayStation, a computer and an arcade
+  # VBLANK's own layout (MadeUpVBlankLayoutOriginals): a PlayStation, a computer and an arcade
   # original, whose unpacking writes colours, tiles and numbers in it, shown as a background and a
   # sprite with no layout: line.
   class VBlankLayouts < Kit
@@ -469,7 +470,7 @@ module PackGames
     ].freeze
   end
 
-  # A BACKGROUND OF THE ORIGINAL'S OWN TILES, MAP AND COLOURS (PackBackgroundGames), in three
+  # A background of the original's own tiles, map and colours (PackBackgroundGames), in three
   # consoles' layouts, its banks drawn with other lists, stepped, walked, recoloured and drawn in.
   class Backgrounds < Kit
     include PackBackgroundGames
@@ -507,7 +508,7 @@ module PackGames
       built(b.program, b.made_data_pack_file)
     end
 
-    # A SUPER NINTENDO BACKGROUND OF FOUR BANKS: a quarter of its big cells takes turns through
+    # A Super Nintendo background of four banks: a quarter of its big cells takes turns through
     # pictures, banks 1 and 2 are walked up from black, and banks 0 and 3 are left out of the walk,
     # after a fade in. Each bank's place 0 is black in the copy, so the all-in-one build holds one
     # list for each bank; built with the pack left out, a bank holds a marker at place 0 instead,
@@ -813,7 +814,7 @@ module PackGames
     ].freeze
   end
 
-  # A BACKGROUND FROM THE PACK THAT WALKS BETWEEN AREAS (PackBackgroundAreaGames): each area its own
+  # A background from the pack that walks between areas (PackBackgroundAreaGames): each area its own
   # slots of tiles, map and colours, walked into and back.
   class BackgroundAreas < Kit
     include PackBackgroundAreaGames
@@ -829,6 +830,46 @@ module PackGames
         end
         built(*made)
       end,
+      # Each area's map at a width of its own, walked between.
+      game(:background_walking_between_areas_of_two_widths, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, across: ACROSS_BY_AREA) do |world|
+          PackBackgroundAreaGames.emit_walk(self, world)
+        end
+        built(*made)
+      end,
+      # Each area's map carrying its own width (`as_map(across:)`), the background given no across:.
+      game(:background_walking_between_areas_of_maps_carrying_their_widths, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, across: ACROSS_BY_AREA, sized_maps: true) do |world|
+          PackBackgroundAreaGames.emit_walk(self, world)
+        end
+        built(*made)
+      end,
+      # A world of big rooms over one slot of tiles, each room walked into in turn.
+      game(:background_walking_a_world_of_big_rooms_over_one_tile_slot, passes: 7) do |folder, options|
+        areas = PackBackgroundAreaGames.world_areas(WORLD_ROOMS, WORLD_ACROSS, WORLD_DOWN)
+        built(*world_game_and_file(folder, areas, WORLD_ACROSS, options: options))
+      end,
+      # Four rooms of 126x86 cells over a slot of an original's size: 1024 tiles in 16 banks, every turn.
+      game(:background_walking_a_world_of_big_rooms_over_a_big_tile_slot, passes: 9) do |folder, options|
+        areas = PackBackgroundAreaGames.world_areas(%i[field forest lake marsh], 126, 86, big: true)
+        built(*world_game_and_file(folder, areas, 126, options: options))
+      end,
+      # The same over one slot of tiles and one of colours: one set of tiles, the map alone walked.
+      game(:background_walking_between_areas_of_two_widths_over_one_tile_slot, passes: WALKS_ON + 4) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true, across: ACROSS_BY_AREA) do |world|
+          PackBackgroundAreaGames.emit_walk_beside_sprite(self, world)
+        end
+        built(*made)
+      end,
+      # Rooms of two sets of tiles taken in turn, the big set's tiles taking turns, a told cell
+      # written in each room: the rooms of one set share the tiles held for it.
+      game(:rooms_of_two_tile_sets_sharing_turning_tiles_and_told_cells, passes: 15) do |folder, options|
+        rooms = PackBackgroundAreaGames.two_set_rooms(4, 3)
+        made = two_set_rooms_game_and_file(folder, rooms, options: options) do |world, belts, told|
+          PackBackgroundAreaGames.emit_two_set_walk(self, world, belts, told, rooms.keys)
+        end
+        built(*made)
+      end,
       game(:cells_written_in_each_area_of_a_walking_background, passes: 11) do |folder, options|
         told = [PackBackgroundAreaGames.advance_word(*WRITTEN)]
         made = areas_game_and_file(areas_original(folder), options: options, set_cells: told) do |world|
@@ -836,16 +877,49 @@ module PackGames
         end
         built(*made)
       end,
+      # Cells told by one slot of map cells for every area, written by place in the area showing.
+      game(:cells_told_by_a_slot_in_each_area_of_a_walking_background, passes: TOLD_CASTLE_PASS + 3) do |folder, options|
+        built(*told_slot_areas_game_and_file(areas_original(folder), options: options))
+      end,
+      # The same told by a slot an area, a Hash by area.
+      game(:cells_told_by_a_slot_an_area_of_a_walking_background, passes: TOLD_CASTLE_PASS + 3) do |folder, options|
+        built(*told_slot_areas_game_and_file(areas_original(folder), options: options, by_area: true))
+      end,
       game(:tile_taking_turns_in_one_area_of_a_walking_background, passes: 9) do |folder, options|
         made = areas_game_and_file(areas_original(folder), options: options, turning: true) do |world, blocks|
           PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
+      end,
+      # A tile taking turns in both areas over one slot of tiles, which share what the slot draws.
+      game(:tile_taking_turns_in_areas_over_one_tile_slot, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, turning: true, one_tile_slot: true) do |world, blocks|
+          PackBackgroundAreaGames.emit_turning_walk(self, world, blocks)
+        end
+        built(*made)
+      end,
+      # A bank the game recolours, followed by both areas over one slot of tiles and colours, which
+      # share the bank's table of colours; a sprite drawn with the bank too, as `recolor` wants.
+      game(:bank_recolored_in_areas_over_one_tile_slot, passes: 9) do |folder, options|
+        made = areas_game_and_file(areas_original(folder), options: options, one_tile_slot: true) do |world|
+          colors :other, MadeUpOriginalLayouts::PALETTE.rotate(3).each_with_index.map { |color, at| at.zero? ? :transparent : color }
+          world.draw_with({ town_colors_0: :town_colors_0, town_colors_1: :town_colors_1 })
+          image :dot, width: 8, height: 8, places: Array.new(64, 2), colors: :town_colors_1
+          sprite(:dot, at: [40, 40]).draw_with :town_colors_1
+          pass = var :pass, 0
+          game_loop do
+            pass += 1
+            recolor :town_colors_1, %i[other town_colors_0], showing: pass - 2 if pass >= 2
+            world.show_map :castle if pass == 4
+            world.show_map :town if pass == 7
+          end
         end
         built(*made)
       end
     ].freeze
   end
 
-  # CELLS OF A BACKGROUND FROM THE PACK IN FRONT OF THE SPRITES (PackCellsInFrontGames): marked by the
+  # Cells of a background from the pack in front of the sprites (PackCellsInFrontGames): marked by the
   # Genesis's own priority bit, or by map cells the unpacking writes, and a cell written in front.
   class CellsInFront < Kit
     include PackCellsInFrontGames
@@ -859,11 +933,19 @@ module PackGames
       end,
       game(:background_cell_written_in_front_of_a_sprite, passes: WRITTEN_PASS + 3) do |folder, options|
         built(*front_game_and_file(folder, written: true, options: options))
+      end,
+      # Areas over one slot of tiles marking cells in front, one pool of tiles for both, and a cell
+      # a slot told written in each.
+      game(:cells_in_front_in_areas_over_one_tile_slot, passes: FAR_WRITTEN_PASS + 3) do |folder, options|
+        built(*front_areas_game_and_file(folder, options: options))
+      end,
+      game(:cells_in_front_in_areas_each_over_a_tile_slot, passes: FAR_WRITTEN_PASS + 3) do |folder, options|
+        built(*front_areas_game_and_file(folder, own_tiles: true, options: options))
       end
     ].freeze
   end
 
-  # A CELL OF A BACKGROUND FROM THE PACK WRITTEN WITH `set_cell` (PackBackgroundSetCellGames): the
+  # A cell of a background from the pack written with `set_cell` (PackBackgroundSetCellGames): the
   # font cells an original stores in the map its picture is in.
   class WrittenCells < Kit
     include PackBackgroundSetCellGames
@@ -1028,7 +1110,7 @@ module PackGames
         end
       end,
       # `set_tile` names a tile of the background's own, and which tiles the map draws is in the file.
-      game(:set_tile_by_a_number_on_a_pack_background, passes: 4, refused: refused_by_builder("set_cell")) do |folder, options|
+      game(:set_tile_by_a_number_on_a_pack_background, passes: 4) do |folder, options|
         advance_cells_game(folder, options, MAP_TILES.flatten.map { |tile| ADVANCE_CELL.(tile) }, set_cells: [ADVANCE_CELL.(3)]) do |world|
           which = var :which, 0
           game_loop do
@@ -1041,7 +1123,7 @@ module PackGames
     ].freeze
   end
 
-  # A SCREEN'S BACKDROP FROM THE PACK (PackBackdropGames): a slot's first colour, a bank's, and a
+  # A screen's backdrop from the pack (PackBackdropGames): a slot's first colour, a bank's, and a
   # place of either, on a screen whose one cell is a background of the pack too.
   class Backdrops < Kit
     include PackBackdropGames
@@ -1085,7 +1167,7 @@ module PackGames
     ].freeze
   end
 
-  # A LIST OF COLOURS FROM THE PACK (PackColorListGames): a whole slot or a bank of it, drawn
+  # A list of colours from the pack (PackColorListGames): a whole slot or a bank of it, drawn
   # with, recoloured with, walked and drawn in.
   class ColorLists < Kit
     include PackColorListGames
@@ -1224,7 +1306,19 @@ module PackGames
     ].freeze
   end
 
-  # A POSE THAT IS ONE OF THE ORIGINAL'S FRAMES (PackPoseGames): a count and five bytes a piece.
+  # Pictures from a slot of pixels given a list of colours by name (PackPixelColorListGames), on one
+  # sprite drawn with another list.
+  class PixelColorLists < Kit
+    include PackPixelColorListGames
+
+    GAMES = [
+      game(:pixel_pictures_in_a_named_list_drawn_with_another, passes: 4) do |folder, options|
+        built(*pixel_pictures_drawn_with_game_and_file(layout_original(folder, GENESIS), options: options))
+      end
+    ].freeze
+  end
+
+  # A pose that is one of the original's frames (PackPoseGames): a count and five bytes a piece.
   class Poses < Kit
     include PackPoseGames
 
@@ -1274,7 +1368,7 @@ module PackGames
     ].freeze
   end
 
-  # A POSE WHOSE FRAME IS THE CONSOLE'S OWN SPRITE ENTRIES (PackPoseOfWordsGames): parts of two
+  # A pose whose frame is the console's own sprite entries (PackPoseOfWordsGames): parts of two
   # bytes, and pieces of several tiles each way.
   class PosesOfWords < Kit
     include PackPoseOfWordsGames
@@ -1292,7 +1386,7 @@ module PackGames
     ].freeze
   end
 
-  # A POSE WHOSE FRAME'S PIECES ARE EVERY SHAPE AND SIZE OF THE ADVANCE'S (PackPoseOfShapesGames):
+  # A pose whose frame's pieces are every shape and size of the Advance's (PackPoseOfShapesGames):
   # each piece's size read through the console's table, as game code with the pack left out.
   #
   # On the Color it is more pieces than the console's sprite table holds, so the pieces furthest
@@ -1309,7 +1403,7 @@ module PackGames
     ].freeze
   end
 
-  # POSES WHOSE FRAMES THE GAME READS WITH A READER OF ITS OWN, given a value from each pose
+  # Poses whose frames the game reads with a reader of its own, given a value from each pose
   # (PackPoseReadByTheGameGames): the reader run as game code with the pack left out.
   class PosesReadByTheGame < Kit
     include PackPoseReadByTheGameGames
@@ -1321,7 +1415,7 @@ module PackGames
     ].freeze
   end
 
-  # A POSE IN THE COLOURS OF THE BANK ITS FRAME NAMES (PackPoseBankColorGames).
+  # A pose in the colours of the bank its frame names (PackPoseBankColorGames).
   class PosesInBankColors < Kit
     include PackPoseBankColorGames
 
@@ -1415,11 +1509,37 @@ module PackGames
           sprite :near, at: [40, 40]
           sprite :far, at: [40, 40]
         end)
+      end,
+      # A pose of the pieces of two banks, each in its own bank's colours, one sprite moving it,
+      # beside a pose of one bank told banks: too, and one told a single bank, the file saying which
+      # pieces those are.
+      game(:pose_of_two_banks_pieces_moved_whole, passes: 4) do |folder, options|
+        built_by(game_builder_of(folder, options: options) do |pack|
+          image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [3, 1], size: SIZE
+          image :plain, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_2, layout: FRAME), origin: ORIGIN,
+                        colors: pack[:palette], banks: [1, 2], size: SIZE
+          image :single, tiles: pack[:video], frame: pack[:frames].frame(IN_BANK_1, layout: FRAME), origin: ORIGIN,
+                         colors: pack[:palette], banks: [1], size: SIZE
+          mixed = sprite :mixed, at: [40, 40]
+          mixed.move_to(96, 64)
+          sprite :plain, at: [40, 80]
+          sprite :single, at: [80, 80]
+        end)
+      end,
+      # A frame read by a reader of the game's whose pieces add their bank to the thing's, given
+      # by `with:`, each piece drawn in the bank that comes out.
+      game(:pose_whose_pieces_add_their_bank_to_the_things, passes: 3) do |folder, options|
+        test = self
+        built_by(game_builder_of(folder, options: options) do |pack|
+          test.declare_relative_bank_pose_for(self, pack, size: [24, 8])
+          sprite :sword, at: [40, 40]
+        end)
       end
     ].freeze
   end
 
-  # RECORDED SOUND FROM THE PACK (PackSoundTests): a recording's samples, and an instrument's rate,
+  # Recorded sound from the pack (PackSoundTests): a recording's samples, and an instrument's rate,
   # hold point and envelope.
   class Sounds < Kit
     include PackSoundTests
@@ -1536,7 +1656,7 @@ module PackGames
     ].freeze
   end
 
-  # SONGS AND SOUND EFFECTS WHOSE PARTS READ THEIR NOTES FROM THE PACK (PackScoresAtStartTests'
+  # Songs and sound effects whose parts read their notes from the pack (PackScoresAtStartTests'
   # notes, in a made-up original that holds each part's records one slot after another).
   class Scores < Kit
     include PackScoresAtStartTests
@@ -1686,7 +1806,7 @@ module PackGames
     ].freeze
   end
 
-  # A SONG OF THE ADVANCE'S COMMON SOUND DRIVER (Packing::M4A), read from the made-up copy of
+  # A song of the Advance's common sound driver (Packing::M4A), read from the made-up copy of
   # M4AAnswers by the pack's unpacking: its first track on the recording its voice names, every
   # setting of that from the voice, its second track's notes on the first square, its third's on
   # the noise voice, and the song's length and loop, played a tick a frame; and tracks that switch
@@ -1694,7 +1814,7 @@ module PackGames
   # song whose tracks come round apart, written until they come round together.
   class MusicPlayer2000Songs < Kit
     # Room for the notes of the song of every command, which is written to its third time round
-    # (Packing::M4A, A SONG COMES ROUND).
+    # (Packing::M4A, a song comes round).
     NOTES = 176
 
     private def m4a_original(folder)
@@ -1869,7 +1989,7 @@ module PackGames
     ].freeze
   end
 
-  # ONE SLOT READ IN SEVERAL SHAPES THROUGH VIEWS (PackSlotViewGames): a stretch of video memory
+  # One slot read in several shapes through views (PackSlotViewGames): a stretch of video memory
   # kept as one slot of sixteen-colour tiles, and parts of it read as tiles of a byte a pixel, a
   # map of bytes, a picture of pixels and tables of numbers.
   class SlotViews < Kit
@@ -1883,7 +2003,7 @@ module PackGames
           spin = var :spin, 0
           game_loop do
             spin += 11
-            layer.rotate spin
+            layer.rotate! spin
           end
         end)
       end,
@@ -1893,7 +2013,7 @@ module PackGames
     ].freeze
   end
 
-  # A TEXT LAYER OF 256 COLOURS (PackTableTileBackgroundGames): more tiles than a byte names, some
+  # A text layer of 256 COLOURS (PackTableTileBackgroundGames): more tiles than a byte names, some
   # turned, under map cells the unpacking writes or under the Advance's own cells of two bytes.
   class TableTileBackgrounds < Kit
     include PackTableTileBackgroundGames
@@ -1915,7 +2035,7 @@ module PackGames
     ].freeze
   end
 
-  # COLOURS READ AS THE GAME STARTS, COMPARED WHILE THE GAME IS BUILT: what the build checks of two
+  # Colours read as the game starts, compared while the game is built: what the build checks of two
   # lists of colours when one of them is markers (IR::StartFile, "MARKERS"), whose colours it does
   # not hold. Each is a game the all-in-one build accepts, so the build with the pack left out must
   # take it too.
@@ -2049,7 +2169,7 @@ module PackGames
     ].freeze
   end
 
-  # POSES IN THE BANK THEIR FRAMES NAME, ONE SPRITE SHOWING TWO (PackPoseBankColorGames), on a
+  # Poses in the bank their frames name, one sprite showing two (PackPoseBankColorGames), on a
   # console whose build keeps one list of colours for a whole sprite.
   class PosesSharingTheirFramesBank < Kit
     include PackPoseBankColorGames
@@ -2088,7 +2208,7 @@ module PackGames
     ].freeze
   end
 
-  # A LIT 3D ROOM READ FROM A DATA PACK (PackPlaceGames): its points and faces, how many faces are
+  # A lit 3D room read from a data pack (PackPlaceGames): its points and faces, how many faces are
   # used, its shading and where its viewer starts. Only a console that draws a place plays it.
   class Places < Kit
     GAMES = [
@@ -2098,7 +2218,7 @@ module PackGames
     ].freeze
   end
 
-  # A TILE OF A BACKGROUND FROM THE PACK TAKING TURNS THROUGH PICTURES OF THE PACK
+  # A tile of a background from the pack taking turns through pictures of the pack
   # (PackTilePictureGames): the map names it in two banks and three turns, and it steps through
   # three pictures, in an Advance original and a Genesis one.
   class TilePictures < Kit
@@ -2129,11 +2249,14 @@ module PackGames
       end,
       game(:cell_written_with_set_cell_taking_turns_through_pack_pictures, passes: 9) do |folder, options|
         built(*written_cell_game_and_file(folder, options: options))
+      end,
+      game(:tiles_taking_turns_in_many_rooms_over_sixteen_banks, passes: PackTilePictureGames::ROOM_COUNT + 2) do |folder, options|
+        built(*rooms_belt_game_and_file(folder, options: options))
       end
     ].freeze
   end
 
-  # A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES
+  # A pose of a set of sprite tiles whose pieces are one of the original's frames
   # (PackTilePoseGames): a ball spinning through two frames of pieces two tiles tall.
   class TilePosesOfFrames < Kit
     include PackTilePoseGames
@@ -2152,7 +2275,7 @@ module PackGames
     ].freeze
   end
 
-  # BYTES UNPACKED BY A ROUTINE WRITTEN IN A GAME FILE (FlaggedBytes, test/plain_ruby_flagged_bytes_part.rb),
+  # Bytes unpacked by a routine written in a game file (FlaggedBytes, test/plain_ruby_flagged_bytes_part.rb),
   # whose locals hold the bytes read before the place moves on, drawn as a row of marks a pass.
   class FlaggedBytesUnpacked < Kit
     private def flagged_original(folder)
@@ -2185,7 +2308,7 @@ module PackGames
     ].freeze
   end
 
-  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
+  KITS = [Pictures, ScreenPictures, StripFonts, Layouts, VBlankLayouts, Backgrounds, BackgroundAreas, CellsInFront, WrittenCells, Backdrops, ColorLists, PixelColorLists, Poses, PosesOfWords, PosesOfShapes, PosesReadByTheGame, PosesInBankColors,
           Sounds, Scores, MusicPlayer2000Songs, SlotViews, TableTileBackgrounds, ColorsComparedAtStart, PosesSharingTheirFramesBank, Places, TilePictures,
           TilePosesOfFrames, FlaggedBytesUnpacked].freeze
 

@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_draw_in_order"
 
-# SPRITES DRAWN IN AN ORDER THE GAME WORKS OUT, on the Advance's own cartridge: where the
+# Sprites drawn in an order the game works out, on the Advance's own cartridge: where the
 # console's sprite table keeps each one, read in the emulator. What the order does, asked of
 # every run, is in test/all/vblank/builder/test_draw_in_order.rb, which keeps the game both
 # files play in DrawInOrderGames.
@@ -20,7 +20,7 @@ class TestDrawInOrderCartridge < Minitest::Test
     assert_operator v.sprites(:hero).first.slot, :<, v.sprites(:enemy).first.slot, "the hero is in front"
   end
 
-  # TAKING TURNS: the console draws the sprite earlier in its table in front, so the two swap
+  # Taking turns: the console draws the sprite earlier in its table in front, so the two swap
   # rows in the table from one frame to the next.
   def test_sprites_taking_turns_swap_rows_every_frame
     rom = assemble_rom(turns_program(true, count: 2), name: "TURNS")

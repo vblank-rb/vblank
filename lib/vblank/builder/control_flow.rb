@@ -2,30 +2,55 @@
 
 module VBlank
   class Builder
-    # The control-flow verbs: the game loop and timed triggers (game_loop,
-    # wait_vblank, repeat, every, after) and stopping (halt, debug_halt). A concern of
-    # {Builder}, mixed in so these stay flat DSL verbs.
+    # The game loop, repeats and timers
     #
+    # A game is a loop: every pass reads the buttons, moves things and draws. `game_loop` is that
+    # loop, and the framework waits for the screen to be ready at the top of every pass, so a pass
+    # is one picture. Inside it, `every` and `after` run code on a beat or once after a delay,
+    # `repeat` runs code a number of times, and `once_a_frame` keeps something going even when
+    # the code that started it does not run.
+    #
+    # ```ruby
+    # game_loop do
+    #   every(30) { blink = 1 - blink }   # twice a second
+    #   after(600) { mode = :attract }    # ten seconds in
+    # end
+    # ```
+    #
+    # A frame is one picture on screen, 60 a second. Wherever a verb takes a time, frames are the
+    # default and `:seconds` is there for a person who thinks in time.
+    #--
     # The hooks the Condition and Branch handles call back into
     # (record_conditional, record_else) are the builder's public seam and live in
-    # the core, not here — these are just the verbs.
+    # the core, not here — these are just the verbs. A concern of Builder, mixed in so
+    # these stay flat DSL verbs.
+    #++
     module ControlFlow
-      # Stop execution (branch to self). Use after drawing static scenes.
+      # Stops the game here: nothing after this line ever runs.
+      #
+      # Use it after drawing a picture that never changes.
+      #
+      # ```ruby
+      # draw_text "THE END", :center, 80, :white
+      # halt
+      # ```
       def halt
         record(Build.halt)
       end
 
-      # Debug breakpoint: stop building here, so everything after this call is
-      # ignored. Use it to bisect rendering issues — everything before debug_halt
-      # runs, everything after never makes it into the ROM. The build says so with its
-      # warnings (VBlank.build), so you remember to remove it.
+      # Stops building the game at this line, to find which line breaks the picture.
       #
-      # @example Bisecting a black screen
-      #   screen :bitmap
-      #   clear_screen :red      # does this show up?
-      #   debug_halt              # ← ROM stops here
-      #   draw_text "HELLO"      # ← never recorded
-      #   game_loop { ... }      # ← never recorded
+      # Everything before it runs and everything after it is left out of the game. The build
+      # prints a warning that it is there, so that it is not left in by mistake. Move it down
+      # until the picture goes wrong.
+      #
+      # ```ruby
+      # screen :bitmap
+      # clear_screen :red       # does this show up?
+      # debug_halt              # the game stops here
+      # draw_text "HELLO"       # left out
+      # game_loop { }           # left out
+      # ```
       def debug_halt
         record(Build.halt) # the lowered ROM stops (branches to self) at this point
         @debug_halted = true
@@ -33,20 +58,35 @@ module VBlank
       end
 
       # True if debug_halt was called (used by VBlank.build to skip finalization steps).
-      def debug_halted?
+      # Asked by VBlank.build to skip finalization after `debug_halt`; not a verb.
+      def debug_halted?  # :nodoc:
         @debug_halted
       end
 
-      # Wait for the vertical blank — the safe moment to change what's on screen.
+      # Waits until the screen is ready for the next picture.
       #
-      # A `game_loop` opens every pass with this already, so a wait written inside one
-      # records nothing: two waits in a pass would run the game at half speed. It is
-      # counted instead, and Checks::DroppedFrameSync reports the count once.
+      # A `game_loop` already does this at the top of every pass, so you only write it outside
+      # one, in a program that shows a picture on its own. Inside a `game_loop` it does nothing,
+      # because two waits in a pass would run the game at half speed; the build tells you once
+      # that it was left out.
       #
-      # Outside a game loop nothing is pacing the program, so the wait is emitted as
-      # written — that is how a program presents a frame on its own. Inside a normal Ruby
-      # `while` on a game test it is emitted too: the loop's passes are not the game loop's, and
-      # the wait is what lets the screen go on being drawn while it goes round.
+      # A game built with `frame_sync: :manual` has no wait of its own, so it writes the wait out:
+      #
+      # ```ruby
+      # game_loop do
+      #   wait_vblank        # one picture a frame, the line the game loop would have added
+      #   clear_screen :black
+      #   draw_text "HELLO", x, 70
+      #   x += 1
+      # end
+      # ```
+      #--
+      # Inside a game loop the wait records nothing: it is counted instead, and
+      # Checks::DroppedFrameSync reports the count once. Outside a game loop nothing is pacing the
+      # program, so the wait is emitted as written. Inside a normal Ruby `while` on a game test it
+      # is emitted too: the loop's passes are not the game loop's, and the wait is what lets the
+      # screen go on being drawn while it goes round.
+      #++
       def wait_vblank
         return @dropped_syncs += 1 if @frame_sync == :auto && @has_paced_loop && !inside_game_while?
 
@@ -61,16 +101,16 @@ module VBlank
       # call and why moving one is just changing its position — see {Sprite} and
       # Builder#sprite.
       #
-      # The repaint is two passes over ALL sprites: erase every one from where it was,
+      # The repaint is two passes over all sprites: erase every one from where it was,
       # THEN draw every one where it is now. If instead each sprite erased-and-drew
       # before the next, a sprite drawn first would capture the one behind it that
       # hadn't been erased yet — and smear a copy of it across the screen when it
       # later moved. Erasing everyone first means each captures clean background, so
       # sprites can overlap (a hero touching a coin) without leaving trails.
       #
-      # THE TWO PASSES RUN IN OPPOSITE ORDERS, and that is not a detail. A sprite
-      # remembers what was under it when it drew, so where two overlap the FRONT one's
-      # memory holds the BACK one's pixels. Putting them back has to undo the drawing
+      # The two passes run in opposite orders, and that is not a detail. A sprite
+      # remembers what was under it when it drew, so where two overlap the front one's
+      # memory holds the back one's pixels. Putting them back has to undo the drawing
       # exactly, front first — otherwise the front one's restore paints those borrowed
       # pixels over background the back one has already cleaned, and nothing repaints
       # them. The stale copy then sits there for the rest of the game.
@@ -79,7 +119,7 @@ module VBlank
         # The two passes go straight after the wait, and are put there at finalize (see
         # Sprites#finalize_sprite_repaints): a sprite declared inside a scene is not known
         # yet, since a scene's body is built after this loop, and it has to take its place
-        # in both passes among the ones that are. What IS settled here is which of the
+        # in both passes among the ones that are. What is settled here is which of the
         # sprites declared above the loop this boundary repaints — the ones declared by now.
         @sprite_repaints << [wait_node, @sprites.dup]
         # Hardware sprites need no erase pass — the console recomposites the whole
@@ -109,18 +149,26 @@ module VBlank
       # Internal machinery, not something a game writes: `game_loop` calls it.
       private :emit_frame_boundary
 
-      # Wrap a block of code in an infinite loop. The block's statements become the
-      # loop body in the IR tree; the backend adds the jump back to the top.
+      # Runs the block over and over for as long as the game is on: once for each picture shown.
       #
-      # A game loop runs once per frame. Keeping in step with the display is hardware
-      # machinery, so the framework puts the frame boundary at the top of the body
-      # for you — the wait, and the repaint of every sprite and HUD glyph that goes
-      # with it. Build with `frame_sync: :manual` to place `wait_vblank` yourself.
+      # Put the game in it: read the buttons, move things, draw. At the top of every pass the
+      # framework waits for the screen to be ready and shows the sprites and text where the game
+      # left them, so a sprite needs no draw call; moving it is changing its position.
       #
-      # @example
-      #   game_loop do
-      #     # ... game logic ...
-      #   end
+      # ```ruby
+      # game_loop do
+      #   x += 1 if held(:right)
+      #   draw_text "hello", x, 80, :white
+      # end
+      # ```
+      #
+      # Build the game with `frame_sync: :manual` to place `wait_vblank` yourself instead.
+      #--
+      # The block's statements become the loop body in the IR tree; the backend adds the jump back
+      # to the top. The frame boundary is emit_frame_boundary: wait for the vertical blank, then
+      # repaint every sprite in two passes (erase all, then draw all, in opposite orders so
+      # overlapping sprites restore correctly) and write the scroll of every moving background.
+      #++
       def game_loop(&block)
         # Remembered for the whole build, not just this block: a scene body is built
         # later (at finalize) and is still part of a paced program, so a wait written
@@ -133,35 +181,30 @@ module VBlank
         end
       end
 
-      # Run a block a set number of times, counting at run time. The block is given
-      # a Value for the current index (0 up to count-1), so it can drive positions,
-      # array access, and the like:
+      # Runs a block a number of times, counting while the game runs.
       #
-      #   repeat(8) { |i| dma_fill_rect 119, i * 20 + 2, 2, 12, :gray }
+      # The block is given the turn it is on, from 0 up to one less than the count, so it can
+      # drive a position or pick an item from a list.
       #
-      # This is the run-time counterpart to Ruby's `8.times { |i| ... }`. Reach for
-      # `times` when the count is known as you write the program (it's baked in);
-      # reach for `repeat` when the count is decided while the game runs (a Value,
-      # a variable — e.g. how many segments the snake has right now).
+      # ```ruby
+      # repeat(8) { |i| fill_rect 119, i * 20 + 2, 2, 12, :gray }
+      # ```
       #
-      # A loop given `stop_when:` leaves as soon as that holds, so its count is a ceiling
-      # rather than a number of passes.
+      # It is the counterpart of Ruby's `8.times { |i| ... }`. Use `times` when the count is known
+      # as you write the game. Use `repeat` when the game decides the count while it runs, such as
+      # how many segments a snake has right now.
       #
-      # `estimate:` does nothing but earn a warning (see Builder#record_estimate_line).
-      #
-      # @param count [Value, Integer, Symbol] how many times to run the block
-      # @param stop_when [Condition, Value, nil] leave as soon as this holds
-      # @param estimate [Object] does nothing but earn a warning
-      def repeat(count, stop_when: nil, estimate: nil, &block)
+      # * `count` - how many times to run the block: a number, a variable or a calculation.
+      # * `stop_when:` - a test that ends the loop as soon as it holds, so `count` is the most
+      #   turns it can take.
+      def repeat(count, stop_when: nil, &block)
         raise ArgumentError, "repeat needs a block: repeat(n) { |i| ... }" unless block
-
-        record_estimate_line(estimate)
 
         index = declare_loop_counter
         ensure_var(count)
         i = DSL::Value.new(self, Build.var_ref(index), name: index)
         # A Condition carries its own node; anything else is an ordinary value, where not-zero
-        # means stop. Handing one here USES it, the same as branching on it with `if` — the
+        # means stop. Handing one here uses it, the same as branching on it with `if` — the
         # guardrail that catches a comparison nobody acted on must not call this one an orphan.
         leave =
           if stop_when.is_a?(DSL::Condition)
@@ -186,34 +229,24 @@ module VBlank
         end
       end
 
-      # A hidden variable for a loop to count in, declared and named: a `repeat`'s, and the one a
-      # step that stands for a loop is handed (IR save_load_list, save_store_list).
-      private def declare_loop_counter
-        @repeat_seq += 1
-        :"__repeat_#{@repeat_seq}".tap do |index|
-          ensure_var(index)
-          @unique_names << index
-        end
-      end
-
       # The console refreshes the screen ~59.73 times a second; like every game, we
       # count that as a round 60 frames per second. It's what lets a timer be given
       # in seconds — the unit a person actually thinks in — and turned into frames.
-      FRAMES_PER_SECOND = 60
+      FRAMES_PER_SECOND = 60  # :nodoc:
 
-      # Run the block on a repeating beat — a blinking prompt, a spawn wave, a
-      # repeating sound. Like {#repeat}, the counter behind it is hidden and managed
-      # for you, so there's nothing to declare or reset. Call it once inside your game
-      # loop, where each pass through the loop is one frame.
+      # Runs the block again and again on a steady beat, such as a blinking prompt, a wave of
+      # enemies or a repeating sound.
       #
-      # The interval is +n+ frames, or +n+ seconds when you'd rather think in time —
-      # the framework converts seconds to frames for you:
+      # The counter behind it is kept for you, so there is nothing to declare or reset. Write it
+      # once inside your game loop.
       #
-      #   every(30) { blink = 1 }              # every 30 frames
-      #   every(0.5, :seconds) { blink = 1 }   # the same, given in seconds
+      # ```ruby
+      # every(30) { blink = 1 }              # every 30 frames
+      # every(0.5, :seconds) { blink = 1 }   # the same, given in seconds
+      # ```
       #
-      # @param n [Integer, Numeric] the interval (frames must be whole; seconds may be fractional)
-      # @param unit [Symbol] :frames (default) or :seconds
+      # * `n` - the time between runs. Frames must be a whole number; seconds can be a fraction.
+      # * `unit` - `:frames` or `:seconds`.
       def every(n, unit = :frames, &block)
         counter = timer_counter!(:every, n, unit, block)
         # Build a first-class `every` node: the tree still reads "every N frames"
@@ -225,17 +258,18 @@ module VBlank
         end
       end
 
-      # Run the block once, +n+ frames (or seconds) from now, then never again — a
-      # one-shot delay: an attract-mode timeout, a "GO!" that clears itself, a
-      # scripted beat. The hidden counter stops once it reaches the target, so the
-      # block fires exactly once. Call it inside your game loop, where each pass is
-      # one frame.
+      # Runs the block once after a delay, and never again.
       #
-      #   after(600) { state = 1 }             # 600 frames in
-      #   after(10, :seconds) { state = 1 }    # the same, given in seconds
+      # Use it for a timeout on a title screen, a "GO!" that clears itself or a scripted beat.
+      # Write it inside your game loop.
       #
-      # @param n [Integer, Numeric] the delay (frames must be whole; seconds may be fractional)
-      # @param unit [Symbol] :frames (default) or :seconds
+      # ```ruby
+      # after(600) { state = 1 }             # 600 frames in
+      # after(10, :seconds) { state = 1 }    # the same, given in seconds
+      # ```
+      #
+      # * `n` - the delay. Frames must be a whole number; seconds can be a fraction.
+      # * `unit` - `:frames` or `:seconds`.
       def after(n, unit = :frames, &block)
         counter = timer_counter!(:after, n, unit, block)
         # A first-class `after` node — the tree still reads "after N frames", and
@@ -246,54 +280,46 @@ module VBlank
         end
       end
 
-      # Run a body ONCE A FRAME, wherever the game's own code happens to go — and once
-      # for each frame that really passed, so a game too heavy to finish a frame runs it
-      # again rather than falling behind.
+      # Runs a block once for every frame that passes, wherever the rest of the game's code goes.
       #
-      # This is not the same as writing that code in your `game_loop`, in two ways.
+      # This differs from writing the code in your `game_loop` in two ways.
       #
-      # A game loop body runs where you put it, so it is skipped by a branch that steps
-      # over it and by a scene switch that runs a different scene instead. A
-      # `once_a_frame` body always runs, in the gap between frames — the moment the
-      # screen is safe to change. That makes it the home for an effect that keeps going
-      # after you set it off: you trigger it once (a hit, a pickup, a life lost), and
-      # something has to carry it along on every frame after that until it is finished,
-      # including the frames the triggering code does not run on. `shake_screen` is
-      # built on exactly this.
+      # The body of a game loop runs where you put it, so a branch can step over it and a scene
+      # switch can run a different scene instead. A `once_a_frame` body always runs. That makes it
+      # the home for an effect that keeps going after you set it off: a hit, a pickup or a lost
+      # life starts it once, and it carries on every frame after that until it is finished.
+      # `shake_screen` is built on this.
       #
-      #   fade = var :fade, 0
-      #   once_a_frame { fade -= 1 if fade > 0 }
+      # ```ruby
+      # fade = var :fade, 0
+      # once_a_frame { fade -= 1 if fade > 0 }
+      # ```
       #
-      # AND IT KEEPS REAL TIME, which a game loop body does not. A pass of the loop is
-      # one frame on a game that fits and two on a game that does not, so a body run
-      # once per pass slows down when the game does — a half-second fade takes a second
-      # and a half, and a counter counts at two thirds speed. This one is run once per
-      # frame that really passed, so it takes as long as it is set to whatever the game is
-      # doing. (A very slow pass is capped, so a game can never be asked to catch up
-      # half a second inside one already-late frame.)
+      # It also keeps real time. A pass of the game loop is one frame when the game keeps up and
+      # two when it does not, so code run once per pass slows down when the game does: a
+      # half-second fade takes a second and a half. A `once_a_frame` body runs once for every frame
+      # that really passed, so it takes as long as it is set to. Put movement in here and the
+      # world keeps real time, and show it from the game loop:
       #
-      # That makes this the place for anything that has to keep time. Movement written
-      # straight in a `game_loop` runs a step per PASS, so a heavy game moves in slow
-      # motion — smoothly, uniformly, and safely, which is why it is the default. Move
-      # it in here and the world keeps real time instead:
-      #
-      #   once_a_frame { hero.walk }   # the world, once per frame that really passed
-      #   game_loop    { draw_it_all } # showing it, once per pass
+      # ```ruby
+      # once_a_frame { hero.walk }   # the world, once per frame that really passed
+      # game_loop    { draw_it_all } # showing it, once per pass
+      # ```
       #
       # A program with no game loop has no frames, so nothing runs.
       #
-      # ONE THING TO KNOW ABOUT WHERE IT RUNS, and it is a note rather than a rule. These
-      # bodies run in the gap between frames, which on a screen the display reads directly
-      # is also the only safe moment to DRAW. A body that only moves things is fine there
-      # however long it takes, because nothing it does can be caught half done — the risk
-      # belongs to drawing, and drawing too much for that gap is already what the frame
-      # budget warns about wherever it is written. So there is nothing here a guardrail
-      # would catch that is not caught already, and a game on the tear-free screen has no
-      # deadline at all: it is writing to the page nobody is looking at.
+      # * `name` - a name for the routine, if something has to find it later. It gets a hidden one
+      #   if you give none.
       #
-      # @param name [Symbol, nil] a name for the routine, if something has to find it
-      #   later (a pack's guardrail, a `dump_func`). It gets a hidden one otherwise.
-      # @return [Symbol] the routine's name
+      # Returns the routine's name.
+      #--
+      # A very slow pass is capped, so a game can never be asked to catch up half a second inside
+      # one already-late frame. These bodies run in the gap between frames, which on a screen the
+      # display reads directly is also the only safe moment to draw. A body that only moves things
+      # is fine there however long it takes; the risk belongs to drawing, and drawing too much for
+      # that gap is already what the frame budget warns about wherever it is written. A game on the
+      # tear-free screen has no deadline at all: it is writing to the page nobody is looking at.
+      #++
       def once_a_frame(name = nil, &block)
         raise ArgumentError, "once_a_frame needs a block: once_a_frame { ... }" unless block
 
@@ -305,42 +331,51 @@ module VBlank
         name
       end
 
-      # HOW MANY FRAMES THE SCREEN HAS SHOWN SINCE THE POWER CAME ON, as a number the game can
-      # read and not change. It keeps real time the way `once_a_frame` does — a pass that took
-      # two frames adds two — and, unlike anything the game loop counts, it counts the frames
-      # spent setting up before the first pass.
+      # Reads how many frames the screen has shown since the power came on.
       #
-      # That is what a screen held for an exact number of frames needs. Setting up takes
-      # longer on some power-ons than others (save memory never written is laid out from
-      # scratch the first time), and longer in one build of a game than another, so a hold
-      # counted in passes from the first one ends on a different frame each time. Held until
-      # this reaches a number, it ends on that frame every time:
+      # The number can be read and not changed. It keeps real time the way `once_a_frame` does,
+      # so a pass that took two frames adds two. Unlike anything the game loop counts, it also
+      # counts the frames spent setting up before the first pass.
       #
-      #   game_loop do
-      #     show_title if frames_since_power_on >= 49
-      #   end
+      # That is what a screen held for an exact number of frames needs. Setting up takes longer
+      # on some power-ons than others, so a hold counted in passes from the first one ends on a
+      # different frame each time. Held until this reaches a number, it ends on that frame every
+      # time.
       #
-      # A game with no game loop shows no frames, so it reads nought.
+      # ```ruby
+      # game_loop do
+      #   show_title if frames_since_power_on >= 49
+      # end
+      # ```
       #
-      # @return [DSL::Value]
+      # A game with no game loop shows no frames, so it reads 0.
+      #--
+      # Setting up takes longer when save memory never written is laid out from scratch the first
+      # time, and longer in one build of a game than another.
+      #++
       def frames_since_power_on
         ensure_var(IR::Frames::COUNT)
         DSL::Value.new(self, Build.var_ref(IR::Frames::COUNT))
       end
 
-      # A STEP TAKEN ONCE A PASS, from when the game starts it until it stops (see DSL::PassJob).
-      # The block is the step, and is handed the job, so a step can stop its own job when it
-      # arrives. `each_pass :name` with no block gives back the job made under that name, so the
-      # verbs of an effect can start and stop one job between them.
+      # Makes a job that takes a step once every pass, from when the game starts it until the job
+      # stops itself.
       #
-      #   each_pass(:closing) { |job| light.radius -= 4; job.stop if light.radius <= 0 }
-      #   each_pass(:closing).start
+      # The block is the step. It is given the job, so a step can stop its own job when it
+      # arrives. Calling `each_pass :name` with no block gives back the job made under that name,
+      # so that separate verbs can start and stop one job between them.
+      #
+      # ```ruby
+      # each_pass(:closing) { |job| light.radius -= 4; job.stop if light.radius <= 0 }
+      # each_pass(:closing).start
+      # ```
       #
       # The steps after the first are taken straight after each gap between frames, once for the
       # pass about to run, however many frames the last one took.
       #
-      # @param name [Symbol, nil] the job's name, to ask for it again
-      # @return [DSL::PassJob]
+      # * `name` - the job's name, to ask for it again.
+      #
+      # Returns the job, which answers `start` and `stop`.
       def each_pass(name = nil, &block)
         return pass_job_named(name) unless block
 
@@ -371,14 +406,14 @@ module VBlank
       # Maps a comparison's name to the IR operator, for building an `if` node's condition (a
       # binop over the variable and the operand). The library's own code compares this way
       # (#emit_conditional); a game writes `if score > 5`.
-      COND_TO_OP = {
+      COND_TO_OP = {  # :nodoc:
         eq: :==, ne: :!=, gt: :>, lt: :<, ge: :>=, le: :<=,
       }.freeze
 
       # The low-level tests a game once wrote beside `if`, and the operator each stands for. Each
       # is kept private so that the refusal reaches a line in a game block, where it needs no
       # receiver, and says the plain `if` to write instead.
-      LOW_LEVEL_TEST_OPERATORS = { if_eq: :==, if_ne: :!=, if_gt: :>, if_lt: :<, if_ge: :>=, if_le: :<=,
+      LOW_LEVEL_TEST_OPERATORS = { if_eq: :==, if_ne: :!=, if_gt: :>, if_lt: :<, if_ge: :>=, if_le: :<=,  # :nodoc:
                                    if_gte: :>=, if_lte: :<= }.freeze
 
       # Written out as source rather than made from a block: a method made from a block carries
@@ -441,12 +476,12 @@ module VBlank
         [Build.add(anim[:tick], Build.int(1)), step]
       end
 
-      # STEP EVERY FLIPBOOK ALONG ITS BEAT, straight after each frame's sprites are drawn, so
+      # Step every flipbook along its beat, straight after each frame's sprites are drawn, so
       # the next frame shows the next picture: every animated sprite, and every posed pool —
       # which keeps one counter for the whole set and a frame per instance, so a frame that
       # is not a step costs one compare and a step walks the slots.
       #
-      # IT HAS TO BE NOW rather than where the frame boundary was written. A scene declares
+      # It has to be now rather than where the frame boundary was written. A scene declares
       # its own sprites and pools inside its body, and a scene's body is built after the game
       # loop that runs it — so stepped as the boundary was recorded, a flipbook declared in a
       # scene was not known yet and stood on its first picture for ever, with nothing to say

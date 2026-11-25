@@ -147,7 +147,7 @@ module MakeMenuFont
     [places, y + row_height + 1]
   end
 
-  # HOW FAR THE PEN GOES AFTER EACH LETTER, and the pairs of letters the font sets closer or
+  # How far the pen goes after each letter, and the pairs of letters the font sets closer or
   # further apart than that (kerning), in pixels. Inter keeps its kerning in the part of the font a
   # text shaper reads (its GPOS table), not the older table a single pair can be asked of, and the
   # width a letter is laid out with is not quite the one its metrics say, so both are read from

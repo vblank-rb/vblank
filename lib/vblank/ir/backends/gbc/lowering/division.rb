@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # DIVIDING BY A NUMBER WRITTEN IN THE GAME, without the runtime's divide of any two numbers.
+          # Dividing by a number written in the game, without the runtime's divide of any two numbers.
           # Mixed into Lowering.
           #
           # The SM83 has no divide and no multiply, so rt_div32 and rt_mod32 do long division a binary
@@ -13,7 +13,7 @@ module VBlank
           # up of both numbers' signs around it. When the divisor is written in the game, most of that
           # is known before the game runs:
           #
-          # - A POWER OF TWO is a shift and an AND, written where the sum is.
+          # - A power of two is a shift and an AND, written where the sum is.
           # - A BYTE, 3 to 255, is the same long division with what is over held in one register and
           #   the divisor in another (Runtime::Int32#emit_divide_by_byte), which a game carries only
           #   when it divides so. That is the divisor of most of a game's divides: ten for each digit of

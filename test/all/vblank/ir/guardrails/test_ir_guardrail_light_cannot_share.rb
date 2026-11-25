@@ -43,7 +43,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
     assert_match(/outside: :nothing/, found.first.message, "it names the light that can share")
   end
 
-  # A LIGHT THAT SHOWS NOTHING OUTSIDE IT darkens nothing, so it never asks for the part of the
+  # A light that shows nothing outside it darkens nothing, so it never asks for the part of the
   # display a see-through layer mixes with, and the two share a screen.
   def test_a_light_that_shows_nothing_outside_it_beside_a_see_through_layer_is_fine
     found = findings(outside: :nothing) do
@@ -83,7 +83,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       var :mode, 0
       scene(:title) { instance_exec(&title) }
       scene(:playing) { instance_exec(&playing) }
-      game_loop { case_var(:mode) { when_val 0, :title; when_val 1, :playing } }
+      game_loop { call({ 0 => :title, 1 => :playing }, number: :mode) }
     end
     builder.finalize_program
     Check.new.detect(builder.program)
@@ -91,7 +91,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
 
   private def see_through_water = -> { layer(:water, transparency: 40) { background :pond, tiles: :set, map: ["#" * 32] * 20 } }
 
-  # THE DISPLAY'S MIXING IS SET A FRAME AT A TIME, so a scene that sees through a layer and a
+  # The display's mixing is set a frame at a time, so a scene that sees through a layer and a
   # scene with the light can take turns with it: the light is off while the first is up.
   def test_a_light_in_one_scene_and_a_see_through_layer_in_another_is_fine
     assert_empty scene_findings(title: see_through_water, playing: -> { iris_out from: 150, by: 4 })
@@ -110,7 +110,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       var :mode, 0
       scene(:title) { instance_exec(&water) }
       scene(:playing) { iris_out from: 150, by: 4 }
-      game_loop { case_var(:mode) { when_val 0, :title; when_val 1, :playing } }
+      game_loop { call({ 0 => :title, 1 => :playing }, number: :mode) }
     end
 
     refute_nil rom
@@ -182,7 +182,7 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
       scene(:playing) { iris_out from: 150, by: 4 }
       game_loop do
         fade :black, 50, under: :ui
-        case_var(:mode) { when_val 0, :playing }
+        call({ 0 => :playing }, number: :mode)
       end
     end
     builder.finalize_program
@@ -194,8 +194,9 @@ class TestIrGuardrailLightCannotShare < Minitest::Test
 
   def test_a_light_in_a_game_that_shows_a_bitmap_screen_is_an_error
     found = findings do
+      var :mode, 0
       scene(:title) { screen :bitmap }
-      case_var(:mode) { when_val 0, :title }
+      call({ 0 => :title }, number: :mode)
     end
 
     assert_match(/screen :bitmap/, found.map(&:message).join)

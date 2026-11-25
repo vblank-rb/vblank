@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "sprite_box_fields"
 
-# THE PICTURE WITH EVERY SPRITE'S BOX LEFT OUT (`ignoring_sprites: true`): a port whose scenery is
+# The picture with every sprite's box left out (`ignoring_sprites: true`): a port whose scenery is
 # right is held to its original's scenery everywhere but under the characters, which the original
 # shows on top anyway. The boxes are read from each console's own sprite table, on the frame
 # compared and the frame before, on both cartridges.
@@ -48,7 +48,7 @@ class TestComparisonIgnoringSprites < Minitest::Test
     assert_plays_alike bare_field, field, stand, ignoring_sprites: true
   end
 
-  # A BOX THAT JUMPS ACROSS THE SCREEN ON EVERY FRAME, on one cartridge only, is left out wherever
+  # A box that jumps across the screen on every frame, on one cartridge only, is left out wherever
   # the picture shows it. (On the Advance the table read after a frame is the one its picture was
   # drawn from, so this holds with the frame's own boxes; the frame before's are for a console or a
   # game that writes its table while the frame is drawn.)
@@ -66,7 +66,7 @@ class TestComparisonIgnoringSprites < Minitest::Test
     assert_plays_alike bare_field, jumper, stand, ignoring_sprites: true
   end
 
-  # A TURNED SPRITE IS DRAWN IN A BOX TWICE ITS PICTURE'S SIZE, the double-size box the console
+  # A turned sprite is drawn in a box twice its picture's size, the double-size box the console
   # swings its corners through, and a sprite made bigger fills it. The whole of that box is left
   # out, not only a box of the picture's size at its corner.
   def test_a_turned_sprite_made_bigger_is_left_out_where_it_was_drawn

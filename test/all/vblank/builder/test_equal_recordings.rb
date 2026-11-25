@@ -3,7 +3,7 @@
 require "test_helper"
 require "equal_recording_games"
 
-# RECORDINGS WITH THE SAME SAMPLES UNDER SEVERAL NAMES are kept once by each build that can
+# Recordings with the same samples under several names are kept once by each build that can
 # (each lowering's own test counts the copies). A game cannot tell: each still sounds under its own
 # name, and stopping one leaves another sounding.
 class TestEqualRecordings < Minitest::Test

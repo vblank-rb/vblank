@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# SPRITE TILES THE GAME LOADS, AND POSES DRAWN FROM THEM — `sprite_tiles`, `image ... tiles_from:`
+# Sprite tiles the game loads, and poses drawn from them — `sprite_tiles`, `image ... tiles_from:`
 # and `copy_from`.
 #
 # A set is a few tiles in sprite memory. A pose is a picture made of some of them, each where the

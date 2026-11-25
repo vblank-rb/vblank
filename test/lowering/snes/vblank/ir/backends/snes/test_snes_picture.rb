@@ -144,7 +144,7 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
-  # Each changed cell is a word written on its own, and 200 of them take longer than a blank.
+  # Two hundred changed cells, sent in the blank in several pieces with the screen on.
   def test_many_cells_changed_in_one_pass_show_no_black_frame
     program = program_of do
       screen :tiled
@@ -170,9 +170,9 @@ class TestSNESPicture < Minitest::Test
     assert_empty run.black_frames
   end
 
-  # CELLS GO BEFORE THEIR COLOURS. Two hundred cells take more than a blank, so they arrive over two
-  # frames, and a fade of the same pass must wait for the last of them: a frame showing the new
-  # colours over a cell still to change is a picture no pass made.
+  # Cells go before their colours, and a fade of the same pass waits for the last of them: a frame
+  # showing the new colours over a cell still to change is a picture no pass made. Two hundred cells
+  # go in several pieces, each after a look at the line, any of which can find the blank too short.
   def test_cells_changed_with_a_fade_show_no_new_colours_over_old_cells
     program = program_of do
       screen :tiled
@@ -205,7 +205,108 @@ class TestSNESPicture < Minitest::Test
     assert_empty pictures.select { |shown, last_cell| shown != wall && shown.positive? && last_cell == shown }
   end
 
-  # A STATUS BAR shows from its top row to the bottom of the screen, over a field that scrolls under
+  # A full queue of cells behind a map handed over in the same pass, which goes first and leaves the
+  # blank nearly spent, so the cells' pieces find it too short and wait for the next. The map is a
+  # few rows shorter or longer in each game, so in some of them the blank ends part way through the
+  # cells. The last 64 cells write walls back over gems the first ones wrote, so a piece sent twice,
+  # or out of its order, shows a gem where the interpreter has a wall; a piece lost, or written after
+  # its blank ended, shows a wall where it has a gem.
+  def test_a_full_queue_of_cells_behind_a_map_lands_once_in_order
+    (33..38).each do |rows|
+      program = cells_behind_map(rows)
+      press = ->(frame) { frame == 3 ? [:a] : [] }
+      SNES::CheckedRun.new.input_each_frame(&press).run(program, frames: 8)
+      run = SNES::HeadlessRun.new(watch_picture: true).input_each_frame(&press).run(program, frames: 8)
+
+      assert_empty run.black_frames, "a map of #{rows} rows"
+    end
+  end
+
+  # A map handed to a background in a pass replaces every cell changed on it in the same pass, as
+  # the interpreter has it: a background's show_map is done at the frame's end, after the pass's
+  # set_tile steps (IR::Frames::PLACED_AT_BOUNDARY). The cells set after it show as the new map's
+  # walls, where the cartridge once showed them as gems.
+  def test_cells_set_after_a_map_change_in_the_same_pass_follow_the_interpreter
+    [1, 24].each do |count|
+      program = program_of do
+        screen :tiled
+        image(:wall, "#" => :gray) { "########\n" * 8 }
+        image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+        tiles :set, "#" => :wall, "g" => :gem
+        background :far, tiles: :set, map: "#{'#' * 64}\n" * 11
+        room = background :room, tiles: :set, map: { gems: "#{'g' * 32}\n" * 11, walls: "#{'#' * 32}\n" * 11 }
+        i = 0
+        game_loop do
+          if pressed(:a)
+            room.show_map 1
+            i = 0
+            repeat(count) do
+              room.set_tile i % 24, i / 24, "g"
+              i += 1
+            end
+          end
+        end
+      end
+
+      SNES::CheckedRun.new.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(program, frames: 8)
+    end
+  end
+
+  # A background held above a row goes on the third layer, whose map sits just before the first
+  # layer's. Its map change drops its own cells and keeps the cells set on the other two.
+  def test_a_map_change_on_the_third_layer_keeps_the_other_layers_cells
+    program = program_of do
+      screen :tiled
+      image(:wall, "#" => :gray) { "########\n" * 8 }
+      image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+      tiles :set, "#" => :wall, "g" => :gem
+      room = background :room, tiles: :set, map: Array.new(32) { "#" * 32 }
+      far = background :far, tiles: :set, map: Array.new(32) { "#" * 32 }
+      top = background :top, tiles: :set, map: { gems: Array.new(4) { "g" * 32 }, walls: Array.new(4) { "#" * 32 } },
+                             above_row: 32
+      game_loop do
+        if pressed(:a)
+          room.set_tile 2, 10, "g"
+          far.set_tile 3, 12, "g"
+          top.set_tile 1, 1, "#"
+          top.show_map 1
+        end
+      end
+    end
+
+    SNES::CheckedRun.new.input_each_frame { |frame| frame == 3 ? [:a] : [] }.run(program, frames: 8)
+  end
+
+  # The game: on A, a map 64 cells across and +rows+ down onto the background behind, then a full
+  # queue of cells on the one in front.
+  private def cells_behind_map(rows)
+    program_of do
+      screen :tiled
+      image(:wall, "#" => :gray) { "########\n" * 8 }
+      image(:gem, "g" => :green) { "gggggggg\n" * 8 }
+      tiles :set, "#" => :wall, "g" => :gem
+      far = background :far, tiles: :set, map: { walls: "#{'#' * 64}\n" * rows, gems: "#{'g#' * 32}\n" * rows }
+      room = background :room, tiles: :set, map: "#{'#' * 32}\n" * 32
+      i = 0
+      game_loop do
+        if pressed(:a)
+          far.show_map 1
+          i = 0
+          repeat(VBlank::IR::Backends::SNES::Runtime::Picture::MOST_CELLS - 64) do
+            room.set_tile i % 24, i / 24, "g"
+            i += 1
+          end
+          i = 0
+          repeat(64) do
+            room.set_tile i % 24, i / 24, "#"
+            i += 1
+          end
+        end
+      end
+    end
+  end
+
+  # A status bar shows from its top row to the bottom of the screen, over a field that scrolls under
   # it and is hidden there: the bar's see-through pixels, and its rows past its two, show the
   # backdrop. A sprite goes over it. The bar is moved each pass, to rows either side of 127 (the
   # most one step of the console's line table counts), to the top, past the bottom and above it,
@@ -237,7 +338,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 14, run[:t]
   end
 
-  # A SCENE WITH A BAR beside its field, then one with no bar and two backgrounds: the bar's lines
+  # A scene with a bar beside its field, then one with no bar and two backgrounds: the bar's lines
   # stop, and the second scene's front background shows on every row, the bar's old rows among them.
   # The bar's cell changes every pass, as a clock's digit does.
   def test_a_bar_a_scene_puts_up_leaves_with_the_scene
@@ -262,10 +363,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         tick.increase! 1
         state = 1 if tick == 8
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :title
-        end
+        call({ 0 => :play, 1 => :title }, number: :state)
       end
     end
     blue = VBlank::Graphics::Color.resolve(:blue)
@@ -276,7 +374,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal blue, run.screen.pixel(8, 8)
   end
 
-  # BACKGROUNDS IN LAYERS are stacked as the layers say, not as they were declared: the near one is
+  # Backgrounds in layers are stacked as the layers say, not as they were declared: the near one is
   # declared first and still drawn in front, its see-through cells showing the far one behind, both
   # scrolling at their own speeds, and a sprite that names no layer in front of both.
   def test_backgrounds_in_layers_are_stacked_as_the_layers_say
@@ -310,7 +408,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 10, run[:t]
   end
 
-  # SPRITES IN LAYERS, between the backgrounds: a walker in front of the floor and behind a fence
+  # Sprites in layers, between the backgrounds: a walker in front of the floor and behind a fence
   # of bars with gaps, a bird in front of everything, and a mole behind both backgrounds, seen
   # only through a hole in the floor where the fence has a gap too. Each crosses the others.
   def test_sprites_in_layers_go_behind_the_backgrounds_in_front_of_them
@@ -354,14 +452,14 @@ class TestSNESPicture < Minitest::Test
         layer(:front) { background :frame, tiles: :set, map: ["##"] }
         state = var :state, 0
         scene(:play) { layer(:back) { background :room, tiles: :set, map: ["##"] } }
-        game_loop { case_var(:state) { when_val 0, :play } }
+        game_loop { call({ 0 => :play }, number: :state) }
       end)
     end
 
     assert_match(/behind a background that every screen shows/, error.message)
   end
 
-  # A BACKGROUND BENT ROW BY ROW: each of the screen's rows shown at its own sideways offset, worked
+  # A background bent row by row: each of the screen's rows shown at its own sideways offset, worked
   # out by the game at every frame boundary for the frame after, on top of the layer's own scroll.
   # The block counts its rows too, which the checked run holds to the interpreter's count: 224 at
   # each boundary. The other layer stays flat.
@@ -583,10 +681,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         t += 1
         where = 1 if t == 10
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :where)
       end
     end
   end
@@ -718,10 +813,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         phase += 1
         shown = frames_since_power_on
-        case_var(:state) do
-          when_val 0, :bent
-          when_val 1, :plain
-        end
+        call({ 0 => :bent, 1 => :plain }, number: :state)
       end
     end
     run = SNES::HeadlessRun.new.run(program, frames: 20)
@@ -729,7 +821,7 @@ class TestSNESPicture < Minitest::Test
     assert_operator run[:shown], :<, 30, "twenty passes, and a few frames of setting up"
   end
 
-  # TILES PAINTED FROM A LIST: each byte two pixels, the left one in the low four bits, each four
+  # Tiles painted from a list: each byte two pixels, the left one in the low four bits, each four
   # bits a place in the run's colours. The bytes are written so every place shows at every pixel of
   # a row over the passes, and the copy is owed, so it arrives in the gap after the pass that said
   # `changed`. A second run's list holds fewer bytes than its tiles, so the rest is see-through; it
@@ -841,7 +933,7 @@ class TestSNESPicture < Minitest::Test
     assert_match(/100x16.*multiple of 8/, error.message)
   end
 
-  # A SPRITE DRAWN WITH OTHER COLOURS (`draw_with`), as pacman flashes when caught: each place of
+  # A sprite drawn with other colours (`draw_with`), as pacman flashes when caught: each place of
   # the picture's own list shows the colour at the same place of the list it is drawn with, one
   # of two lists picked by a number the game works out, and its own colours again with `:own`. A
   # second sprite shows the same picture in its own colours throughout, and the reader of the
@@ -871,7 +963,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal %i[face face], run.sprites.map(&:picture)
   end
 
-  # A LAYER HALF SEE-THROUGH: colour math adds what is behind it to it and halves the sum, on every
+  # A layer half see-through: colour math adds what is behind it to it and halves the sum, on every
   # pixel where its own is drawn; where its tiles are see-through, what is behind shows plain, and a
   # sprite in front is solid. 55 is half on the interpreter too: what is behind takes its share
   # rounded down to sixteenths, 8. The console halves the channels' sum; the interpreter mixes them
@@ -903,7 +995,7 @@ class TestSNESPicture < Minitest::Test
     assert_equal 8, run[:t]
   end
 
-  # A LAYER OF SPRITES HALF SEE-THROUGH, as lake's jellyfish are: each is mixed with the scenery
+  # A layer of sprites half see-through, as lake's jellyfish are: each is mixed with the scenery
   # behind it, never with another sprite — a ghost passing over the hero hides the hero and shows
   # the floor through itself — and its see-through pixels show what is behind plain. The ghosts
   # take the console's last four sprite palettes, the only ones its colour math reaches.
@@ -927,6 +1019,26 @@ class TestSNESPicture < Minitest::Test
     end
 
     assert_equal 10, run[:t]
+  end
+
+  # A sprite the game puts into a see-through layer of sprites is mixed there and solid out of it
+  # (the interpreter's Reference#set_see_through_for), which this build does not make yet.
+  def test_a_sprite_put_in_and_out_of_a_see_through_layer_is_refused_in_plain_words
+    error = assert_raises(SNES::Lowering::NotMadeYet) do
+      SNES.new.build(program_of do
+        screen :tiled
+        image(:ground, "#" => rgb(30, 30, 30)) { "########\n" * 8 }
+        image(:hero, "#" => :green) { "########\n" * 8 }
+        tiles :world_tiles, "#" => :ground
+        layers :world, :actors, :ghosts
+        layer(:world) { background :world, tiles: :world_tiles, map: Array.new(32) { "#" * 32 } }
+        layer(:ghosts, transparency: 50) { sprite :hero, at: [100, 36] }
+        hero = layer(:actors) { sprite :hero, at: [40, 40] }
+        game_loop { hero.put_in_layer :ghosts }
+      end)
+    end
+
+    assert_match(/put in and out of a see-through layer/, error.message)
   end
 
   # Letters added to what is behind them, as a title brings its menu up: the whole of each, the sum
@@ -998,10 +1110,7 @@ class TestSNESPicture < Minitest::Test
       game_loop do
         t += 1
         state = 1 if t > 8
-        case_var(:state) do
-          when_val 0, :misty
-          when_val 1, :plain
-        end
+        call({ 0 => :misty, 1 => :plain }, number: :state)
       end
     end
   end
@@ -1031,10 +1140,7 @@ class TestSNESPicture < Minitest::Test
         state = 1 if t > 8
         state = 0 if t > 16
         glow = 0 if solid_at && t == solid_at
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

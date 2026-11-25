@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE CONSOLES THEMSELVES, NAMED: what a game can tell about each one (its screen, its buttons, how
+# The consoles themselves, named: what a game can tell about each one (its screen, its buttons, how
 # many sprites it shows, what it does with each verb), and for each the addresses of the registers
 # that drive its display, sound, copying engines and timers, and the flags written into them; and
 # which of the library's parts serve each one (Console::Kit). Nothing here does anything; it
@@ -26,3 +26,4 @@ require_relative "console/genesis_answers"   # The Sega Genesis's answers: works
 require_relative "console/ps1_answers"       # The PlayStation's answers: works or refused
 require_relative "console/dos_answers"       # DOS's answers: works or refused
 require_relative "console/kit"               # Which parts of the library serve each console
+require_relative "console/hardware_features" # Each target's hardware, and which of it VBlank drives

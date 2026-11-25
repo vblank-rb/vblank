@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/snake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake").to_s)
 
 # examples/snake.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, over a recorded game: the title, START, the snake steered onto two apples and then

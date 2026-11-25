@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # LOOPS, TESTS AND BRANCHES, LOWERED ONCE for every console whose lowering writes machine code
+      # Loops, tests and branches, lowered once for every console whose lowering writes machine code
       # (the Color's, the Super Nintendo's, the Genesis's and the PlayStation's).
       #
       # A test, a loop and a choice between scenes are the same few labels and jumps on every
@@ -13,7 +13,7 @@ module VBlank
       # two worked it out into a variable first, so the same game got a slower loop on two consoles.
       # So the walk is here, once, and a fix or a speed-up to it lands on all four.
       #
-      # WHAT THE LOWERING SUPPLIES. This module is mixed into a lowering and calls these of it, each
+      # What the lowering supplies. This module is mixed into a lowering and calls these of it, each
       # written in that processor's instructions:
       #
       #   fresh_label(what)               a label no other has, named for what it marks
@@ -40,7 +40,7 @@ module VBlank
       # with stay in its own lowering.
       module ControlFlow
         # The statements written here (Lowering#statements_written_by), each by its own method.
-        STATEMENT_KINDS = %i[if loop repeat every after case].freeze
+        STATEMENT_KINDS = %i[if loop repeat break_repeat next_repeat every after case].freeze
 
         # The numbers a routine keeps of its own for ONE CALL of it, asked for by these names through
         # keep_local: a loop's turns and its count (#emit_repeat), and the scene a `case` read
@@ -48,7 +48,7 @@ module VBlank
         # (LoweringPlan#routines_reentered_at_frame_boundary), a lowering puts them back after it.
         CALL_NUMBERS = %i[index count state].freeze
 
-        # EVERY METHOD OF THIS MODULE A LOWERING WRITES ITS OWN WAY, by the method and then the
+        # Every method of this module a lowering writes its own way, by the method and then the
         # console, with why its way is cheaper there. A lowering takes the walk as it is unless it is
         # named here (.claude/rules/adding-a-backend.md); test_control_flow.rb holds the four
         # lowerings to this list, both ways. The measurement behind each is in the commit that
@@ -80,6 +80,8 @@ module VBlank
           when :if then emit_if(node)
           when :loop then emit_loop(node)
           when :repeat then emit_repeat(node)
+          when :break_repeat then jump(loop_targets.last.leave)
+          when :next_repeat then jump(loop_targets.last.turn_end)
           when :every, :after then emit_beat(node)
           when :case then emit_case(node)
           else raise ArgumentError, "no writer here for #{node.kind.inspect}"
@@ -163,19 +165,19 @@ module VBlank
 
         # Reference#exec_repeat: the count worked out once, before the first turn; the index
         # counting 0, 1, 2... and in the game's variable from the top of each turn; and
-        # +stop_when+ asked BEFORE the body, so a loop already finished on its first turn runs the
+        # +stop_when+ asked before the body, so a loop already finished on its first turn runs the
         # body no times.
         #
         # A count written in the program is compared as the number it is, with no variable of its
         # own to work out and read back each time round.
         #
-        # THE TEST IS AT THE END OF A TURN: one more, compare, and a jump back while there are turns
+        # The test is at the end of a turn: one more, compare, and a jump back while there are turns
         # left. A test at the top spends a jump out of the loop that is not taken and a jump back
         # besides, every turn. A test at the end cannot see a loop with no turns, so a count of
         # nought or less is caught before the first: none is written for a count known to be one,
         # and no test for a count known to be more.
         #
-        # THE GAME'S VARIABLE IS THE COUNT where only the loop writes it (LoopForm#counts_in_index?),
+        # The game's variable is the count where only the loop writes it (LoopForm#counts_in_index?),
         # so no turn copies a count of the loop's own into it. A loop that runs out has then counted
         # one past its last turn, and the variable is taken back by one, to the last turn's number,
         # which is what the interpreter's holds.
@@ -197,18 +199,22 @@ module VBlank
             emit_store(limit.name)
             jump_unless(Build.binop(:>, limit, Build.int(0)), none)
           end
-          with_counter_held(node, counter) do
-            emit_store_zero(counter)
-            place_label(top)
-            emit_copy_variable(counter, node.index) if node.index && !in_index
-            jump_if(node.stop_when, done)
-            with_index_below(in_index && known ? counter : nil, known) do
-              children_of(node).first.each { |child| statement(child) }
+          turn_end = fresh_label("next_turn") if LoopJumps.next_in?(node)
+          with_loop_targets(done, turn_end) do
+            with_counter_held(node, counter) do
+              emit_store_zero(counter)
+              place_label(top)
+              emit_copy_variable(counter, node.index) if node.index && !in_index
+              jump_if(node.stop_when, done)
+              with_index_below(in_index && known ? counter : nil, known) do
+                children_of(node).first.each { |child| statement(child) }
+              end
+              place_label(turn_end) if turn_end
+              emit_increment(counter)
+              jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
+              statement(Build.sub(counter, Build.int(1))) if in_index
+              place_label(done)
             end
-            emit_increment(counter)
-            jump_if(Build.binop(:<, Build.var_ref(counter), limit), top)
-            statement(Build.sub(counter, Build.int(1))) if in_index
-            place_label(done)
           end
           place_label(none) if none
         end
@@ -237,18 +243,37 @@ module VBlank
           done = fresh_label("end_while")
           statement(Build.set(node.index, Build.neg(Build.var_ref(variable)))) unless start
           jump_if(node.stop_when, done) unless sure
-          with_counter_held(node, variable, loaded: true) do
-            place_label(top)
-            with_index_below(sure && start >= 0 ? variable : nil, limit) do
-              children_of(node).first[0...-1].each { |child| statement(child) }
+          left = fresh_label("left_while") if LoopJumps.jumps_in?(node)
+          with_loop_targets(left, nil) do
+            with_counter_held(node, variable, loaded: true) do
+              place_label(top)
+              with_index_below(sure && start >= 0 ? variable : nil, limit) do
+                children_of(node).first[0...-1].each { |child| statement(child) }
+              end
+              emit_increment(variable)
+              jump_if(Build.binop(:<, Build.var_ref(variable), counted.limit), top)
+              place_label(left) if left
             end
-            emit_increment(variable)
-            jump_if(Build.binop(:<, Build.var_ref(variable), counted.limit), top)
           end
           place_label(done)
           turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
           statement(Build.set(node.index, turns))
         end
+
+        # Where a `break` and a `next` in the loop being written go (IR::LoopJumps): the label past
+        # its end, and the label of its one more. A `break` from a counted while goes to a label
+        # inside #with_counter_held, so a count kept in a register is put back on the way out; a
+        # counted while has no `next` (LoopForm#counted_while).
+        LoopTargets = Data.define(:leave, :turn_end)
+
+        def with_loop_targets(leave, turn_end)
+          loop_targets.push(LoopTargets.new(leave:, turn_end:))
+          yield
+        ensure
+          loop_targets.pop
+        end
+
+        def loop_targets = (@loop_targets ||= [])
 
         # The loop +node+ written by the block, from its count +counter+ set to nought to the label
         # every way out of it comes to. A lowering whose processor counts faster in a register than
@@ -260,7 +285,7 @@ module VBlank
         # inside the block.
         def with_counter_held(_node, _counter, loaded: false) = yield
 
-        # WHAT A LOOP'S VARIABLE IS KNOWN TO BE BELOW while the loop's own statements are written: a
+        # What a loop's variable is known to be below while the loop's own statements are written: a
         # loop that counts in its variable to a count written in the program holds 0 to one less
         # than the count there, through every statement of its body, since nothing else writes it.
         # So a lowering reading a table or a list at that variable can tell, while building, that
@@ -271,7 +296,7 @@ module VBlank
         # The count +name+ is below, or nil where nothing is known of it.
         def index_below(name) = (@indexes_below ||= {})[name]
 
-        # WHAT AN INDEX IS KNOWN TO BE BELOW, from how it is written: a number written in the program
+        # What an index is known to be below, from how it is written: a number written in the program
         # (one more than it, when it is not below nought), a loop's variable (#index_below), a number
         # kept to its low bits by a mask written in the program, `t & 31`, which is never below nought
         # and never above the mask, or the remainder of a division by a number written in the program
@@ -293,7 +318,7 @@ module VBlank
           divisor if divisor.is_a?(Integer) && divisor.positive?
         end
 
-        # WHAT RANGE A NUMBER STAYS IN while the statement being written runs, for a lowering that
+        # What range a number stays in while the statement being written runs, for a lowering that
         # works a small one at a narrower width: what the plan proves of it (LoweringPlan#number_ranges),
         # and a loop's variable below its count through the loop's body (#index_below). Nil where
         # nothing is known.
@@ -317,7 +342,7 @@ module VBlank
         # A beat (`every`, `after`) is the plain statements IR::Frames turns it into.
         def emit_beat(node) = Frames.beat_statements(node).each { |child| statement(child) }
 
-        # Reference#exec_case: the variable read ONCE, before the first clause. A scene's usual last
+        # Reference#exec_case: the variable read once, before the first clause. A scene's usual last
         # act is to set it to the next scene, and reading it again per clause would run that one
         # too, in the same pass.
         def emit_case(node)

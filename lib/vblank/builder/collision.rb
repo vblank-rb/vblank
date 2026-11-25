@@ -2,27 +2,36 @@
 
 module VBlank
   class Builder
-    # Make rectangles to collision-test. The overlap test itself lives on the shape
-    # (`box_a.overlaps?(box_b)`, from {Bounds}), so a sprite — which knows its own
-    # bounds — needs no box at all; `box` is the manual escape hatch for a thing that
-    # isn't a sprite. A concern of {Builder}, mixed in flat.
+    # Collisions
+    #
+    # Two things collide when their rectangles overlap. A sprite knows its own rectangle, so
+    # `hero.overlaps?(coin)` needs no more. For a thing that is not a sprite, `box` makes a
+    # rectangle to test.
+    #--
+    # The overlap test itself lives on the shape (`box_a.overlaps?(box_b)`, from Bounds). A concern
+    # of Builder, mixed in flat.
+    #++
     module Collision
-      # Make a rectangle from a top-left corner and a size, for collision tests. Each
-      # of x, y, w, h can be a fixed number, a :variable, or an expression, so a box
-      # can track a moving thing (a ball at its live x/y) or pin a fixed one (a wall).
-      # It draws nothing — it's a shape to test — so build one wherever it reads best
-      # and reuse it. Test two with `overlaps?`:
+      # Makes a rectangle from a top-left corner and a size, to test for collisions.
       #
-      #   ball   = box(ball_x, ball_y, 4, 4)   # follows the ball's variables
-      #   paddle = box(8, paddle_y, 4, 24)
-      #   ball_dx.abs! if ball.overlaps?(paddle)   # bounce on contact
+      # Each of the four numbers can be fixed, a variable or a calculation, so a box can follow a
+      # moving thing, such as a ball at its live position, or pin a fixed one, such as a wall. A
+      # box draws nothing. It is only a shape to test, so make one wherever it reads best and
+      # reuse it. Test two with `overlaps?`.
       #
-      # A sprite already knows its bounds, so `hero.overlaps?(coin)` needs no box.
+      # ```ruby
+      # ball   = box(ball_x, ball_y, 4, 4)   # follows the ball's variables
+      # paddle = box(8, paddle_y, 4, 24)
+      # ball_dx.abs! if ball.overlaps?(paddle)   # bounce on contact
+      # ```
+      #
+      # * `x` and `y` - the top-left corner, in pixels from the top left of the screen.
+      # * `w` and `h` - the width and height in pixels.
       def box(x, y, w, h)
         DSL::Box.new(self, x, y, w, h)
       end
 
-      # TILE COLLISION: the routine that asks a background's grid whether a box is clear of
+      # Tile collision: the routine that asks a background's grid whether a box is clear of
       # its solid tiles, built once for each background-and-box-size that needs one. An
       # internal hook a {HardwareSprite} calls when it is `blocked_by` a background — never
       # written by an author, who writes `blocked_by` and nothing else.
@@ -38,7 +47,7 @@ module VBlank
       # point of it. A mover moves on two axes, so eight movers wrote this out sixteen
       # times; emitted once, eight movers cost eight calls.
       #
-      # WHICH CELLS IT LOOKS AT. A box covers a bounded number of cells whatever the room
+      # Which cells it looks at. A box covers a bounded number of cells whatever the room
       # is made of — a 16x16 box on 8x8 tiles touches at most three columns and three rows
       # — so the samples are its own edges plus every tile boundary in between, worked out
       # here while the program is built. That is why the cost does not grow with the room:
@@ -46,7 +55,8 @@ module VBlank
       #
       # Returns the names the caller needs: where to put the position it is asking about,
       # what to call, and where the answer lands.
-      def tile_collision_routine(cells, hit_x, hit_y, hit_w, hit_h)
+      # Hook a HardwareSprite told `blocked_by` calls for the shared routine that consults the background's grid of solid cells; documented on `blocked_by`.
+      def tile_collision_routine(cells, hit_x, hit_y, hit_w, hit_h)  # :nodoc:
         @tile_collisions ||= {}
         # By the table the walls are in, not the background's name: two scenes can each declare
         # a background by one name, with walls of their own (see Background#walls_table_name).
@@ -55,7 +65,7 @@ module VBlank
           build_tile_collision(cells, hit_x, hit_y, hit_w, hit_h, @tile_collisions.size)
       end
 
-      # A BACKGROUND'S WALLS KEPT WHERE THE GAME CAN CHANGE THEM, for one whose cells the game
+      # A background's walls kept where the game can change them, for one whose cells the game
       # changes with set_tile (see Background#record_wall_change): +list+ holds one wall byte a
       # cell of the map showing, and +fresh+ marks whether it holds that map's walls yet. 0 means
       # not yet, and is what the variable holds wherever the background goes up as declared —
@@ -63,11 +73,12 @@ module VBlank
       # (IR::SceneHandover), and this is one of them — and after another map is shown. The walls
       # are copied in from the map's walls as declared the first time they are asked after that.
       # +background+ is the name of the background they are the walls of.
-      KeptWalls = Data.define(:list, :fresh, :cells, :background)
+      KeptWalls = Data.define(:list, :fresh, :cells, :background)  # :nodoc:
 
       # The kept walls of the background whose walls are +cells+ (a Background::SolidCells),
       # made the first time a cell of it is changed. +declaration+ is the background's node.
-      def keep_walls_changeable(cells, declaration)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def keep_walls_changeable(cells, declaration)  # :nodoc:
         @kept_walls ||= {}
         @kept_walls[cells.table.name] ||= begin
           tag = cells.table.name.to_s.delete_prefix("__solid_")
@@ -82,14 +93,17 @@ module VBlank
       end
 
       # The kept walls of +cells+, or nil for walls nobody changes.
-      def kept_walls_of(cells) = @kept_walls&.[](cells.table.name)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def kept_walls_of(cells) = @kept_walls&.[](cells.table.name)  # :nodoc:
 
       # Every background's kept walls (see KeptWalls).
-      def every_kept_walls = (@kept_walls || {}).values
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def every_kept_walls = (@kept_walls || {}).values  # :nodoc:
 
       # Change the wall of the cell at +col+, +row+ in +kept+ to +wall+, as set_tile changes the
       # cell: a cell off the map changes nothing.
-      def record_wall_change(kept, col, row, wall:)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def record_wall_change(kept, col, row, wall:)  # :nodoc:
         cells = kept.cells
         [WALL_COL, WALL_ROW].each { |var| ensure_var(var) }
         store!(WALL_COL, DSL::Value.node_for(col))
@@ -102,7 +116,8 @@ module VBlank
       end
 
       # Copy the walls of the map showing into +kept+, if they are not there yet.
-      def record_walls_brought_up(kept)
+      # Hook behind `set_tile` changing a cell's wall, which a Background asks of the build; documented on `set_tile` and `solid:` of `tiles`.
+      def record_walls_brought_up(kept)  # :nodoc:
         fresh = DSL::Value.new(self, Build.var_ref(kept.fresh), name: kept.fresh)
         if fresh == 0
           base = map_base_for(kept.cells)
@@ -114,15 +129,19 @@ module VBlank
       private
 
       # The cell a wall change is about, held while the change is worked out.
-      WALL_COL = :__wall_change_col
-      WALL_ROW = :__wall_change_row
+      WALL_COL = :__wall_change_col  # :nodoc:
+      WALL_ROW = :__wall_change_row  # :nodoc:
 
       # The shared scratch a tile-collision check reads its question from and writes its
       # answer to. One set for the whole program: a check runs to its end before anything
       # else asks, so nothing can be part-way through another question.
-      TILE_COLLISION_X = :__tile_collision_x
-      TILE_COLLISION_Y = :__tile_collision_y
-      TILE_COLLISION_CLEAR = :__tile_collision_clear
+      TILE_COLLISION_X = :__tile_collision_x  # :nodoc:
+      TILE_COLLISION_Y = :__tile_collision_y  # :nodoc:
+      TILE_COLLISION_CLEAR = :__tile_collision_clear  # :nodoc:
+
+      # The shared routine of a tile check: its +name+ to call, where to put the position asked about
+      # (+x+, +y+) and where the answer lands (+clear+).
+      TileCollision = Data.define(:name, :x, :y, :clear)  # :nodoc:
 
       def build_tile_collision(cells, hit_x, hit_y, hit_w, hit_h, index)
         name = :"__tile_collision_#{index}"
@@ -144,7 +163,7 @@ module VBlank
           # alone; every other background's from its walls as declared.
           kept = kept_walls_of(cells)
           record_walls_brought_up(kept) if kept
-          # WHICH ROOM'S WALLS, worked out once for the whole check rather than once per
+          # Which room's walls, worked out once for the whole check rather than once per
           # cell: every sample a mover takes is in the map it is standing in, so the offset
           # to that map's grid is the same for all nine. That is what keeps a background
           # with two hundred rooms the same nine reads as a background with one.
@@ -166,7 +185,7 @@ module VBlank
           end
         end
 
-        { name: name, x: TILE_COLLISION_X, y: TILE_COLLISION_Y, clear: TILE_COLLISION_CLEAR }
+        TileCollision.new(name: name, x: TILE_COLLISION_X, y: TILE_COLLISION_Y, clear: TILE_COLLISION_CLEAR)
       end
 
       # Where the showing map's walls start in the table, as a {Value} — nil for a

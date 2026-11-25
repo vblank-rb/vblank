@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE SCREEN SWITCHED OFF ABOVE AND BELOW THE PICTURE, so that a painted screen on a Super
+          # The screen switched off above and below the picture, so that a painted screen on a Super
           # FX cartridge has longer to send what a pass painted.
           #
           # Video RAM takes writes only while the console is not drawing: in the vertical blank, 37
@@ -14,27 +14,27 @@ module VBlank
           # and the bottom of a picture are black anyway, the screen can be off there, nobody sees
           # a difference, and those lines are the copying engine's as well. A first-person view 120
           # lines high in the middle of the screen leaves about a hundred such lines, nearly three
-          # times the blank. The console's own Super FX games did exactly this: DOOM switches the
+          # times the blank. The console's own Super FX games did exactly this: doom switches the
           # screen off 24 lines from the top and from the bottom and copies its view in the time
           # (docs/snes/super-fx-picture-to-screen.md has the sources).
           #
-          # WHICH LINES. A row of tiles whose every cell shows the clear tile is the clear colour
+          # Which lines. A row of tiles whose every cell shows the clear tile is the clear colour
           # throughout (Paint), and when that colour is black the row looks the same with the screen
           # off. The rows painted since the last clear are the rows a pass marked changed (Paint's
-          # DIRTY), so as a pass ends the BAND is worked out from those: the picture's first row of
+          # DIRTY), so as a pass ends the band is worked out from those: the picture's first row of
           # tiles with anything painted to its last. A pass that did not clear adds its rows to the
           # band it had. There is no band, and the whole screen stays on, unless the clear colour is
           # black, no fade or tint is in force and the camera is where it started: a tint would
           # colour the black, and a camera moves the rows.
           #
-          # THE SCREEN SHOWS THE LAST PASS UNTIL THIS ONE HAS ARRIVED, so the lines kept on are the
+          # The screen shows the last pass until this one has arrived, so the lines kept on are the
           # last pass's band and this one's together. They change only in the vertical blank
           # (rt_letterbox_apply waits for it), because that is when the line table below may change.
           # A pass that changes them therefore starts its copy at the blank's interrupt and not
           # below the band, so a view whose top and bottom rows move every pass gains less than
           # one that paints the same rows each pass (a ceiling and a floor, or walls of one height).
           #
-          # HOW THE SCREEN GOES OFF AND ON. The console can write a register by itself at the end of
+          # How the screen goes off and on. The console can write a register by itself at the end of
           # chosen lines, from a table of how many lines to wait and what to write (HDMA, the copying
           # engine's line-by-line mode; fullsnes, "SNES DMA Transfers"). Channel 7 writes INIDISP:
           # off for the lines above the band, on for the band, off again below it. It needs no
@@ -42,7 +42,7 @@ module VBlank
           # cartridge. Each entry of the table takes effect on the line after the one it is written
           # at the end of, the first on line 1, which is the screen's first row.
           #
-          # THE WINDOW is the lines with the screen off, from the line after the band's last round
+          # The window is the lines with the screen off, from the line after the band's last round
           # through the blank to the line before its first. Blank's routines count the room left in
           # it (FIRST and LAST, read by Blank when a cartridge carries this). A pass's copy starts
           # as soon as a window is open whose interrupt is still to come (rt_letterbox_wait), which
@@ -67,7 +67,7 @@ module VBlank
             WANT_FIRST = "rt letterbox want first"
             WANT_LAST = "rt letterbox want last"
             # The last pass's own rows of tiles, its first and one past its last (none: ROWS and 0),
-            # whether its bars were black (VALID), and the same of the pass before it (OLD).
+            # whether its bars were black (VALID), and the same of the pass before it (old).
             OWN_FIRST = "rt letterbox own first"
             OWN_END = "rt letterbox own end"
             VALID = "rt letterbox valid"
@@ -146,13 +146,13 @@ module VBlank
               asm.sta(asm.abs(memory[OWN_FIRST]))
             end
 
-            # A BAND THE GAME NAMED (`screen :bitmap, shown_rows:`): the same switching off and the
+            # A band the game named (`screen :bitmap, shown_rows:`): the same switching off and the
             # same window as above, on lines that never change, so the line table is known when the
             # game is built and nothing is worked out from the rows painted. +band+ is the console's
             # first and last line shown. It goes in force as the first pass is shown
             # (rt_letterbox_show_band, from Frame's rt_show_pass), and stays.
             #
-            # A FADE TO BLACK IS THE DISPLAY'S BRIGHTNESS, the low bits of INIDISP, the register the
+            # A fade to black is the display's brightness, the low bits of INIDISP, the register the
             # table writes: the band's entries write the brightness in force, so the fade reaches the
             # lines shown. With +dims+ it is Tint's (rt_letterbox_brightness, from Tint.emit_brightness),
             # which never writes INIDISP itself here: the screen would come on below the band, where
@@ -499,7 +499,7 @@ module VBlank
               asm.lda(at.call(Frame::FRAMES))
               asm.sta(at.call(ENTRY_WINDOW))
               asm.label("rt_letterbox_wait_window")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_wait_window_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.beq("rt_letterbox_wait_window")
@@ -541,12 +541,12 @@ module VBlank
               asm.phx
               asm.phy
               asm.label("rt_letterbox_next_leave")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_next_leave_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.bne("rt_letterbox_next_leave")
               asm.label("rt_letterbox_next_open")
-              emit_idle(asm, memory)
+              emit_idle(asm, memory, "rt_letterbox_next_open_read")
               asm.jsr(asm.abs("rt_letterbox_now"))
               asm.lda(at.call(NOW_IN))
               asm.beq("rt_letterbox_next_open")
@@ -557,8 +557,11 @@ module VBlank
 
             # What a wait does between two looks at the line: a game with a queue of sound sends
             # some of it. A game without one only looks again, since sleeping until an interrupt
-            # would sleep through the window's first lines.
-            def emit_idle(asm, memory)
+            # would sleep through the window's first lines. A read of the controllers still due is
+            # taken first, since the wait can span a blank (Frame#emit_due_read_taken); +label+ names
+            # the place after it.
+            def emit_idle(asm, memory, label)
+              Frame.emit_due_read_taken(asm, memory, label)
               Sound.emit_idle_step(asm, memory) if memory.reserved?(Sound::QUEUE)
             end
           end

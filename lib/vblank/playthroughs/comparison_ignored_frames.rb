@@ -3,21 +3,21 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE STRETCHES OF A PLAYTHROUGH A COMPARISON DOES NOT LOOK AT. Both cartridges are
+      # The stretches of a playthrough a comparison does not look at. Both cartridges are
       # still played through them, since the game has to get to the other side; what differs
       # between the two inside one is simply not counted.
       #
       # What it is for is a part of a game known to differ and not worth being told about: an
       # opening the rebuilt game does not have yet, a screen that shows the time of day.
       #
-      # A STRETCH IS A RANGE, of frame numbers (`1..120`) or of the names of two moments
+      # A stretch is a range, of frame numbers (`1..120`) or of the names of two moments
       # (`:title..:in_the_world`). The named form is the one to reach for, because frame
       # numbers all move the day a script gains a step and the moments move with the game.
       #
-      # A MOMENT STANDS FOR THE FRAME IT NAMES, so a range of two is the range of those two
+      # A moment stands for the frame it names, so a range of two is the range of those two
       # frames: both of them and every frame between. Both, because of how a moment usually
       # comes to be: a script waits until the title is up and names that frame, which is the
-      # first frame OF the title. Leaving it in would report the title as drift on the one
+      # first frame of the title. Leaving it in would report the title as drift on the one
       # frame of it that was not left out.
       #
       # It is a Ruby range and means what one means: three dots leave its last frame out,
@@ -59,7 +59,7 @@ module VBlank
         # Whether any stretch was written in frame numbers.
         def frame_numbers? = @numbered.any?
 
-        # THE MOMENTS THAT ARE NOT LOOKED AT, for a comparison that only looks at moments:
+        # The moments that are not looked at, for a comparison that only looks at moments:
         # each one a stretch written in moments covers. +moments+ is the playthrough's
         # moments in the order it names them, which is the order the stretches are in.
         def moments_left_out(moments)
@@ -70,7 +70,7 @@ module VBlank
           end.uniq
         end
 
-        # THE STRETCHES AS SENTENCES, for a report a person reads, and in words a person
+        # The stretches as sentences, for a report a person reads, and in words a person
         # says: `frames 1 to 120`, and for one written in moments the moments and then the
         # frames those came to on +tape+. A list of one sentence, or of none when no
         # stretch was left out.

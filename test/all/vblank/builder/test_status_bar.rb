@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "status_bar_games"
 
-# A STATUS BAR is a strip of tiles fixed to the screen, from a row the game says down to the
+# A status bar is a strip of tiles fixed to the screen, from a row the game says down to the
 # bottom, over a field that scrolls and changes under it: the score along the bottom of a
 # pinball table, the lives and keys along the bottom of a dungeon. It does not scroll with the
 # field, it has its own tiles and colours, and the game can slide it down out of view and back
@@ -128,10 +128,7 @@ class TestStatusBar < Minitest::Test
         tick += 1
         state = 1 if tick == 5
         state = 0 if tick == 8
-        case_var(:state) do
-          when_val 0, :play
-          when_val 1, :pause
-        end
+        call({ 0 => :play, 1 => :pause }, number: :state)
       end
     end
   end
@@ -155,10 +152,7 @@ class TestStatusBar < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 4
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -167,7 +161,7 @@ class TestStatusBar < Minitest::Test
     assert_backends_agree(prog, frames: [3, 4, 5], name: "BARTAKE")
   end
 
-  # A BAR PUT UP BY A ROUTINE THE LOOP CALLS (the way a game's routine that draws the screen does)
+  # A bar put up by a routine the loop calls (the way a game's routine that draws the screen does)
   # shows from the first frame the field does, before the loop has run its line. The interpreter
   # builds the picture from the scenery every screen shows, the bar at its declared top among it,
   # as soon as a background goes up (IR::SceneHandover#bar_shown_early). Frame 1 is shown before the
@@ -256,7 +250,7 @@ class TestStatusBar < Minitest::Test
       state = var :state, 0
       scene(:play) { background :field, tiles: :field_tiles, map: Array.new(32) { "#" * 32 } }
       game_loop do
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
         call :put_up_bar if step >= 3
         step += 1
       end

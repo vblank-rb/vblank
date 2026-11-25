@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-require VBlank.root.join("examples/sparks").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
 
 # The sparks example (examples/sparks.rb) on the Advance's own cartridge: a spark is on its
 # screen, read in the emulator. What the shower does on every run that plays the Advance is in

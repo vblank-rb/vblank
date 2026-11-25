@@ -4,7 +4,7 @@ require "test_helper"
 require "digest"
 require "tmpdir"
 
-# A RECORDED PART THAT SITS BETWEEN THE SPEAKERS, on the Super Nintendo. Each voice of its sound chip
+# A recorded part that sits between the speakers, on the Super Nintendo. Each voice of its sound chip
 # has a volume for the left speaker and one for the right (VOL L and VOL R), so a part's shade is
 # heard as it was given: the near side at the note's loudness, the far side less by how far off the
 # middle it sits (Audio::Pan), as a console game's own tunes set their recorded voices.
@@ -107,7 +107,7 @@ class TestSNESRecordedPan < Minitest::Test
     assert_equal [whole, (whole * 19 / 64.0).round], volumes(b.program)
   end
 
-  # A NOTE READ FROM THE DATA PACK at a shade (a voiced Original::PackNote's shade, in 64ths), as
+  # A note read from the data pack at a shade (a voiced Original::PackNote's shade, in 64ths), as
   # a port reads a driver's panned tune: the chip's two volumes read its shares.
   private def pack_tune_game(folder, shade)
     record = VBlank::Original::PackNote

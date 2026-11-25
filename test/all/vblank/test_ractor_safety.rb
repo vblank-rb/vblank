@@ -7,24 +7,24 @@ require "prism"
 require "conformance_fixture"
 require "ractor_workers"
 
-# CAN A GAME CALL THIS LIBRARY FROM A RACTOR?
+# Can a game call this library from a Ractor?
 #
 # A Ractor is Ruby's way of running two pieces of Ruby at the same time on two cores, which
 # threads cannot do. The price is isolation: a worker may not reach anything mutable that
 # another worker can also see. So a library is callable from one only if what it hands out is
-# frozen ALL THE WAY DOWN — a frozen Hash of unfrozen Strings is still refused, and
+# frozen all the way down — a frozen Hash of unfrozen Strings is still refused, and
 # `Ractor.shareable?` is the only thing that answers the real question. `frozen?` does not.
 #
 # Why the library cares: a game that builds several cartridges at once — the Wolfenstein port
 # does — wants to do it inside one process rather than forking one interpreter per build.
 #
-# THE RULE IS NARROWER THAN IT IS USUALLY QUOTED, and the difference decides what these tests
-# ask. It is not "a worker cannot touch state kept on a class or module". A worker MAY read
+# The rule is narrower than it is usually quoted, and the difference decides what these tests
+# ask. It is not "a worker cannot touch state kept on a class or module". A worker may read
 # one. What it may not do is get an unshareable value out of one, or write one at all. So a
 # table built while the file loads and frozen is legal to read from a worker and needs no
 # redesign; only a mutable value, or a write that happens after the workers exist, is fatal.
 #
-# THESE ARE CENSUSES, NOT EXAMPLES. Each walks everything the library defines and names
+# These are censuses, not examples. Each walks everything the library defines and names
 # whatever is new, rather than checking the constants somebody once wrote down. That is the
 # difference that matters here: the count grew between the day it was first taken and the day
 # it was fixed, and a test naming the ones it knew about would have passed through both.
@@ -45,7 +45,7 @@ class TestRactorSafety < Minitest::Test
 
     def cartridge = VBlank::IR::Backends::GBA.new.lower(ConformanceFixture.program)
 
-    # The picture it draws on the fake console — what it SHOWS rather than what it stored,
+    # The picture it draws on the fake console — what it shows rather than what it stored,
     # since a fade or the camera changes the picture without touching a drawn pixel.
     def picture
       VBlank::IR::Backends::Reference.new.run(ConformanceFixture.program, frames: 2).screen.shown
@@ -98,7 +98,7 @@ class TestRactorSafety < Minitest::Test
     end
   end
 
-  # THE ONE A WORKER NEVER REACHES, and it is not a tidy-up somebody has been putting off.
+  # The one a worker never reaches, and it is not a tidy-up somebody has been putting off.
   # Both censuses skip it; the build at the bottom does not, so if a worker ever did reach it
   # it would raise there rather than pass quietly.
   #
@@ -108,10 +108,10 @@ class TestRactorSafety < Minitest::Test
   #                       is a top-level act in a script; what a worker does is build one.
   MAIN_RACTOR_ONLY = %i[@registered_games].freeze
 
-  # The same question asked of the SOURCE rather than of the loaded library, which is the only
+  # The same question asked of the source rather than of the loaded library, which is the only
   # way to see a cache nothing has built yet.
   #
-  # WHAT IT LOOKS FOR is `||=` on something kept by a class or module — which is exactly how
+  # What it looks for is `||=` on something kept by a class or module — which is exactly how
   # "work it out the first time somebody asks" is spelled, and is the shape that breaks. A
   # plain assignment in a method whose job is to change the registry is a different thing: a
   # game registering a font or a pack is configuring the library, which happens on the main
@@ -135,7 +135,35 @@ class TestRactorSafety < Minitest::Test
     WHY
   end
 
-  # THE ONE THAT ACTUALLY PROVES IT. The two censuses above are about what the library
+  # The methods made from a block where only the Ractor that made them calls them, by file. Each
+  # says why no other Ractor can reach one.
+  MADE_FROM_A_BLOCK_ON_PURPOSE = {
+    "lib/vblank/ir/backends/ruby/live_game.rb" =>
+      "LiveGame#count_calls wraps one game's routines for the test that asks, on that test's Ractor"
+  }.freeze
+
+  # A method made from a plain block (`define_method(name) { ... }`) can be called only on the
+  # Ractor that made it: any other is stopped with "defined with an un-shareable Proc in a
+  # different Ractor". One made as a file loads is made on the main Ractor, so every build in a
+  # worker that reaches it stops, and which tests stop depends on the order they play in. So the
+  # library makes such a method from `Ractor.shareable_proc`, or writes it out as source.
+  #
+  # Parsed rather than searched for: a block written after the call is what makes the method a
+  # plain block's, and `&Ractor.shareable_proc { ... }` is a block argument instead.
+  def test_the_library_makes_no_method_from_a_plain_block
+    sources = Dir[VBlank.root.join("lib/**/*.rb").to_s].sort
+    offenders = sources.flat_map { |path| methods_from_plain_blocks(path) }
+
+    assert_empty offenders, <<~WHY
+      These lines make a method from a plain block, which only the Ractor that made it can call:
+
+      #{offenders.map { |where| "  #{where}" }.join("\n")}
+
+      Make it from Ractor.shareable_proc, or write it out with class_eval of its source.
+    WHY
+  end
+
+  # The one that actually proves it. The two censuses above are about what the library
   # holds; this one builds a whole cartridge inside a worker and compares it byte for byte
   # with the same build on the main Ractor. Anything still unreachable raises rather than
   # coming back wrong, so a failure here names the thing that stopped.
@@ -147,7 +175,7 @@ class TestRactorSafety < Minitest::Test
                  "the same program built on two Ractors must produce the same cartridge"
   end
 
-  # THE SAME, OVER A PROGRAM THAT USES EVERYTHING. The cartridge above is six verbs, chosen
+  # The same, over a program that uses everything. The cartridge above is six verbs, chosen
   # to cross the places the library used to stop. This one is the fixture the cross-backend
   # tests already run, written to touch every kind of thing a program can hold — so a
   # feature that quietly needs something shared is caught here rather than whenever somebody
@@ -159,7 +187,7 @@ class TestRactorSafety < Minitest::Test
     assert_equal on_main, in_worker
   end
 
-  # ANOTHER CONSOLE'S BUILD, which is a body of code of its own: every console's lowering has its
+  # Another console's build, which is a body of code of its own: every console's lowering has its
   # own assemblers and tables, and the Advance's cartridge above crosses none of them.
   def test_a_super_nintendo_cartridge_with_a_song_builds_the_same_in_a_worker
     on_main = SuperNintendoSong.cartridge
@@ -168,7 +196,7 @@ class TestRactorSafety < Minitest::Test
     assert_equal on_main, in_worker
   end
 
-  # THE OTHER WAY OF RUNNING A GAME. Turning a program into cartridge bytes is one; playing
+  # The other way of running a game. Turning a program into cartridge bytes is one; playing
   # it on the fake console the tests measure against is a different body of code, and until
   # now nothing had asked whether that one works off the main Ractor either.
   def test_the_program_that_uses_everything_plays_the_same_in_a_worker
@@ -178,8 +206,8 @@ class TestRactorSafety < Minitest::Test
     assert_equal on_main, in_worker, "the same program played on two Ractors must draw the same picture"
   end
 
-  # THE ONE THAT FINDS WHAT THE OTHERS CANNOT, and it is worth saying why it is separate.
-  # Every test above runs one build at a time, so it can only find something a build READS
+  # The one that finds what the others cannot, and it is worth saying why it is separate.
+  # Every test above runs one build at a time, so it can only find something a build reads
   # that it should not. Something a build CHANGES — a counter, a scratch buffer, a running
   # total — is invisible while there is nobody to collide with: one build trips over it only
   # when a second is in the same place at the same moment. It also catches a build that is
@@ -209,6 +237,33 @@ class TestRactorSafety < Minitest::Test
   end
 
   private def list(offenders) = offenders.map { |what, kind| "  #{what}  (#{kind})" }.join("\n")
+
+  private def methods_from_plain_blocks(path)
+    relative = path.delete_prefix("#{VBlank.root}/")
+    return [] if MADE_FROM_A_BLOCK_ON_PURPOSE.key?(relative)
+
+    finder = MethodsFromPlainBlocks.new(relative)
+    Prism.parse_file(path).value.accept(finder)
+    finder.found
+  end
+
+  # Each `define_method` or `define_singleton_method` given a block written after the call.
+  class MethodsFromPlainBlocks < Prism::Visitor
+    MAKERS = %i[define_method define_singleton_method].freeze
+
+    attr_reader :found
+
+    def initialize(path)
+      super()
+      @path = path
+      @found = []
+    end
+
+    def visit_call_node(node)
+      @found << "#{@path}:#{node.location.start_line}" if MAKERS.include?(node.name) && node.block.is_a?(Prism::BlockNode)
+      super
+    end
+  end
 
   # Somewhere a class or module works a value out the first time it is asked for and keeps it.
   class LazyModuleCaches < Prism::Visitor

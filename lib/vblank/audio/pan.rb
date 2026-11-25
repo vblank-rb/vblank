@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # WHERE A NOTE SITS BETWEEN THE SPEAKERS — the left, the right, both, or a shade between.
+    # Where a note sits between the speakers — the left, the right, both, or a shade between.
     #
     # The console has two speakers (or the two sides of a pair of headphones). A part names :left,
     # :right or :center, or a number from -1.0 (the left speaker alone) to 1.0 (the right alone),
@@ -12,7 +12,7 @@ module VBlank
     #
     # +left+ and +right+ are how much of the note each speaker hears, out of SHARE_FULL.
     #
-    # WHAT EACH VOICE CAN DO WITH A SHADE. The Advance's four voices of its own (the two squares, the
+    # What each voice can do with a shade. The Advance's four voices of its own (the two squares, the
     # wave and the noise) are sent to the left speaker, the right or both by a switch per voice and
     # per side, and nothing between. Every console plays those four as the Advance does, so a shade
     # there is the nearest of the three (#side): one side alone when it is at least twice the other,
@@ -45,7 +45,7 @@ module VBlank
 
       SIDES = { left: LEFT, right: RIGHT, center: CENTER }.freeze
 
-      # Where a part or a note GAVE it sits: :left, :right or :center, or a number from -1.0 to 1.0,
+      # Where a part or a note gave it sits: :left, :right or :center, or a number from -1.0 to 1.0,
       # or nil when it gave nothing. +where+ names who gave it, as the start of a sentence.
       def self.said(side, where:)
         return nil if side.nil?

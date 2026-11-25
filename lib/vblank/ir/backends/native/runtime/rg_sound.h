@@ -1,5 +1,5 @@
 /*
- * THE GAME'S SOUND: the console's four voices, the game's own sounds, and the log of what was
+ * The game's sound: the console's four voices, the game's own sounds, and the log of what was
  * played.
  *
  * A game that plays a tune or a sound effect also has the music player, and one that plays a

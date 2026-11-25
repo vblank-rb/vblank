@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/bird").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/bird").to_s)
 
 # How to tell the bird is on screen, kept once for this file and for the test of the bird on
 # the Advance's cartridge (test/lowering/gba/examples/test_bird_example_cartridge.rb).

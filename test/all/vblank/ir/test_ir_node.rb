@@ -260,7 +260,7 @@ class TestIRNode < Minitest::Test
   def test_draw_ops_are_draw_category
     assert_equal :draw, draw_text("HI", 0, 0, :white).category
     assert_equal :draw, draw_rect_at(:x, :y, 4, 4, :white).category
-    assert_equal :draw, dma_fill_rect(0, 0, 4, 4, :white).category
+    assert_equal :draw, fill_rect(0, 0, 4, 4, :white).category
   end
 
   def test_draw_rect_at_wraps_its_runtime_position_and_size
@@ -410,7 +410,7 @@ class TestIRNode < Minitest::Test
   # ========================================================================
   # copying a tree
   #
-  # Anything that has to CHANGE a program to learn something about it works on a copy, so
+  # Anything that has to change a program to learn something about it works on a copy, so
   # the two trees must share nothing — not a child, not a nested operand, not a list.
 
   def test_a_copy_has_the_same_shape
@@ -474,13 +474,13 @@ class TestIRNode < Minitest::Test
     assert_raises(NoMethodError) { pixel(int(1), int(2), :red).colour = :red }
   end
 
-  # A field the kind DOES have but this node never set stays a plain nil — an `if` with no
+  # A field the kind does have but this node never set stays a plain nil — an `if` with no
   # else is ordinary, not a mistake.
   def test_a_field_the_kind_has_but_the_node_never_set_reads_as_nothing
     assert_nil if_(int(1)).else
   end
 
-  # What a node IS, for the code that walks every kind at once and cannot read a size off
+  # What a node is, for the code that walks every kind at once and cannot read a size off
   # something that has no size.
   def test_a_node_says_what_it_is
     assert_predicate fill_rect(0, 0, 4, 4, :red), :sized?

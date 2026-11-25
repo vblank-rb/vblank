@@ -6,7 +6,7 @@ require "pathname"
 require "comparison_games"
 require "png_reading"
 
-# THE PICTURES OF A PLAYTHROUGH: the screen at each named moment, handed back, and written to
+# The pictures of a playthrough: the screen at each named moment, handed back, and written to
 # a folder as PNG files when asked. It is the half of driving a game with nobody at the
 # controls that a person looks at.
 #
@@ -20,7 +20,7 @@ class TestPlaythroughPictures < Minitest::Test
 
   private def colour_at(picture, x, y) = picture[(y * WIDTH) + x]
 
-  # THE PICTURE AT A MOMENT IS THE SCREEN AS THE CONSOLE SHOWED IT ON THAT MOMENT'S FRAME.
+  # The picture at a moment is the screen as the console showed it on that moment's frame
   # The witness is a second console: the same cartridge played again, a frame at a time, on
   # the presses the first playing made, and read on the frame each moment fell on. The box
   # is where it is known to be on each, to the pixel: eight wide from column 20, and from
@@ -44,7 +44,7 @@ class TestPlaythroughPictures < Minitest::Test
     picture.map { |colour| colour == Color.resolve(:white) ? [255, 255, 255] : [0, 0, 255] }
   end
 
-  # ASKED TO, A PLAYTHROUGH WRITES ONE PNG FOR EACH MOMENT INTO A FOLDER, named for the
+  # Asked to, a playthrough writes one PNG for each moment into a folder, named for the
   # moment, and says where each went. The folder is made if it is not there. Each file is
   # read back by the format's own rules and is that moment's picture, every pixel of it.
   def test_asked_to_it_writes_a_png_for_each_moment_named_for_it
@@ -90,7 +90,7 @@ class TestPlaythroughPictures < Minitest::Test
     end
   end
 
-  # THE PICTURES ARE WRITTEN AS THE MOMENTS ARE REACHED, so a playthrough that gives up
+  # The pictures are written as the moments are reached, so a playthrough that gives up
   # further on leaves the pictures of how far it got.
   def test_a_playthrough_that_gives_up_leaves_the_pictures_it_had_reached
     stuck = VBlank.playthrough "wait for what never comes" do
@@ -142,7 +142,7 @@ class TestPlaythroughPictures < Minitest::Test
     end
   end
 
-  # TWO MOMENTS WHOSE NAMES DIFFER ONLY IN THEIR CAPITALS are two moments and, on a disk that
+  # Two moments whose names differ only in their capitals are two moments and, on a disk that
   # does not tell capitals from small letters, one file: the second picture would be written
   # over the first. So they are refused where pictures are asked for, and nowhere else.
   def test_two_moments_that_would_be_one_file_are_refused_where_pictures_are_written

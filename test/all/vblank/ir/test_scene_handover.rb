@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A SCENE DOES TO THE SCREEN AS IT TAKES OVER, asked of the program with no backend
+# What a scene does to the screen as it takes over, asked of the program with no backend
 # running. Both backends carry this plan out — the interpreter by painting, the lowering by
 # telling the console — so what it says is what both of them do.
 class TestSceneHandover < Minitest::Test
@@ -25,7 +25,7 @@ class TestSceneHandover < Minitest::Test
       end
       scene(:walk) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :menu; when_val 1, :walk } }
+      game_loop { call({ 0 => :menu, 1 => :walk }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -54,7 +54,7 @@ class TestSceneHandover < Minitest::Test
       end
       scene(:walk) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :talk; when_val 1, :walk } }
+      game_loop { call({ 0 => :talk, 1 => :walk }, number: :state) }
     end
     b.finalize_program
     b.program
@@ -105,7 +105,7 @@ class TestSceneHandover < Minitest::Test
       scene(:title) { screen :bitmap }
       scene(:play) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end
     b.finalize_program
     handover = Handover.of(b.program)

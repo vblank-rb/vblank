@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# EVERY VERB A CONSOLE'S TABLE MARKS REFUSED IS REFUSED, IN ITS OWN WORDS. An answer in a table refuses
+# Every verb a console's table marks refused is refused, in its own words. An answer in a table refuses
 # nothing by itself (Console::Answers): the build refuses a line where Console::Questions can tell which
 # verb's answer it asks for. So for each console, and each verb its table refuses, the smallest game
 # that writes the verb is built for that console, and the build must stop naming the verb the author

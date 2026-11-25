@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT TILE COLLISION COSTS, which is a fact about the emitted code rather than about
+# What tile collision costs, which is a fact about the emitted code rather than about
 # the picture — so it is asserted here and the behaviour is asserted in
 # test_tiled_collision.rb.
 #
@@ -12,7 +12,7 @@ require "differential"
 # quick memory. Both used to be false. A mover was tested against every rectangle the
 # solid cells merged into, written out afresh at each place it moved — so a room with a
 # hundred pillars cost twenty-five times a bare one, and eight movers put the game loop
-# past 32K, which drops the WHOLE frame to cartridge speed rather than just the moving.
+# past 32K, which drops the whole frame to cartridge speed rather than just the moving.
 class TestTiledCollisionCost < Minitest::Test
   include Differential
 
@@ -51,8 +51,8 @@ class TestTiledCollisionCost < Minitest::Test
 
   private def loop_bytes(rom) = rom.built.placement.sizes[VBlank::Cartridge::BuildRecord::FRAME_ROUTINE].to_i
 
-  # THE ONE THAT MATTERS. A bare room and a room full of pillars are the same code. The
-  # grid is consulted, so what the room is MADE of never reaches the mover.
+  # The one that matters. A bare room and a room full of pillars are the same code. The
+  # grid is consulted, so what the room is made of never reaches the mover.
   def test_what_a_mover_costs_does_not_depend_on_the_room
     bare = loop_bytes(game(movers: 4, pillars: 0))
     busy = loop_bytes(game(movers: 4, pillars: 250))
@@ -70,7 +70,7 @@ class TestTiledCollisionCost < Minitest::Test
                     "eight movers should cost a few kilobytes, not tens of them"
   end
 
-  # The check is emitted ONCE for a given background and box size, however many movers
+  # The check is emitted once for a given background and box size, however many movers
   # consult it — which is what stops the count of movers multiplying the room's cost.
   # Eight movers cost more than one (each still calls it twice), but nothing like eight
   # times the whole check.
@@ -82,7 +82,7 @@ class TestTiledCollisionCost < Minitest::Test
                     "the shared routine is not re-emitted per mover (#{one} -> #{eight} bytes)"
   end
 
-  # A POOL CAN HAVE IT TOO, which is the case that most needs it: a game with many movers
+  # A pool can have it too, which is the case that most needs it: a game with many movers
   # is exactly the one that could not afford tile collision before. The pool is told once
   # and every instance is checked, sharing the one routine a hand-declared sprite uses.
   private def pooled_game(movers)
@@ -105,7 +105,7 @@ class TestTiledCollisionCost < Minitest::Test
     builder.program
   end
 
-  # WHILE THEY ARE STILL MOVING, frame for frame — which is what pins the path they took
+  # While they are still moving, frame for frame — which is what pins the path they took
   # and not only where they ended up. Every frame of the walk is compared, so a guard that
   # slid along a wall one frame early on one backend shows here.
   def test_a_pool_blocked_by_a_background_walks_the_same_way_on_both_backends
@@ -114,7 +114,7 @@ class TestTiledCollisionCost < Minitest::Test
   end
 
   # ...and run on until every guard has walked into the far wall and stopped, which is the
-  # thing collision decides: WHERE they stop.
+  # thing collision decides: where they stop.
   def test_a_pool_blocked_by_a_background_stops_in_the_same_place_on_both_backends
     assert_backends_agree(pooled_game(6), frames: 200)
   end

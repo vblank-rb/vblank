@@ -42,7 +42,7 @@ class TestPerSceneModeCartridge < Minitest::Test
       Build.func(:_scene_gallery, *(1..250).map { |c| Build.pixel(0, 0, c) }),
       # The buffered scene uses just a few colors.
       Build.func(:_scene_play, Build.screen(:bitmap, buffered: true),
-                 Build.clear_screen(:blue), Build.dma_fill_rect(0, 0, 8, 8, :green)),
+                 Build.clear_screen(:blue), Build.fill_rect(0, 0, 8, 8, :green)),
       Build.loop_(Build.wait_vblank,
                   Build.case_(:state, [[0, :_scene_gallery], [1, :_scene_play]])),
     )
@@ -71,10 +71,7 @@ class TestPerSceneModeCartridge < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var :state do
-          when_val 0, :a
-          when_val 1, :b
-        end
+        call({ 0 => :a, 1 => :b }, number: :state)
       end
     end
     b.finalize_program
@@ -86,7 +83,7 @@ class TestPerSceneModeCartridge < Minitest::Test
   end
 
   # The full-size regression: an affine title with text, a once_a_frame effect
-  # declared ANYWHERE in the program (even in code the title scene never calls),
+  # declared anywhere in the program (even in code the title scene never calls),
   # and a plain bitmap play scene after it. Both the title's text and the play
   # scene's undistorted picture must survive — this is the exact shape that broke
   # in examples/pong.rb (a `flash_screen` inside `update_ball`, a func the title
@@ -114,7 +111,7 @@ class TestPerSceneModeCartridge < Minitest::Test
 
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title; when_val 1, :playing }
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     b.finalize_program
@@ -156,7 +153,7 @@ class TestPerSceneModeCartridge < Minitest::Test
         zoom.approach! 4.0, 0.15
         board.scale(zoom)
       end
-      game_loop { wait_vblank; case_var(:state) { when_val 0, :title } }
+      game_loop { wait_vblank; call({ 0 => :title }, number: :state) }
     end
     b.finalize_program
     rom = VBlank::Cartridge::ROM.assemble(GBA.new.lower(b.program), title: "ZOOM", code: "BZOM", maker: "01")

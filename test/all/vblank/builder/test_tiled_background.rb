@@ -52,7 +52,7 @@ class TestTiledBackground < Minitest::Test
     assert_equal red,  i.screen.pixel(4, 4), "cell (1,1) is the red tile"
   end
 
-  # DECLARING ONE NAME TWICE KEEPS WHAT THE PROGRAM ALREADY SAID ABOUT IT.
+  # Declaring one name twice keeps what the program already said about it.
   #
   # A background gathers facts over a whole program — it is declared, and then scrolled,
   # turned or handed another map, possibly from another file. The scroll is not written

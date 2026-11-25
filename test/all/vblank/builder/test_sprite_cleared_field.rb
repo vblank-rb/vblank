@@ -3,8 +3,8 @@
 require "test_helper"
 require "differential"
 
-# A bitmap sprite remembers the pixels it covers and puts them back as it moves. CLEARING THE
-# SCREEN UNDER IT — a new round, a change of scene — replaces those pixels, so what the sprite
+# A bitmap sprite remembers the pixels it covers and puts them back as it moves. Clearing the
+# screen under it — a new round, a change of scene — replaces those pixels, so what the sprite
 # remembers is a square of a picture that is gone, and it must not be put back.
 #
 # Each test starts on a white field, clears it to blue part way through, and counts what is
@@ -106,7 +106,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_sprite_moved_after_a_whole_screen_fill_leaves_none_of_the_old_field
     width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, width, height, :blue if step == 3
+      fill_rect 0, 0, width, height, :blue if step == 3
       hero.move :right, by: 8 if step > 3
     end
 
@@ -120,7 +120,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_sprite_hidden_after_a_whole_screen_fill_leaves_none_of_the_old_field
     width, height = whole_screen_fill_size
     prog = field_program do |hero, step|
-      dma_fill_rect 0, 0, width, height, :blue if step == 3
+      fill_rect 0, 0, width, height, :blue if step == 3
       hero.hide if step == 5
     end
 
@@ -134,7 +134,7 @@ class TestSpriteClearedField < Minitest::Test
   def test_a_fill_short_of_the_whole_screen_leaves_a_sprite_outside_it_alone
     width, height = VBlank::Console.described(game_console).screen_size
     prog = field_program do |hero, step|
-      dma_fill_rect 120, 0, width - 120, height, :blue if step == 3
+      fill_rect 120, 0, width - 120, height, :blue if step == 3
       hero.move :down, by: 8 if step > 3
     end
 
@@ -179,10 +179,7 @@ class TestSpriteClearedField < Minitest::Test
       scene(:play) { instance_exec(sprite(:block, at: START), state, step, &play) }
       scene(:rest) {}
       game_loop do
-        case_var(:state) do
-          when_val PLAY, :play
-          when_val REST, :rest
-        end
+        call({ PLAY => :play, REST => :rest }, number: :state)
         step += 1
       end
     end

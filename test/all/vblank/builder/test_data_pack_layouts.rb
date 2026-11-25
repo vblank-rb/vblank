@@ -3,7 +3,7 @@
 require "test_helper"
 require "made_up_original_layouts"
 
-# A GAME READING EACH CONSOLE'S LAYOUT THROUGH ITS PACK plays as one holding the data (MadeUpOriginalLayouts).
+# A game reading each console's layout through its pack plays as one holding the data (MadeUpOriginalLayouts).
 # A platform with no layout of its own is read in VBlank's (test_data_pack_vblank_layout.rb).
 class TestDataPackLayouts < Minitest::Test
   include MadeUpOriginalLayouts

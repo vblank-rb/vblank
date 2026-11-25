@@ -5,9 +5,9 @@ require "socket"
 require "timeout"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# MACHINES THAT CONNECT TO EACH OTHER DIRECTLY: one hosts (it is the room, and player 1) and the others
+# Machines that connect to each other directly: one hosts (it is the room, and player 1) and the others
 # connect to it over a socket, in a test a UNIXSocket pair, and once a TCP port on this machine. Each machine
 # runs in a thread of its own because each really waits on its socket; the match is the same match whatever
 # order the threads happen to run in, which is what lockstep is for. The pieces are a LineChannel (a line of
@@ -40,8 +40,12 @@ class TestDirectConnection < Minitest::Test
     machine(lockstep, 1, passes)
   end
 
-  private def client_machine(socket, player, passes: PASSES, game: program)
-    transport = Network::RelayTransport.join_room(Network::LineChannel.new(socket), Network::DirectRoom::CODE)
+  private def client_machine(socket, player, passes: PASSES, game: program, line_timing: {})
+    client_on_line(Network::LineChannel.new(socket, **line_timing), player, passes: passes, game: game)
+  end
+
+  private def client_on_line(line, player, passes: PASSES, game: program)
+    transport = Network::RelayTransport.join_room(line, Network::DirectRoom::CODE)
     lockstep = Network::Lockstep.join(transport: transport, fingerprint: fingerprint_of(game))
     machine(lockstep, player, passes, game: game)
   end
@@ -55,13 +59,16 @@ class TestDirectConnection < Minitest::Test
   private def checks(device) = device.pictures.map { |picture| Zlib.crc32(picture.pixels.pack("v*")) }
 
   # Plays a match of +clients+ other machines on UNIX sockets beside the host. Gives each machine's result:
-  # [device, lockstep], or the error that ended it.
-  private def play_over_unix_sockets(clients, host_passes: PASSES, client_passes: [PASSES] * clients)
-    room = Network::DirectRoom.new
+  # [device, lockstep], or the error that ended it. The clients numbered in +vanishing+ (0 the first) go
+  # without a word when their passes are done: their socket stays open and nothing more comes on it, as
+  # when a cable is pulled. +line_timing+ is every line's, the room's and the clients'.
+  private def play_over_unix_sockets(clients, host_passes: PASSES, client_passes: [PASSES] * clients, vanishing: [], line_timing: {})
+    room = Network::DirectRoom.new(**line_timing)
     sockets = Array.new(clients) { UNIXSocket.pair }
     sockets.each { |ours, _theirs| room.add_client(ours) }
     threads = sockets.each_with_index.map do |(_ours, theirs), index|
-      Thread.new { client_machine(theirs, index + 2, passes: client_passes[index]) }
+      theirs = Vanishes.new(theirs) if vanishing.include?(index)
+      Thread.new { client_machine(theirs, index + 2, passes: client_passes[index], line_timing: line_timing) }
     end
     host = begin
       host_machine(room, players: clients + 1, passes: host_passes)
@@ -97,6 +104,135 @@ class TestDirectConnection < Minitest::Test
     assert_equal results[2].last.player, left.first.first.player
     assert_equal checks(results[0].first), checks(results[1].first)
     assert_equal PASSES, results[0].first.pictures.size
+  end
+
+  # A socket whose machine goes without a word: closing it does nothing, so its other end hears no end
+  # and no more lines, as when a cable is pulled or the machine freezes.
+  class Vanishes
+    def initialize(socket) = @socket = socket
+    def to_io = @socket
+    def read_nonblock(...) = @socket.read_nonblock(...)
+    def write_nonblock(...) = @socket.write_nonblock(...)
+    def closed? = false
+    def close = nil
+  end
+
+  # Short times, so a machine that goes silent is found in a test's time: still several beats to the
+  # silence, so a busy computer does not take a machine that is there for one that went.
+  QUICK_LINES = { silent_seconds: 2, beat_seconds: 0.1 }.freeze
+
+  # Longest a match with a silent machine in it may take. It only catches a hang.
+  HANG_SECONDS = 60
+
+  def test_a_machine_that_goes_silent_is_a_player_who_left_on_the_same_pass_everywhere
+    results = Timeout.timeout(HANG_SECONDS) do
+      play_over_unix_sockets(2, client_passes: [PASSES, 12], vanishing: [1], line_timing: QUICK_LINES)
+    end
+
+    results.each { |result| refute_kind_of Exception, result }
+    left = [results[0], results[1]].map { |_device, lockstep| lockstep.events.select { |event| event.kind == :left } }
+    assert_equal 1, left.first.size, "the host saw the silent machine leave"
+    assert_equal left.first, left.last
+    assert_equal results[2].last.player, left.first.first.player
+    assert_equal checks(results[0].first), checks(results[1].first)
+    assert_equal PASSES, results[0].first.pictures.size
+  end
+
+  # A machine waiting for the host to start sends no message, and one connected but slow to ask to join
+  # sends none either, but each says it is there all the same.
+  def test_a_machine_that_waits_longer_than_the_silence_to_begin_is_still_in_the_match
+    room = Network::DirectRoom.new(**QUICK_LINES)
+    early_ours, early_theirs = UNIXSocket.pair
+    late_ours, late_theirs = UNIXSocket.pair
+    room.add_client(early_ours)
+    room.add_client(late_ours)
+    late_line = Network::LineChannel.new(late_theirs, **QUICK_LINES)
+    early = Thread.new { client_machine(early_theirs, 2, line_timing: QUICK_LINES) }
+    late = Thread.new do
+      sleep QUICK_LINES[:silent_seconds] * 2
+      client_on_line(late_line, 3)
+    end
+
+    host = Timeout.timeout(HANG_SECONDS) { host_machine(room, players: 3) }
+
+    assert_empty host.last.events
+    assert_equal checks(host.first), checks(early.value.first)
+    assert_equal checks(host.first), checks(late.value.first)
+  end
+
+  def test_a_line_that_hears_nothing_for_its_silent_time_is_closed
+    _ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs, silent_seconds: 0.3, beat_seconds: 0.1)
+
+    assert Timeout.timeout(HANG_SECONDS) { channel.wait_for_text }, "the wait ends when the silence does"
+    assert_predicate channel, :closed?
+  end
+
+  # A line closed for silence lets its socket go: nothing more can come on it.
+  def test_a_line_closed_for_silence_closes_its_socket
+    _ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs, silent_seconds: 0.3, beat_seconds: 0.1)
+    Timeout.timeout(HANG_SECONDS) { channel.wait_for_text }
+
+    assert_predicate theirs, :closed?
+  end
+
+  # What a line was sent last, its peer's leaving above all, reaches the peer when the line closes,
+  # though the socket would not take it all at once: the close waits for it, a little while.
+  def test_what_the_socket_would_not_take_yet_is_sent_before_the_line_closes
+    ours, theirs = UNIXSocket.pair
+    channel = Network::LineChannel.new(theirs, beat_seconds: 60)
+    lines = Array.new(2000) { |index| "line #{index} #{'x' * 100}" }
+    reader = Thread.new { ours.read }
+    lines.each { |line| channel.send_text(line) }
+    channel.close
+
+    assert_equal lines, Timeout.timeout(HANG_SECONDS) { reader.value }.split("\n")
+  end
+
+  # Closing stops the beat before the last lines go, so no line is sent twice, however the two meet.
+  def test_a_line_closed_while_it_beats_sends_each_line_once
+    20.times do
+      ours, theirs = UNIXSocket.pair
+      channel = Network::LineChannel.new(theirs, beat_seconds: 0.001)
+      reader = Thread.new { ours.read }
+      sleep 0.005
+      channel.send_text("last")
+      channel.close
+
+      assert_equal 1, Timeout.timeout(HANG_SECONDS) { reader.value }.split("\n").count("last")
+    end
+  end
+
+  def test_two_lines_with_nothing_to_say_keep_each_other_open
+    ours, theirs = UNIXSocket.pair
+    one = Network::LineChannel.new(ours, silent_seconds: 0.5, beat_seconds: 0.05)
+    other = Network::LineChannel.new(theirs, silent_seconds: 0.5, beat_seconds: 0.05)
+
+    refute other.wait_for_text(1.5), "an empty line is no message"
+    refute_predicate one, :closed?
+    refute_predicate other, :closed?
+  end
+
+  # The host is the room: with it gone the two others cannot reach each other, nor agree which of its
+  # passes was its last, so each stops, saying why.
+  def test_when_the_host_goes_in_a_match_of_three_the_others_stop_saying_why
+    results = Timeout.timeout(HANG_SECONDS) { play_over_unix_sockets(2, host_passes: 12) }
+
+    refute_kind_of Exception, results[0]
+    results.drop(1).each do |result|
+      assert_kind_of Network::MatchCutOff, result
+      assert_match(/cannot reach the other players/, result.message)
+    end
+  end
+
+  # With one other machine, nobody is left to disagree with: the host left, and the game goes on.
+  def test_when_the_host_goes_in_a_match_of_two_the_other_plays_on
+    results = Timeout.timeout(HANG_SECONDS) { play_over_unix_sockets(1, host_passes: 12) }
+
+    results.each { |result| refute_kind_of Exception, result }
+    assert_equal [1], results[1].last.events.select { |event| event.kind == :left }.map(&:player)
+    assert_equal PASSES, results[1].first.pictures.size
   end
 
   def test_a_machine_that_plays_another_game_is_refused_over_the_socket
@@ -208,7 +344,7 @@ class TestDirectConnection < Minitest::Test
       raise IO::EAGAINWaitReadable
     end
 
-    def write(...) = @socket.write(...)
+    def write_nonblock(...) = @socket.write_nonblock(...)
     def closed? = @socket.closed?
     def close = @socket.close
   end

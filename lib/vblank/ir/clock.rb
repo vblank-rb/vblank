@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # THE DATE AND TIME A GAME READS, as every backend answers it. Where the time comes from is
+    # The date and time a game reads, as every backend answers it. Where the time comes from is
     # each backend's own business; what a game can ask, and what it is told when there is no
     # time to give, is a contract they all keep the same way, so it lives here rather than in
     # any one of them — the way the button names do.
@@ -15,13 +15,13 @@ module VBlank
       # ...and the two questions a game asks before it shows any of them, each 1 or 0: whether
       # there is a clock at all, and whether it was ever set.
       #
-      # EVERY READING IS 0 WHEN EITHER ANSWER IS 0. A game that forgets to ask shows zeros, which
+      # Every reading is 0 when either answer is 0. A game that forgets to ask shows zeros, which
       # look wrong, rather than a date that looks right and is not.
       QUESTIONS = %i[present set].freeze
 
       READINGS = (TIME + QUESTIONS).freeze
 
-      # WHAT A GAME CAN SET THE CLOCK TO, each held to its range before it reaches any backend, so
+      # What a game can set the clock to, each held to its range before it reaches any backend, so
       # that every one is given the same date. The years are the ones a clock keeps: two digits
       # of them, from 2000. A day past the end of its month is held to the last day of it as well
       # (see DSL::Clock#set_to), so no backend is asked to keep a date that does not exist.
@@ -29,13 +29,13 @@ module VBlank
                                            hour: 0..23, minute: 0..59, second: 0..59 })
       SET_PARTS = SET_RANGES.keys.freeze
 
-      # A TIME THE GAME SETS IS KEPT AS HOW FAR IT IS FROM THE CLOCK'S OWN, and every reading has
+      # A time the game sets is kept as how far it is from the clock's own, and every reading has
       # that added on; the clock itself is left as it is, since where it comes from is a
       # backend's own business and not every source of the time can be changed. Kept in two of
       # the game's own saved numbers, so it is there the next time the game is switched on, on
       # every backend alike.
       #
-      # IN TWO PARTS, whole days and the seconds left over (0 up to a day), because a century of
+      # In two parts, whole days and the seconds left over (0 up to a day), because a century of
       # seconds is more than one number holds. Every backend works the parts out the same way, so
       # a backend checked against another reads the same two numbers.
       OFFSET_DAYS = :__clock_offset_days
@@ -51,7 +51,7 @@ module VBlank
       # +reading+ of a clock at +time+ — a Time, or nil for no clock at all — that was set when
       # +set+ is true.
       #
-      # The time is read as the date and the hour it SHOWS, with no time zone: a clock holds the
+      # The time is read as the date and the hour it shows, with no time zone: a clock holds the
       # local time it was set to and moves one second a second, through a change to summer time
       # and out of one. So a Time a test gives is taken at its word, and moving it on never makes
       # an hour appear or vanish.
@@ -79,7 +79,7 @@ module VBlank
         Time.utc(time.year, time.month, time.day, time.hour, time.min, time.sec + time.subsec) + seconds
       end
 
-      # A CHIP THAT KEEPS NO DATE (Console::Description#clock_keeps_date), the Color's, counts only
+      # A chip that keeps no date (Console::Description#clock_keeps_date), the Color's, counts only
       # the days and the time of day since it started. Its own time is taken as that many days on
       # from 1 January 2000, so a time the game sets is kept as how far it is from that, as on
       # every clock. A test's chip of that kind starts counting on the day +started+ names; this

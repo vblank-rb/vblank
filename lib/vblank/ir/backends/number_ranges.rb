@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHAT RANGE A NUMBER STAYS IN, worked out from the program before anything is lowered.
+      # What range a number stays in, worked out from the program before anything is lowered.
       #
       # Every number is 32 bits (IR::Int32), and every backend gives Int32's answers. But most of
       # what a game keeps is small: a place on a screen of 240 pixels, a slot of a list of bytes, a
@@ -19,7 +19,7 @@ module VBlank
       # table never changes), a comparison (1 or 0), a mask, a remainder, a shift, and sums,
       # differences and products of those, each only where Int32's answer cannot wrap.
       #
-      # A VARIABLE'S AND A LIST'S RANGE are worked out together, as the lowest and highest numbers
+      # A variable's and a list's range are worked out together, as the lowest and highest numbers
       # it can hold through the whole run. Each starts with what it holds as the game starts (a
       # variable nought, a list what each of its declarations fills it with as its slot keeps it, or
       # nought), and is widened by what each of its writes can put there, given the ranges so far
@@ -71,8 +71,9 @@ module VBlank
         WIDENING_ROUNDS = 16
 
         # The kinds of statement that name a list only to read, write, drop or sort its items, so
-        # what it holds is what its writes put there.
-        ITEM_ONLY_KINDS = %i[list_new list_get list_len list_set list_push list_drop list_sort].freeze
+        # what it holds is what its writes put there. A list_pack reads its +name+ list's items; the
+        # list it writes into is named some other way.
+        ITEM_ONLY_KINDS = %i[list_new list_get list_len list_set list_push list_drop list_sort list_pack].freeze
 
         # The slots a list can be kept in, narrowest first, with the numbers each holds.
         NARROW_SLOTS = { byte: BYTE, half: HALF }.freeze
@@ -85,6 +86,7 @@ module VBlank
           @writes = Hash.new { |all, name| all[name] = [] }
           @items_written = Hash.new { |all, name| all[name] = [] }
           @lists_named_elsewhere = Set.new
+          @sorted_lists = Set.new
           @holding_lists = {}.compare_by_identity
           @declared = (program.kept_widths || []).to_h.transform_values { |width| KeptWidths.lowest(width)..KeptWidths.highest(width) }
           whole = Set.new(also_whole) | Reach::FRAME_VARIABLES | @declared.keys
@@ -115,7 +117,7 @@ module VBlank
         # there, or its slot's for a list written some other way.
         def list(name) = @list_ranges[name] || slot_range(name)
 
-        # THE LISTS PROVEN TO HOLD ONLY NUMBERS NARROWER THAN THEIR SLOTS, each with the narrowest
+        # The lists proven to hold only numbers narrower than their slots, each with the narrowest
         # slot that holds every item exactly (:byte or :half), so a lowering can keep it in that slot:
         # a pool's fields are lists of whole words, though a thing's place on the screen or its speed
         # never needs more than two bytes. Each read is the number the wider slot would have given.
@@ -125,6 +127,21 @@ module VBlank
             declared = @lists.fetch(name).width
             [name, width] if width && LoweringPlan::SLOT_BYTES.fetch(width) < LoweringPlan::SLOT_BYTES.fetch(declared)
           end.to_h
+        end
+
+        # The numbers two bytes hold read without a sign: a place in 256ths of a pixel across a
+        # screen, kept with `& 0xFFFF`, reaches past 32767 but never below nought.
+        UNSIGNED_HALF = (0..0xFFFF)
+
+        # The lists of whole words proven to hold only 0..65535 that no signed slot holds (a number
+        # past 32767), so a lowering can keep each in two bytes read back with no sign. Not one a
+        # sort orders or orders by, since a sort compares its numbers with their signs.
+        def unsigned_half_lists
+          @unsigned_half_lists ||= @list_ranges.filter_map do |name, range|
+            next if list_widths.key?(name) || @sorted_lists.include?(name)
+
+            name if @lists.fetch(name).width == :word && NumberRanges.inside?(range, UNSIGNED_HALF)
+          end
         end
 
         # The range the value +node+ stays in, or nil where nothing is known. +known+, given a
@@ -174,6 +191,7 @@ module VBlank
             end
           end
           @items_written[node.name] << node.value if %i[list_set list_push].include?(node.kind)
+          @sorted_lists.merge([node.name, node.by].compact) if node.kind == :list_sort
         end
 
         # Every name a statement holds, however deep in its operands, and the ones
@@ -227,7 +245,7 @@ module VBlank
 
         def var_named?(node, name) = node.is_a?(Node) && node.kind == :var_ref && node.name == name
 
-        # THE ROUNDS (see the class comment): each of +variables+ in @ranges and each of +lists+ in
+        # The rounds (see the class comment): each of +variables+ in @ranges and each of +lists+ in
         # @list_ranges, widened by their writes until none widens.
         def widen_to_fixed_point(variables, lists)
           @ranges = variables.to_h { |name| [name, 0..0] }
@@ -385,6 +403,7 @@ module VBlank
           when :clamped then clamped_range(range_of(node.operand, vars), node.min, node.max, vars)
           when :shift_right then shifted_down(range_of(node.operand, vars), node.bits)
           when :held, :pressed, :chance, :pixels_overlap then 0..1
+          when :pulled then 0..Buttons::FULL_PULL
           when :data_byte then 0..0xFF
           end
         end

@@ -41,7 +41,7 @@ class TestSpotlightOutsideNothingCartridge < Minitest::Test
     assert_equal [mixed], cartridge_picture(OPEN).uniq
   end
 
-  # THE CIRCLE IS THE WINDOW ALONE. The part of the display that mixes the picture holds the
+  # The circle is the window alone. The part of the display that mixes the picture holds the
   # see-through layer's mix while the circle closes, never a darkening, and outside the window
   # no layer is switched on.
   def test_the_closing_circle_leaves_the_mixing_to_the_layer

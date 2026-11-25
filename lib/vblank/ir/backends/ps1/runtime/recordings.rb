@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE RECORDINGS: the game's own (`play_sample`, `stop_sample`), and the notes of songs' and sound
+          # The recordings: the game's own (`play_sample`, `stop_sample`), and the notes of songs' and sound
           # effects' parts that play one.
           #
           # The Advance's processor adds every recording a game plays into one stream, and the interpreter
@@ -15,7 +15,7 @@ module VBlank
           # voice FIRST_VOICE, past the four game voices, and there are as many as the console sounds
           # recordings at once (Console::Description#recordings_at_once).
           #
-          # THE COUNT IS THE INTERPRETER'S. What the game can tell of a recording — the log saying it came
+          # The count is the interpreter's. What the game can tell of a recording — the log saying it came
           # round again, its place coming free at its end, how loud its shape has it — follows where it has
           # got to, so each place keeps that as the interpreter's mixer does (Reference::Mixer#mix_voice):
           # how far into the recording, in whole samples and 65536ths, moved on once a frame by the samples a
@@ -30,7 +30,7 @@ module VBlank
           # name], or NOT_LOGGED for a song's note), which recording it is, and its shape packed in a word
           # (Audio::Envelope#packed; nought for none).
           #
-          # A SONG'S RECORDED PART plays its notes in the same places (rt_recordings_note), taking one by the
+          # A song's recorded part plays its notes in the same places (rt_recordings_note), taking one by the
           # interpreter's rule (Reference::Mixer#start_music_note): the part's own, while it still sounds a
           # note with no shape; the first free; the quietest note falling away; or the place of the
           # lowest-ranked sound ranked below the song — the game's own first, of those one that plays once
@@ -61,10 +61,10 @@ module VBlank
             # game's own, a song's part's number for a song's — its place among the song's recorded parts,
             # one up — and for a sound effect's the same in the low byte under the effect's number, one up,
             # from EFFECT_OWNER); the rank it holds the place at (the song's or effect's rank's place one up,
-            # nought for the game's own, which ranks below every one); its TICKET (LOOPS set for one of the
+            # nought for the game's own, which ranks below every one); its ticket (loops set for one of the
             # game's own that loops, and how many the game had started before it), which orders who gives way
             # first; its shape, its level (out of Audio::Envelope::FULL) and which part of the shape it is in;
-            # and its LOUDNESS, out of the mix's full (IR::Tunes::MIX_FULL), as the interpreter's mix keeps a
+            # and its loudness, out of the mix's full (IR::Tunes::MIX_FULL), as the interpreter's mix keeps a
             # voice's (Reference::Mixer#loudness_by_voice).
             PLACES_STATE = "rt recordings places"
             HELD = 0
@@ -100,14 +100,14 @@ module VBlank
             LEVELS_BY_PASS = "rt recordings levels by pass"
             LOUDNESS_BY_PASS = "rt recordings loudness by pass"
 
-            # HOW FAR A LOUDNESS IS SHIFTED UP TO BE A VOICE'S VOLUME REGISTER. The interpreter's mix
+            # How far a loudness is shifted up to be a voice's volume register. The interpreter's mix
             # multiplies a sample by a gain in 256ths of full, and the register's full is
             # SPUWrites::LOUDEST, so a 256th is a step of LOUDEST >> 8 in it: GAIN_TO_VOLUME_SHIFT. A note with
             # no shape is mixed at its loudness itself, which keeps half a 256th (Audio::Sound::
             # LOUDNESS_FRACTION), so it is shifted that much less.
             GAIN_TO_VOLUME_SHIFT = (SPUWrites::LOUDEST >> Audio::Envelope::SCALE).bit_length - 1
             LOUDNESS_TO_VOLUME_SHIFT = GAIN_TO_VOLUME_SHIFT - Audio::Sound::LOUDNESS_FRACTION
-            # WHAT COULD NOT BE PLAYED (Reference::Mixer#drops): how many plays and notes found every place
+            # What could not be played (Reference::Mixer#drops): how many plays and notes found every place
             # busy, and the most places songs and effects held at one of those moments.
             DROPS = "rt recordings drops"
             DROPS_MUSIC = "rt recordings drops music"
@@ -116,7 +116,7 @@ module VBlank
             TAKEN = "rt recordings taken"
             ALL = 0xFFFF # A stop that names no recording
 
-            # WHERE A NOTE SITS BETWEEN THE SPEAKERS (Audio::Pan). Each voice of the sound chip has a volume
+            # Where a note sits between the speakers (Audio::Pan). Each voice of the sound chip has a volume
             # for the left speaker and one for the right, so a recorded note off the middle is heard there
             # exactly: each side's register is the voice's loudness times that side's share, out of
             # Audio::Pan::SHARE_FULL, to the nearest whole step.
@@ -670,7 +670,7 @@ module VBlank
               asm.jr(:ra)
             end
 
-            # THE PLACES A NOTE CAN BE GIVEN, each answering v0 = the place's offset one up, nought for none:
+            # The places a note can be given, each answering v0 = the place's offset one up, nought for none:
             #
             # rt_recordings_free_place: the first free.
             # rt_recordings_quietest: the quietest note of a song or an effect falling away, the first of two

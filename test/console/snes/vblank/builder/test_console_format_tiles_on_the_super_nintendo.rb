@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# TILES A GAME PAINTS IN THE SUPER NINTENDO'S OWN FORM (`console_format: true`). The list holds what
+# Tiles a game paints in the Super Nintendo's own form (`console_format: true`). The list holds what
 # video memory holds, 32 bytes a tile, so nothing is converted as the game runs: sixteen bytes of
 # bit planes 0 and 1, a row at a time, then sixteen of planes 2 and 3, the leftmost pixel in bit 7.
 class TestConsoleFormatTilesOnTheSuperNintendo < Minitest::Test

@@ -4,6 +4,28 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a note on a square-wave part that is lower than the square-wave voice
+        # can play:
+        #
+        # > <The part> of <the song> plays a note at <number> Hz (MIDI key <number>). The
+        # > square-wave voice cannot play a note lower than <number> Hz. It plays this note at
+        # > <number> Hz, so you hear a different note. The lowest note that the voice plays
+        # > correctly is :<note> (MIDI key <number>). To fix this, play <this note> one or more
+        # > octaves higher. Or write `plays: :wave` on this part. The wave voice goes one octave
+        # > lower. Or use `plays:` to give the part an instrument. An instrument can play lower
+        # > notes. If this music came from another cartridge, that cartridge also played these
+        # > notes at <number> Hz. For that music, write `low_notes_intended: true` on its Score.
+        # > The build then does not give this warning.
+        #
+        # When the part has several such notes, the message also says "This part has <number>
+        # notes that are too low."
+        #
+        # The note still sounds, but at the lowest pitch the voice has, so the tune is wrong and
+        # nothing else shows it. A song block's note names never go that low; a pitch written
+        # in Hz, or a MIDI key in a Score, can. Play the note an octave or more higher, or move
+        # the part to the wave voice or an instrument.
+        #
+        #--
         # A note on a square-wave part that is lower than the square-wave voice can play.
         #
         # A sound chip can tune a square-wave voice with a number that has a bottom, which the
@@ -19,6 +41,7 @@ module VBlank
         # Music decoded off a cartridge is left alone when its Score sets `low_notes_intended: true`:
         # the cartridge's own sound engine played those notes at the bottom too, so every way out
         # would make it less like the original.
+        #++
         class SquareNoteTooLow
           NAME = :square_note_too_low
           PLAIN_NAME = "a square-wave note lower than the voice can play"

@@ -2,12 +2,15 @@
 
 module VBlank
   module DSL
-    # WHAT A LIST OF SCORES PICKED BY NAME OR NUMBER HAS IN COMMON — the songs `songs` gives back and
-    # the sound effects `sound_effects` does: how many there are, and a name or a written number
-    # turned into a place in the list, with a friendly error for one the list does not have. A
-    # number the game works out passes through untouched, for the player to check as it runs.
+    # Lists of songs and sound effects
     #
+    # What a list of songs (from `songs`) and a list of sound effects (from `sound_effects`) both
+    # answer: how many there are, and the number each name has in the list. A name or a number
+    # the list does not have is a friendly error when the game is built. A number the game works
+    # out as it runs is checked as it plays.
+    #--
     # The class including it sets what one entry is called (#entry_noun), for the errors.
+    #++
     module ScoreList
       def initialize(builder, name, keys)
         @builder = builder
@@ -15,12 +18,23 @@ module VBlank
         @keys = keys
       end
 
+      # The list's name, as given to `songs` or `sound_effects`.
       attr_reader :name
 
-      # How many the list holds.
+      # How many songs or sound effects the list holds.
+      #
+      # ```ruby
+      # music = songs :music, [title_theme, forest]
+      # music.count   # 2
+      # ```
       def count = @keys.length
 
-      # The number of an entry the list was given by name (a Hash of Scores).
+      # The number of the entry the list was given under a name, counting from 0.
+      #
+      # ```ruby
+      # sfx = sound_effects :sfx, { hit: hit, spark: spark }
+      # sfx.number_of(:spark)   # 1
+      # ```
       def number_of(key)
         at = @keys.index(key)
         return at if at

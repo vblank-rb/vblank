@@ -5,7 +5,7 @@ require "yaml"
 $LOAD_PATH.unshift File.expand_path("../../../lib", __dir__)
 require "vblank"
 
-# THE MADE-UP ORIGINAL OF THE PAC-MAN PORT: pacman.gba, the cartridge VBlank builds from
+# The made-up original of the Pac-Man port: pacman.gba, the cartridge VBlank builds from
 # examples/pacman.rb, checked in once with its SHA-1, and the facts of where each piece of data is in it.
 #
 # It stands in for a retail cartridge, in the console's own formats (16-colour tiles, 15-bit colours,
@@ -13,7 +13,7 @@ require "vblank"
 # any change to the Advance lowering changes its bytes and its hash, and a real cartridge never
 # changes. `ruby tools/make_pacman_fixture.rb` writes it again, on purpose, along with the facts.
 #
-# THE FACTS come from the cartridge build's own record of where it laid each piece of data
+# The facts come from the cartridge build's own record of where it laid each piece of data
 # (Cartridge::BuildRecord#data_assets), the way a real port takes them from a decompilation's
 # labels, and are written as an Original::FactsFile.
 module PacmanFixture
@@ -28,7 +28,7 @@ module PacmanFixture
   # A cartridge and where it laid its data.
   Built = Data.define(:bytes, :assets)
 
-  # THE FACTS FILE'S COMMENTS, written by hand; the tool writes the values under them.
+  # The facts file's comments, written by hand; the tool writes the values under them.
   FACTS_TEXT = <<~YAML
     # Where Pac-Man's data is in pacman.gba, the cartridge built from examples/pacman.rb. Written by
     # tools/make_pacman_fixture.rb from the cartridge build's own record, never by hand.

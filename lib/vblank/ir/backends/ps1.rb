@@ -46,13 +46,13 @@ module VBlank
       # R3000A, the console's processor, and written as a PS-X EXE, the file a PlayStation's BIOS loads
       # from a disc and an emulator or a loader on a real console takes as it is.
       #
-      # HOW IT IS MADE. PS1::Lowering walks the IR and emits MIPS machine code through the Ruby assembler
+      # How it is made. PS1::Lowering walks the IR and emits MIPS machine code through the Ruby assembler
       # (PS1::R3000), as the Genesis's lowering emits 68000, and shares with the other cartridge lowerings
       # what they all work out before writing an instruction (LoweringPlan, Sections). The runtime the code
       # calls is written in MIPS here, in Ruby, and calls nothing in the BIOS. The program is checked in
       # Beetle PSX through ruby-ps1-emulator, which `rake compile_ps1_core` builds.
       #
-      # WHAT IT MAKES SO FAR: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
+      # What it makes so far: a game's numbers, lists, tables, routines, scenes, timers and pad, and a
       # painted screen of one page or two, with its rectangles, pictures and text (Runtime::Paint), faded and
       # tinted by number (PaintedNumbers), a
       # screen drawn from tiles, its backgrounds and its sprites drawn whole by the graphics chip every
@@ -63,7 +63,7 @@ module VBlank
       # Everything else a game draws or plays is refused by name until it is made
       # (Lowering::NOT_LOWERED_YET).
       class PS1
-        # WHERE A RUNNING PROGRAM KEEPS WHAT A READER WANTS, which nothing in its bytes shows: every variable
+        # Where a running program keeps what a reader wants, which nothing in its bytes shows: every variable
         # by the game's name (its address in RAM), every list ([its address, its capacity, the bytes a
         # slot, its name]), where the runtime keeps how the run stands (Runtime::Frame's names), where
         # every label of the code went, and the program it was built from. +bytes+ gives what the program's
@@ -77,6 +77,9 @@ module VBlank
         # (Backends::PoolLayout::SlotPlace, Lowering#place_pools), by list.
         Places = Data.define(:variables, :lists, :runtime, :source_program, :code, :bytes, :routines, :sound_entries,
                              :sound_voicing, :recording_names, :slot_places) do
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen.
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 
@@ -115,26 +118,29 @@ module VBlank
           songs = sound && Lowering::Sound.songs?(program)
           follows_level = songs && Music.follows_level?(program)
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
+          clock_step = (IR::Tunes.effect_clock_step(program, program.described_console) if effects.positive?)
           samples = sound && Lowering::Sound.samples?(program)
           by_number = Lowering::Paint.by_number?(program)
           over_picture = Lowering::Picture.over_picture?(program)
           colors = by_number || Lowering::Picture.changes_colors?(program)
           counted = IR::Frames.counts_from_power_on?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound, counted: counted,
-                                  songs: songs, follows_level: follows_level, effects: effects,
+                                  songs: songs, follows_level: follows_level, effects: effects, effect_clock_step: clock_step,
                                   holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, recorded_pans: samples && IR::Tunes.recorded_pans?(program),
                                   glides: samples && Music.glides?(program),
                                   tiles: Lowering::Picture.tiled?(program),
-                                  colors: colors, by_number: by_number, over_picture: over_picture)
+                                  colors: colors, by_number: by_number, over_picture: over_picture,
+                                  pads: Runtime::Pads.pads_read(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           Runtime::Tiles.reserve_plane_mixes(memory) if Lowering::Picture.mixes_see_through?(program)
           lowering = Lowering.new(program, memory: memory, cache: cache)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
+                                             effect_clock_step: clock_step,
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
                                              collides: lowering.collides?, by_number: by_number, over_picture: over_picture,

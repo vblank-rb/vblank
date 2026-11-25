@@ -4,14 +4,16 @@ require "test_helper"
 
 require "stringio"
 
-# WHAT THE AUTHOR INSISTED ON, TAKING THE ROOM OF WHAT RUNS EVERY FRAME. The routine that answers
+# What the author insisted on, taking the room of what runs every frame. The routine that answers
 # the display runs on every frame of every screen and plays the music and the sound effects. What
 # a game marks `fast: true` goes in the console's quick memory before it, so a routine insisted on
 # for a moment's sake can leave it in the cartridge — and nothing showed that until a test played
 # the frames that then ran late. The build says so, naming what was insisted on.
 class TestIRGuardrailInterruptFromCartridge < Minitest::Test
   # How many additions the insisted routine holds: enough to leave the interrupt's routine a
-  # little short of room, but not so many that the insisted routine does not fit itself.
+  # little short of room, but not so many that the insisted routine does not fit itself. Each
+  # round adds `n ^ 1`, a number that does not step evenly from round to round, so the build
+  # writes every round out rather than folding them into one small loop.
   CROWDING = 1640
 
   private def build_warnings(insisted:)
@@ -24,7 +26,7 @@ class TestIRGuardrailInterruptFromCartridge < Minitest::Test
       ticks = var :ticks, 0
       # A timer twice a frame keeps the interrupt's routine wanted in the quick memory.
       timer(:beat, per_second: 120).on_tick { ticks += 1 }
-      func(:heavy, fast: insisted) { CROWDING.times { |n| total += n } }
+      func(:heavy, fast: insisted) { CROWDING.times { |n| total += n ^ 1 } }
       play_song :tune
       game_loop { call :heavy }
     end
@@ -61,7 +63,7 @@ class TestIRGuardrailInterruptFromCartridge < Minitest::Test
       play_song :tune
       game_loop do
         call :tiny
-        CROWDING.times { |n| total += n }
+        CROWDING.times { |n| total += n ^ 1 }
       end
     end
 

@@ -186,10 +186,11 @@ comparisons are `Computer::Differences`. The rake tasks are the library's
 with it, handing over the test files, the lowering folders and the consoles (`%i[gba gbc]`; a
 game's Rakefile that names none gets no Color run), and adds only the machine lock, the emulator
 build and coverage. Each `test:lowering:`
-task is a `VBlank::Testing::TestTask`, which holds how a native run starts (no Ractors, several
-processes, zig asked for first). The README's "Testing a game on every lowering" is the game's
+task is a `VBlank::Testing::TestTask`, which holds how each run starts (in Ractors or in several
+processes, as its record says; zig asked for first on the native run). The README's "Testing a game on every lowering" is the game's
 side; `test/all/vblank/testing/test_game_suite.rb` runs the rake of a small game suite
 (`test/fixtures/game_suite/`) that has the library as a gem and nothing from this folder.
 
-A native player needs zig and starts the game as a separate program, so it cannot run inside a
-Ractor. How the native run's processes work is in `.claude/testing/runs.md`.
+A native player needs zig and starts the game as a separate program, which a test in a Ractor can
+do; the native run still plays in processes until it is moved and measured. Which runs use which,
+and how the processes work, is in `.claude/testing/runs.md`.

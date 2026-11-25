@@ -97,9 +97,10 @@ class TestLocalView < Minitest::Test
     error = assert_raises(ArgumentError) do
       game do
         kept = var :kept, 0
-        holder = []
+        # A slot that is never a number keeps the Array Ruby's, holding the player number itself.
+        holder = [nil]
         game_loop do
-          drawing_for_local_player { |me| holder << me }
+          drawing_for_local_player { |me| holder[0] = me }
           kept.store!(holder.first)
         end
       end.checked_program(err: nil, console: :gba)

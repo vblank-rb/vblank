@@ -5,12 +5,12 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # A PAINTED SCREEN, as a Genesis keeps one: the interpreter's `screen :bitmap` is a grid of
+          # A painted screen, as a Genesis keeps one: the interpreter's `screen :bitmap` is a grid of
           # colours the game changes pixel by pixel, and a Genesis has no such screen. Every picture it
           # shows is tiles, so a painted screen is a screen of tiles that happens to have a different
           # one in every place: 40 across and 28 down, 1120 tiles, each 8×8 pixels of four bits.
           #
-          # THE PICTURE IS KEPT IN WORK RAM, in the form the video chip keeps a tile in (SCREEN): a
+          # The picture is kept in work RAM, in the form the video chip keeps a tile in (SCREEN): a
           # tile is 32 bytes, a row of eight pixels is four of them, and a byte is two pixels, the left
           # one in the top four bits. The tiles follow each other across the screen and then down, so the
           # picture is one run of 35,840 bytes that is copied to the same bytes in video RAM. Painting is
@@ -18,13 +18,13 @@ module VBlank
           # that changed two tiles copies two tiles in the blank after it, by DMA (rt_upload). A pass
           # that changed more than a blank holds is several blanks' copying, and the game waits for it.
           #
-          # THE COLOURS. A tile's pixel is four bits, a place in a list of sixteen colours, and the first
+          # The colours. A tile's pixel is four bits, a place in a list of sixteen colours, and the first
           # is see-through. So a painted screen shows up to fifteen colours and black: black is place 0,
           # which is see-through on the plane, and shows the backdrop, which is black too. Which place
           # is which colour is the game's (SNES::PaintedArt's way, Genesis::PaintedArt): every colour the
           # game can paint is known as it is built, and the code paints a place.
           #
-          # THE ROUTINES take their numbers in D0, D1, D2... and are reached with JSR. Every one holds
+          # The routines take their numbers in D0, D1, D2... and are reached with JSR. Every one holds
           # painting to the area the game has opened (`inside`, AREA: a left, a top, a right and a
           # bottom, each a word, the screen's own to begin with).
           module Paint
@@ -42,7 +42,7 @@ module VBlank
             # Where tile 1 is in video RAM: tile 0 is kept blank, so a map that names no tile shows nothing.
             FIRST_TILE_AT = TILE_BYTES
 
-            # SPRITES OVER THE PICTURE (`sprite ..., over_picture: true`). The video chip draws its sprites
+            # Sprites over the picture (`sprite ..., over_picture: true`). The video chip draws its sprites
             # over both planes, so a sprite over a painted screen is a sprite of the tiled screen's kind
             # (Tiles' sprite table and rt_sprite_place), placed over the plane that shows the picture. It
             # is never painted into the copy, so painting the picture again does not touch it.
@@ -249,7 +249,7 @@ module VBlank
               asm.label("rt_picture_start_patched")
             end
 
-            # THE CAMERA (`camera x, y`, Reference#exec_camera) moves the window over the picture, which on a
+            # The camera (`camera x, y`, Reference#exec_camera) moves the window over the picture, which on a
             # Genesis is moving the plane that shows it: its horizontal and vertical scroll, written in the
             # blank with the tiles. The plane is 64 cells across and 32 down and the picture 40 and 28, so
             # the cells past the picture are empty and show the backdrop as the interpreter does, for a
@@ -359,7 +359,7 @@ module VBlank
             # looked at four at a time, so a pass that changed nothing near most of the screen skips
             # most of it in a few instructions.
             #
-            # THE CHANGED TILES ARE FOUND BEFORE THE BLANK, AND ONLY COPIED IN IT. Looking through the
+            # The changed tiles are found before the blank, and only copied in it. Looking through the
             # marks of a whole screen takes the 68000 longer than a blank lasts, so a copy that waited
             # for it began as the picture was already being drawn, where the video chip copies at a
             # tenth of the speed: it was seen as half a picture, and it held the sound processor off
@@ -844,7 +844,7 @@ module VBlank
               asm.rts
             end
 
-            # A PICTURE WHOLLY INSIDE THE AREA, which is nearly every picture and all the text. The tiles it
+            # A picture wholly inside the area, which is nearly every picture and all the text. The tiles it
             # touches are marked once and nothing needs clipping, so each row walks the copy from byte to
             # byte, in a few instructions a pixel where the pixel-by-pixel way below takes a routine for
             # each. A byte is two pixels and a tile's row four bytes, so past a row's fourth byte the walk

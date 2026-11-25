@@ -2,41 +2,57 @@
 
 module VBlank
   class Builder
-    # WHAT A GAME IS TOLD WHEN IT IS BUILT. A game that comes in several cuts — which floors
-    # are in it, where the player starts, which screen it boots on — used to find out by
-    # reading the environment from inside its own block. That is the whole process's, so a
-    # test that built a one-floor cartridge changed what every other build running beside it
-    # at that moment saw. A setting is handed to this one build and to nothing else.
+    # What a game is told when it is built
     #
-    #   floors = setting :floors, 60
+    # A game that comes in several cuts, such as which floors are in it, where the player starts
+    # or which screen it boots on, asks for a setting. A setting is handed to one build and to
+    # nothing else. It is a plain Ruby value while the game is built, like the numbers a game
+    # works its tables out from, and not a variable the game keeps while it runs.
     #
-    # The line is the whole of it: the name, and what the game gets when nobody sets one. It is
-    # a value while the game is BUILT — a Ruby value, like the numbers a game computes its
-    # tables from — not a variable the game keeps while it runs.
+    # ```ruby
+    # floors = setting :floors, 60
+    # ```
+    #
+    # `built_for?` and `built_for_computer?` answer which machine the game is being built for.
+    #--
+    # A game used to find these out by reading the environment from inside its own block. That is
+    # the whole process's, so a test that built a one-floor cartridge changed what every other
+    # build running beside it at that moment saw.
+    #++
     module Settings
-      # WHETHER THIS BUILD PLAYS ON A COMPUTER, as C, in a web page or as Ruby, rather than on a
-      # console from a cartridge: a Ruby true or false while the game is built, as a setting is,
-      # for something that costs a cartridge frames and costs a computer nothing.
+      # Asks whether this build plays on a computer, rather than on a console from a cartridge.
       #
-      #   music = var :music, built_for_computer? ? 1 : 0
+      # The answer is a Ruby true or false while the game is built, as a setting is. Use it for
+      # something that costs a cartridge frames and costs a computer nothing. A computer build
+      # runs as C, in a web page or as Ruby.
+      #
+      # ```ruby
+      # music = var :music, built_for_computer? ? 1 : 0
+      # ```
       def built_for_computer? = @for_computer
 
-      # WHETHER THIS BUILD IS FOR +console+ (and, given one, its +variant+): a Ruby true or false
-      # while the game is built, as built_for_computer? is, for a choice of what the cartridge
-      # holds — a song left out of one console's, a title line only a bigger screen has room for.
+      # Asks whether this build is for a console, and for one chip variant of it if you name one.
       #
-      #   song(:theme) { ... } unless built_for?(:snes)
-      #   draw_text "DELUXE", 8, 8, :white if built_for?(:snes, variant: :superfx)
+      # The answer is a Ruby true or false while the game is built, for a choice of what the
+      # cartridge holds, such as a song left out of one console's or a title line that only a
+      # bigger screen has room for.
       #
-      # The answer is the console the game is BUILT for, whichever way it is then played: the
-      # game as C, in a web page or as Ruby, built for the Advance, answers for the Advance, as
-      # its cartridge does, so all of them play the same game. +variant+ left out asks about the
-      # console whatever chip its cartridge has; `variant: :none` asks about the plain console.
+      # ```ruby
+      # song(:theme) { ... } unless built_for?(:snes)
+      # draw_text "DELUXE", 8, 8, :white if built_for?(:snes, variant: :superfx)
+      # ```
       #
-      # Asking about a console the game's `consoles:` does not name is refused, since no build of
-      # the game could ever answer yes: it is almost always a misspelt name or a console not added.
-      # That refusal is why this `?` can raise, as `held(:jump)` does for a button there is none
-      # of: a question asked wrongly is the game's mistake, and false would hide it.
+      # The answer is the console the game is built for, however it is then played. The game as C,
+      # in a web page or as Ruby, built for the Advance, answers for the Advance, as its
+      # cartridge does, so all of them play the same game.
+      #
+      # Asking about a console that the game's `consoles:` does not name is an error, since no
+      # build of the game could ever answer yes. It is almost always a misspelt name or a console
+      # that was not added.
+      #
+      # * `console` - the console's name, as a symbol.
+      # * `variant:` - a chip variant of that console, such as `:superfx`. Left out, it asks about
+      #   the console whatever chip its cartridge has. `variant: :none` asks about the plain console.
       def built_for?(console, variant: nil)
         kit = Console.for(console)
         refuse_console_not_for_game!(kit)
@@ -48,13 +64,19 @@ module VBlank
         variant.nil? || asked_variant == @build_options.variant
       end
 
-      # The value this build was given for +name+, or +default+ when it was given none. With
-      # no default the setting has to be given.
+      # Gives the value this build was given for a setting, or the default when it was given none.
       #
-      # A setting given as TEXT — which is all a command line can give — is read as the kind
-      # of thing its default is, so `--set floors=1` means the number 1 to a game whose
-      # default is 60. A setting with no default has no kind of thing to be read as, so it
-      # comes to the game exactly as it was given.
+      # A setting given as text, which is all a command line can give, is read as the kind of
+      # thing its default is. `--set floors=1` means the number 1 to a game whose default is 60.
+      # A setting with no default has no kind of thing to be read as, so it comes to the game
+      # exactly as it was given, and a build that does not give it is an error.
+      #
+      # ```ruby
+      # floors = setting :floors, 60
+      # ```
+      #
+      # * `name` - the setting's name, as a symbol.
+      # * `default` - what the game gets when nobody sets one.
       def setting(name, default = NO_DEFAULT)
         name = name.to_sym
         @asked_settings << name
@@ -67,7 +89,7 @@ module VBlank
                              "`setting :#{name}, <default>`."
       end
 
-      NO_DEFAULT = Object.new.freeze
+      NO_DEFAULT = Object.new.freeze  # :nodoc:
 
       private
 

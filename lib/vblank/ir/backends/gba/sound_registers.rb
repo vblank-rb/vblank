@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE THE ADVANCE KEEPS THE GAME BOY'S SOUND CHIP (Backends::GameBoySound): each of the
+        # Where the Advance keeps the Game Boy's sound chip (Backends::GameBoySound): each of the
         # chip's registers by what it does, as the address of the 16-bit register that holds it.
         module SoundRegisters
           H = Console::Hardware

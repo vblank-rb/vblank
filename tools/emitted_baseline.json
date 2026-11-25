@@ -5,52 +5,68 @@
       "code": 48260,
       "data": 0
     },
+    "animate@gbc": {
+      "code": 10998,
+      "data": 8592
+    },
     "animate@genesis": {
-      "code": 4358,
+      "code": 4432,
       "data": 1122
     },
+    "animate@snes": {
+      "code": 14604,
+      "data": 16281
+    },
     "bird": {
-      "code": 7316,
+      "code": 7336,
       "data": 0
     },
     "breakout": {
-      "code": 70632,
+      "code": 70676,
       "data": 0
     },
     "breakout@gbc": {
-      "code": 12053,
-      "data": 45457
+      "code": 12487,
+      "data": 45375
     },
     "buffered_bounce": {
       "code": 4942,
       "data": 0
     },
+    "buffered_bounce@snes": {
+      "code": 16063,
+      "data": 555
+    },
     "cave": {
-      "code": 38684,
+      "code": 38532,
       "data": 0
     },
     "chip_band": {
-      "code": 36824,
+      "code": 36820,
       "data": 0
     },
     "chip_band@gbc": {
-      "code": 13568,
-      "data": 13784
+      "code": 13555,
+      "data": 13752
     },
     "clock": {
       "code": 25718,
       "data": 0
     },
     "corridor": {
-      "code": 10454,
+      "code": 10270,
       "data": 0
     },
     "cube3d": {
-      "code": 37132,
+      "code": 37024,
       "data": 0
     },
+    "cube3d@ps1": {
+      "code": 40064,
+      "data": 5044
+    },
     "dive": {
-      "code": 55628,
+      "code": 57448,
       "data": 0
     },
     "everywhere": {
@@ -58,124 +74,216 @@
       "data": 0
     },
     "everywhere@gbc": {
-      "code": 8282,
+      "code": 8247,
       "data": 3392
     },
     "everywhere@genesis": {
-      "code": 4878,
+      "code": 4952,
       "data": 880
+    },
+    "everywhere@snes": {
+      "code": 6609,
+      "data": 2574
     },
     "floating_digits": {
       "code": 11656,
       "data": 0
     },
+    "floating_digits@snes": {
+      "code": 18714,
+      "data": 12275
+    },
     "flowers": {
-      "code": 2640,
+      "code": 2908,
       "data": 0
     },
     "flowers@gbc": {
-      "code": 6765,
-      "data": 4736
+      "code": 6719,
+      "data": 4752
+    },
+    "flowers@snes": {
+      "code": 5862,
+      "data": 2832
     },
     "font_styles": {
       "code": 2832,
       "data": 0
     },
+    "font_styles@gbc": {
+      "code": 10960,
+      "data": 6736
+    },
+    "font_styles@snes": {
+      "code": 16219,
+      "data": 2187
+    },
     "fonts": {
       "code": 4488,
       "data": 0
     },
+    "fonts@gbc": {
+      "code": 10960,
+      "data": 6848
+    },
     "fonts@genesis": {
-      "code": 3940,
+      "code": 4014,
       "data": 826
+    },
+    "fonts@snes": {
+      "code": 16255,
+      "data": 3089
     },
     "grid_cursor": {
       "code": 6804,
       "data": 0
     },
+    "grid_cursor@gbc": {
+      "code": 10960,
+      "data": 8544
+    },
     "grid_cursor@genesis": {
-      "code": 4426,
+      "code": 4500,
       "data": 44
     },
+    "grid_cursor@snes": {
+      "code": 15158,
+      "data": 555
+    },
     "hero": {
-      "code": 80400,
+      "code": 81608,
       "data": 0
     },
+    "hero@snes": {
+      "code": 53155,
+      "data": 13831
+    },
     "jukebox": {
-      "code": 72434,
+      "code": 72438,
       "data": 0
     },
     "lake": {
-      "code": 4814,
+      "code": 4894,
       "data": 0
+    },
+    "lake@snes": {
+      "code": 6434,
+      "data": 5636
     },
     "level": {
-      "code": 3932,
+      "code": 3872,
       "data": 0
+    },
+    "level@gbc": {
+      "code": 8174,
+      "data": 8032
     },
     "level@genesis": {
-      "code": 4396,
+      "code": 4470,
       "data": 2404
     },
+    "level@snes": {
+      "code": 8264,
+      "data": 3977
+    },
     "lit_corridor": {
-      "code": 40608,
+      "code": 40448,
       "data": 0
+    },
+    "lit_corridor@ps1": {
+      "code": 35024,
+      "data": 6316
     },
     "maze": {
-      "code": 3300,
+      "code": 3156,
       "data": 0
     },
+    "maze@gbc": {
+      "code": 8108,
+      "data": 6400
+    },
     "maze@genesis": {
-      "code": 3968,
+      "code": 4042,
       "data": 2108
     },
+    "maze@snes": {
+      "code": 6751,
+      "data": 3322
+    },
     "meadow": {
-      "code": 32908,
+      "code": 33104,
       "data": 0
     },
     "pacman": {
-      "code": 14524,
+      "code": 14364,
       "data": 0
     },
     "pacman@gbc": {
-      "code": 8405,
-      "data": 14320
+      "code": 8370,
+      "data": 14272
+    },
+    "pacman@ps1": {
+      "code": 17036,
+      "data": 15360
+    },
+    "pacman@snes": {
+      "code": 15756,
+      "data": 7330
+    },
+    "panorama": {
+      "code": 156312,
+      "data": 0
     },
     "parallax": {
       "code": 2092,
       "data": 0
     },
     "parallax@genesis": {
-      "code": 3224,
+      "code": 3298,
       "data": 4448
     },
+    "parallax@snes": {
+      "code": 4929,
+      "data": 4829
+    },
     "piano": {
-      "code": 26420,
+      "code": 26560,
       "data": 0
     },
     "pixels": {
-      "code": 96268,
+      "code": 9032,
       "data": 0
     },
+    "pixels@gbc": {
+      "code": 10960,
+      "data": 7280
+    },
     "pixels@genesis": {
-      "code": 4236,
+      "code": 4310,
       "data": 44
     },
+    "pixels@snes": {
+      "code": 14330,
+      "data": 555
+    },
     "pong": {
-      "code": 44108,
+      "code": 42856,
       "data": 0
     },
     "pong_gbc": {
-      "code": 42692,
+      "code": 41900,
       "data": 0
     },
     "pong_gbc@gbc": {
-      "code": 14239,
-      "data": 26032
+      "code": 14246,
+      "data": 25936
     },
     "raycaster": {
       "code": 6112,
       "data": 0
+    },
+    "raycaster@snes": {
+      "code": 16556,
+      "data": 2667
     },
     "rotozoom_bg": {
       "code": 3588,
@@ -186,76 +294,144 @@
       "data": 0
     },
     "scoreboard@gbc": {
-      "code": 7987,
-      "data": 7632
+      "code": 7952,
+      "data": 7584
+    },
+    "scoreboard@snes": {
+      "code": 5729,
+      "data": 4908
     },
     "scroll": {
       "code": 2348,
       "data": 0
     },
+    "scroll@gbc": {
+      "code": 7868,
+      "data": 10832
+    },
     "scroll@genesis": {
-      "code": 3212,
+      "code": 3286,
       "data": 8472
     },
+    "scroll@snes": {
+      "code": 4898,
+      "data": 8851
+    },
     "sheet": {
-      "code": 3932,
+      "code": 3872,
       "data": 0
     },
+    "sheet@gbc": {
+      "code": 8174,
+      "data": 8032
+    },
+    "sheet@snes": {
+      "code": 8264,
+      "data": 3977
+    },
     "shmup": {
-      "code": 37080,
+      "code": 37764,
       "data": 0
     },
     "snake": {
-      "code": 38764,
+      "code": 35340,
       "data": 0
     },
+    "snake@snes": {
+      "code": 26294,
+      "data": 16690
+    },
     "snake_buffered": {
-      "code": 40376,
+      "code": 37692,
       "data": 0
     },
     "sparks": {
-      "code": 3004,
+      "code": 3144,
       "data": 0
+    },
+    "sparks@gbc": {
+      "code": 11409,
+      "data": 9360
+    },
+    "sparks@snes": {
+      "code": 18195,
+      "data": 611
     },
     "sprite_mover": {
       "code": 12964,
       "data": 0
     },
+    "sprite_mover@gbc": {
+      "code": 10998,
+      "data": 8048
+    },
     "sprite_mover@genesis": {
-      "code": 4766,
+      "code": 4840,
       "data": 134
+    },
+    "sprite_mover@snes": {
+      "code": 15388,
+      "data": 2407
     },
     "tiles": {
       "code": 7848,
       "data": 0
     },
+    "tiles@gbc": {
+      "code": 6432,
+      "data": 8816
+    },
     "tiles@genesis": {
-      "code": 3332,
+      "code": 3406,
       "data": 2776
     },
+    "tiles@snes": {
+      "code": 5148,
+      "data": 6855
+    },
     "tower": {
-      "code": 15580,
+      "code": 16140,
       "data": 0
     },
     "tower@gbc": {
-      "code": 8627,
-      "data": 16176
+      "code": 8607,
+      "data": 16032
     },
     "tower@genesis": {
-      "code": 6394,
+      "code": 6468,
       "data": 3740
     },
+    "tower@snes": {
+      "code": 11785,
+      "data": 8091
+    },
     "two_rooms": {
-      "code": 36994,
+      "code": 36822,
       "data": 0
     },
+    "two_rooms@ps1": {
+      "code": 37144,
+      "data": 7076
+    },
     "wanderers": {
-      "code": 2320,
+      "code": 2316,
       "data": 0
     },
     "wanderers@gbc": {
-      "code": 8005,
-      "data": 5664
+      "code": 7981,
+      "data": 5600
+    },
+    "wanderers@genesis": {
+      "code": 6732,
+      "data": 3152
+    },
+    "wanderers@ps1": {
+      "code": 13760,
+      "data": 9664
+    },
+    "wanderers@snes": {
+      "code": 10234,
+      "data": 3297
     }
   }
 }

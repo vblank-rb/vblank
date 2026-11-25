@@ -6,7 +6,7 @@ require "differential"
 
 # `menu` — a list of rows, a cursor that moves between them, and a block per row.
 #
-# These tests read the PICTURE, not the pick variable. Where the cursor sits is the
+# These tests read the picture, not the pick variable. Where the cursor sits is the
 # thing a player can see, so a test that finds the cursor by looking for it would
 # still catch a menu that moved its pick and drew somewhere else. The rows are given
 # distinct colours for the same reason: "picked" is a colour on the screen, not a
@@ -112,7 +112,7 @@ class TestMenu < Minitest::Test
     assert_equal DIMMED, row_color(i, 1)
   end
 
-  # WHERE THE CURSOR STARTS IS SOMETHING A GAME CAN SAY. The first row that can be
+  # Where the cursor starts is something a game can say. The first row that can be
   # picked is the right default and it is not always right: a difficulty screen whose
   # rows run from easiest to hardest recommends one of them, and that recommendation is
   # a real difference in the game rather than a cosmetic one.
@@ -124,7 +124,7 @@ class TestMenu < Minitest::Test
     assert_equal PLAIN, row_color(i, 0), "while the first row is drawn plainly"
   end
 
-  # ...and it is where the cursor STARTS, not where it is held. A per-frame set would
+  # ...and it is where the cursor starts, not where it is held. A per-frame set would
   # pin it there and the menu would stop working entirely.
   def test_a_cursor_that_started_elsewhere_still_moves
     i = walk(menu_program(starts_on: 2), frames: 3) { |f| f == 1 ? [:down] : [] }
@@ -261,10 +261,7 @@ class TestMenu < Minitest::Test
       state = var :state, 0
       game_loop do
         clear_screen :black
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING) do |rows|
@@ -284,7 +281,7 @@ class TestMenu < Minitest::Test
     assert_equal 2, cursor_row(i)
   end
 
-  # A row the game named is where the cursor STARTS, once, at power-on — so a menu you
+  # A row the game named is where the cursor starts, once, at power-on — so a menu you
   # back out of still opens where you left it rather than jumping back to the
   # recommendation.
   def test_a_named_start_is_the_power_on_row_and_not_where_it_returns_to
@@ -293,10 +290,7 @@ class TestMenu < Minitest::Test
       state = var :state, 0
       game_loop do
         clear_screen :black
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING, starts_on: 2) do |rows|
@@ -612,10 +606,7 @@ class TestMenu < Minitest::Test
       screen :tiled
       state = var :state, 0
       game_loop do
-        case_var(:state) do
-          when_val 0, :picking
-          when_val 1, :away
-        end
+        call({ 0 => :picking, 1 => :away }, number: :state)
       end
       scene :picking do
         menu(:main, at: [X, Y], spacing: SPACING, color: :gray, picked: :white) do |rows|
@@ -762,7 +753,7 @@ class TestMenu < Minitest::Test
   # ---- a row that can be picked only while the game says so ----
   #
   # A Continue row greyed until there is a save; Resume greyed unless a game is running.
-  # Row TWO can be picked while `open` is 1 (said as a test), row THREE while `open` is not
+  # Row TWO can be picked while `open` is 1 (said as a test), row three while `open` is not
   # 0 (said as the variable itself). B opens and closes both: every console has one.
 
   private def changing_menu(on: :bitmap, opens_at: nil, repeat_every: nil)

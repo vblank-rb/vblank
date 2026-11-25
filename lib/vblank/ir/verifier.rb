@@ -53,6 +53,8 @@ module VBlank
         name:    ->(v) { v.is_a?(Symbol) },                    # a variable / asset / func name
         option:  ->(v) { v.is_a?(Symbol) },                    # an enum choice (:front, :quarter, :left)
         int:     ->(v) { v.is_a?(Integer) },                   # a size, count, fixed coord, literal
+        rate:    ->(v) { v.is_a?(Rational) && v.positive? },   # how many times a second, exactly
+        quantity: ->(v) { v.is_a?(Numeric) },                  # an amount that need not be whole (a save memory of half a kilobyte)
         text:    ->(v) { v.is_a?(String) },                    # a string / packed bytes
         color:   ->(v) { v.is_a?(Symbol) || v.is_a?(String) || v.is_a?(Integer) },
         mode:    ->(v) { v.is_a?(Symbol) || v.is_a?(Integer) }, # a screen-mode name or raw register value
@@ -97,6 +99,7 @@ module VBlank
       def verify!(node)
         node.walk { |n| verify_known_kind!(n) }
         node.walk { |n| verify_node!(n) }
+        LoopJumps.refuse_stray_jumps!(node)
         node
       end
 

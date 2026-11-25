@@ -88,7 +88,7 @@ class TestJSCreateGame < Minitest::Test
     JS
     told = played_page(["play 5", 'js said.join(" | ")'], html: html).grep(/\Ajs /).first
 
-    assert_match(/stopped: The game stopped: .*list :trail is full/, told)
+    assert_match(/stopped: The game stopped: .*`trail` is full/, told)
   end
 
   # A stopped game lets go of the page: its keys go back to the page (the arrows scroll again, F
@@ -121,9 +121,10 @@ class TestJSCreateGame < Minitest::Test
     html = page_of(game, %w[one], "window.games = [createGame({ canvas: #{canvas('one')}, storage: null })];")
     lines = played_page(["play 3", "js window.first = games[0].readSave(); first.length > 0 && first.some((byte) => byte !== 0xFF)",
                          "js games[0].writeSave(new Uint8Array(first.length).fill(7)); games[0].readSave().every((byte) => byte === 7)",
+                         "js games[0].saveSize === first.length", "js games[0].keepsSave",
                          "js try { games[0].writeSave(new Uint8Array(3)); 'kept' } catch (error) { error.message }"], html: html)
 
-    assert_equal ["js true", "js true"], lines.grep(/\Ajs /).first(2)
+    assert_equal ["js true", "js true", "js true", "js false"], lines.grep(/\Ajs /).first(4)
     assert_match(/must be \d+ bytes/, lines.grep(/\Ajs /).last)
   end
 

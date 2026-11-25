@@ -5,11 +5,15 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # WHETHER TWO SPRITES' DRAWN PIXELS TOUCH (`pixels_overlap`), lowered for a Super
+          # Whether two sprites' drawn pixels touch (`pixels_overlap`), lowered for a Super
           # Nintendo: a call into Runtime::Collide, and each picture a sprite can show made into a
           # mask of where it draws while the program is built. Mixed into Lowering.
           module Collision
             VALUE_KINDS = %i[pixels_overlap].freeze
+
+            # Whether +program+ asks anywhere whether two sprites' drawn pixels touch, so its runtime
+            # carries Runtime::Collide and its scratch on the direct page (Runtime::Carries#collides).
+            def self.pixels_overlap_named?(program) = program.walk.any? { |node| VALUE_KINDS.include?(node.kind) }
 
             def value_of_collision_kind(node)
               case node.kind

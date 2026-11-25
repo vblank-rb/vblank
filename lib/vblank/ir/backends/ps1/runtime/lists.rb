@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # THE LISTS: a game's `list`, and every field of a pool, as the interpreter keeps them
+          # The lists: a game's `list`, and every field of a pool, as the interpreter keeps them
           # (Reference::ListValue) — items added at the back and taken from either end, read and written
           # by index, and the game stopped, in the interpreter's words, by an index outside the list, an
           # item added to a full one or taken from an empty one.
@@ -41,7 +41,7 @@ module VBlank
             # lowering hands rt_list_copy (EntryKeeping#number).
             KEPT = { lb: 0, lbu: 1, lh: 2, lhu: 3, lw: 4 }.freeze
 
-            # HOW A TABLE KEEPS AN ENTRY: its +bytes+ (1, 2 or 4) and whether it has a sign
+            # How a table keeps an entry: its +bytes+ (1, 2 or 4) and whether it has a sign
             # (LoweringPlan#table_keeping). The one place that decides which load reads one: LB and LH widen by
             # the sign, LBU and LHU with noughts.
             EntryKeeping = Data.define(:bytes, :signed) do

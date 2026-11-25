@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT A STRETCHED COLUMN COSTS on the console, which is most of a first-person view's frame:
+# What a stretched column costs on the console, which is most of a first-person view's frame:
 # every wall strip, every thing standing in a room and the gun go through the one walk.
 #
 # Each claim here is measured by running the cartridge, never by reading the code it emits,
@@ -49,12 +49,12 @@ class TestColumnWalkCost < Minitest::Test
     VBlank::Diagnostics::Profiler.run(rom, frames: 30, picture: false)
   end
 
-  # WHAT ONE SCREEN ROW OF A STRIP COSTS, in instructions: the same strips drawn twice as tall,
+  # What one screen row of a strip costs, in instructions: the same strips drawn twice as tall,
   # and the difference shared out over the rows that were added. Everything else in the two
   # frames is the same, so it cancels, and the profiler counts every instruction it ran.
   #
   # Both have to finish every pass inside a frame. One that ran over would spill into the next
-  # frame and run FEWER instructions a frame, which would read as a cheaper row.
+  # frame and run fewer instructions a frame, which would read as a cheaper row.
   private def instructions_per_row(title, see_through: false)
     short = profile_of(strips_program([40] * 20, see_through: see_through), "#{title}S")
     tall = profile_of(strips_program([80] * 20, see_through: see_through), "#{title}T")
@@ -66,7 +66,7 @@ class TestColumnWalkCost < Minitest::Test
     result.lines.find { |line| line.name == VBlank::IR::Backends::GBA::Divide::ROUTINE }&.samples || 0
   end
 
-  # A THING ON SCREEN IS MANY STRIPS OF ONE HEIGHT, and the step down the picture depends only
+  # A thing on screen is many strips of one height, and the step down the picture depends only
   # on that height and the picture's own. So once the first strip of a height has worked its
   # step out, a strip of the same height uses it again and does not divide. The profile starts
   # once the game has settled, so the one divide on the very first frame is behind it.
@@ -86,7 +86,7 @@ class TestColumnWalkCost < Minitest::Test
     assert_operator divide_samples(result), :>, 0
   end
 
-  # A ROW OF A STRIP ON THE TEAR-FREE SCREEN: read the picture's number for that row, splice it
+  # A row of a strip on the tear-free screen: read the picture's number for that row, splice it
   # into its half of the pair it shares, step on, and go round. A picture drawn as columns is
   # kept column by column, so its number for a row is one load with no multiply; nothing is
   # counted that the walk never reads; and the loop is tested once a row, at the bottom.
@@ -96,7 +96,7 @@ class TestColumnWalkCost < Minitest::Test
     assert_operator instructions_per_row("ROW"), :<=, 9.0
   end
 
-  # A SEE-THROUGH PICTURE'S ROW COSTS WHAT A SOLID ONE'S DOES. The walk visits only the stretches
+  # A see-through picture's row costs what a solid one's does. The walk visits only the stretches
   # of a column that hold pixels, and each stretch's first and last screen rows are worked out
   # exactly, so every row it reaches has a pixel and none is asked whether it is see-through.
   def test_a_row_of_a_see_through_strip_costs_what_a_solid_one_does
@@ -105,7 +105,7 @@ class TestColumnWalkCost < Minitest::Test
     assert_operator instructions_per_row("SEE", see_through: true), :<=, 9.0
   end
 
-  # EXACT ENDS, AT EVERY HEIGHT. Turning a picture row into a screen row divides, and a stretch
+  # Exact ends, at every height. Turning a picture row into a screen row divides, and a stretch
   # that came out a row short at one height would lose that row there and nowhere else, while
   # one a row long would paint a see-through pixel. So a picture of stretches, at a height that
   # is not a power of two, is drawn at every height from one row to well past the screen, and
@@ -177,7 +177,7 @@ class TestColumnWalkCost < Minitest::Test
                           frames: 3, name: "STEPPIC")
   end
 
-  # The step is the PICTURE'S height over the strip's, so two pictures of different heights
+  # The step is the picture's height over the strip's, so two pictures of different heights
   # drawn at one strip height take different steps, and neither may take the other's.
   def test_pictures_of_different_heights_at_one_strip_height_keep_their_own_steps
     b = Builder.new
@@ -199,7 +199,7 @@ class TestColumnWalkCost < Minitest::Test
     assert_backends_agree(b.program, frames: 3, name: "TWOPICS")
   end
 
-  # A TIMER'S TICK CAN INTERRUPT A STRIP between reading the kept step and the numbers it came
+  # A timer's tick can interrupt a strip between reading the kept step and the numbers it came
   # from, so in a game whose tick draws a stretched column every strip divides, as before.
   def test_a_game_whose_timer_draws_a_column_divides_for_every_strip
     require_emulator!

@@ -3,7 +3,7 @@
 require "test_helper"
 
 # The list feature on real hardware: lower a list program to a ROM, run it in
-# the emulator, and read the pixels it draws. Each drawing test runs the SAME program on
+# the emulator, and read the pixels it draws. Each drawing test runs the same program on
 # the reference interpreter (the oracle) and on the console and asserts identical
 # pixels — the cross-backend agreement the list lowering has to hold. The list's
 # contents are made visible by drawing a marker at each stored x, so the ring
@@ -117,9 +117,9 @@ class TestListHardware < Minitest::Test
                          [10, nil], [50, nil]])
   end
 
-  # A LIST THAT IS NEVER SHIFTED IS A PLAIN ROW OF SLOTS, not a ring, and it is allocated at
+  # A list that is never shifted is a plain row of slots, not a ring, and it is allocated at
   # exactly the size it asked for — no rounding up to a power of two. Its head can never move,
-  # so the index IS the slot. This is the shape nearly every list in a real game has (a pool's
+  # so the index is the slot. This is the shape nearly every list in a real game has (a pool's
   # fields, a board), and the one that used to pay for slots it could never fill.
   #
   # A capacity of five is the point: five is not a power of two, so under the old rule this
@@ -142,7 +142,7 @@ class TestListHardware < Minitest::Test
                          [50, nil], [110, nil]])
   end
 
-  # ...AND A BAD INDEX STAYS INSIDE IT. There is no mask to confine one on a plain row, so the
+  # ...AND a bad index stays inside it. There is no mask to confine one on a plain row, so the
   # index is held against the list's own size instead and lands on slot nought. What must never
   # happen is that it reaches the variable next door.
   #
@@ -172,7 +172,7 @@ class TestListHardware < Minitest::Test
     assert v.pixel_is?(70, ROW, :red), "and the variable next to the list is untouched"
   end
 
-  # A SLOT NARROWER THAN A WHOLE NUMBER, on the console. The lowering changes for these: the
+  # A slot narrower than a whole number, on the console. The lowering changes for these: the
   # address is scaled by the element size rather than always by four, and the load and store
   # are the byte-sized instructions. So the same markers landing in the same places is the
   # check that all three moved together.
@@ -193,7 +193,7 @@ class TestListHardware < Minitest::Test
                          [60, nil], [180, nil]])
   end
 
-  # ...AND A NUMBER TOO BIG FOR ONE IS CUT DOWN THE SAME WAY ON BOTH. The console's byte store
+  # ...AND a number too big for one is cut down the same way on both. The console's byte store
   # keeps the low eight bits and there is nothing else it could do; what makes that safe rather
   # than a trap is that the interpreter drops exactly the same bits, so a game tested against
   # the oracle behaves the same on the cartridge. 300 is 256 and 44, and the 256 does not fit.
@@ -209,7 +209,7 @@ class TestListHardware < Minitest::Test
     assert_same_markers(prog, [[44, :green], [300 % 240, nil], [20, nil]])
   end
 
-  # A SIGNED narrow slot reads back below nothing, which is what a -1 meaning "none" needs.
+  # A signed narrow slot reads back below nothing, which is what a -1 meaning "none" needs.
   # Read by drawing at 100 plus what came out, so a slot that lost the sign draws at 355 —
   # off the screen — and one that kept it draws at 99.
   def test_a_signed_byte_slot_reads_a_negative_back_on_both_backends
@@ -226,12 +226,9 @@ class TestListHardware < Minitest::Test
     assert_same_markers(prog, [[99, :green], [95, nil], [104, nil]])
   end
 
-  def test_overflow_is_bounded_on_hardware
-    # The interpreter *raises* on a push past capacity; hardware can't, so it must
-    # instead bound the list safely — drop the extra pushes, keep the oldest two,
-    # and never let length run past capacity. So this is a console-only check: push
-    # four into a capacity-2 list and confirm exactly the first two (30, 90) are
-    # drawn, with the overflowing 150/210 absent.
+  # A push onto a full list stops the game, as the interpreter's does, and the cartridge keeps
+  # what went wrong: the two pushes that fit are kept, and nothing after the third runs.
+  def test_a_push_onto_a_full_list_stops_on_hardware
     require_emulator!
 
     prog = program(
@@ -239,21 +236,22 @@ class TestListHardware < Minitest::Test
       list_new(:xs, 2),
       list_push(:xs, 30),
       list_push(:xs, 90),
-      list_push(:xs, 150), # full -> dropped
-      list_push(:xs, 210), # full -> dropped
+      list_push(:xs, 150), # full: the game stops here
+      list_push(:xs, 210),
       draw_each_marker(:xs),
       halt,
     )
 
-    rom = VBlank::Cartridge::ROM.assemble(GBA.new.lower(prog), title: "LISTOF", code: "BLOF", maker: "01")
+    backend = GBA.new
+    rom = VBlank::Cartridge::ROM.assemble(backend.lower(prog), title: "LISTOF", code: "BLOF", maker: "01",
+                                                               built: backend.build_record(prog))
     v = assert_emulator_loads_rom(rom)
-    assert v.pixel_is?(30, ROW, :green), "the first push survives"
-    assert v.pixel_is?(90, ROW, :green), "the second push survives"
-    assert v.pixel_is?(150, ROW, :black), "the overflowing third push is dropped"
-    assert v.pixel_is?(210, ROW, :black), "the overflowing fourth push is dropped"
+    assert_match(/`xs` is full: it has room for 2/, v.went_wrong)
+    assert_equal [30, 90], v.list(:xs)
+    assert v.pixel_is?(30, ROW, :black), "nothing after the stop is drawn"
   end
 
-  # TWO LISTS AND A VARIABLE IN ONE EXPRESSION, which is what a pool walk is made of and
+  # Two lists and a variable in one expression, which is what a pool walk is made of and
   # what settles whether a collection's base can be left in a register between touches. A
   # base left there that should have been named again does not fail — it reads the wrong
   # list, or the right list at the wrong distance along — so each marker lands somewhere

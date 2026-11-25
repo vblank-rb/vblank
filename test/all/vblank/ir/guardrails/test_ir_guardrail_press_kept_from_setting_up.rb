@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A NAME SET FROM A BUTTON WHILE THE GAME SETS UP, AND READ AS IT PLAYS. A Ruby local keeps the
+# A name set from a button while the game sets up, and read as it plays. A Ruby local keeps the
 # answer of its line, so the name holds the press of the moment the game started, which never
 # changes. That is what the language says, and never what a game means by a press, so the build
 # says, naming the line.

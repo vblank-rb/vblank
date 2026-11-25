@@ -2,14 +2,14 @@
 
 module VBlank
   module Cartridge
-    # A PLAYSTATION PROGRAM AS A PS-X EXE: the code the PlayStation lowering linked, with the 2048-byte
+    # A PlayStation program as a PS-X EXE: the code the PlayStation lowering linked, with the 2048-byte
     # header the console's BIOS (or an emulator, or a loader on a real console) reads in front of it.
     #
     # A PlayStation game ships on a disc, and the disc's SYSTEM.CNF names the program the BIOS loads
     # from it: a PS-X EXE. The same file can be handed to an emulator directly, or sent to a real
     # console over a serial cable by a loader, without a disc at all. That is what this is.
     #
-    # THE HEADER (psx-spx, "CDROM File Formats", PS-X EXE), every number four bytes, low byte first:
+    # The header (psx-spx, "CDROM File Formats", PS-X EXE), every number four bytes, low byte first:
     #
     #   000h  "PS-X EXE"
     #   010h  where to start running (the entry point)
@@ -68,9 +68,11 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0").rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
-      # HOW MANY FRAMES ITS PASSES TOOK, AND WHERE THE TIME WENT: the program run in the emulator
+      include ProfileNotes::WithRoutineSizes
+
+      # How many frames its passes took, and where the time went: the program run in the emulator
       # (Diagnostics::PS1Profiler), reported for a person or as JSON. +keys+ are held from power-on, and
       # +settle+ passes run before the +frames+ passes measured.
       #
@@ -78,9 +80,10 @@ module VBlank
       # by itself (Diagnostics::TapeProfile), keeping its +routines+ busiest routines, the game's and
       # the runtime's each (three where none is given).
       def profile(format: :human, out: $stdout, frames: Diagnostics::PS1Profiler::FRAMES,
-                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil)
+                  settle: nil, keys: [], scene: nil, from: nil, press: [], tape: nil, routines: nil, lines: nil)
         Diagnostics::TapeProfile.refuse_scene!(scene, from, "PlayStation")
         Diagnostics::TimeByRoutine.refuse_press!(press, "PlayStation")
+        Diagnostics::TimeByRoutine.refuse_lines!(lines, "PlayStation")
         if tape
           return Diagnostics::TapeProfile.profile(self, Diagnostics::PS1Profiler, tape: tape, frames: frames, keys: keys,
                                                                                   settle: settle, format: format, out: out,
@@ -91,8 +94,13 @@ module VBlank
         result = Diagnostics::PS1Profiler.run(self, frames: frames, settle: settle || Diagnostics::PS1Profiler::SETTLE,
                                                     keys: keys)
         case format
-        when :human then Diagnostics::PS1Profiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h))
+        when :human
+          Diagnostics::BuildNotes.render(self, out)
+          Diagnostics::PS1Profiler.render(result, out: out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a program of #{bytes.bytesize / 1024} KB")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::BuildNotes.as_json(self))
+                                            .merge(Diagnostics::RoutineSizes.as_json(routine_sizes))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

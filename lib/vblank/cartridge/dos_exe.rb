@@ -72,7 +72,7 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0").rstrip
 
-      def write(path) = ROM.write_bytes(path, @bytes)
+      def write(path) = File.binwrite(path, @bytes)
 
       # DOS has no profiler yet: where a frame's time went is read from the processor's own count, which the
       # DOSBox core does not hand over.

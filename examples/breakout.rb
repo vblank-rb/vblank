@@ -135,7 +135,7 @@ module Breakout
   # The Advance's layout, which the tests read the game's places from.
   ADVANCE = Layout.new(width: 240, height: 160)
   SCREEN_W = ADVANCE.width
-  BRICKS = Ractor.make_shareable(ADVANCE.bricks)
+  BRICKS = ADVANCE.bricks
 
   # On a Game Boy Color the screen is painted into 8×8 squares of four colours each. Every
   # brick row keeps to its own squares but one: the orange and yellow rows meet in one row of
@@ -210,17 +210,11 @@ module Breakout
       ball_x += ball_dx
       ball_y += ball_dy
 
-      # Bounce off the two side walls and the ceiling. abs/negate_abs force the
-      # direction rather than just flipping it, so a ball wedged against a wall for
-      # a frame can't rattle back and forth.
-      if ball_x <= 0
-        ball_dx.abs!
-        beep :wall
-      end
-      if ball_x >= layout.width - BALL_SIZE
-        ball_dx.negate_abs!
-        beep :wall
-      end
+      # Bounce off the two side walls and the ceiling. Both force the direction
+      # rather than just flipping it, so a ball wedged against a wall for a frame
+      # can't rattle back and forth. The floor is not a wall (it is the pit, below),
+      # so the ceiling is one test of its own: abs! sends the ball down.
+      ball_x.bounce!(ball_dx, 0..layout.width - BALL_SIZE) { beep :wall }
       if ball_y <= 0
         ball_dy.abs!
         beep :wall
@@ -371,7 +365,7 @@ module Breakout
       # Repaint the whole picture. Each standing brick draws itself; broken ones
       # simply aren't drawn. Safe to do wholesale every frame because we're buffered.
       bricks.each do |b|
-        dma_fill_rect b[:x], b[:y], layout.brick_w, BRICK_H, b[:color] if alive[b[:name]] == 1
+        fill_rect b[:x], b[:y], layout.brick_w, BRICK_H, b[:color] if alive[b[:name]] == 1
       end
       draw_rect_at :paddle_x, layout.paddle_y, PADDLE_W, PADDLE_H, :white
       draw_rect_at :ball_x, :ball_y, BALL_SIZE, BALL_SIZE, :white
@@ -416,11 +410,11 @@ module Breakout
 
     # --- Main loop: one scene runs per frame, chosen by the game state ---
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :cleared
-        when_val 3, :game_over
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :cleared
+      when 3 then call :game_over
       end
     end
   end

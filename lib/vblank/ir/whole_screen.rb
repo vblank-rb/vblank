@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHICH STATEMENTS PAINT OVER THE WHOLE SCREEN, asked two ways. The bookkeeping that tells
+    # Which statements paint over the whole screen, asked two ways. The bookkeeping that tells
     # a bitmap sprite it is off the picture (Builder::Sprites#finalize_sprite_clears) needs to
     # know every pixel went (#covers_screen?). The warning about a sprite cleared every frame
     # (Guardrails::Checks::SpriteClearedEachFrame) needs only to know the fill is a screen in
@@ -17,7 +17,7 @@ module VBlank
     module WholeScreen
       # The fills whose place and size can say they cover the screen. A `draw_rect_at` reads its
       # numbers as the game runs, but a number written in the program is still known.
-      RECT_FILLS = %i[fill_rect dma_fill_rect draw_rect_at].freeze
+      RECT_FILLS = %i[fill_rect draw_rect_at].freeze
 
       # Whether +node+ provably paints every pixel of a screen +width+ by +height+: a clear, or a
       # fill whose place and size are written in the program, from the top left corner (or past

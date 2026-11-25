@@ -47,7 +47,9 @@ module RubySNESEmulator
     end
 
     def on_path?(tool)
-      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| File.executable?(File.join(dir, tool)) }
+      # On Windows a tool is a file with an extension (g++.exe), so those are tried too.
+      names = [tool] + (Gem.win_platform? ? ENV.fetch("PATHEXT", ".EXE").split(";").map { |ext| tool + ext.downcase } : [])
+      ENV.fetch("PATH", "").split(File::PATH_SEPARATOR).any? { |dir| names.any? { |name| File.executable?(File.join(dir, name)) } }
     end
 
     # Makes the core and puts it at +target+, or raises CannotBuild saying why and leaves nothing
@@ -60,7 +62,7 @@ module RubySNESEmulator
       Dir.mktmpdir("bsnes") do |dir|
         archive = File.join(dir, "bsnes.tar.gz")
         download.call(archive)
-        run.call("tar", "xzf", archive, "-C", dir, "--strip-components=1")
+        run.call("tar", "xzf", archive, *(Gem.win_platform? ? ["--force-local"] : []), "-C", dir, "--strip-components=1")
         run.call("patch", "--quiet", "-d", dir, "-p1", "-i", PATCH)
         source = File.join(dir, "bsnes")
         run.call("make", "-C", source, "target=libretro", "binary=library", "build=performance",
@@ -69,10 +71,10 @@ module RubySNESEmulator
       end
     end
 
-    # bsnes names the library for the platform: .so on Linux, .dylib on macOS. It is kept as .so
+    # bsnes names the library for the platform: .so on Linux, .dylib on macOS, .dll on Windows. It is kept as .so
     # whatever it was built as, since dlopen reads the file and never its name.
     def library_in(source)
-      built = Dir[File.join(source, "out", "bsnes_libretro.{so,dylib}")].first
+      built = Dir[File.join(source, "out", "bsnes_libretro.{so,dylib,dll}")].first
       built || raise(CannotBuild, "bsnes built, but left no library in bsnes/out/")
     end
 

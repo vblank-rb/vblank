@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PART PLAYED HIGHER OR LOWER than it is written — moved by whole semitones (`transpose`), or
+# A part played higher or lower than it is written — moved by whole semitones (`transpose`), or
 # by a few of the voice's own pitch steps, a little sharp or flat (`pitch_offset`), which is what
 # another game's music engine arrives saying. Both are worked into each note's pitch when the game
 # is built, so every backend plays the same pitches and no player does anything new.
@@ -48,7 +48,7 @@ class TestSongPitchShifts < Minitest::Test
     assert_in_delta 330 * (2**(-7 / 12.0)), played.first, 0.01
   end
 
-  # A PITCH OFFSET is the voice's own steps: the note plays at its key's pitch number and that many
+  # A pitch offset is the voice's own steps: the note plays at its key's pitch number and that many
   # more, which on a square voice is a wave a tick shorter for each.
   def test_a_pitch_offset_moves_the_voices_own_pitch_number
     played = pitches_on(song_game { voice(:lead) { |v| v.pitch_offset 3; v.note :A4, :whole } }, 1)
@@ -67,7 +67,7 @@ class TestSongPitchShifts < Minitest::Test
     assert_equal Sound.wave_voice_ticks(131 * 2) + 2, Sound.wave_voice_ticks(played.first)
   end
 
-  # A SCORE SAYS IT THE SAME WAY, on a part.
+  # A score says it the same way, on a part.
   def test_a_score_part_transposes_and_offsets
     score = VBlank::Audio::Score
     lead = score::Part.new(transpose: 12, pitch_offset: 1, notes: [score::Note.new(at: 0, key: 69, length: 24)])
@@ -84,7 +84,7 @@ class TestSongPitchShifts < Minitest::Test
     assert_equal Sound.square_wave_ticks(880) - 1, Sound.square_wave_ticks(pitches_on(b.program, 1).first)
   end
 
-  # A NOTE AT THE VOICE'S OWN PITCH NUMBER, as another Game Boy game's music engine says it: 1601 is
+  # A note at the voice's own pitch number, as another Game Boy game's music engine says it: 1601 is
   # D#3 in one such game's table, a step away from the 1602 the key's own pitch comes to.
   private def pitch_number_game(plays)
     score = VBlank::Audio::Score
@@ -161,7 +161,7 @@ class TestSongPitchShifts < Minitest::Test
     assert_match(/lower than the voice can play/, error.message)
   end
 
-  # A SCORE'S PART is checked the same way, and the message names it as a Score names its parts.
+  # A score's part is checked the same way, and the message names it as a Score names its parts.
   def test_a_score_part_offset_on_the_drums_is_refused
     score = VBlank::Audio::Score
     drums = score::Part.new(plays: :noise, pitch_offset: 1, notes: [score::Note.new(at: 0, key: 40, length: 24)])

@@ -5,17 +5,17 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # A SPRITE KEPT TO ONE POSE IN VIDEO MEMORY, lowered for a Genesis. Mixed into Lowering.
+          # A sprite kept to one pose in video memory, lowered for a Genesis. Mixed into Lowering.
           #
           # Every picture a sprite can show normally sits in video memory for as long as its scene is up,
           # so showing another pose is pointing the sprite table at other tiles. A big character with many
           # frames can need more tiles than video memory holds beside the screen's other pictures (1471 in
-          # all). The console's own games give such a character a ROOM of tiles for one frame, and when he
+          # all). The console's own games give such a character a room of tiles for one frame, and when he
           # changes frame they have the video chip copy that frame's tiles into the room from the cartridge
           # in the blank: Dr. Robotnik's Mean Bean Machine copies 88 tiles of Robotnik's for each frame of
           # his it shows. The Advance's build does the same (GBA::ScreenLayout#pick_set_for_one_frame).
           #
-          # HOW IT IS DECIDED, as the Advance decides it. A sprite whose pose the game can change (it faces
+          # How it is decided, as the Advance decides it. A sprite whose pose the game can change (it faces
           # more than one, and its pose is not a number fixed as the game is built) can give tiles back.
           # The sprites facing the same poses, in the same order, are weighed together, as they read one
           # table of pictures: the tiles their poses take, less a room for each of them. The build that ran
@@ -23,17 +23,26 @@ module VBlank
           # and again with the next, until the tiles fit or none would give any back. A game whose tiles fit
           # is never built this way, so it is the bytes it was.
           #
-          # WHAT IT COSTS. The pose each such sprite shows is noted as it is placed, one instruction. The
+          # What it costs. The pose each such sprite shows is noted as it is placed, one instruction. The
           # blank at the end of the pass (Runtime::Tiles#emit_upload) compares it with the pose last copied
           # in, and copies only on a change, before the sprite table that shows it, so the frame that first
           # shows a pose draws it from its own tiles. The rooms together are held to what the video chip
-          # moves in a blank beside the sprite table and the colours (MOST_TILES), so every room changing on
+          # moves in a blank beside the sprite table, the colours and a bending game's line table (#most_room_tiles), so every room changing on
           # one frame still lands before the screen is drawn.
           module PoseRooms
             # The most tiles all the rooms may hold together: what the video chip copies in one blank, less
             # the sprite table and the colour memory, which are copied in the same blank.
             MOST_TILES = (Console::GenesisHardware::BLANK_DMA_BYTES - (Runtime::Tiles::MOST_SPRITES * Runtime::Tiles::SPRITE_BYTES) -
                           (Art::PALETTES * Art::PLACES * 2)) / Art::TILE_BYTES
+
+            # ...and in a game that bends a background row by row, less the table of every line's scroll too,
+            # which the same blank copies after the poses (Runtime::Tiles#emit_scroll_written).
+            MOST_TILES_BESIDE_LINES = (Console::GenesisHardware::BLANK_DMA_BYTES - (Runtime::Tiles::MOST_SPRITES * Runtime::Tiles::SPRITE_BYTES) -
+                                       (Art::PALETTES * Art::PLACES * 2) -
+                                       (Runtime::Tiles::LINES * Runtime::Tiles::LINE_BYTES)) / Art::TILE_BYTES
+
+            # The most tiles all this game's rooms may hold together.
+            def most_room_tiles = bends.any? ? MOST_TILES_BESIDE_LINES : MOST_TILES
 
             # The routine the blank calls.
             POSES_SENT = "art poses sent"
@@ -45,20 +54,27 @@ module VBlank
             # Whether a sprite of the game is kept to one pose in video memory.
             public def streams_poses? = !@pose_rooms.to_h.empty?
 
-            # THE SPRITES TO KEEP TO ONE POSE in the try after one that ran out of tiles with +streamed+ kept so
+            # The sprites to keep to one pose in the try after one that ran out of tiles with +streamed+ kept so
             # (Genesis#build): those, and the group of sprites facing the same poses that gives the most tiles
-            # back. Nil where no group left would give any back, or its rooms would be more than MOST_TILES.
+            # back. Nil where no group left would give any back, or its rooms would be more than #most_room_tiles.
             # Asked of a try whose sprite pictures are cut already (Picture#make_sprite_art).
+            #
+            # A sprite drawn from copies of its poses in each list's colours (Picture#remapped?) is never one:
+            # a room holds the pose as the cartridge keeps it, so streamed it would go back to a palette for
+            # each list, which is what did not fit. Nor is a sprite facing any of the same poses, since the
+            # copied sprite keeps those poses whole and streaming the other gives none of their tiles back.
             public def streamed_after(streamed)
               return nil unless tiled?
 
               rooms = streamed.sum { |name| room_tiles(@objects.fetch(name).poses) }
-              groups = @objects.values.reject { |obj| streamed.include?(obj.name) }.select { |obj| pose_changes?(obj) }.group_by(&:poses)
+              copied = @objects.values.select { |obj| remapped?(obj) }.flat_map(&:poses)
+              groups = @objects.values.reject { |obj| streamed.include?(obj.name) || obj.poses.intersect?(copied) }
+                               .select { |obj| pose_changes?(obj) }.group_by(&:poses)
               freed = groups.filter_map do |poses, objects|
                 next unless poses.all? { |name| @art.cut_of(name) }
 
                 room = room_tiles(poses)
-                next if rooms + (room * objects.length) > MOST_TILES
+                next if rooms + (room * objects.length) > most_room_tiles
 
                 gives = poses.uniq.flat_map { |name| @art.cut_tiles(name) }.uniq.length - (room * objects.length)
                 [gives, objects] if gives.positive?
@@ -106,7 +122,7 @@ module VBlank
               @asm.move(:l, @asm.d(1), at(room.wanted))
             end
 
-            # THE ROUTINE THE BLANK CALLS (Runtime::Tiles#emit_upload), and what it reads: for each room whose
+            # The routine the blank calls (Runtime::Tiles#emit_upload), and what it reads: for each room whose
             # sprite shows a pose other than the one copied in, and one of its own, that pose's tiles copied
             # into the room by the video chip (Runtime::Tiles's rt_vram_run_copied). A sprite showing a pose
             # its table does not have draws nothing, and nothing is copied. For each list of poses, a table of

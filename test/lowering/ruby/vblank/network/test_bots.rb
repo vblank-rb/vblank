@@ -3,9 +3,9 @@
 require "test_helper"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# A BOT IS A PLAYER WITH NO WINDOW AND NO PERSON (Bots): a script that reads its own copy of the game and
+# A bot is a player with no window and no person (Bots): a script that reads its own copy of the game and
 # chooses its buttons each pass, and that joins a match like any machine. These play it through the
 # stand-in relay, in this process, with the copies taking turns (Network::Scheduler), so a run is the same run
 # every time. Wanderers names each player's walker by its number (`sprite :walker1, image: :walker`),

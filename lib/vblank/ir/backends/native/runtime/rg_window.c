@@ -11,6 +11,8 @@
  * every one of these is SDL's. */
 #define KEY_A 4
 #define KEY_C 6
+#define KEY_E 8
+#define KEY_R 21
 #define KEY_Q 20
 #define KEY_W 26
 #define KEY_N 17
@@ -45,8 +47,9 @@
  * The buttons only some consoles have start where those consoles' controllers have them: the Super
  * Nintendo's X and Y (a PlayStation's Triangle and Square) are W and Q, above the shoulders' S and A,
  * and the top and left face buttons; the Genesis's C is the C key, beside Z and X, and the left face
- * button, which is Y's too, since no console has both (rg_window_use_console_buttons). Live::Settings
- * has the same table. */
+ * button, which is Y's too, since no console has both (rg_window_use_console_buttons). A
+ * PlayStation's L2 and R2 are E and R, on the top row beside Q and W, and the gamepad's triggers.
+ * Live::Settings has the same table. */
 typedef struct {
   int keys[RG_WINDOW_KEYS_A_BUTTON];
   int pad;
@@ -68,6 +71,8 @@ static const button_kind button_kinds[RG_WINDOW_BUTTONS] = {
   {{KEY_W, 0}, 3, "X", "x"},
   {{KEY_Q, 0}, 2, "Y", "y"},
   {{KEY_C, 0}, 2, "C", "c"},
+  {{KEY_E, 0}, RG_PAD_LEFT_TRIGGER, "L2", "l2"},
+  {{KEY_R, 0}, RG_PAD_RIGHT_TRIGGER, "R2", "r2"},
 };
 
 /* A hotkey: the key it starts on, its names, and what it does. The keys are ones the console has
@@ -112,9 +117,11 @@ static const struct {
   {"d-pad down", "dpad_down"},
   {"d-pad left", "dpad_left"},
   {"d-pad right", "dpad_right"},
+  {"left trigger", "left_trigger"},
+  {"right trigger", "right_trigger"},
 };
 
-static const char *const panel_names[RG_PANEL_COUNT] = {"controls", "variables"};
+static const char *const panel_names[RG_PANEL_COUNT] = {"variables"};
 
 /* What is remembered, and so what is written to the settings file. Every field is an int, which is
  * what lets +owned+ below mark each one in the same place; the assert stops a field of any other
@@ -268,8 +275,13 @@ int rg_window_problems_unseen(void) { return problems_unseen; }
 void rg_window_mark_problems_seen(void) { problems_unseen = 0; }
 
 static char told[1024];
-void rg_window_tell(const char *words) { snprintf(told, sizeof told, "%s", words); }
+static char told_title[64];
+void rg_window_tell(const char *title, const char *words) {
+  snprintf(told_title, sizeof told_title, "%s", title);
+  snprintf(told, sizeof told, "%s", words);
+}
 const char *rg_window_told(void) { return told; }
+const char *rg_window_told_title(void) { return told_title; }
 void rg_window_clear_told(void) { told[0] = '\0'; }
 
 /* --- pause, step, fast forward --- */
@@ -361,7 +373,7 @@ int rg_window_shows_frame_time(void) { return now.show_frame_time; }
 
 /* The meter counts the frames played and the game's work in them over half a second at a time,
  * whether or not anything is shown, so what is read is always the last half second's. The first
- * frame only starts the clock: a half second holds the frames that ENDED in it. */
+ * frame only starts the clock: a half second holds the frames that ended in it. */
 #define METER_NS 500000000ull
 static uint64_t meter_began_ns;
 static uint64_t meter_frames;
@@ -911,7 +923,8 @@ size_t rg_window_settings_text(char *out, size_t room, rg_settings_part part) {
     if (!written) LINE("key.%s = none\n", button_kinds[b].setting);
   }
   LINE("\n# Gamepad buttons: south, east, west, north, back, guide, start, left_stick, right_stick,\n");
-  LINE("# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right. A button has a line for each of its own.\n");
+  LINE("# left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right, left_trigger, right_trigger.\n");
+  LINE("# A button has a line for each of its own.\n");
   for (int b = 0; b < RG_WINDOW_BUTTONS; b++) {
     if (!all && !button_pads_owned(b)) continue;
     for (int s = 0; s < RG_WINDOW_PADS_A_BUTTON; s++) {

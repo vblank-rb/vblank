@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHEN A PAGE FINISHED TOO LATE IS SHOWN, on a screen that keeps two pages and shows a
+    # When a page finished too late is shown, on a screen that keeps two pages and shows a
     # finished one between pictures.
     #
     # A pass of the game that misses the break it was meant for has two choices: wait for the
@@ -12,12 +12,12 @@ module VBlank
     # nil to wait, or the rows above which a late page is shown at once (the screen's height for
     # anywhere, since every row of the picture is above that).
     #
-    # WHAT LATE MEANS is the screen's +late_pace+: how many breaks a pass may take and be on
+    # What late means is the screen's +late_pace+: how many breaks a pass may take and be on
     # time, one for a game aiming at sixty pictures a second, two for one aiming at thirty. A
     # page that misses the break its game aims at is late; one a game aiming at thirty finishes
     # in its second frame is not, and waits like any page on time.
     #
-    # It sets when a page is SHOWN, never what is on it, so a backend with no breaks between
+    # It sets when a page is shown, never what is on it, so a backend with no breaks between
     # pictures to miss draws exactly the same game and has nothing here to read.
     class LatePages
       # The pictures a second a game can aim at, by the breaks a pass may take for each.
@@ -41,7 +41,7 @@ module VBlank
         @game_screen = program.children.find { |node| node.kind == :screen }
       end
 
-      # THE CONSOLE'S LINES a late page on a screen of +setting+ is still shown at once above,
+      # The console's lines a late page on a screen of +setting+ is still shown at once above,
       # counted from the top of the console's whole screen, or nil to wait. A game shown in a
       # border (Console::Description#bordered?) starts its screen the border's height down, so
       # its row is that many lines further down; and a setting of the game's whole height

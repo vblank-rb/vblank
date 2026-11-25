@@ -5,11 +5,13 @@ require "fileutils"
 require "json"
 require "rbconfig"
 require "tmpdir"
+require_relative "ruby/field_holders"
 require_relative "ruby/printer"
 require_relative "ruby/lowering"
 require_relative "ruby/headless_run"
 require_relative "ruby/checked_run"
 require_relative "ruby/live_game"
+require_relative "ruby/written_game"
 
 module VBlank
   module IR
@@ -28,12 +30,12 @@ module VBlank
       # — is written into the game from the console it is built for (Console::Description), so the
       # runtime plays a game as whichever console that is.
       #
-      # A FRAME CAN END ANYWHERE, deep inside a routine the game called from a routine. Waiting
+      # A frame can end anywhere, deep inside a routine the game called from a routine. Waiting
       # for the next one (rg_wait_vblank) calls the driver, which does the frame's work — prints
       # it, with no window, for the tests — and comes back, so the game carries on from where it
       # was. Nothing has to be turned inside out to stop part way.
       #
-      # THIS LOWERING IS JUDGED BY ITS SPEED once it is right, so rubocop does not look at it
+      # This lowering is judged by its speed once it is right, so rubocop does not look at it
       # (.rubocop.yml): a style fix often reads better and costs the Ruby VM more instructions.
       class Ruby
         RUNTIME_DIR = Ractor.make_shareable(File.expand_path("ruby/runtime", __dir__))
@@ -62,6 +64,11 @@ module VBlank
                                                       "BUNDLER_SETUP" => nil, "BUNDLER_VERSION" => nil,
                                                       "RUBY_YJIT_ENABLE" => nil })
 
+        # The Ruby a program of this lowering is played by: the one running now. Read once as the
+        # library loads, since only the main Ractor may read RbConfig, and a test in a Ractor
+        # plays such a program too.
+        RUBY_PROGRAM = RbConfig.ruby.freeze
+
         # Raised when a program needs something the runtime cannot do yet, naming the +part+ it
         # needs: a test asks it as it asks a question the lowering cannot answer, and the Ruby
         # run skips it under that part's name (Testing::RubyCheckedPlayer).
@@ -83,16 +90,17 @@ module VBlank
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(HEADLESS_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
-          write_program([WRITTEN_BY, "class RgGame\n", lowering.console_text, *runtime_text(RUNTIME + [HEADLESS_DRIVER]),
-                         RuntimeFeatures.ruby_text(lowering.runtime_features), text, "end\n",
+          body = [lowering.console_text, *runtime_text(RUNTIME + [HEADLESS_DRIVER]),
+                  RuntimeFeatures.ruby_text(lowering.runtime_features), text].join
+          write_program([WRITTEN_BY, "class RgGame\n", FieldHolders.split(body), "end\n",
                          "RgGame.new.rg_headless_main(ARGV)\n"].join)
         end
 
-        # THE GAME AS AN OBJECT IN THIS PROCESS, to be played live (LiveGame). Anything its runtime
+        # The game as an object in this process, to be played live (LiveGame). Anything its runtime
         # lacks is refused, as a test would skip.
         def live_game(program) = LiveGame.new(live_source(program), program: program)
 
-        # THE GAME WRITTEN OUT AS ONE RUBY FILE that plays in a window with Ruby alone — Ruby,
+        # The game written out as one Ruby file that plays in a window with Ruby alone — Ruby,
         # fiddle and SDL3, and no vblank gem, no game source, no art: the game as Ruby, and the
         # library's own window, menu and session (lib/vblank/live/) copied in after the few
         # library files they need, with the menu's letters, then runtime/rg_script_main.rb, which
@@ -105,17 +113,21 @@ module VBlank
         # the game as a shell (Original::Shell): the file holds none of the original's data, and
         # makes the pack from the player's copy the first time it is played (Live::Shell). +progress+ (a
         # Messages::Progress) is told each step as it begins.
+        #
+        # +match+ writes in what a match over a network needs to know of the game (#match_facts), which
+        # takes a while for a big game, so only a build that will play in one asks for it.
         def build_script(game, path, console:, settings: {}, err: $stderr, pack_at_start: false, shell: false,
-                         progress: Messages::Progress.silent)
+                         progress: Messages::Progress.silent, match: false)
           if shell
             built = Original::Shell.build(game, console: console, settings: settings, err: err, progress: progress)
             progress.step("Writing Ruby")
-            File.write(path, script(built.game, title: game.title, menu: game.menu?, shell: built))
+            File.write(path, script(built.game, title: game.title, menu: game.menu?, code: game.identifying_code, shell: built))
           else
             program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
                                                     pack_at_start: pack_at_start)
             progress.step("Writing Ruby")
-            File.write(path, script(program, title: game.title, menu: game.menu?))
+            File.write(path, script(program, title: game.title, menu: game.menu?, code: game.identifying_code,
+                                             match: (match_facts(program, title: game.title) if match)))
           end
           path
         ensure
@@ -123,15 +135,29 @@ module VBlank
         end
 
         # ...the file's text, for +program+ in a window titled +title+, with a menu or not, and as
-        # the Original::Shell +shell+ when there is one.
-        def script(program, title:, menu: true, shell: nil)
+        # the Original::Shell +shell+ when there is one. +code+ is the game's code, which names the
+        # folder its save states and save memory are kept in (WrittenGame#state_folder); nil keeps none.
+        # +match+ is #match_facts, or nil for a game written with none.
+        def script(program, title:, menu: true, code: nil, shell: nil, match: nil)
           [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
            *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
-           "module VBlankScript\n  TITLE = #{title.to_s.inspect}\n  MENU = #{menu}\n",
+           "module VBlankScript\n", WrittenGame::PART_BEGINS,
+           "  TITLE = #{title.to_s.inspect}\n  CONSOLE_TITLE = #{program.described_console.title.inspect}\n  MENU = #{menu}\n",
+           "  GAME_CODE = #{code.nil? ? 'nil' : code.to_s.inspect}\n",
+           "  MATCH = #{match ? JSON.generate(match).inspect : 'nil'}\n",
            "  SOURCE = #{script_heredoc(live_source(program), SCRIPT_END)}",
-           shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", "end\n",
+           shell ? script_shell_text(shell) : "  SHELL_FACTS = nil\n", WrittenGame::PART_ENDS, "end\n",
            File.read(File.join(RUNTIME_DIR, SCRIPT_MAIN), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)].join
+        end
+
+        # What a match over a network needs to know of +program+, titled +title+, as plain values: its
+        # fingerprint's parts (Network::Fingerprint), whether it is built for several players and the
+        # most it seats. Live::MatchPlay::MatchFacts is made from them, in a process with no build.
+        def match_facts(program, title:)
+          fingerprint = Network::Fingerprint.of(program, title: title)
+          { "title" => title.to_s, "console" => fingerprint.console, "digest" => fingerprint.digest,
+            "several_players" => program.several_players?, "max_players" => program.max_players }
         end
 
         MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of every file of the library's
@@ -140,14 +166,17 @@ module VBlank
         # The library files a script carries, in the order they load: what the play code names
         # first, then the play code itself.
         SCRIPT_PARTS = %w[vblank/ir/buttons.rb vblank/ir/computer_controls.rb vblank/ir/program_error.rb
-                          vblank/ir/backends/ruby/live_game.rb vblank/graphics/menu_font.rb vblank/live/window_menu.rb
+                          vblank/ir/backends/ruby/live_game.rb vblank/ir/backends/ruby/written_game.rb
+                          vblank/graphics/menu_font.rb vblank/live/window_menu.rb
                           vblank/live/lateness.rb vblank/live/rate.rb vblank/live/menu.rb vblank/live/settings.rb
-                          vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/session.rb vblank/live/sdl.rb].freeze
+                          vblank/live/settings_file.rb vblank/live/seats.rb vblank/live/state_slots.rb vblank/live/save_file.rb
+                          vblank/live/session.rb vblank/live/sdl.rb vblank/diagnostics/sound_recording.rb
+                          vblank/live/recording.rb].freeze
         # What a shell's script carries besides: the check of a kept pack, the words for a wrong copy,
         # the shell's facts and the shell itself, each needing nothing of the library the script does
         # not carry.
         SHELL_PARTS = %w[vblank/ir/start_file.rb vblank/original/releases.rb vblank/original/shell_facts.rb
-                         vblank/live/background_unpacking.rb vblank/live/shell.rb].freeze
+                         vblank/live/background_unpacking.rb vblank/live/worker_unpacking.rb vblank/live/shell.rb].freeze
         SCRIPT_MAIN = "rg_script_main.rb" # In RUNTIME_DIR: what plays the game, last in a script
         # The line the game's Ruby ends at in a script, which no line of the game's can be, and the
         # line the menu's letters (Graphics::MenuFont::PATH, carried after the parts) end at.
@@ -157,11 +186,13 @@ module VBlank
 
         # The game as Ruby with its runtime and the live driver: the body of a LiveGame's class, which
         # LiveGame.new makes a game of each time it is asked. Anything the runtime lacks is refused.
+        # Its fields are kept in holders small enough for Ruby to keep in place (FieldHolders).
         def live_source(program)
           lowering = Lowering.new(program)
           text, gaps = lowering.text_and_gaps(LIVE_FUNCTIONS)
           refuse_runtime_gaps!(gaps)
-          [lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]), RuntimeFeatures.ruby_text(lowering.runtime_features), text].join
+          FieldHolders.split([lowering.console_text, *runtime_text(RUNTIME + [LIVE_DRIVER]),
+                              RuntimeFeatures.ruby_text(lowering.runtime_features), text].join)
         end
 
         private
@@ -169,7 +200,9 @@ module VBlank
         # +text+ as a heredoc ending at the line +ending+, which no line of it may be; +after+ is what
         # follows it on the line it starts on (a comma between arguments).
         def script_heredoc(text, ending, after = "")
-          raise BuildError, "the game's Ruby has a line #{ending}, which ends it early in a script" if text.lines.include?("#{ending}\n")
+          lines = text.lines
+          raise BuildError, "the game's Ruby has a line #{ending}, which ends it early in a script" if lines.include?("#{ending}\n")
+          raise BuildError, "the game's Ruby has the line that ends a script's game part" if lines.include?(WrittenGame::PART_ENDS)
 
           "<<'#{ending}'#{after}\n#{text}\n#{ending}\n"
         end
@@ -177,13 +210,24 @@ module VBlank
         # The data of +shell+ (an Original::Shell) a script holds, from which rg_script_main.rb makes
         # its Live::Shell: SHELL_FACTS, the ShellFacts as JSON (ShellFacts#to_plain), and SHELL_MENU
         # and SHELL_UNPACKINGS, the menu and each unpacking as Ruby, in heredocs.
+        #
+        # An unpacking split in pieces (ShellFacts#pieces) is written as its split, as Live::Shell.from
+        # writes it: each piece's program once in SHELL_WORKER_PROGRAMS, in the order the pieces number
+        # them, and nil in its place among SHELL_UNPACKINGS, so the script unpacks on several workers
+        # (Live::WorkerUnpacking) and never carries the whole routine besides.
         def script_shell_text(shell)
           unpackings = shell.unpackings.each_with_index.map do |unpacking, number|
+            next "    nil,\n" if shell.facts.split?(number)
+
             "    #{script_heredoc(live_source(unpacking.program), "#{SCRIPT_END}_UNPACKING_#{number}", ',')}"
+          end
+          workers = shell.worker_programs.each_with_index.map do |worker, number|
+            "    #{script_heredoc(live_source(worker.program), "#{SCRIPT_END}_WORKER_#{number}", ',')}"
           end
           ["  SHELL_FACTS = #{script_heredoc(JSON.generate(shell.facts.to_plain), "#{SCRIPT_END}_FACTS")}",
            "  SHELL_MENU = #{script_heredoc(live_source(shell.menu), "#{SCRIPT_END}_MENU")}",
-           "  SHELL_UNPACKINGS = [\n#{unpackings.join}  ].freeze\n"].join
+           "  SHELL_UNPACKINGS = [\n#{unpackings.join}  ].freeze\n",
+           "  SHELL_WORKER_PROGRAMS = [\n#{workers.join}  ].freeze\n"].join
         end
 
         def refuse_runtime_gaps!(gaps)

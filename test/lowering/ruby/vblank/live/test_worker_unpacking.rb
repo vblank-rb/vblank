@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "pieced_original"
 
-# A SHELL'S UNPACKING IN PIECES ON SEVERAL WORKERS (Live::WorkerUnpacking), a Ractor each: the
+# A shell's unpacking in pieces on several workers (Live::WorkerUnpacking), a Ractor each: the
 # pack is byte for byte the one a single worker makes, which plays the whole routine as one
 # program, and the one the all-in-one build makes. The bar the window shows adds up every worker's
 # work, so it is whole at the end.
@@ -42,6 +42,34 @@ class TestWorkerUnpacking < Minitest::Test
       across = (bar.side...(last.width - bar.side)).map { |x| last.pixels.fetch((row * last.width) + x) }
 
       assert_equal [bar.filled], across.uniq
+    end
+  end
+
+  # A shell written out as one Ruby file carries its split (Ruby#script): read back
+  # (Ruby::WrittenGame.read, as the window vblank run --shell opens reads it), its unpacking plays in
+  # pieces on several workers and makes the pack the all-in-one build makes.
+  def test_a_shell_written_out_unpacks_in_pieces_on_several_workers
+    Dir.mktmpdir do |folder|
+      path = VBlank::IR::Backends::Ruby.new.build_script(pieced_port(pieced_original_nowhere(folder)), File.join(folder, "port-ruby.rb"),
+                                                          console: :gba, err: StringIO.new, shell: true)
+      written = VBlank::IR::Backends::Ruby::WrittenGame.read(path).shell
+      shell = VBlank::Live::Shell.new(facts: VBlank::Original::ShellFacts.from_plain(JSON.parse(written.facts)), game: "",
+                                      menu: written.menu, unpackings: written.unpackings, workers: 3,
+                                      worker_programs: written.worker_programs)
+      pack = shell.pack_from_copy("made_up.gba", COPY, Headless.new(frames: FRAMES))
+
+      refute_empty written.worker_programs
+      assert_equal Dir.mktmpdir { |elsewhere| pieced_port(pieced_original(elsewhere)).data_pack_file }, pack
+    end
+  end
+
+  # Once the unpacking has ended, so has every worker: a film copies this process to play its sides
+  # (Diagnostics::Film), and copies it while nothing else is running in it.
+  def test_every_worker_has_ended_once_the_unpacking_has
+    Dir.mktmpdir do |folder|
+      pack_on(3, folder)
+
+      assert_equal 1, Ractor.count, "a worker is still running"
     end
   end
 end

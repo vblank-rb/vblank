@@ -13,6 +13,7 @@ require_relative "runtime/sound"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/effect_table"
+require_relative "runtime/strikes" # sound effects on a timer, written to the chip as each tick comes
 require_relative "runtime/clips"
 require_relative "runtime/rumble"
 require_relative "runtime/kept_sprites"
@@ -23,14 +24,14 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE RUNTIME every Game Boy Color cartridge carries, in bank 0 where every routine of the
+        # The runtime every Game Boy Color cartridge carries, in bank 0 where every routine of the
         # game can reach it: from power-on to the game's first line (Boot), the arithmetic (Int32),
         # calls between banks and the runtime's numbers (Calls), the frame and the buttons (Frame),
         # the lists (Lists), the picture (Picture, and Paint for a painted screen) and the sound
         # (Sound).
         #
         # The game's code (GBC::Lowering) calls its routines by their labels (rt_wait_vblank,
-        # rt_list_push, rt_held...), with the numbers on the stack (Runtime::Calls).
+        # rt_list_push, rt_far_word...), with the numbers on the stack (Runtime::Calls).
         module Runtime
           module_function
 
@@ -55,10 +56,10 @@ module VBlank
           # means its songs' entries are kept in a bank, and copied out as each song starts
           # (GBC::Music#entries_in_banks?). +tune_plays_once+ means a song it plays as a tune plays once
           # (GBC::Music#tune_plays_once?). +walks_colors+ means it fades or tints (Lowering#walks_colors?).
-          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, wobbles: false, waves: false,
+          def reserve(memory, art:, effects: [], together: false, bar_rows: nil, slides: false, pans: false, wobbles: false, waves: false,
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
-                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false,
+                      bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false, effect_clock_step: nil,
                       walks_colors: false, grids_kept: false)
             # Must be first: the walk's tables share a page, and the first place there is fits them whole.
             Picture.reserve_walk_tables(memory) if walks_colors
@@ -70,11 +71,14 @@ module VBlank
             Picture.reserve(memory, lends: art.lending, groups: art.groups?, bar_rows: bar_rows, rooms: art.rooms.any?,
                                     cells_shown_now: cells_shown_now, bar_covers: bar_covers, painting: art.painting?,
                                     grids_kept: grids_kept)
+            # Must follow Clips and Picture: a recording's timer, or a bar's line match, decide its alarm.
+            Strikes.reserve(memory, line: clips, bar: bar_covers) if effect_clock_step && !effects.empty?
             BigMaps.reserve(memory)
             Paint.reserve(memory, painting: art.painting?)
-            Music.reserve(memory, effects: effects, slides: slides, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
+            Music.reserve(memory, effects: effects, slides: slides, pans: pans, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
-                                  entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once)
+                                  entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once,
+                                  effect_clock_step: effect_clock_step)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.
@@ -91,22 +95,24 @@ module VBlank
           # +clips+ is the game's recordings (GBC::Clips), or nil for a game that plays none.
           # +count_at+ is where a game that counts the frames its screen is off for keeps
           # IR::Frames::COUNT (Frame#emit_add_dark_frames). +banked_colors+ means its backgrounds' colour
-          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +byte_fills+ means
-          # it fills a list of bytes (Lists#emit_byte_fill), and +queues+ that it pushes bytes or takes
+          # tables are kept in banks (Runtime::Picture#emit_background_colors_far). +fills+ means
+          # it fills a list through rt_list_fill (Lists#emit_fill), and +queues+ that it pushes bytes or takes
           # from a list's front (Lists#emit_queue_routines), and +half_queues+ that it pushes onto a list
           # of halves or takes one from the front (Lists#emit_queue_routines). +sprites_over_picture+
           # means its sprites are shown over a painted screen (`sprite ..., over_picture: true`), so the
           # sprite layer is on there. +indexes_in_banks+ means the tables of where its pictures, its
           # screens' tiles and colours and its maps are kept are in a bank (GBC#roomier_view).
           # +byte_divides+ means it divides by a byte written in it (Lowering#divides_by_written_bytes?).
-          # +save_list_moves+ means it moves a whole list to or from save memory (Lists#emit_save_moves).
+          # +saves+ means it reads or writes save memory (Runtime::Saving). +save_list_moves+ means it moves
+          # a whole list to or from save memory (Lists#emit_save_moves).
+          # +list_packs+ means it copies a list's items into a list of bytes as one run (Lists#emit_list_pack).
           # +clamps_outside+ means it holds a number between ends of up to two bytes
           # (Lowering#clamps_outside?). +far_words+ means it reads a picked cell from a banked table
           # (Lowering#reads_far_words?). +walks_colors+ is as for #reserve.
           def sections(memory, main:, art:, music_level: nil, songs: false, music: nil, frame_begins: nil, runs: [],
                        drawn_palettes: nil, big_maps: nil, together: false, bar_rows: nil, bar_maps: false, clips: nil,
-                       count_at: nil, banked_colors: false, byte_fills: false, queues: false, half_queues: false,
-                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, save_list_moves: false,
+                       count_at: nil, banked_colors: false, fills: false, queues: false, half_queues: false,
+                       sprites_over_picture: false, indexes_in_banks: false, byte_divides: false, saves: false, save_list_moves: false, list_packs: false,
                        clamps_outside: false, far_words: false, walks_colors: false)
             # A game whose songs are kept in banks notes every bank the runtime puts in view, for the
             # music player to put back (SM83#select_rom_bank, Music::BANK_NOTED); one that plays a
@@ -120,8 +126,8 @@ module VBlank
             Int32.emit(asm, memory, byte_divides: byte_divides)
             Calls.emit(asm, memory, clamps_outside: clamps_outside, far_words: far_words)
             Frame.emit(asm, memory, together: together, count_at: count_at, songs: songs)
-            Lists.emit(asm, memory, byte_fills: byte_fills, queues: queues, half_queues: half_queues,
-                                    save_moves: save_list_moves)
+            Lists.emit(asm, memory, fills: fills, queues: queues, half_queues: half_queues,
+                                    save_moves: save_list_moves, packs: list_packs)
             Picture.emit(asm, memory, sprite_tiles: art.sprite_tiles.length, background_tiles: art.background_tiles.length,
                                       runs: runs, drawn_palettes: drawn_palettes, lends: art.lending,
                                       palettes_in_use: art.palettes_in_use, groups: art.groups?, bar_rows: bar_rows,
@@ -137,8 +143,9 @@ module VBlank
             Music.emit(asm, memory, level: music_level, songs: songs, effects: music&.effects || [],
                                     by_rank: music&.effects_by_rank || [], fades: music&.fades? || false,
                                     slides: music&.slides? || false, pans: music&.pans? || false,
-                                    carries: music&.carries? || false)
-            Saving.emit(asm, memory)
+                                    carries: music&.carries? || false, clock_step: music&.effect_clock_step)
+            Strikes.emit(asm, memory, music.effect_clock_step) if Strikes.any?(memory)
+            Saving.emit(asm, memory) if saves
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown
             Rumble.emit(asm, memory) if Rumble.any?(memory)
             KeptSprites.emit(asm, memory, lends: art.lends?, tall_pieces: art.tall_pieces?) if KeptSprites.any?(memory)
@@ -146,7 +153,7 @@ module VBlank
             emit_start(asm)
             emit_main(asm, main)
             emit_frame_begins(asm, frame_begins)
-            [*Boot.vector_sections(clips: !shown.nil?, dark: Frame.dark?(memory)), asm.section, *Paint.table_sections(maps: art.square_maps)]
+            [*Boot.vector_sections(clips: !shown.nil?, dark: Frame.dark?(memory), strikes: Strikes.any?(memory)), asm.section, *Paint.table_sections(maps: art.square_maps)]
           end
 
           # What a game needs before its first line: its variables that do not start at nought,

@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SUPER NINTENDO CARTRIDGE, answering what the one reader (Verifier) asks of a running
+    # A running Super Nintendo cartridge, answering what the one reader (Verifier) asks of a running
     # cartridge. The Advance and the Color play in libmgba, whose probe (RubyGBAEmulator::Probe) the
     # reader was written over; this plays in bsnes and takes the same calls.
     #
@@ -12,13 +12,18 @@ module VBlank
     class SNESProbe
       # bsnes's picture is held in 256 × 224, so a whole screen's questions (Emulator.screen_questions)
       # read this as they read any console's.
-      def initialize(path, save_dir: nil)
+      #
+      # +multitap+ plugs a Super Multitap into the second port before the first frame, as a person
+      # playing with four would have (RubySNESEmulator::Core#plug_in_multitap).
+      def initialize(path, save_dir: nil, multitap: false)
         @core = Emulator.open_snes(path, save_dir: save_dir)
+        @core.plug_in_multitap if multitap
         @battery = Cartridge::SNESROM.battery?(File.binread(path))
         @last_audio = []
+        @voices_chosen = false
       end
 
-      # THE BYTES OF THE .srm FILE AS IT WOULD BE WRITTEN NOW, or nil for a cartridge with no
+      # The bytes of the .srm file as it would be written now, or nil for a cartridge with no
       # battery. bsnes writes that file only when the cartridge is taken out, so a reader asking
       # while the cartridge runs reads the RAM the file is made from. On a Super FX board that is
       # the chip's RAM, its working memory first (SNESReading.save_file_of gives where the save is).
@@ -27,11 +32,14 @@ module VBlank
       def width = @core.width
       def height = @core.height
 
-      # +keys+ is a button mask (IR::Buttons.mask).
+      # +keys+ is a button mask (IR::Buttons.mask). The second player's go to the second port, and
+      # the third and fourth players' to the next plugs of a Super Multitap there, as
+      # IR::Backends::SNES::HeadlessRun hands them over. Without a tap (+multitap+), the second
+      # port has a plain controller, and the third and fourth players' buttons reach nothing.
       def step(frames, keys: 0)
-        first, second = IR::Buttons.by_controller(IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) })
-        @core.set_buttons(first)
-        @core.set_buttons(second, port: 1)
+        held = IR::Buttons::HOLDABLE.select { |name| keys.anybits?(IR::Buttons.mask(name)) }
+        IR::Buttons.by_controller(held, controllers: Console::SUPER_NINTENDO.controllers)
+                   .each_with_index { |buttons, port| @core.set_buttons(buttons, port: port) }
         @last_audio = Array.new(frames) do
           @core.run_frame
           @core.take_audio.pack("s<*")
@@ -69,21 +77,71 @@ module VBlank
       # and right by turns, at SoundRecording's rate for this console.
       def audio_by_frame = @last_audio.dup
 
-      # This probe takes the mix bsnes hands over, with no way to leave one of the eight voices out.
-      def hearing(**)
-        raise ArgumentError, "This reader cannot play one voice alone on a Super Nintendo cartridge. It records all " \
-                             "eight voices together. To fix this, remove `only:` and `without:`."
+      # The sound chip's eight voices, by the numbers its registers give them (fullsnes, "SNES APU
+      # DSP Voices"): :voice0 to :voice7.
+      VOICE_NAMES = Ractor.make_shareable((0..7).map { |voice| :"voice#{voice}" })
+
+      def channels = VOICE_NAMES
+
+      # Hear only the voices +only+ names, or every voice but those +without+ names, from the next
+      # sample on, with a block for the length of the block. The others are left out where the chip
+      # adds each voice into the mix, and go on running (RubySNESEmulator::Core#silence_voices), so
+      # this can change at any frame, and a voice heard again sounds as if it had never been left out.
+      def hearing(only: nil, without: nil)
+        if only.nil? == without.nil?
+          raise ArgumentError, "hearing must have only: or without:. only: keeps the voices you name and leaves out " \
+                               "the rest. without: leaves out the voices you name."
+        end
+        named = Array(only || without)
+        unknown = named - channels
+        unless unknown.empty?
+          raise ArgumentError, "A Super Nintendo has no voice #{unknown.join(', ')}. Its voices are #{channels.join(', ')}."
+        end
+
+        before = @core.silent_voices
+        @voices_chosen = true
+        silent = only ? channels - named : named
+        @core.silence_voices(silent.map { |voice| channels.index(voice) })
+        return self unless block_given?
+
+        begin
+          yield
+        ensure
+          @core.silence_voices(before)
+        end
       end
 
       def read8(address) = SNESMemory.read8(@core, address)
       def read16(address) = SNESMemory.read16(@core, address)
       def read32(address) = SNESMemory.read32(@core, address)
+      def write32(address, value) = SNESMemory.write32(@core, address, value)
+
+      # The console's whole state, written to the file +path+ in bsnes's own format, and put back
+      # from one (Verifier#save_state, #load_state).
+      def save_state(path) = File.binwrite(path, @core.serialize)
+
+      # bsnes clears the byte that silences voices as it loads a state, so the voices this reader
+      # was told to hear (#hearing) are chosen again after: which voices are heard is the reader's
+      # choice, never the state's. A reader never told hears every voice and asks nothing of the
+      # core, which an older core cannot answer.
+      def load_state(path)
+        silent = @core.silent_voices if @voices_chosen
+        @core.unserialize(File.binread(path))
+        @core.silence_voices(silent) if silent
+      end
 
       def palette = @core.cgram.unpack("v*")
 
       # The sprite table as bsnes holds it: 544 bytes, four for each of 128 sprites and then
       # the 32 that hold each sprite's top bit of across and its size.
       def sprite_table = @core.oam
+
+      # The two sizes the cartridge's sprites come in, small then large, each [width, height], from
+      # OBSEL as the game last wrote it (Console::SNESHardware::OBSEL_SPRITE_SIZES).
+      def sprite_sizes
+        hardware = Console::SNESHardware
+        hardware::OBSEL_SPRITE_SIZES.fetch(@core.obsel >> hardware::OBSEL_SIZE_SHIFT)
+      end
 
       # The console's own memories as bsnes holds them (Verifier#video_ram): the 64K of video
       # memory, the 512 bytes of colour memory, and the sound unit's DSP registers, 128 bytes, as the

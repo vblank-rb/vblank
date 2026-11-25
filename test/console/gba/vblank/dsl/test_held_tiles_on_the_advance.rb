@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/dsl/test_held_tiles"
 
-# THE QUEUE A HELD BACKGROUND'S CHANGES WAIT IN, on the runs that play games as the Advance. A pass
+# The queue a held background's changes wait in, on the runs that play games as the Advance. A pass
 # can make more changes than the queue holds (IR::Nodes::ShowHeldTiles::MOST_CELLS), and then the
 # changes waiting go in at once, so every change still lands in the order it was made. The other
 # consoles write a pass's changes in a queue of their own, and a Color, Super Nintendo or Genesis

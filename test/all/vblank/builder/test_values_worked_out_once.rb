@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A VALUE WORKED OUT BEFORE A VARIABLE CHANGES KEEPS WHAT IT WAS THEN. `sum = a + b` reads as a line
+# A value worked out before a variable changes keeps what it was then. `sum = a + b` reads as a line
 # that happens now, whatever the line after it does to `b`, on every lowering.
 class TestValuesWorkedOutOnce < Minitest::Test
   private def played(&lines)
@@ -172,7 +172,7 @@ class TestValuesWorkedOutOnce < Minitest::Test
         end
       end
       game_loop do
-        case_var(:state) { when_val 0, :stage }
+        call({ 0 => :stage }, number: :state)
       end
     end
 

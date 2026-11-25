@@ -2,37 +2,42 @@
 
 module VBlank
   module DSL
-    # A handle to a list in a build block: a bounded, ordered collection whose
-    # length changes as the game runs — a snake's growing body, a queue of shots on
-    # screen. `list :name, capacity: N` hands one back, and its methods read like
-    # working with a Ruby array:
+    # A list of numbers the game changes
     #
-    #   body = list :body, capacity: 256
-    #   body.push head          # grow at the front of the queue
-    #   body.shift              # drop the oldest
-    #   head = body.last        # a Value — the newest cell
-    #   body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+    # `list :name, capacity: 256` hands this back: numbers in order, whose length changes as
+    # the game plays, such as a snake's growing body or the shots on screen. It holds at most
+    # `capacity` numbers, and its methods read like a Ruby array's.
     #
-    # A List is the collection peer of {Value}: where a Value stands for one number,
-    # a List stands for a run of them. The two kinds of method mirror that split:
+    # ```ruby
+    # body = list :body, capacity: 256
+    # body.push head          # add the newest at the end
+    # body.shift              # drop the oldest
+    # tail = body.first       # a number, read as the game plays
+    # body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+    # ```
     #
-    #   * The ones that *change* the list — push / pop / shift / []= — record a
-    #     statement into the program at the current point (inside a loop, an `if`,
-    #     wherever the call sits), just like the builder's other verbs. They return
-    #     self so calls chain.
+    # The methods that change the list (#push, #pop, #shift, #[]=, #fill, #copy_from) run
+    # where they are written, inside a loop or an `if` as any line does. The ones that read
+    # it (#[], #length, #first, #last) give numbers, which add, compare and draw like any
+    # other.
     #
-    #   * The ones that *read* it — [] / length / first / last — hand back a {Value},
-    #     so an element or the length flows straight into arithmetic, a comparison,
-    #     or another draw. Nothing is committed to the program by a read alone.
+    # An item is a number: nil, `true`, `false` or a test's answer put into a list is a
+    # friendly error. Keep a test's answer as `test ? 1 : 0`.
+    #--
+    # A List is the collection peer of Value: where a Value stands for one number, a List
+    # stands for a run of them. The ones that change it record a statement into the program at
+    # the current point, just like the builder's other verbs, and return self so calls chain.
+    # Nothing is committed to the program by a read alone.
     #
     # Values going in or coming out cross the one coercion boundary (Value.node_for):
     # an index or a pushed value may be a Value, a bare Integer, or a :symbol naming
     # a variable, and a read hands back a Value — so a list composes with the rest of
     # the expression DSL without the caller thinking about IR nodes.
+    #++
     class List
       Build = IR::Build
 
-      # A list can hold numbers that carry a FRACTION, the same as a variable can. It is
+      # A list can hold numbers that carry a fraction, the same as a variable can. It is
       # declared once, on the list — `list :speeds, capacity: 8, holds: 0.0` — and from then
       # on every value read out of it carries the scale and every value put in is checked
       # against it, so the game writes halves and quarters and never mentions the scale
@@ -53,50 +58,92 @@ module VBlank
       attr_reader :name
 
       # How much fraction this list's items carry, or nil if they are whole numbers.
-      attr_reader :fraction_bits
+      attr_reader :fraction_bits # :nodoc:
 
       # --- growing / shrinking: record a statement ---
 
-      # Add a value at the end of the list. Accepts a Value, an Integer, or a
-      # :symbol naming a variable.
+      # Adds a number at the end of the list. `<<` does the same.
+      #
+      # ```ruby
+      # shots << hero_x
+      # ```
+      #
+      # In the `initialize` of a part made by game code that made this list there, the push is made
+      # on the part's first pass alone (Builder#once_for_part), since the part is made once.
       def push(value)
-        record(Build.list_push(@name, item_node(value, "hold")))
+        @builder.once_for_part(@name) { record(Build.list_push(@name, item_node(value, "hold"))) }
         self
       end
       alias << push
+      alias append push
 
-      # Drop the oldest item (the front of the list).
+      # Drops the oldest item, the one at the front of the list.
+      #
+      # A list the game shifts keeps its items in a ring, whose room is rounded up to a power
+      # of two, so give such a list a power-of-two capacity.
       def shift
         record(Build.list_drop(@name, from: :front))
         self
       end
 
-      # Drop the newest item (the back of the list).
+      # Drops the newest item, the one at the back of the list.
       def pop
         record(Build.list_drop(@name, from: :back))
         self
       end
 
-      # Overwrite the item at `index`. The slot must already hold one (push first).
+      # Puts `value` in the item at `index`, in place of what it held. The item must be there
+      # already: push it first, or start the list full with `full_of:`.
+      #
+      # ```ruby
+      # board[row * 8 + column] = 1
+      # ```
       def []=(index, value)
         record(Build.list_set(@name, Value.node_for(index), item_node(value, "hold")))
         value
       end
 
-      # Make the list hold exactly +count+ entries of +table+, from entry +at+ on: the letter
-      # a name is drawn with, the frame of an animation, a row of a level. +at+ may be worked
-      # out as the game runs; +count+ is a number written in the program. One copy rather
-      # than an entry at a time (see Builder#copy_table_run).
+      # Makes the list hold exactly `count` entries of `table`, from entry `at` on: the letter
+      # a name is drawn with, a frame of an animation, a row of a level.
+      #
+      # It is one copy rather than an entry at a time, so it is much quicker than a loop that
+      # copies each. The table and the list must keep entries of the same width and the same
+      # kind of number.
+      #
+      # ```ruby
+      # name.copy_from letters, at: which * 64, count: 64
+      # ```
+      #
+      # * `at:` - the first entry to copy. The game may work it out as it plays, and it is held
+      #   inside the table.
+      # * `count:` - how many entries, as a number written in the game.
+      #--
+      # See Builder#copy_table_run.
+      #++
       def copy_from(table, at:, count:)
         @builder.copy_table_run(self, table, at: at, count: count)
         self
       end
 
-      # Set every item to +value+, or the +count+ items from +from+: clearing a box a game
-      # letters text into, a row of a board. Each may be worked out as the game runs. One step,
-      # so the console sets the run a whole word at a time (see Builder#fill_list_run). A run
-      # must stay inside the items the list holds: past them the interpreter stops with an
-      # error, where the console only holds the run to the capacity.
+      # Sets every item the list holds to `value`, or the `count` items from `from` on:
+      # clearing a box a game letters text into, or a row of a board.
+      #
+      # It is one step, so it is much quicker than a loop that sets each item. Each number may
+      # be worked out as the game plays. A run must stay inside the items the list holds now. A
+      # list the game also shifts cannot be filled.
+      #
+      # ```ruby
+      # box.fill 0
+      # box.fill 0xFF, from: row * 30, count: 30
+      # ```
+      #
+      # * `from:` - the first item to set.
+      # * `count:` - how many items to set.
+      #--
+      # The console sets the run a whole word at a time (see Builder#fill_list_run). Past the
+      # items the list holds the interpreter stops with an error, where the console only holds
+      # the run to the capacity.
+      #++
       def fill(value, from: nil, count: nil)
         @builder.fill_list_run(self, item_node(value, "hold"), from: from, count: count)
         self
@@ -104,37 +151,303 @@ module VBlank
 
       # --- reading: hand back a Value ---
 
-      # The item at `index`, as a Value. The index may be a Value, an Integer, or a
-      # :symbol naming a variable.
+      # The item at `index`, as a number, read as the game plays. The first item is at 0.
+      #
+      # ```ruby
+      # draw_rect_at shots[i], 20, 2, 4, :white
+      # ```
       def [](index)
         item_value(Build.list_get(@name, Value.node_for(index)))
       end
 
-      # How many items the list holds right now, as a Value. A COUNT, so it never carries a
-      # fraction however much the items do — half an item is not a thing.
+      # How many items the list holds now, as a number read as the game plays. It is a count, so
+      # it is a whole number even in a list of fractions.
+      #
+      # ```ruby
+      # body.shift if body.length > snake_length
+      # ```
       def length
         whole_value(Build.list_len(@name))
       end
+      alias size length
 
-      # The first item (index 0), as a Value.
+      # Whether the list holds no items, as a test made as the game plays.
+      #
+      # ```ruby
+      # trail.shift unless trail.empty?
+      # ```
+      def empty?
+        length == 0 # rubocop:disable Style/NumericPredicate -- a Value answers `==` with a test the game makes
+      end
+
+      # Runs the block once for each item, front to back, giving it the item and its place, as
+      # Ruby's `each_with_index` does.
+      #
+      # ```ruby
+      # marks.each_with_index { |mark, at| draw_number mark, 10, at * 10, :white }
+      # ```
+      def each_with_index(&block)
+        list = self
+        # Called as written, not with `yield`: see #each.
+        @builder.repeat(length) { |index| block.call(list[index], index) } # rubocop:disable Performance/RedundantBlockCall
+      end
+
+      # The items added up, as a number worked out as the game plays. A list of fractions adds up
+      # to a fraction. An empty list adds up to 0.
+      def sum
+        answer_by_walking(Build.int(0)) { |total, item| Build.set(total, Build.binop(:+, Build.var_ref(total), item)) }
+      end
+
+      # The smallest item, as a number worked out as the game plays. Ruby's `min` of an empty
+      # Array is nil, which a game number reads as 0, so an empty list answers 0.
+      def min = extreme(:<)
+
+      # The largest item, the same way as #min.
+      def max = extreme(:>)
+
+      # Whether any item is +value+, as a test made as the game plays.
+      #
+      # ```ruby
+      # call :open_door if keys.include?(RED)
+      # ```
+      def include?(value)
+        wanted = item_node(value, "compare with")
+        found = answer_by_walking(Build.int(0)) do |kept, item|
+          Build.if_(Build.binop(:==, item, wanted), Build.set(kept, Build.int(1)))
+        end
+        found == 1
+      end
+
+      # Compared with a Ruby Array, equal only where the list holds as many items as the Array
+      # and every pair of items is equal, as Ruby's Array#== is: a test made as the game plays.
+      # Compared with anything else, it is Ruby's own answer.
+      #
+      # ```ruby
+      # call :open_door if code == [3, 1, 4]
+      # ```
+      def ==(other)
+        return super unless other.is_a?(Array) || other.is_a?(List)
+
+        items_equal_test(other)
+      end
+
+      # The same as #==, as Ruby's Array#eql? asks it: a whole number and a fraction are never
+      # eql?, so a list of fractions is never eql? to an Array of whole numbers.
+      def eql?(other)
+        return super unless other.is_a?(Array) || other.is_a?(List)
+
+        items_equal_test(other, strict: true)
+      end
+
+      # The test #== and #eql? make (PlainRuby::Steps.items_equal_test asks it too). The length
+      # is known only as the game plays, so the items are compared only once it matches, and no
+      # item past the end is read. +strict+ asks as Array#eql? does.
+      def items_equal_test(other, strict: false) # :nodoc:
+        refuse_list_compared!(other)
+        return false unless other.all? { |item| comparable_item?(item, strict) }
+
+        kept = @builder.hidden_variable(:list_answer)
+        pairs = other.each_with_index.map do |item, at|
+          Build.if_(Build.binop(:!=, Build.list_get(@name, Build.int(at)), item_node(item, "compare with")),
+                    Build.set(kept.name, Build.int(0)))
+        end
+        record(Build.set(kept.name, Build.int(0)))
+        record(Build.if_(Build.binop(:==, Build.list_len(@name), Build.int(other.length)),
+                         Build.set(kept.name, Build.int(1)), *pairs))
+        kept == 1
+      end
+
+      # Drops the item at +from+ (:front or :back) and hands it back as a number, as Ruby's
+      # `shift` and `pop` do. The item is kept in a hidden variable before the drop, so it costs a
+      # word of memory: PlainRuby::Arrays calls this only where the line uses the item.
+      def drop_returning_item(from) # :nodoc:
+        item = from == :front ? first : last
+        kept = @builder.hidden_variable(:taken, like: item)
+        kept.store!(item)
+        from == :front ? shift : pop
+        kept
+      end
+
+      # The first item, the oldest, as a number.
       def first
         self[0]
       end
 
-      # The last item (index length - 1), as a Value.
+      # The last item, the newest, as a number.
       def last
         self[length - 1]
       end
 
-      # Run the block once for each item, front to back, handing it the item as a
-      # Value. Sugar over {Builder#repeat}: the count is the list's current length,
-      # so the loop tracks the list even as earlier iterations change it.
+      # Runs the block once for each item, front to back, giving it the item as a number.
+      #
+      # The count is the list's length when the walk starts each time, so the walk follows the
+      # list as the game changes it.
+      #
+      # ```ruby
+      # body.each { |cell| draw_rect_at cell, 40, 2, 2, :green }
+      # ```
+      #--
+      # Sugar over Builder#repeat.
+      #++
       def each(&block)
         list = self # `repeat` runs its block in the builder's context; keep our ref
-        @builder.repeat(length) { |index| block.call(list[index]) }
+        # The block given `repeat` is read again from this file and run through `eval`
+        # (PlainRuby.game_block), where `yield` would find no block to hand the item to.
+        @builder.repeat(length) { |index| block.call(list[index]) } # rubocop:disable Performance/RedundantBlockCall
       end
 
+      # Puts the items in order, the smallest first, as Ruby's `sort!` does. With a block
+      # comparing the two the other way round, `{ |a, b| b <=> a }`, the biggest first. Items
+      # that are level keep the order they were in.
+      #
+      # ```ruby
+      # scores.sort! { |a, b| b <=> a }
+      # ```
+      #--
+      # An insertion sort, done in place: each item in turn is moved back past the bigger ones
+      # before it. On the few dozen items a game sorts it does the fewest moves of the simple
+      # sorts, needs no room of its own, and does almost nothing for a list already nearly in
+      # order, which is what a list sorted every frame usually is. Each line that sorts has a
+      # routine of its own (Messages::MadeNames `array_sort`), so `rom.profile` names the line
+      # and what it costs.
+      #++
+      def sort!(&block)
+        sort_routines.call(SortOrder.item_key(block ? SortOrder.descending_by_comparison?(block) : false),
+                           SortOrder.author_line)
+        self
+      end
+
+      # Puts the items in order by what the block gives for each: the item itself, `{ |n| n }`, is
+      # the smallest first, and minus the item, `{ |n| -n }`, the biggest first.
+      def sort_by!(&block)
+        probe = Value.new(@builder, Build.var_ref(SORT_KEY_PROBE))
+        key = @builder.with_expressions_untracked do
+          SortOrder.key_from(probe, block) { |node| :item if node.kind == :var_ref && node.name == SORT_KEY_PROBE }
+        end
+        SortOrder.refuse_unknown_key! unless key.fields.size == 1
+        sort_routines.call(key, SortOrder.author_line)
+        self
+      end
+
+      # What `sort_by!`'s block is handed while building, to read which way it sorts. Never
+      # recorded, so no variable of this name is made.
+      SORT_KEY_PROBE = :__sort_key_probe # :nodoc:
+
+      # `sort` makes a new Array, which a console has no room for: refused, naming `sort!`.
+      def sort(*) = SortOrder.refuse_new_array!(@name, :sort)
+
+      # `sort_by` the same way, naming `sort_by!`.
+      def sort_by(*) = SortOrder.refuse_new_array!(@name, :sort_by)
+
+      # Turns the items round, back to front. Written right after `sort!` or `sort_by!`, as
+      # `scores.sort!.reverse!`, it makes that sort put the biggest first, at no cost of its own.
+      def reverse!
+        sort_routines.reverse_last!(@name)
+        self
+      end
+
+      # Explains a number of the wrong kind put into the list with these in place of the list's
+      # own words, which name `list :name` and `holds:`. A Ruby Array the game keeps names neither
+      # (PlainRuby::Arrays#kind_advice). +declaring+ and +mixing+ are as Scale takes them.
+      def explain_kinds_with(declaring:, mixing:) # :nodoc:
+        @fraction_declaration_advice = declaring
+        @mixed_kinds_advice = mixing
+        @item_scale = nil
+        self
+      end
+
+      # What a list does, said when a Ruby Array method it has no meaning for is called on it.
+      WORKING_METHODS = "`<<`, `push`, `append`, `shift`, `pop`, `[]`, `[]=`, `size`, `length`, `empty?`, `first`, " \
+                        "`last`, `each`, `each_with_index`, `sum`, `min`, `max`, `include?`, `==` with an Array, " \
+                        "`sort!`, `sort_by!`, `fill` and `copy_from`"
+
+      # A Ruby Array method the list does not have, `sort!` or `map`, called on it: a list the game
+      # keeps can only do what the console does with it as the game plays.
+      def method_missing(name, ...)
+        return super unless Array.method_defined?(name) && !name.start_with?("to_")
+
+        raise NoMethodError.new("`#{name}` is a method of a Ruby Array, and a list the game keeps does not have it. " \
+                                "A list has #{WORKING_METHODS}.#{Messages::AuthorSource.at_author_line}", name)
+      end
+
+      def respond_to_missing?(name, include_private = false) = super
+
       private
+
+      # The routines that sort this list, each an insertion sort by the items (#insertion_sort_nodes),
+      # whose statements are made when the routine's body is built, so one taken back costs nothing.
+      def sort_routines
+        @sort_routines ||= SortOrder::Routines.new(@builder, @name) do |name, key|
+          @builder.declare_routine_once(name) do
+            descending = key.fields.first.descending
+            [Build.list_sort(@name, descending: descending, body: insertion_sort_nodes(descending))]
+          end
+        end
+      end
+
+      # An insertion sort of this list, as statements. Each item from the second on is held, and
+      # the items before it that go after it each move up one, until one does not or the front is
+      # reached; the held item goes in the gap. Only an item strictly after it moves, so level
+      # items keep their order.
+      def insertion_sort_nodes(descending)
+        held, from, at, settled, turns, before = %i[sort_held sort_from sort_at sort_settled sort_turns sort_before]
+                                                 .map { |why| @builder.hidden_variable(why).name }
+        var = ->(name) { Build.var_ref(name) }
+        item_at = ->(name) { Build.list_get(@name, var.call(name)) }
+        after_from = Build.binop(:+, var.call(from), Build.int(1))
+        goes_after = Build.binop(descending ? :< : :>, item_at.call(at), var.call(held))
+        step = Build.if_(goes_after, Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), item_at.call(at)),
+                         Build.sub(at, Build.int(1)))
+        step.else = Build.else_(Build.set(settled, Build.int(1)))
+        moving = Build.repeat(Build.binop(:+, var.call(from), Build.int(1)), turns, step,
+                              stop_when: Build.binop(:==, var.call(settled), Build.int(1)))
+        # The item before the one being placed is kept in a number, so an item already in its place,
+        # which is nearly every item of a list sorted again each frame, costs one read and one compare.
+        # An item out of place is walked back past the bigger ones, and the item before the next one is
+        # then read again, since the one just placed is the biggest of the items so far.
+        out_of_place = Build.binop(descending ? :< : :>, var.call(before), var.call(held))
+        placed = Build.if_(out_of_place,
+                           Build.set(at, var.call(from)),
+                           Build.set(settled, Build.int(0)),
+                           moving,
+                           Build.list_set(@name, Build.binop(:+, var.call(at), Build.int(1)), var.call(held)),
+                           Build.set(before, Build.list_get(@name, after_from.copy)))
+        placed.else = Build.else_(Build.set(before, var.call(held)))
+        each_item = Build.repeat(Build.binop(:-, Build.list_len(@name), Build.int(1)), from,
+                                 Build.set(held, Build.list_get(@name, after_from)),
+                                 placed)
+        [Build.if_(Build.binop(:>, Build.list_len(@name), Build.int(1)),
+                   Build.set(before, Build.list_get(@name, Build.int(0))),
+                   each_item)]
+      end
+
+      # A hidden number that starts at +start+ (a node) and is changed once for each item, front to
+      # back: the block is handed the hidden number's name and the item's node, and gives back the
+      # statement that changes it. The answer carries the list's fraction, as an item does.
+      #
+      # +from_first+ starts it at the first item instead, where the list holds one.
+      def answer_by_walking(start, from_first: false)
+        kept = @builder.hidden_variable(:list_answer, like: @fraction_bits ? 0.0 : nil)
+        name = kept.name
+        list_name = @name
+        record(Build.set(name, start))
+        if from_first
+          record(Build.if_(Build.binop(:>, Build.list_len(list_name), Build.int(0)),
+                           Build.set(name, Build.list_get(list_name, Build.int(0)))))
+        end
+        builder = @builder
+        builder.repeat(length) do |index|
+          builder.record_statement(yield(name, Build.list_get(list_name, Value.node_for(index))))
+        end
+        kept
+      end
+
+      # The smallest (+compare+ `:<`) or largest (`:>`) item, 0 for an empty list.
+      def extreme(compare)
+        answer_by_walking(Build.int(0), from_first: true) do |kept, item|
+          Build.if_(Build.binop(compare, item, Build.var_ref(kept)), Build.set(kept, item.copy))
+        end
+      end
 
       # Attach a list statement (push/drop/set) at the current build point.
       def record(node)
@@ -147,13 +460,13 @@ module VBlank
         Value.new(@builder, node)
       end
 
-      # ...and the same for an ITEM, which carries whatever fraction the list holds.
+      # ...and the same for an item, which carries whatever fraction the list holds.
       def item_value(node)
         Value.new(@builder, node, fraction_bits: @fraction_bits,
                                   declaring: fraction_declaration_advice, mixing: mixed_kinds_advice)
       end
 
-      # How to make THIS list hold fractions, for the error somebody gets when they put a
+      # How to make this list hold fractions, for the error somebody gets when they put a
       # number with one into a list of whole numbers.
       def fraction_declaration_advice
         @fraction_declaration_advice ||= ->(other) { "add `holds: #{other}` where `list :#{@name}` is declared" }
@@ -174,7 +487,28 @@ module VBlank
         }
       end
 
-      # A value on its way INTO the list, checked against what the list holds. The rules are
+      # Two lists compared would need both lengths and every item as the game plays; the game
+      # compares one with an Array of its own items instead.
+      def refuse_list_compared!(other)
+        return unless other.is_a?(List)
+
+        raise PlainRuby::Refused, "This line compares two Arrays the game keeps with `==` or `eql?`. VBlank " \
+                                  "cannot compare two of them. To fix this, compare the items one at a time, " \
+                                  "like `(a[0] == b[0]) & (a[1] == b[1])`.#{Messages::AuthorSource.at_author_line}"
+      end
+
+      # Can +item+ of an Array be equal to an item of this list? An item is a number or a name, so
+      # nil, a yes or no and a string never are; where +strict+, as Array#eql? asks, a whole
+      # number never equals a fraction either.
+      def comparable_item?(item, strict)
+        return false unless item.is_a?(Numeric) || item.is_a?(Value) || item.is_a?(Symbol)
+        return true unless strict
+
+        fraction = item.is_a?(Value) ? item.fraction? : item.is_a?(Float)
+        fraction == !@fraction_bits.nil?
+      end
+
+      # A value on its way into the list, checked against what the list holds. The rules are
       # the ones a variable follows, and they live in {Scale} so there is one copy of them.
       def item_node(value, verb)
         refuse_numberless_item!(value)
@@ -189,7 +523,7 @@ module VBlank
         problem = numberless_item_problem(value)
         return unless problem
 
-        raise ArgumentError, "`list :#{@name}` keeps numbers. #{problem}#{Messages::AuthorSource.at_author_line}"
+        raise ArgumentError, "#{@builder.collection_words(@name, opening: true)} keeps numbers. #{problem}#{Messages::AuthorSource.at_author_line}"
       end
 
       def numberless_item_problem(value)
@@ -198,6 +532,13 @@ module VBlank
         elsif [true, false].include?(value) || value.is_a?(Condition)
           "This item is the answer to a test, true or false, and a list item cannot be true or false. " \
             "To keep the answer, write `test ? 1 : 0`. When you read the item, compare it with 1."
+        elsif value.is_a?(Struct)
+          # An Array keeps things made from a Struct where the build sees them made at a line that
+          # adds them (LocalNames#things_made_by); one handed in from elsewhere shows no Struct.
+          name = value.class.name || "Point"
+          "This item is a `#{name}`, made from a Struct. An Array keeps such things only when the line " \
+            "that adds them also makes them, like `<< #{name}.new(...)`. To fix this, make the `#{name}` on " \
+            "the line that adds it."
         elsif !(value.is_a?(Numeric) || value.is_a?(Symbol) || value.is_a?(Value) || value.is_a?(IR::Node))
           "This item is a #{value.class.name}, and a list item must be a number. Give the item a number."
         end

@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A SOUND EFFECT THAT KEEPS ITS VOICES, on the Advance's own cartridge: how loud its first square
+# A sound effect that keeps its voices, on the Advance's own cartridge: how loud its first square
 # voice is set, frame by frame, read in the emulator. What every run plays is in
 # test/all/vblank/dsl/test_sound_effect_keeps_voices.rb.
 class TestSoundEffectKeepsVoicesCartridge < Minitest::Test

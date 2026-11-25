@@ -41,7 +41,7 @@ module Tower
 
   # 20 cells across and 18 down, which every console shows whole. "#" is wall, "." floor, "^" the
   # stairs up, and on the roof "=" the gate. Every way through a wall is two cells wide.
-  GROUND = Ractor.make_shareable(<<~MAP.lines.map(&:chomp))
+  GROUND = <<~MAP.lines.map(&:chomp)
     ####################
     #.................^#
     #..................#
@@ -61,7 +61,7 @@ module Tower
     #..................#
     ####################
   MAP
-  UPSTAIRS = Ractor.make_shareable(<<~MAP.lines.map(&:chomp))
+  UPSTAIRS = <<~MAP.lines.map(&:chomp)
     ####################
     #................^.#
     #..................#
@@ -81,7 +81,7 @@ module Tower
     #..................#
     ####################
   MAP
-  ROOF = Ractor.make_shareable(<<~MAP.lines.map(&:chomp))
+  ROOF = <<~MAP.lines.map(&:chomp)
     ####################
     #..................#
     #..................#
@@ -103,13 +103,13 @@ module Tower
   MAP
 
   # Where the hero starts on every floor: just inside, at the bottom left.
-  START = Ractor.make_shareable([16, 120])
+  START = [16, 120]
 
   # The stairs of each floor, as a cell.
-  STAIRS = Ractor.make_shareable({ ground: [18, 1], upstairs: [17, 1] })
+  STAIRS = { ground: [18, 1], upstairs: [17, 1] }
 
   # The two cells of the gate on the roof.
-  GATE = Ractor.make_shareable([[9, 8], [10, 8]])
+  GATE = [[9, 8], [10, 8]]
 
   GAME = VBlank.game("TOWER", consoles: %i[gba gbc snes genesis dos]) do
     screen :tiled
@@ -161,10 +161,10 @@ module Tower
     end
 
     game_loop do
-      case_var(:level) do
-        when_val 0, :ground
-        when_val 1, :upstairs
-        when_val 2, :roof
+      case level
+      when 0 then call :ground
+      when 1 then call :upstairs
+      when 2 then call :roof
       end
     end
   end

@@ -22,7 +22,7 @@ class TestScoresCartridge < Minitest::Test
 
   # --- low notes ---
 
-  # SAYING A SCORE'S LOW NOTES ARE INTENDED CHANGES WHAT THE BUILD SAYS, NOT WHAT IT BUILDS. A
+  # Saying a score's low notes are intended changes what the build says, not what it builds. A
   # note below the square-wave voice's 64 Hz is played at 64 Hz either way, because that is all
   # the voice can do: the cartridge is the same to the byte.
   def test_saying_the_low_notes_are_intended_builds_the_same_cartridge
@@ -90,7 +90,7 @@ class TestScoresCartridge < Minitest::Test
     assert_equal [heard, heard], recordings_by_frame(program)
   end
 
-  # THE FRAME IT ENDS ON is where the two backends could part. Another song named on the pass
+  # The frame it ends on is where the two backends could part. Another song named on the pass
   # the player takes up on that very frame follows it with no gap and no overlap; named a pass
   # sooner, it cuts the last frame off.
   def test_another_song_named_as_it_ends_follows_it_on_both_backends
@@ -199,7 +199,7 @@ class TestScoresCartridge < Minitest::Test
     assert_equal (6 * 512 / 15.0).round, later.first.volume, "...and its own loudness"
   end
 
-  # A RECORDED NOTE CAN BE GIVEN A VOLUME WITH A FRACTION, for music whose engine works its
+  # A recorded note can be given a volume with a fraction, for music whose engine works its
   # loudness out finer than sixteen steps. A volume of 15 x L / 512 plays the recording at L
   # 512ths of its size. A cartridge's own engine keeps a voice's right and left volumes and
   # mixes by their sum, out of 512, so a note keeps the odd half a sum can have: 51 is 25 and a

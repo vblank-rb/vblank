@@ -3,7 +3,7 @@
 require "test_helper"
 require "scene_color_lists"
 
-# EACH SCREEN'S SPRITE COLOURS ARE ITS OWN TO COUNT. A Super Nintendo holds eight sets of fifteen
+# Each screen's sprite colours are its own to count. A Super Nintendo holds eight sets of fifteen
 # colours for its sprites, and its own games load a screen's sets with the screen, so two screens
 # of eight sets each never meet, the ones the display mixes included.
 class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
@@ -59,10 +59,7 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         tick += 1
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -116,10 +113,7 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
         recolor :walking, :dusk if tick == switch + 1
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 
@@ -150,10 +144,7 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == switch
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
 

@@ -39,7 +39,7 @@ module VBlank
           # EVERY KIND THIS LOWERING WRITES, each by a method called by name in #emit_statement and
           # #emit_value_of_kind. A declaration writes nothing where it is.
           STATEMENT_KINDS = (%i[
-            program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
+            program set add sub copy negate abs negate_abs clamp call call_one_of halt wait_vblank screen clear_screen pixel fill_rect
             draw_rect_at blit blit_pose inside draw_text draw_digit save_region restore_region fade tint camera pixelate draw_column_at save_init save_store save_write save_erase
             save_load_list save_store_list
           ] + ControlFlow::STATEMENT_KINDS + TimerSteps::STATEMENT_KINDS + Clock::STATEMENT_KINDS + Sprites::STATEMENT_KINDS + Lists::STATEMENT_KINDS + Scenery::STATEMENT_KINDS +
@@ -49,7 +49,7 @@ module VBlank
                             held pressed save_read save_sum local_player players_connected pixels_overlap] + TimerSteps::VALUE_KINDS + Clock::VALUE_KINDS + Lists::VALUE_KINDS).freeze
 
           # The statements that paint in a colour the game names, which the palette must hold.
-          PAINTING_KINDS = %i[clear_screen pixel fill_rect dma_fill_rect draw_rect_at draw_text draw_digit].freeze
+          PAINTING_KINDS = %i[clear_screen pixel fill_rect draw_rect_at draw_text draw_digit].freeze
 
           # EVERY KIND THIS LOWERING CANNOT MAKE YET: all the others. A kind leaves the list the day it is made
           # (the coverage test holds the list and the two above to every kind there is).
@@ -423,7 +423,7 @@ module VBlank
             when :draw_column_at then emit_draw_column_at(node)
             when :color_list_holds then emit_color_list_holds(node)
             when :pixelate then emit_pixelate(node)
-            when :fill_rect, :dma_fill_rect, :draw_rect_at then emit_rectangle(node)
+            when :fill_rect, :draw_rect_at then emit_rectangle(node)
             when :blit then emit_blit(node)
             when :blit_pose then emit_blit_pose(node)
             when :inside then emit_inside(node)
@@ -878,7 +878,7 @@ module VBlank
             @asm.call("rt_pixel")
           end
 
-          # The same rectangle however the game wrote it (Reference#exec_fill_rect, #exec_dma_fill_rect and
+          # The same rectangle however the game wrote it (Reference#exec_fill_rect and
           # #exec_draw_rect_at): x, y, width and height into EAX, ECX, EDX and EBX, the palette entry into SI.
           def emit_rectangle(node)
             emit_values_into(%i[eax ecx edx ebx], [node.x, node.y, node.w, node.h].map { |edge| value_node(edge) })

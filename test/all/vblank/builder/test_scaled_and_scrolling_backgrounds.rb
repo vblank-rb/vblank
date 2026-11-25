@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A background that turns or resizes, BESIDE ordinary scrolling ones, on one screen.
+# A background that turns or resizes, beside ordinary scrolling ones, on one screen.
 #
 # The console has three tile arrangements and the framework offered the two extremes:
 # `screen :tiled` gives four scrolling layers and none of them can turn, `screen
@@ -37,7 +37,7 @@ end
 class TestScaledAndScrollingBackgrounds < Minitest::Test
   include ScaledAndScrollingBackgroundsGames
 
-  # A LAYER THAT TURNS HAS NO SCROLL OF ITS OWN, and a program can say the two in either
+  # A layer that turns has no scroll of its own, and a program can say the two in either
   # order. Scrolling first and turning second is the order that would otherwise pass the
   # build and quietly stop the scroll working.
   def test_scrolling_a_background_and_then_resizing_it_is_a_friendly_error
@@ -57,7 +57,7 @@ class TestScaledAndScrollingBackgrounds < Minitest::Test
     assert_match(/stop moving :both that way/, err.message, "...and a way out that is not the call that raised")
   end
 
-  # THE COUNT IS SMALLER ON THIS ARRANGEMENT, and that is the thing a program can get
+  # The count is smaller on this arrangement, and that is the thing a program can get
   # wrong. Two scrolling layers plus one that resizes is what the console holds; a third
   # scrolling layer beside a resizing one fits no arrangement at all, so it is a friendly
   # error naming both counts rather than a layer quietly not drawn.
@@ -82,7 +82,7 @@ class TestScaledAndScrollingBackgrounds < Minitest::Test
     assert_match(/:spin/, err.message, "...and which background costs the other two")
   end
 
-  # TWO SCREENS THAT TAKE TURNS EACH HOLD THEIR OWN LAYERS. A title that zooms, handing
+  # Two screens that take turns each hold their own layers. A title that zooms, handing
   # over to a game with four scrolling layers, is two arrangements one after the other —
   # the console is never in both at once, so the title's turning layer costs the game
   # nothing. Counting them together would refuse a program that has always built.
@@ -106,10 +106,7 @@ class TestScaledAndScrollingBackgrounds < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

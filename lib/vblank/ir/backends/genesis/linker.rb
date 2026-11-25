@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # WHERE EVERYTHING GOES IN THE CARTRIDGE, and the holes the assembler left filled in.
+        # Where everything goes in the cartridge, and the holes the assembler left filled in.
         #
         # A Genesis cartridge is one flat run of bytes the 68000 reads at addresses 0 to $3FFFFF: no
         # banks, no mapper, nothing to switch. The first 512 bytes are the vectors and the header
@@ -25,7 +25,7 @@ module VBlank
 
           class Error < StandardError; end
 
-          # Raised when the GAME is more than the cartridge has room for. It names the game's parts by
+          # Raised when the game is more than the cartridge has room for. It names the game's parts by
           # what they are, never by the sections they went in.
           class TooBig < LoweringError; end
 

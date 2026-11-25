@@ -4,7 +4,7 @@ require "test_helper"
 require "json"
 require "web_page"
 
-# SAVE STATES ON A WEB PAGE (runtime/rg_page.js and rg_page_menu.js): F5 and F9, and the menu's Save
+# Save states on a web page (runtime/rg_page.js and rg_page_menu.js): F5 and F9, and the menu's Save
 # and Load headings, keep the game's state in the page's storage and put it back between two
 # frames, so the game plays on from where it was saved. The browser is the stand-in the page's other
 # tests use (page_harness.js).

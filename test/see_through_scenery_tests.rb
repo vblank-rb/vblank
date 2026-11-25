@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "all/vblank/builder/test_layer_transparency"
 
-# A SEE-THROUGH LAYER OF SCENERY, solid, not seen and half see-through, under a fade or a tint that
+# A see-through layer of scenery, solid, not seen and half see-through, under a fade or a tint that
 # walks the colours, and in a scene that takes over from one seeing through nothing: the tests every
 # console that mixes a layer of backgrounds by half plays, the Advance (test/console/gba/vblank/builder/
 # test_layer_transparency_on_the_advance.rb) and the PlayStation (test/console/ps1/vblank/builder/
@@ -19,7 +19,7 @@ module SeeThroughSceneryTests
     assert_equal [WHITE, HALF_WHITE_OVER_RED, RED], seen
   end
 
-  # FADING TO WHITE IS THE OTHER DIRECTION AND NOT A MIRROR OF THE FIRST. Toward white a
+  # Fading to white is the other direction and not a mirror of the first. Toward white a
   # channel adds a share of the headroom it has left; toward black it keeps a share of
   # what it has, and the two truncate opposite ways — so one direction can be right while
   # the other is a step out at every pixel. Both halves of the picture are asserted: the
@@ -31,10 +31,10 @@ module SeeThroughSceneryTests
                  "the see-through layer went solid while a fade to white ran"
   end
 
-  # A TINT does not take the blend. On a tiled screen a tint moves the colors themselves
+  # A tint does not take the blend. On a tiled screen a tint moves the colors themselves
   # rather than asking the display to blend, so the layer keeps seeing through them: a
   # `flash_screen :red` reaches a game the water can be seen through and a white one does
-  # not. What shows is the layer blending TINTED colors, so it is neither the plain
+  # not. What shows is the layer blending tinted colors, so it is neither the plain
   # see-through value nor the solid one.
   def test_a_tint_leaves_the_layer_see_through
     solid = shown(tinted_program(0, 50), *SCENERY_XY)
@@ -58,7 +58,7 @@ module SeeThroughSceneryTests
     assert_backends_agree(scenes_that_take_turns, frames: SWITCH_AT + 4)
   end
 
-  # ...and the scene BEFORE it, which sees through nothing, must not have picked up the
+  # ...and the scene before it, which sees through nothing, must not have picked up the
   # blend. Its two backgrounds sit on the layers the dive's floor and pane later use, so a
   # blend set up once at boot would quietly make the banner see-through.
   def test_a_scene_that_sees_through_nothing_is_drawn_solid

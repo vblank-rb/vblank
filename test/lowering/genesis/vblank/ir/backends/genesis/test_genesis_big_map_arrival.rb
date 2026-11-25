@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "pack_background_tests"
 
-# A SCENE WHOSE BACKGROUND MAP IS 64 BY 64 CELLS ARRIVES ON ITS FIRST FRAME, as the interpreter shows
+# A scene whose background map is 64 by 64 cells arrives on its first frame, as the interpreter shows
 # it. The screen is a plane of 64 by 64 cells of 8x8 tiles, 8 KB of map, which is what an original's
 # 32 by 32 cells of 16x16 come to on a console of 8x8 tiles. The console's own games put a screen like that up in a blank without
 # losing a frame, so the pass the scene takes over on takes one frame, and a note the tune strikes
@@ -47,7 +47,7 @@ class TestGenesisBigMapArrival < Minitest::Test
     pass
   end
 
-  # THE CHIP COUNTS ITS COPY'S SOURCE WITHIN ONE 128K BLOCK OF THE CARTRIDGE, so a map lying across the
+  # The chip counts its copy's source within one 128K block of the cartridge, so a map lying across the
   # end of one goes in as two copies. Twenty maps of 8K are more than a block, and one lies across.
   def test_scenes_whose_maps_lie_across_a_block_of_the_cartridge_agree_with_the_interpreter
     Genesis::CheckedRun.new.run(many_maps_game, frames: MANY_MAPS + 2)
@@ -106,9 +106,7 @@ class TestGenesisBigMapArrival < Minitest::Test
       end
       game_loop do
         pass += 1
-        case_var(:pass) do
-          count.times { |map| when_val map + 1, :"map_#{map}" }
-        end
+        call count.times.to_h { |map| [map + 1, :"map_#{map}"] }, number: :pass
       end
     end
     b.finalize_program
@@ -142,10 +140,7 @@ class TestGenesisBigMapArrival < Minitest::Test
       game_loop do
         pass += 1
         state = 1 if pass == CHANGE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map
-        end
+        call({ 0 => :title, 1 => :map }, number: :state)
       end
     end
   end

@@ -3,7 +3,7 @@
 require "test_helper"
 require "see_through_scenery_tests"
 
-# A SEE-THROUGH LAYER OF SCENERY on every run that plays games as the PlayStation. Its graphics chip mixes
+# A see-through layer of scenery on every run that plays games as the PlayStation. Its graphics chip mixes
 # a layer with what is behind it in three ways that are shares of the two: half of each, all of each added,
 # and a quarter of the layer added to all of what is behind (Console::PS1Hardware::SEMI_TRANSPARENCY_MODES).
 # A layer at one of those amounts is drawn see-through; any other amount, or one the game works out as it
@@ -109,10 +109,7 @@ class TestLayerTransparencyOnThePlayStation < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > 4
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :room
-        end
+        call({ 0 => :hall, 1 => :room }, number: :state)
       end
     end
   end
@@ -144,10 +141,7 @@ class TestLayerTransparencyOnThePlayStation < Minitest::Test
         pass += 1
         where = 1 if pass == 5
         where = 0 if pass == 11
-        case_var(:where) do
-          when_val 0, :misty
-          when_val 1, :glowing
-        end
+        call({ 0 => :misty, 1 => :glowing }, number: :where)
       end
     end
   end

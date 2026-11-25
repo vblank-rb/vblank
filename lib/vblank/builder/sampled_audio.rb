@@ -2,44 +2,89 @@
 
 module VBlank
   class Builder
-    # The sampled-audio verb: `sample` — define a recorded sound (8- or 16-bit PCM) and hand
-    # back a {Sample} handle to play and stop it. A concern of {Builder}, mixed in so
-    # `sample` stays a flat DSL verb.
+    # Recorded sounds
+    #
+    # `sample` defines a recorded sound, from a `.wav` file or from numbers, and gives back a
+    # handle to play and stop it. `instrument` makes a recording playable as notes, so that one
+    # recording covers a whole keyboard and a song can use it.
+    #
+    # ```ruby sound=play frames=120
+    # VBlank.game "SAMPLE", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   # a zap, worked out in Ruby as the game
+    #   # builds: a square wave that falls in
+    #   # pitch and fades, for 3000 samples
+    #   samples = (0...3000).map do |i|
+    #     half = i * (2400 - i / 3) / 8000
+    #     loud = 100 - i / 40
+    #     half.even? ? loud : -loud
+    #   end
+    #   zap = sample :zap, pcm: samples,
+    #                      rate: 8192
+    #   frame = 0
+    #   game_loop do
+    #     frame += 1
+    #     # three zaps, two thirds of a second
+    #     # apart
+    #     zap.play if frame % 40 == 1
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
+    # zap = sample :zap, from: "zap.wav"
+    # zap.play
+    # piano = instrument :piano, from: "piano_c4.wav", note: :C4
+    # piano.play(:E4)
+    # ```
+    #--
+    # A concern of Builder, mixed in so `sample` stays a flat DSL verb. The recording is 8- or
+    # 16-bit PCM.
+    #++
     module SampledAudio
       # A sensible default rate for a hand-authored clip — how many samples play per
       # second when the caller doesn't give one.
-      DEFAULT_SAMPLE_RATE = 8192
+      DEFAULT_SAMPLE_RATE = 8192  # :nodoc:
 
-      # Define a named PCM sample, either from a `.wav` file or from raw samples:
+      # Defines a recorded sound, from a `.wav` file or from raw samples, and returns a handle to
+      # play and stop it.
       #
-      #   sfx  = sample :zap,  from: "zap.wav"                    # a recorded clip (found beside your script)
-      #   tone = sample :tone, pcm: [0, 100, 0, -100] * 20, rate: 8000  # hand-authored samples
+      # With `from:`, the file's own sample rate is used. Any 8-bit or 16-bit, mono or stereo WAV
+      # file is converted for you, and you give `rate:` only to override the rate. With `pcm:`,
+      # give the samples as a list of numbers from -128 to 127 (or a binary string) and the
+      # `rate:` they play at.
       #
-      # With `from:`, the file's own sample rate is used (any 8-/16-bit, mono/stereo PCM
-      # WAV is converted for you); pass `rate:` only to override it. With `pcm:`, give the
-      # samples as an Array of -128..127 (or a binary String) and the `rate:` they play at.
-      # Returns a {Sample} handle — `play` it, `stop` it.
+      # ```ruby
+      # sfx  = sample :zap,  from: "zap.wav"                          # found beside your script
+      # tone = sample :tone, pcm: [0, 100, 0, -100] * 20, rate: 8000  # samples you write
+      # sfx.play
+      # ```
       #
-      # +bits+ 16 takes `pcm:` as 16-bit samples, an Array of -32768..32767 or a String of two
-      # bytes each, low byte first. A 16-bit WAV is 16-bit without it. A build for a computer
-      # plays all sixteen bits; a console's build keeps what its sound hardware holds, made from
-      # the high byte of each sample, as an 8-bit recording of those bytes would be.
-      #
-      # @param name [Symbol] the sample's name
-      # @param pcm [Array<Integer>, String, nil] the signed PCM samples (or use from:)
-      # @param from [String, nil] a .wav file to load (or use pcm:)
-      # @param rate [Integer, nil] samples per second — defaults to the WAV's rate, or 8192 for pcm:
-      # @param bits [Integer, nil] 8 or 16, how many bits each `pcm:` sample has (8 when not given)
-      # @return [Sample]
-      #
-      # +length+ is how many of the samples the recording plays, from its first: for a recording
-      # in a slot of the data pack that holds the most a recording can be, with the recording's own
-      # length a number of the pack (`length: pack[:lengths].number(3)`), so one that reads back to
-      # an earlier sample does so from its own end, not through the rest of the slot.
-      #
-      # +brr+ is a recording in the Super Nintendo sound chip's own format (Audio::SNESRecording), as
-      # bytes or a slot of the data pack, and +brr_loop+ how many bytes into it its loop starts: the
-      # Super Nintendo plays those bytes as they are, and every other build what the chip decodes.
+      # * `name` - the recording's name, as a symbol. It must not be the name of one of the
+      #   console's own voices.
+      # * `pcm:` - the samples as numbers, to use instead of `from:`.
+      # * `from:` - a `.wav` file to load, to use instead of `pcm:`.
+      # * `rate:` - samples a second. It defaults to the WAV file's rate, or 8192 for `pcm:`.
+      # * `bits:` - 8 or 16, how many bits each `pcm:` sample has. The default is 8. With 16,
+      #   `pcm:` is a list from -32768 to 32767 or a string of two bytes each, low byte first. A
+      #   16-bit WAV file is 16-bit without it. A computer build plays all sixteen bits, and a
+      #   console's build keeps what its sound hardware holds.
+      # * `note:` - the note the recording was made at, for `instrument` and songs. The default
+      #   is `:C4`.
+      # * `envelope:` - how a note starts and ends, so that it does not end with a click.
+      # * `holds_from:` - where a held note reads back to, so a note can outlast its recording.
+      #   A time in seconds, or a sample number.
+      # * `length:` - how many samples the recording plays, from its first, for a recording in a
+      #   data pack slot that holds the most a recording can be.
+      # * `brr:` and `brr_loop:` - a recording in the Super Nintendo sound chip's own format, as
+      #   bytes or a data pack slot, and how many bytes into it its loop starts. The Super
+      #   Nintendo plays those bytes as they are, and every other build plays what the chip
+      #   decodes.
+      #--
+      # See Audio::SNESRecording for `brr:`. With `length:`, the recording's own length can be a
+      # number of the pack (`length: pack[:lengths].number(3)`), so one that reads back to an
+      # earlier sample does so from its own end, not through the rest of the slot.
+      #++
       def sample(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
                  brr: nil, brr_loop: 0, bits: nil)
         raise ArgumentError, "A sample name must be a Symbol. You gave #{name.inspect}." unless name.is_a?(Symbol)
@@ -117,15 +162,18 @@ module VBlank
         DSL::Sample.new(self, name)
       end
 
-      # Define a playable instrument from a recorded sample — the same `pcm:`/`from:`/`rate:`
-      # as `sample`, plus the note it was recorded at (`note:`, default :C4). You play notes
-      # on the returned {Instrument}, and one recording covers the whole keyboard:
+      # Defines an instrument from a recording, and returns it to play notes on.
       #
-      #   piano = instrument :piano, from: "piano_c4.wav", note: :C4
-      #   piano.play(:E4)             # a note
-      #   piano.play(:C4, :E4, :G4)   # ...or a chord
+      # It takes the same options as `sample`, and `note:` says which note the recording was made
+      # at. One recording covers the whole keyboard.
       #
-      # @return [Instrument]
+      # ```ruby
+      # piano = instrument :piano, from: "piano_c4.wav", note: :C4
+      # piano.play(:E4)             # a note
+      # piano.play(:C4, :E4, :G4)   # or a chord
+      # ```
+      #
+      # * `name` - the instrument's name, as a symbol.
       def instrument(name, pcm: nil, from: nil, rate: nil, note: :C4, envelope: nil, holds_from: nil, length: nil,
                      brr: nil, brr_loop: 0, bits: nil)
         note_verb_written(:instrument)
@@ -173,7 +221,7 @@ module VBlank
                              "To fix this, give the recording as brr:, or use holds_from: for samples given as pcm: or from:."
       end
 
-      # THE RECORDING +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
+      # The recording +brr+ (bytes, or a slot of the data pack's samples) as an Audio::SNESRecording
       # that loops back +brr_loop+ bytes in (a number of the pack, or the game's own). The chip's
       # decoding is worked out here, as the game is built. What the pack gives is the player's, so
       # it is held as a runtime holds it as the game starts (IR::StartFile.brr_held); what the game
@@ -269,7 +317,7 @@ module VBlank
                              "how many of its samples it plays, a whole number from 1 to #{room}."
       end
 
-      # WHERE A HELD NOTE READS BACK TO, as a sample number. A recording is finite and a note can
+      # Where a held note reads back to, as a sample number. A recording is finite and a note can
       # outlast it: a piano recorded for half a second, held for two. Without this the note ends
       # where the recording does, which is both too early and a click — the sound stops at
       # whatever the wave was doing.

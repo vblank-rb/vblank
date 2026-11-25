@@ -1,5 +1,5 @@
 /*
- * FADES AND TINTS (Reference#exec_fade, #exec_tint and Framebuffer#faded): the display's own fade
+ * Fades and tints (Reference#exec_fade, #exec_tint and Framebuffer#faded): the display's own fade
  * toward black or white, held to a rectangle or placed in the stack, a fade that walks the
  * colours, and a tint toward a colour. A runtime feature (backends/runtime_features.rb): this file
  * is included at the end of rg_screen.c, for a game that fades or tints, so it reads the screen's
@@ -17,7 +17,7 @@ typedef enum { TINT_NONE, TINT_TOWARD, TINT_COLOR } tint_modes;
 static tint_modes tint_mode;
 static int32_t tint_white, tint_color, tint_steps, tint_by_display;
 
-/* A FADE PLACED IN THE STACK, while one is in force (Reference @fade_placed): how far forward the
+/* A fade placed in the stack, while one is in force (Reference @fade_placed): how far forward the
  * layer it sits under is among the layers the game declared, which way it fades, and how far. It
  * cannot be laid over the finished picture as the screen is read, since what is in front of its
  * line has to come through as drawn. So it is painted in as the view is rebuilt. */
@@ -112,7 +112,7 @@ static uint16_t color_through_fade(uint16_t color) {
 static int32_t fade_side = RG_FADE_WHOLE_SCREEN;
 static int32_t fade_area[4];
 
-/* THE FILTER THE SCREEN READS THE PICTURE THROUGH while a fade or a tint changes a colour, kept
+/* The filter the screen reads the picture through while a fade or a tint changes a colour, kept
  * until the fade or tint changes: a table of the colour each of the 65536 values a cell can hold is
  * shown as, and for a fade held to a rectangle each screen row's span.
  *
@@ -158,7 +158,7 @@ static const shown_filter *rg_fades_fade_filter(void) {
   return &fade_filter;
 }
 
-/* THE TABLE A PLACED FADE PAINTS THROUGH (rg_hook_paint_fade_for), made again when the fade's
+/* The table a placed fade paints through (rg_hook_paint_fade_for), made again when the fade's
  * direction or steps are not the ones it was made for. */
 static uint16_t placed_fade_table[65536];
 static int32_t placed_table_toward_white = -1, placed_table_steps = -1;

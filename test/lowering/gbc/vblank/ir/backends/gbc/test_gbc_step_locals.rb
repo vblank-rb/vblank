@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A NUMBER THE COLOR'S CODE KEEPS ONLY WHILE ONE LINE RUNS, such as which routine of a list a line
+# A number the color's code keeps only while one line runs, such as which routine of a list a line
 # calls or which digit or picture it draws, is kept in work memory, four bytes. Every line of a
 # routine that keeps such a number shares the place (GBC::Lowering#keep_step_local), so a routine
 # of a few hundred such lines takes four bytes for them, not a few hundred times four.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S LOWERING, the IR straight to SM83 (GBC::Lowering). Each game here is built by it and
+# The color's lowering, the IR straight to SM83 (GBC::Lowering). Each game here is built by it and
 # played as a Color cartridge against the interpreter after every pass (GBC::CheckedRun), so a
 # variable or a pixel that differs anywhere fails the test besides what it asserts.
 class TestGBCLowering < Minitest::Test
@@ -96,15 +96,12 @@ class TestGBCLowering < Minitest::Test
         which += 1
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
         every(3) { beats += 1 }
         if held(:a)
           total -= 7
         else
-          clamp! :total, -5, 5000
+          total.clamp!(-5, 5000)
         end
       end
     end

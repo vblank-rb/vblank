@@ -4,6 +4,31 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a song or a sound effect with more parts of one kind than the console
+        # has voices to play them:
+        #
+        # > <The song> has <number> parts that <play the square wave>. <A song> can have
+        # > <number> of them at most, because <the console has 2 square-wave voices>. <Where
+        # > a part can go.> To fix this, use fewer parts that <play the square wave>.
+        #
+        # The kinds of part are those that play the square wave, the wave voice, the noise voice
+        # (each with "the console has <number> ... voice" as the reason), and those that play an
+        # instrument ("the console can play only <number> at once"). Where a part can go names
+        # each other kind with room for a part, such as:
+        #
+        # > One part can play the wave voice, with `plays: :wave`. That voice costs no mixer
+        # > voice.
+        #
+        # > One part can play the noise voice, with `plays: :noise`. That voice plays the
+        # > drums, and it costs no mixer voice.
+        #
+        # > One part can play the square wave. To do that, remove `plays:` from it.
+        #
+        # Every part of a song plays at the same time, so each needs a voice of its own. A part
+        # with no voice would not be heard, so the build stops. Move a part to a kind of voice
+        # with room, or remove a part.
+        #
+        #--
         # A song with more parts than there are voices to play them.
         #
         # The console has four voices of its own: two that play a square wave, one that loops a
@@ -16,6 +41,7 @@ module VBlank
         # Checked here, on the finished program, rather than where the notes are written,
         # because a song reaches the IR two ways — a `song` block, and a Score handed over in a
         # `songs` list — and both have to meet the same limits.
+        #++
         class SongTooManyParts
           NAME = :song_too_many_parts
           PLAIN_NAME = "a song with more parts than there are voices to play them"
@@ -58,8 +84,8 @@ module VBlank
               "#{format(because, limit: limit)}. #{fix_hints(program, song, kind, counts)}"
           end
 
-          # WHERE THE PARTS THAT DO NOT FIT CAN GO, one voice with room per sentence. The point
-          # of naming them all is that the two the console plays itself cost NO mixer voice,
+          # Where the parts that do not fit can go, one voice with room per sentence. The point
+          # of naming them all is that the two the console plays itself cost no mixer voice,
           # which is the thing an author has no way to know and the reason to reach for them.
           def fix_hints(program, song, kind, counts)
             room = LIMITS.keys.reject { |other| other == kind }

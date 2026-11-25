@@ -24,7 +24,7 @@ class TestSongLoopsIntoSilenceGuardrail < Minitest::Test
   # A note that stops before the loop point, and nothing after it.
   INTRO_ONLY = [[0, 262], [12, 0]].freeze
 
-  # WHY IT IS WORTH REFUSING: the introduction is heard once, and then nothing, however long the
+  # Why it is worth refusing: the introduction is heard once, and then nothing, however long the
   # game plays the song. Every build refuses the song, so no run plays it; the interpreter shows why.
   def test_the_introduction_plays_once_and_then_nothing
     i = Reference.new.run(program(enable_sound, tune(INTRO_ONLY), play_song(:tune), loop_(wait_vblank)),

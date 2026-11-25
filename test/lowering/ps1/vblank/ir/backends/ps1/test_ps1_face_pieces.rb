@@ -3,7 +3,7 @@
 require "test_helper"
 require "place_games"
 
-require VBlank.root.join("examples/lit_corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lit_corridor").to_s)
 
 # What the PlayStation sends the graphics chip for a lit face (PS1::FacePieces). The chip shades a lit
 # face itself, as the console's own games lit their walls: each triangle's corners carry a colour, and

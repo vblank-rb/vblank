@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-require VBlank.root.join("examples/lake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lake").to_s)
 
 # The lake's colours and how one mixes over another, kept once for the console's picture of it
 # in test/lowering/gba/examples/test_lake_example_cartridge.rb.
@@ -46,7 +46,7 @@ end
 # across half see-through.
 #
 # The claim worth testing is the one an author cannot check by reading the code — that
-# what shows inside a jellyfish IS the lake, mixed in rather than copied. A flat colour
+# what shows inside a jellyfish is the lake, mixed in rather than copied. A flat colour
 # painted a bit paler would look almost the same in a screenshot and be a different thing
 # entirely, so these assert it the only way that tells them apart: the bell is one flat
 # colour in the art, and on screen it comes out as several, each one that colour mixed
@@ -75,7 +75,7 @@ class TestLakeExample < Minitest::Test
     assert_includes colors_on(screen_at(8)), BELL_OVER_WATER
   end
 
-  # THE ONE THAT SAYS IT IS REALLY THE LAKE. The bell is a single flat colour, so two
+  # The one that says it is really the lake. The bell is a single flat colour, so two
   # different colours inside it can only come from two different things behind it — here
   # the open water and the sun's bright reflection, as a jellyfish drifts across the
   # pillar. A sprite drawn paler could never do this.
@@ -106,17 +106,17 @@ class TestLakeExample < Minitest::Test
   # The Advance's cartridge blending the jellyfish into the lake, read in the emulator, is in
   # test/lowering/gba/examples/test_lake_example_cartridge.rb.
 
-  # EVERY PIXEL OF THE LAKE, jellyfish and all: the scene, the water bending row by row,
+  # Every pixel of the lake, jellyfish and all: the scene, the water bending row by row,
   # and three see-through sprites drifting over it, all at once and all agreeing.
   #
   # The swimmers used to be left out. A sprite is placed in the gap between frames, so it
   # showed what the last frame's body did, while the water's rows were worked out as the
-  # picture was drawn and so showed what THIS body had just done — one frame further on.
+  # picture was drawn and so showed what this body had just done — one frame further on.
   # No frame count lined the two up, and the strongest test this project has could only be
   # pointed at the water above them. Working the rows out in the gap, beside the sprites,
   # is what let it cover the whole picture.
   #
-  # The console is run TWO frames longer, not the usual one: this example uploads three
+  # The console is run two frames longer, not the usual one: this example uploads three
   # backgrounds and a sprite sheet before it reaches its first pass, which is more than a
   # bare tiled program does (Differential::BOOT_FRAMES). Measured, by sweeping the pairing.
   def test_the_two_backends_draw_the_same_lake

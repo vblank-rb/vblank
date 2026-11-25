@@ -28,7 +28,7 @@ class TestSNESGSU < Minitest::Test
 
   def test_from_to_and_with_name_registers
     assert_equal [0xB3, 0x1C, 0x25], bytes_of { from 3; to 12; with 5 }
-    # MOVE R4,R7 is WITH R7 then TO R4; MOVES R4,R7 is WITH R4 then FROM R7.
+    # MOVE R4,R7 is WITH R7 then to R4; moves R4,R7 is WITH R4 then FROM R7.
     assert_equal [0x27, 0x14, 0x24, 0xB7], bytes_of { move 4, 7; moves 4, 7 }
   end
 

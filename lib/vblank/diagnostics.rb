@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# READING A BUILT OR RUNNING CARTRIDGE BACK: taking a finished ROM apart, running one and
+# Reading a built or running cartridge back: taking a finished ROM apart, running one and
 # looking at the pixels and the sound it really produced, and measuring where its frames went.
 # All of it needs a cartridge to exist first — what a build says while there is not one yet is
 # Messages.
@@ -15,15 +15,22 @@ require_relative "diagnostics/missing_emulator"  # Why the emulator would not lo
 require_relative "diagnostics/emulator"          # The one seam to the emulator backend; swap emulators here
 require_relative "diagnostics/screen_questions"  # A whole screen's questions in Ruby, for an emulator not the Advance's
 require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
+require_relative "diagnostics/fast_fourier"      # Samples as the frequencies they hold, and back
+require_relative "diagnostics/frame_pitch"       # The pitch a stretch of one voice's sound is heard at
 require_relative "diagnostics/recorded_sound"    # The sound of a run, its older part in a scratch file
+require_relative "diagnostics/sound_names"       # Which effects a cartridge started each frame, and its song, by name
+require_relative "diagnostics/played_cartridge_file" # A reader's cartridge file and its emulator, shut in order
 require_relative "diagnostics/verifier"          # Real pixels and real sound read back through the emulator
 require_relative "diagnostics/film"              # A film of one cartridge running, or two side by side, as an MP4
+require_relative "diagnostics/film_reel"         # A film's pictures put together and handed to ffmpeg as they arrive
 require_relative "diagnostics/film_cartridge"    # One side of a film, brought to its first frame with a save folder of its own
 require_relative "diagnostics/film_script"       # A film written as a small file
 require_relative "diagnostics/film_shell"        # A port's shell filmed from its first start, as a side of a film
+require_relative "diagnostics/film_sound"        # The sound a film asks for, each side's in step with its frames
 # Its rake task, film_tasks.rb, is a Rakefile's and is not required here: a Rakefile requires it alone,
 # and it loads the library when it runs.
 require_relative "diagnostics/sound_recording"   # What a game sounds like on the cartridge, the desktop build or as Ruby
+require_relative "diagnostics/recording_comparison" # Two recordings held to each other as a person hears them
 require_relative "diagnostics/counted_passes"    # The passes of a console whose runtime counts them
 require_relative "diagnostics/snes_memory"       # Super Nintendo memory, work RAM and the Super FX chip's, by address
 require_relative "diagnostics/snes_probe"        # A running Super Nintendo cartridge, as the reader asks of one
@@ -48,7 +55,12 @@ require_relative "diagnostics/build_report"      # The exact half of a profile: 
 require_relative "diagnostics/full_collections"  # Every list and pool, and how to hold each one full
 require_relative "diagnostics/save_starts"       # A save started on each scene that saves, so saving is measured
 require_relative "diagnostics/split_hints"       # Which part of a routine too big for quick memory to make a func of
+require_relative "diagnostics/routine_lines"     # Which lines of any routine its time went to
 require_relative "diagnostics/hidden_variables"  # Variables normal Ruby needed that nobody declared
+require_relative "diagnostics/counted_loops"     # Counted Ruby loops, and whether each was written out
+require_relative "diagnostics/instance_variable_numbers" # Numbers kept in instance variables
+require_relative "diagnostics/build_notes"        # The three notes a build keeps, for a profile
+require_relative "diagnostics/routine_sizes"      # How many bytes each routine of the game takes, for a profile
 require_relative "diagnostics/profiler"          # The measured half: where the frames went
 require_relative "diagnostics/time_by_routine"   # A frame's time by routine, from an emulator that counts by address
 require_relative "diagnostics/tape_profile"      # Each frame of a tape read by itself, and which work held its picture

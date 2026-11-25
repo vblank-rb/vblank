@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # THE ROOM A RELAY KEEPS, as a Lockstep's transport. It makes a room or joins one by its code, and
+    # The room a relay keeps, as a Lockstep's transport. It makes a room or joins one by its code, and
     # from then on carries the match's messages as text (Wire), one for each message, over a line that can
     # send and receive text: a WebSocket to the real relay, or a link to a stand-in in this process.
     #
@@ -11,7 +11,7 @@ module VBlank
     class RelayTransport
       attr_reader :id, :code
 
-      # HOW LONG A MACHINE WAITS FOR THE RELAY TO ANSWER a request (make a room, join one, list them) before it
+      # How long a machine waits for the relay to answer a request (make a room, join one, list them) before it
       # says the relay is not answering. A person waits this long at most, and is told what to do. A relay on
       # the other side of the world answers in well under a second, so this is room for a slow network, not a
       # guess at the relay's speed. A test passes a short one, so a lost answer fails at once.

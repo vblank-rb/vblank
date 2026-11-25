@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # A COLOR TILE'S BYTES, from its pixels. Each pixel is a place in a list of four colours
+        # A color tile's bytes, from its pixels. Each pixel is a place in a list of four colours
         # (0 to 3), eight to a row. The Color keeps a row in two bytes: the low bit of each place in
         # the first and the high bit in the second, the leftmost pixel in bit 7. Sixty-four places
         # are one tile; a tall sprite piece's 128 are its upper tile and then its lower.

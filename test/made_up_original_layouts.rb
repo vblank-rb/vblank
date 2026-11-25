@@ -3,7 +3,7 @@
 require "digest"
 require "tmpdir"
 
-# AN ORIGINAL FROM ANOTHER CONSOLE KEEPS ITS DATA IN THAT CONSOLE'S LAYOUT, and the pack holds those
+# An original from another console keeps its data in that console's layout, and the pack holds those
 # bytes unchanged. The original names its platform (`Original::Game.new(platform: :gbc)`), and a
 # slot of tiles, colours or numbers is read in that platform's layout unless it names another
 # (`layout:`), which an original from a computer must.
@@ -50,7 +50,7 @@ module MadeUpOriginalLayouts
   # One bit plane of a row, the leftmost pixel in bit 7.
   PLANE = ->(row, plane) { row.each_with_index.sum { |place, x| ((place >> plane) & 1) << (7 - x) } }
 
-  # THE ENCODERS, each from its console's hardware.
+  # The encoders, each from its console's hardware.
   # The Game Boy Color's tile, and the Super Nintendo's tile of four colours: two bytes a row,
   # plane 0 then plane 1.
   TWO_PLANES = ->(places) { ROWS.(places).flat_map { |row| [PLANE.(row, 0), PLANE.(row, 1)] }.pack("C*") }

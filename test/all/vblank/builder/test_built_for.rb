@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# ONE GAME FILE, A CHOICE FOR EACH CONSOLE. A game for several consoles asks `built_for?` as its
+# One game file, a choice for each console. A game for several consoles asks `built_for?` as its
 # block runs, and each console's build gets the picture the game chose for it: on every run, the
 # game built for that run's console, checked against the interpreter.
 class TestBuiltFor < Minitest::Test

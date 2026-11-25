@@ -3,7 +3,7 @@
 require "test_helper"
 require "screen_backdrop_games"
 
-# A BACKDROP THAT FADES WITH THE PICTURE: `screen :tiled, backdrop: :screen_colors` names a list of
+# A backdrop that fades with the picture: `screen :tiled, backdrop: :screen_colors` names a list of
 # colours, and the colour shown wherever nothing is drawn is the list's first colour, whatever the
 # game tells the list to hold with `recolor`. It changes on the frame the list's other users do.
 # The fixed backdrop is test_screen_backdrop.rb.
@@ -58,7 +58,7 @@ class TestScreenBackdropList < Minitest::Test
     assert_equal shown(BLUE), after_pass(stepping_game, 3).pixel(100, 100)
   end
 
-  # THE SAME FRAME AS A SPRITE DRAWN WITH THE LIST: the sprite's pixel and the backdrop come from
+  # The same frame as a sprite drawn with the list: the sprite's pixel and the backdrop come from
   # one set on every frame, never a frame apart.
   def test_the_backdrop_and_a_sprite_drawn_with_the_list_change_on_the_same_frame
     (1..3).each do |pass|
@@ -69,7 +69,7 @@ class TestScreenBackdropList < Minitest::Test
     end
   end
 
-  # ...AND AT A PLACE THE SPRITE DRAWS, where a console can show the backdrop from the list's own
+  # ...AND at a place the sprite draws, where a console can show the backdrop from the list's own
   # colours rather than a copy of one.
   def test_a_backdrop_at_a_place_a_sprite_draws_changes_with_the_sprite
     (1..3).each do |pass|
@@ -79,7 +79,7 @@ class TestScreenBackdropList < Minitest::Test
     end
   end
 
-  # THROUGH A TINT: the backdrop is the list's colour moved by the tint in force, as everything
+  # Through a tint: the backdrop is the list's colour moved by the tint in force, as everything
   # drawn with the list is, on every console.
   def test_a_tint_moves_the_backdrop_the_list_holds
     screen = after_pass(stepping_game(with_sprite: true, tinted: true), 3)
@@ -88,7 +88,7 @@ class TestScreenBackdropList < Minitest::Test
     assert_backends_agree(stepping_game(with_sprite: true, tinted: true), frames: [2, 3, 5], name: "BDTINT")
   end
 
-  # THE CONSOLE SHOWS IT TOO, pixel for pixel, as the list steps.
+  # The console shows it too, pixel for pixel, as the list steps.
   def test_the_console_shows_the_backdrop_as_the_interpreter_does
     assert_backends_agree(stepping_game(with_sprite: true), frames: [1, 2, 3, 5], name: "BDLIST")
     assert_backends_agree(stepping_game(with_sprite: true, place: 1), frames: [1, 2, 3, 5], name: "BDPLACE")
@@ -113,17 +113,14 @@ class TestScreenBackdropList < Minitest::Test
         step += 1 if step < STEPS.length - 1
         state = 1 if tick == 5
         recolor :screen_colors, STEPS.each_index.map { |n| :"step#{n}" }, showing: step
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :board
-        end
+        call({ 0 => :title, 1 => :board }, number: :state)
       end
     end
     b.finalize_program
     b.program
   end
 
-  # A SCENE ARRIVING LEAVES THE BACKDROP AS THE LIST HAS IT, rather than putting back the colour the
+  # A scene arriving leaves the backdrop as the list has it, rather than putting back the colour the
   # list was declared with: a game that faded its screen to blue keeps it blue across the hand-over.
   def test_a_scene_arriving_keeps_the_backdrop_the_list_holds
     screen = after_pass(title_then_board, 7)
@@ -133,7 +130,7 @@ class TestScreenBackdropList < Minitest::Test
     assert_backends_agree(title_then_board, frames: [3, 5, 6, 7], name: "BDSCENE")
   end
 
-  # ANOTHER PLACE OF THE LIST, by backdrop_place:.
+  # Another place of the list, by backdrop_place:.
   def test_backdrop_place_picks_another_color_of_the_list
     b = Builder.new
     b.instance_eval do
@@ -147,7 +144,7 @@ class TestScreenBackdropList < Minitest::Test
     assert_equal shown(:blue), after_pass(b.program, 2).pixel(100, 100)
   end
 
-  # A LIST NOTHING RECOLOURS is one colour for good, which the backdrop shows from power-on.
+  # A list nothing recolours is one colour for good, which the backdrop shows from power-on.
   def test_a_list_nothing_recolors_is_the_backdrop_it_was_declared_with
     b = Builder.new
     b.instance_eval do
@@ -196,7 +193,7 @@ class TestScreenBackdropList < Minitest::Test
       screen :tiled, backdrop: :screen_colors
       var :state, 0
       scene(:title) { screen :tiled, backdrop: :white }
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
 
     assert_match(/backdrop of its own/, error.message)
@@ -208,7 +205,7 @@ class TestScreenBackdropList < Minitest::Test
       screen :tiled, backdrop: :screen_colors
       var :state, 0
       scene(:title) { screen :bitmap }
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
 
     assert_match(/bitmap screen has no backdrop/, error.message)

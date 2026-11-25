@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # A VARIABLE KEPT A BYTE OR TWO WIDE (`var :x, 0, width: :byte`) holds what a list's slot of that
+    # A variable kept a byte or two wide (`var :x, 0, width: :byte`) holds what a list's slot of that
     # width holds: the low bits, read back with their sign, so 200 in a byte reads -56.
     #
     # Nothing in a backend knows that. Once a game is written, every statement that changes such a

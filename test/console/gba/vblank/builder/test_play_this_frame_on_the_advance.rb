@@ -53,7 +53,7 @@ class TestPlayThisFrameOnTheAdvance < Minitest::Test
     assert_mixes_agree(recorded_game(song: true, click: true), frames: 20)
   end
 
-  # TWO EFFECTS OF A GROUP ON RECORDINGS: the one sounding since pass 1 is cut off where the other
+  # Two effects of a group on recordings: the one sounding since pass 1 is cut off where the other
   # is asked, and the other's first note starts, both in the same slice of sound on both backends.
   def test_the_console_cuts_off_and_starts_recorded_effects_of_a_group_as_the_interpreter_does
     b = Builder.new
@@ -77,7 +77,7 @@ class TestPlayThisFrameOnTheAdvance < Minitest::Test
     assert_mixes_agree(b.program, frames: 20)
   end
 
-  # AN EFFECT ITS GROUP DOES NOT PLAY, asked for `this_frame: true`, changes nothing where it is
+  # An effect its group does not play, asked for `this_frame: true`, changes nothing where it is
   # asked: another group's effect, cut off by a plain ask earlier in the same pass, is still let go
   # of on the next frame, on both backends.
   def test_an_effect_not_played_asked_for_this_frame_cuts_nothing_off_early

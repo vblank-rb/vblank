@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# WHICH PLAYER EACH GAMEPAD AND KEY IS in `vblank run`'s window (Live::Seats): the same rule as the
+# Which player each gamepad and key is in `vblank run`'s window (Live::Seats): the same rule as the
 # desktop window's (test_native_seats.rb) and the web page's (test_js_page_players.rb).
 class TestSeats < Minitest::Test
   Seats = VBlank::Live::Seats

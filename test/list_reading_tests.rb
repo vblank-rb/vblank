@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME'S LISTS AND POOLS READ OFF A RUNNING CARTRIDGE, played by each console that has a cartridge.
+# A game's lists and pools read off a running cartridge, played by each console that has a cartridge.
 # The game does its work in its first passes and then idles, so the cartridge and the interpreter
 # hold the same numbers however their frames line up. Each including test says +console+.
 module ListReadingTests
@@ -21,7 +21,7 @@ module ListReadingTests
           3.times { queue.shift }
           [4, 5, 6].each { |number| queue.push number }
           words.push 100_000
-          words.push -2
+          words.push(-2)
           guards.spawn(x: 3, speed: 1.5)
           guards.spawn(x: 4, speed: 0.25)
           guards.spawn(x: 5, speed: -2.5)
@@ -59,6 +59,29 @@ module ListReadingTests
     assert_equal want.pool(:guards, :x), got.pool(:guards, :x)
     assert_equal want.pool(:guards, :speed), got.pool(:guards, :speed), "a fraction comes back as the interpreter gives it"
     assert_includes got.pool(:guards, :x), nil, "a free slot"
+  end
+
+  # Two scenes declare one list with different capacities, and the list holds what the declaration
+  # run last made: four items, though its place has room for eight.
+  def test_a_list_declared_again_reads_at_the_last_declarations_capacity
+    built = VBlank.build("LISTAGAIN", console: console, out: nil, err: nil) do
+      screen :bitmap
+      n = 0
+      scene(:big) do
+        list :marks, capacity: 8, full_of: 0
+        n = 1
+      end
+      scene(:small) do
+        marks = list :marks, capacity: 4, full_of: 0
+        marks[1] = -5
+        n = 2
+      end
+      game_loop { call({ 0 => :big, 1 => :small }, number: :n) }
+    end
+    got = cartridge(built)
+
+    assert_equal [0, -5, 0, 0], got.list(:marks)
+    assert_equal interpreter(built).list(:marks), got.list(:marks)
   end
 
   def test_a_name_the_game_does_not_have_says_what_it_has

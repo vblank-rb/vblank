@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # WHAT THE GAME'S NAMES ARE CALLED IN C.
+        # What the game's names are called in C.
         #
         # A game names its variables, routines, lists and pictures with Ruby symbols, and the
         # framework adds names of its own (`__frames`, a pool's hidden columns). Not all of

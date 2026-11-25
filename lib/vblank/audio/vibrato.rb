@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # HOW A NOTE WOBBLES ITS PITCH while it holds — a singer's vibrato, a violin's.
+    # How a note wobbles its pitch while it holds — a singer's vibrato, a violin's.
     #
     # No voice of the console does this by itself, so the music player does it, a frame at a time:
     # once the note has sounded for +after+ frames, it moves the voice's pitch number up by half
@@ -16,7 +16,7 @@ module VBlank
     # square voices and the wave voice wobble; the hiss has no pitch to wobble, and a recording
     # plays at a rate of the mixer's.
     #
-    # A VIBRATO THAT +carries+ keeps its swing from one note to the next — which side of the pitch
+    # A vibrato that +carries+ keeps its swing from one note to the next — which side of the pitch
     # it is on, and how long it has still to hold there — and only its wait starts again. That is how
     # some Game Boy games' music engines wobble, so a song converted from one asks for it. A note that
     # starts part way through a swing holds its own pitch until the swing runs out, then turns. A
@@ -51,7 +51,7 @@ module VBlank
       def above = (depth + 1) / 2
       def below = depth / 2
 
-      # THE WOBBLE A PART OR NOTE GAVE: :none, or a Hash of +depth+ (:slight, :medium, :wide, or
+      # The wobble a part or note gave: :none, or a Hash of +depth+ (:slight, :medium, :wide, or
       # 1 to 15 pitch steps), +speed+ (:fast, :medium, :slow, or the frames each swing holds, 1 to
       # 16) and +after+ (the frames before it starts, 0 to 255, or a note length when +frames+ can
       # turn one into frames). What a Hash leaves out is :medium, :medium and nought. Nil when it

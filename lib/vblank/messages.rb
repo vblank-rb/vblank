@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# HOW A BUILD TALKS TO THE PERSON RUNNING IT, while it is still building — the English names
+# How a build talks to the person running it, while it is still building — the English names
 # for shared things, the progress line, where the printing goes, and which line of the author's
 # own file to blame. None of it needs a cartridge to exist, which is what separates it from
 # Diagnostics, the part that reads a finished or running one back.

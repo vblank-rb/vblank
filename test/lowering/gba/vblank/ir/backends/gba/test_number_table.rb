@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A ROUTINE'S BIG NUMBERS, KEPT IN A TABLE AFTER ITS LAST INSTRUCTION.
+# A routine's big numbers, kept in a table after its last instruction.
 #
 # The chip puts a number in a register with one instruction only when the number is a single
 # byte, shifted; anything else is built a byte at a time, up to four instructions. The other
@@ -112,7 +112,7 @@ class TestNumberTable < Minitest::Test
     assert_equal THREE, word_named_by(words, late)
   end
 
-  # THE LINE IS COUNTED IN THE ROUTINE AS IT WAS MEASURED, with every number built — not in
+  # The line is counted in the routine as it was measured, with every number built — not in
   # the shorter routine the reads leave behind. Three loads of twelve bytes each, measured
   # at 0, 12 and 24 of a 36-byte routine, and a line 24 bytes from the end: the first is
   # past it and the other two are inside. The third really sits at 16, not 24, because the
@@ -187,7 +187,7 @@ class TestNumberTable < Minitest::Test
   # --- what the build is told, table or no table ---
 
   # The first pass of a build measures every routine with nothing moved and no table open.
-  # It still has to say which loads a table COULD take, so the routine can be charged for
+  # It still has to say which loads a table could take, so the routine can be charged for
   # the size it will really come to.
   def test_every_load_a_table_could_take_is_noted_with_no_table_open
     emitter = Emit.new

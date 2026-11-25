@@ -51,12 +51,15 @@ module VBlank
           PO_ROW = :__po_row # A scratch row offset while indexing a mask
           PO_RES = :__po_res # The answer, 0 or 1
 
+          # A set of poses' solid-pixel table: the data blob holding it and the box (+w+ by +h+) each pose fills.
+          PixelMask = Data.define(:blob, :w, :h)
+
           def initialize(emitter:, primitives:, lowering:, bitmaps:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
             @bitmaps = bitmaps
-            @pixel_masks = {} # poses (an array of image names) -> { blob:, w:, h: }
+            @pixel_masks = {}
           end
 
           # Build a solid-pixel table for every distinct set of poses any collision test
@@ -84,7 +87,7 @@ module VBlank
               bytes = poses.each_with_object(+"".b) { |image, acc| acc << mask_bytes(@bitmaps.fetch(image), width, height) }
               blob = :"__pixmask_#{@pixel_masks.size}"
               @emitter.data_blobs[blob] = bytes
-              { blob: blob, w: width, h: height }
+              PixelMask.new(blob: blob, w: width, h: height)
             end
           end
 
@@ -120,8 +123,8 @@ module VBlank
             # of the two right/bottom edges.
             store_max(PO_X0, PO_AX, 0, PO_BX, 0)
             store_max(PO_Y0, PO_AY, 0, PO_BY, 0)
-            store_min(PO_X1, PO_AX, a[:w], PO_BX, b[:w])
-            store_min(PO_Y1, PO_AY, a[:h], PO_BY, b[:h])
+            store_min(PO_X1, PO_AX, a.w, PO_BX, b.w)
+            store_min(PO_Y1, PO_AY, a.h, PO_BY, b.h)
 
             @emitter.emit_number(ACC, 0)
             @primitives.store_var(ACC, PO_RES) # default: no overlap
@@ -129,7 +132,7 @@ module VBlank
             done = @emitter.gensym
             branch_if_ge(PO_X0, PO_X1, done) # an empty rectangle can't overlap
             branch_if_ge(PO_Y0, PO_Y1, done)
-            emit_overlap_pixel_scan(a[:w], b[:w], done)
+            emit_overlap_pixel_scan(a.w, b.w, done)
 
             @emitter.place_label(done)
             @primitives.load_var(ACC, PO_RES)
@@ -149,9 +152,9 @@ module VBlank
           # base + pose*(w*h) — and stash the address.
           def stash_mask_address(pose_node, mask, dest)
             @lowering.value(pose_node) # ACC = pose index
-            @emitter.emit_number(TMP, mask[:w] * mask[:h])
+            @emitter.emit_number(TMP, mask.w * mask.h)
             @emitter.emit(ASM.mul(ACC, TMP, ACC)) # ACC = pose * area
-            @emitter.emit_load_data_address(TMP, mask[:blob])
+            @emitter.emit_load_data_address(TMP, mask.blob)
             @emitter.emit(ASM.add_reg(ACC, TMP, ACC)) # ACC = base + pose*area
             @primitives.store_var(ACC, dest)
           end
@@ -220,7 +223,7 @@ module VBlank
             @emitter.place_label(x_loop)
             branch_if_ge(PO_X, PO_X1, x_end)
 
-            # A pixel counts only if it's drawn in BOTH sprites; a see-through pixel in
+            # A pixel counts only if it's drawn in both sprites; a see-through pixel in
             # either means move on to the next column.
             load_mask_byte(PO_A_MASK, aw, PO_AX, PO_AY)
             @emitter.emit(ASM.cmp_imm(ACC, 0))

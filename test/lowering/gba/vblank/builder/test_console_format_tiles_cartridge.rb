@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# `console_format: true` ON THE ADVANCE. A list already holds what the Advance's video memory holds,
+# `console_format: true` on the Advance. A list already holds what the Advance's video memory holds,
 # so the word has nothing to skip: the cartridge is the same to the byte, and no Advance game pays
 # for the option the other consoles have.
 class TestConsoleFormatTilesCartridge < Minitest::Test

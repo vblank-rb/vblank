@@ -110,7 +110,7 @@ class TestOverlaps < Minitest::Test
   # coin vanishes. If the per-frame repaint erased-and-drew each sprite in turn, the
   # hero — drawn first — would capture the still-present coin under itself, then paint
   # that captured copy back when it moved off, leaving a fragment where the coin no
-  # longer is. Erasing EVERY sprite before drawing any means the hero captures clean
+  # longer is. Erasing every sprite before drawing any means the hero captures clean
   # background, so nothing is smeared. The coin is hidden, so any coin-colour pixel
   # left on screen is a fragment.
   def test_a_sprite_passing_over_a_vanishing_one_leaves_no_fragment

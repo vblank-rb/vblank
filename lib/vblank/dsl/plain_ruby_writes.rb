@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # What a write does, whatever its spelling: `x = 1`, `x += 1`, `@x = 1`, `h[:x] = 1`,
       # `o.x = 1`. The rewrite gives which place and which value, and this decides.
       module Writes
@@ -12,7 +12,7 @@ module VBlank
 
         module_function
 
-        # THE ONE DECISION. Every write comes here, whatever its spelling: +current+ is what the place
+        # The one decision. Every write comes here, whatever its spelling: +current+ is what the place
         # holds, +value+ what it is given, +tests+ the tests open around the line, +label+ the place as
         # the author wrote it. The block puts a value in the place, for Ruby's own kind of write. The
         # answer is what the name holds afterwards.
@@ -37,8 +37,14 @@ module VBlank
         # (InstanceVariables.write_target): one the game names is its game variable by now. +starting+
         # is a write in its `initialize`.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
-                  shares: false, before_plain_start: 0, owner: nil, starting: false)
-          share_argument(value, owner, label) if shares && owner
+                  before_plain_start: 0, owner: nil, starting: false)
+          Steps.refuse_number_question_as_number!(value)
+          # A thing of an Array of Structs given a name keeps its slot, so the name stays on that
+          # thing after its walk moves on.
+          return value.struct_array.kept(value, current) if value.is_a?(StructArray::Thing)
+
+          value = InstanceVariables.follow_objects_in(value)
+          refuse_object_replaced!(label, current, value)
           if owner
             InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)
             first = InstanceVariables.first_variable(owner, current, value, label)
@@ -51,9 +57,13 @@ module VBlank
           end
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return yield(value) if second_name && !game
-          if copies && Steps.variable?(value) && !own_variable?(current, owner, label)
+          if copies && Promotion.moved_instance_variable(current, value, owner, label).promoted?
             return yield(own_copy(label, value, owner))
           end
+          if handed_from_elsewhere?(value, owner, label) && !own_variable?(current, owner, label)
+            return yield(handed_copy(value, owner, label))
+          end
+
           unless Steps.variable?(current)
             claim_unheld(value, owner, label) if owner
             return write_plain_place(current, value, game, label, needs_slot) { |given| yield given }
@@ -104,9 +114,21 @@ module VBlank
         # is applied the way Ruby applies it, by public_send: that is Ruby itself, on purpose, and the
         # same goes for the verbs, attributes and setters below.
         #
-        # +owner+ is #write's.
+        # +owner+ is #write's. +walk_unread+ is true for a local changed from a block only running
+        # can place, where some block that changes it is called on something its first line could
+        # not read ahead (Rewriter#walk_unread?): see #refuse_unfollowed_walk!.
         def change(current, operator, amount, tests, label, second_name: false, before_plain_start: 0, owner: nil,
-                   starting: false)
+                   starting: false, field: nil, walk_unread: false)
+          # A field of a Struct that stays Ruby's holds a plain number, which the change works out
+          # as Ruby does, or a variable of its own (InstanceVariables.copy_field_number!), which it changes.
+          # A test opened since the Struct was made has given the field its variable
+          # (#promote_attribute), so a plain number here is under the tests it was made under.
+          if field && InstanceVariables.ruby_field?(*field)
+            return change_variable(current, operator, amount) if own_variable?(current, field.first, :"@#{field.last}")
+
+            return yield(current.public_send(operator, amount))
+          end
+
           current = InstanceVariables.change_target(owner, current, label, starting: starting) if owner
           game = tests_followed(current, tests, before_plain_start).any?(&:game?)
           return current.public_send(operator, amount) if second_name && !game
@@ -116,9 +138,17 @@ module VBlank
           end
           return change_variable(current, operator, amount) if Steps.variable?(current)
 
-          refuse_object_under_test!(label, current) if game
-          yield current.public_send(operator, amount)
+          refuse_object_under_test!(label, current) if game && !list_item?(current)
+          refuse_unfollowed_walk!(label) if walk_unread && amount.is_a?(Value) && Builder::Session.recording?
+          changed = yield current.public_send(operator, amount)
+          # Ruby answers the slot's new number. The working-out written back reads the slot, so
+          # read after the write it would count the change twice; the slot read again is the answer.
+          list_item?(current) ? current : changed
         end
+
+        # An item read from a game's list (`scores[0]`), whose change the line writes back with
+        # the list's own `[]=`: recorded where the line runs, under a game test too.
+        def list_item?(value) = value.is_a?(Value) && value.node.kind == :list_get
 
         def change_variable(target, operator, amount)
           return write(target, Steps.bits(target, operator, amount), [], target.name) { |given| given } if joins_tests?(target, operator)
@@ -132,8 +162,10 @@ module VBlank
 
         # What a slot of a Hash or an Array holds, nil on anything else. A game's own list answers
         # `[]=` itself. A Hash is asked with `fetch`, since `[]` runs its default block for a key it does
-        # not hold, and that block may be this very write.
+        # not hold, and that block may be this very write. Names a part keeps as Ruby's are refused
+        # (InstanceVariables.refuse_names_slot_changed!).
         def slot(collection, keys, value)
+          InstanceVariables.refuse_names_slot_changed!(collection)
           current = collection.fetch(keys.first, nil) if collection.is_a?(Hash)
           current = collection[*keys] if collection.is_a?(Array)
           refuse_new_slot!(collection, keys.first, value) if current.nil?
@@ -143,8 +175,11 @@ module VBlank
         # What an attribute holds. The library's own objects keep what they keep behind their setters,
         # so unless the attribute is a game variable the setter is left to do its work.
         def attribute(receiver, name)
-          # A named field of a Struct made in game code, read without counting as a read the game makes.
-          return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.named_field?(receiver, name)
+          # A field of a Struct the game follows, read without counting as a read the game makes.
+          return InstanceVariables.field_before_write(receiver, name) if InstanceVariables.followed_field?(receiver, name)
+          # Any other field of a Struct is Ruby's: a plain number, or a variable of its own holding
+          # the number it was given (InstanceVariables.copy_field_number!), which the write sets.
+          return InstanceVariables.copy_field_number!(receiver, name) if receiver.is_a?(Struct) && receiver.members.include?(name)
 
           current = receiver.public_send(name) if receiver.respond_to?(name)
           Steps.variable?(current) || !receiver.class.name.to_s.start_with?("VBlank::") ? current : nil
@@ -155,41 +190,44 @@ module VBlank
         # The variable a promotion makes is the place's own too, so a later line giving the place
         # another game variable (`@held = @states[0]`) copies the number into it.
         #
-        # A named instance variable still holding nil is left as it is. The line that sets it may be
-        # one this build skips, under a test decided while building (`@secret = called if
-        # @secret_floor`, with `@secret_floor` false), and then no game code reads or writes it, so
-        # it has no variable. Where the line does run, its write decides
-        # (InstanceVariables.refuse_nil_written_under_game_test!).
+        # Promotion.instance_variable decides a game's own instance variable: a named one still
+        # holding nil is left as it is (where its line does run, its write decides,
+        # InstanceVariables.refuse_nil_written_under_game_test!), and a named one uses its own game
+        # variable.
         def promote_place(value, test, *outer, may_stay_nil: false, owner: nil, label: nil)
           if owner
-            return value if value.nil? && InstanceVariables.followed?(owner, label)
+            answer = Promotion.instance_variable(owner, value, label)
+            return value if answer.reason == :named_still_nil
 
-            value = InstanceVariables.promotion_target(owner, value, label, test)
+            value = InstanceVariables.promotion_target(owner, value, label, test, answer)
           end
-          return value if Steps.variable?(value)
+          return value if Promotion.held(value).reason == :holds_variable
 
           promoted = promote(value, test, *outer, may_stay_nil: may_stay_nil)
           Steps.variable?(promoted) ? keep_as_own(promoted, owner, label) : promoted
         end
 
-        # #promote for a slot of a Hash or an Array. A slot that holds nothing yet has no number to
-        # keep, and a key a game works out is not a slot Ruby can name. A slot holding a game variable
-        # is left alone, so a frozen Hash of a part's variables stays usable.
+        # #promote for a slot of a Hash or an Array, where Promotion.slot and Promotion.held let it:
+        # a slot holding a game variable is left alone, so a frozen Hash of a part's variables stays
+        # usable.
         def promote_slot(collection, keys, test, *outer)
-          return unless (collection.is_a?(Hash) || collection.is_a?(Array)) && keys.none?(Value)
+          return unless Promotion.slot(collection, keys).promoted?
 
           current = slot(collection, keys, nil)
-          collection[*keys] = promote_place(current, test, *outer) unless current.nil? || Steps.variable?(current)
+          collection[*keys] = promote_place(current, test, *outer) if Promotion.held(current).promoted?
         end
 
         # #promote for an attribute of an object of the game's own.
         def promote_attribute(receiver, name, test, *outer)
           current = attribute(receiver, name)
-          return if current.nil? || Steps.variable?(current)
+          return unless Promotion.held(current).promoted?
 
           # A named field of a Struct is followed as an instance variable is.
           field = InstanceVariables.named_field?(receiver, name) ? { owner: receiver, label: :"@#{name}" } : {}
-          receiver.public_send(:"#{name}=", promote_place(current, test, *outer, **field))
+          promoted = promote_place(current, test, *outer, **field)
+          # Any other field's variable is its own too (InstanceVariables.copy_field_number!).
+          promoted = keep_as_own(promoted, receiver, :"@#{name}") if field.empty? && receiver.is_a?(Struct) && Steps.variable?(promoted) && !promoted.equal?(current)
+          receiver.public_send(:"#{name}=", promoted)
         end
 
         # Put +value+ in a game variable. A yes or no is kept as 1 or 0, and a test's answer is
@@ -273,19 +311,11 @@ module VBlank
 
         # A plain name is about to be changed under +test+. A test the game makes runs both sides
         # while building, so a plain name would end up with the last side's value whichever way
-        # the game goes. It gets a hidden variable holding its value now, and the sides change that.
-        #
-        # Tests already open around this one have seen to a name read after them, in +outer+. One read
-        # only inside them, and still holding a variable it was handed, gets its own here: the sides
-        # would otherwise write the variable it came from, which is somebody else's. So does one given
-        # a plain number since (`differing = 0` at the top of a loop's body): the variable an outer
-        # test gave the name is no longer what it holds. +name+ is the name promoted: a hidden
-        # variable made for another name is that name's (`bend = out`, `out` promoted or keeping
-        # a copy), and `bend = 0` under this test must not write it.
+        # the game goes. Where Promotion.value_under_test says so, it gets a hidden variable holding
+        # its value now, and the sides change that. +name+ is the name promoted: the hidden variable
+        # is that name's own (#owned_by?).
         def promote(value, test, *outer, may_stay_nil: false, name: nil)
-          return value unless test.game?
-          return value if outer.any?(&:game?) && Steps.variable?(value) && !handed?(value) && owned_by?(value, name)
-          return value unless number_kept?(value)
+          return value unless Promotion.value_under_test(value, test, *outer, name: name).promoted?
 
           own = test.hidden_variable(:promoted, like: value.is_a?(Value) || value.is_a?(Float) ? value : nil)
           own.owner_name = name
@@ -299,6 +329,32 @@ module VBlank
         # Is +variable+ a hidden one made for +name+ (#promote, Steps.kept_answer), or one made for
         # no name in particular (a pick, a join)?
         def owned_by?(variable, name) = name.nil? || variable.owner_name.nil? || variable.owner_name == name
+
+        # A line of game code gives the name +label+, which holds +current+, a Struct or a Data object
+        # game code read, another one (+value+). The build records each line once, so a read above
+        # this line found +current+, where in Ruby, on every pass after the first, it finds what
+        # this line gave the name on the pass before. The game cannot follow that. A Data object
+        # cannot change, so this is the only way to change its numbers, and the fix is a Struct.
+        def refuse_object_replaced!(label, current, value)
+          return unless fields_object?(current) && fields_object?(value) && !value.equal?(current)
+
+          builder = Builder::Session.builder
+          return unless Builder::Session.recording? && builder.instance_variable_uses.object_read?(current)
+
+          kind = current.class.name || current.class.superclass.name
+          fix = if current.is_a?(Data)
+                  "`#{kind}` is a Data class, so its objects cannot change. To fix this, make `#{kind}` a Struct, " \
+                    "keep one, and change its fields, like `#{label}.#{current.members.first} += 1`."
+                else
+                  "To fix this, keep one `#{kind}` and change its fields, like `#{label}.#{current.members.first} = 1`."
+                end
+          raise Refused, "This line gives `#{label}` a new `#{kind}`, and game code read the `#{kind}` that " \
+                         "`#{label}` held before. In Ruby, that read gets the `#{kind}` an earlier pass gave " \
+                         "`#{label}`. VBlank cannot follow that. #{fix}#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # Is +value+ an object with fields, a Struct or a Data object of the game's?
+        def fields_object?(value) = (value.is_a?(Struct) || value.is_a?(Data)) && !value.is_a?(StructArray::Thing)
 
         # Is +current+ a variable made for +owner+'s +label+ (#keep_as_own)? +owner+ is nil in
         # VBlank's own files, where any variable made for a place counts.
@@ -317,11 +373,13 @@ module VBlank
         # Does the instance variable +label+ of +owner+ hold +current+ without owning it, so that
         # storing +value+ there would change a variable made for another place?
         #
-        # A number stored in a variable a part was handed whole (an argument, another part's
-        # attribute) is the game's change to it, as plain-ruby.md tells, and so is one in a variable
-        # no other place held first (#claim_unheld). A slot's is not: `@held = @states[0]` takes the
-        # number to hold for a while (a rotation, a swap), and Ruby's `@held = 5` after it leaves
-        # `@states[0]` as it was. So in a game's own code any value counts there.
+        # A variable handed while setting up is copied as it is handed (#handed_copy), so this asks
+        # only of one held without a copy: handed in the `initialize` of a part game code makes, or
+        # one its class calls a changing verb on. A number stored in a variable no other place held
+        # first is the instance variable's own (#claim_unheld), and so is one in a variable it was
+        # handed to change by a verb. A slot's is not: `@held = @states[0]` takes the number to hold
+        # for a while, and Ruby's `@held = 5` after it leaves `@states[0]` as it was. So in a game's
+        # own code any value counts there.
         #
         # Anywhere, another variable given to a place that does not own the one it holds is a move,
         # never a copy into the other place's (`@focus = a`, then `@focus = b`); a hidden variable
@@ -346,7 +404,7 @@ module VBlank
         # is the object it belongs to, nil in VBlank's own files, which keep their variables with
         # `var`. While setting up the line runs once, so it moves the name as Ruby does.
         def refuse_write_to_handed_variable!(label, current, owner = nil)
-          return unless Builder.in_use&.recording_game_code?
+          return unless Builder::Session.recording?
 
           bare = label.to_s.delete("@")
           fix = if owner
@@ -368,8 +426,8 @@ module VBlank
         def note_handed_name_written(current, value, label)
           return unless Steps.variable?(current) && !value.equal?(current) && handed?(current)
 
-          builder = Builder.in_use
-          builder.record_handed_name_write(label, current.name) if builder&.recording_game_code?
+          builder = Builder::Session.builder
+          builder.record_handed_name_write(label, current.name) if Builder::Session.recording?
         end
 
         # A handle with no name is a field of a pool or the like, which the library's own code
@@ -393,6 +451,20 @@ module VBlank
         def refuse_new_place_under_test!(label)
           Steps.refuse_game_code!("`#{label}` has no number yet, and this line gives it one under a test the game " \
                                   "makes as it plays. To fix this, give it a number before the test.")
+        end
+
+        # A local of a part's method, changed by a game number from a block while game code is
+        # recorded, which its first line did not make a game variable, where that line could not
+        # read ahead what some block changing it walks (Rewriter#walk_unread?): a lambda handed with
+        # `&`, a helper that yields. Were it a game walk, Ruby's local would keep only one round's
+        # working-out, so the build refuses rather than guess. A change by a Ruby number is Ruby's
+        # planning, and stays Ruby's. So is a walk the line can read: an instance variable, a
+        # constant, a local, or the part's own plain reader.
+        def refuse_unfollowed_walk!(name)
+          Steps.refuse_game_code!("This line changes `#{name}` in a block, by a number the game works out as it " \
+                                  "plays. VBlank cannot tell what the block walks before it runs, so `#{name}` " \
+                                  "cannot be a game number. The game would keep only the last change. To fix this, " \
+                                  "walk the Array by its instance variable in this method, like `@things.each`.")
         end
 
         def refuse_object_under_test!(name, held)
@@ -428,32 +500,47 @@ module VBlank
         end
 
         # A number changed from a block that is a pool's `each` or a Ruby list's, which only running
-        # it can tell apart. Changed while game code is recorded, a plain number would change once,
-        # while building, and the game would never see it, so it becomes a game variable that starts
-        # at power-on with the number the name holds. While setting up, it is returned unchanged.
-        # See Rewriter#guarded_write_text.
+        # it can tell apart, made a game variable where Promotion.unplaced_change says so. It starts
+        # at power-on with the number the name holds. Otherwise it is returned unchanged. See
+        # Rewriter#guarded_write_text.
         def variable_while_recording(owner, current, name, recording, source: nil)
-          return current unless recording && whole_or_fraction?(current)
+          return current unless Promotion.unplaced_change(current, recording).promoted?
 
           variable_with_no_var_line(owner, name, current, source: source)
         end
 
         # The first line of such a name. Run while game code is recorded (in a method a game loop
         # calls), it sets the variable there, so each pass starts it afresh as Ruby's line would.
-        def start_variable_while_recording(owner, value, name, recording, source: nil)
-          return value unless recording && whole_or_fraction?(value)
+        #
+        # A part of a game is no builder, so +recording+ (Builder::Session.records_for?) is false
+        # in its methods, and Ruby planning there (`budget = 0`, then `loads.map { ... budget ...
+        # }`) stays Ruby's. Recording alone cannot decide for a part: that planning runs while game
+        # code is recorded too. Where the blocks that change the name walk an Array the game keeps
+        # (+walked+, the things they are called on: `sum = 0`, then `@points.each { |point| sum +=
+        # point.x }`), and game code is being recorded, the name is the game's, as it is in the
+        # game block. It is decided at the name's first line, before the walk, so the sum starts
+        # afresh on every call as Ruby's does.
+        def start_variable_while_recording(owner, value, name, recording, source: nil, walked: nil)
+          recording ||= walked && walks_game_array?(walked.call)
+          return value unless Promotion.unplaced_change(value, recording).promoted?
 
           give_variable(variable_with_no_var_line(owner, name, value.is_a?(Float) ? 0.0 : 0, source: source), value)
         end
 
-        # A Ruby whole number or fraction, unlike #number_kept?, which takes anything a game keeps.
-        def whole_or_fraction?(value) = value.is_a?(Integer) || value.is_a?(Float)
+        # Is game code being recorded, and one of +walked+ an Array the game keeps: a list, a pool,
+        # or an Array of Structs?
+        def walks_game_array?(walked)
+          return false unless Builder::Session.recording?
+
+          walked.any? { |each| each.is_a?(List) || each.is_a?(Pool) || each.is_a?(StructArray) }
+        end
 
         # A variable the author never wrote `var` for, which the out-of-memory error names.
         #
         # A game block runs on the builder, which has `var`. A part of a game is a plain class
-        # that holds one, so the variable comes from the builder in use, under a name nothing has
-        # taken: two parts, or two of one part, each have a local of their own, as in Ruby. The owner is
+        # that holds one, so the variable comes from the game being built (Builder::Session), under
+        # a name nothing has taken: two parts, or two of one part, each have a local of their own,
+        # as in Ruby. The owner is
         # whatever the game's block ran on, whose own `var` may be private, as a method the block called
         # bare would be: __send__ calls it as the block would have.
         #
@@ -482,21 +569,51 @@ module VBlank
           variable
         end
 
+        # `h = { a: 1, b: 2 }`, a Hash written out that game code changes at a key
+        # (LocalNames#game_hash?): a game variable for each key, named after the local and the key
+        # (`h_a`), each starting from the number Ruby holds there. Left a plain Hash, the change
+        # would run once, while building, and the game would never see it. The line sets each
+        # variable where it is reached, as a local's own line does (#variable_set_where_reached).
+        #
+        # The Hash refuses a key the game works out, and is frozen, so a key it does not have is
+        # refused as a misspelling (#refuse_new_slot!), as a part's Hash of numbers is
+        # (InstanceVariables.game_variables_in). Run as plain Ruby, it stays Ruby's.
+        def game_hash(owner, name, held, source: nil)
+          return held if Builder::Session.plain_ruby?
+
+          slots = held.to_h do |key, value|
+            # A place the game named itself (`{ x: var(:x, 1) }`, `{ x: hero.x }`) is kept as it is,
+            # as an Array keeps one (Arrays.named_place?): a change at its key changes that place.
+            next [key, value] if Arrays.named_place?(value)
+
+            slot_name = :"#{name}_#{key.is_a?(Symbol) || key.is_a?(Integer) || key.is_a?(String) ? key : 'key'}"
+            # Keyed apart from the source's own locals, so a local the game names `h_a` is another variable.
+            slot_source = source && "#{source} #{name}[#{key.inspect}]"
+            made = start_name(value) do |start, sets|
+              variable_set_where_reached(owner, slot_name, start, sets: sets, source: slot_source)
+            end
+            [key, made]
+          end
+          keyed = InstanceVariables::KeyedHash[slots]
+          keyed.each { |key, made| keep_as_own(made, keyed, key) if Steps.variable?(made) && made.holder.nil? }
+          keyed.freeze
+        end
+
         # Does the line that makes the variable +name+ run somewhere other than once at power-on?
         # Asked before the line makes it. A line on the builder makes the one variable of its local
         # each time it runs, so a second run finds it made. A part's line makes a new variable each
         # time it runs, which nothing has changed yet.
         def reached_after_power_on?(owner, name, source)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           return false if builder.nil?
-          return true if builder.recording_game_code?
+          return true if Builder::Session.recording?
           return builder.plain_local_made?(source, name) if source && owner.is_a?(Builder)
 
           owner.respond_to?(:var, true) && builder.variable_declared?(name)
         end
 
         def variable_for_part(name, start)
-          builder = Builder.in_use
+          builder = Builder::Session.builder
           Steps.refuse_game_code!("`#{name}` is changed by game code, but no game is being built. To fix this, " \
                             "make this part while a game is being built.") if builder.nil?
 
@@ -546,14 +663,34 @@ module VBlank
           variable
         end
 
-        # A part is handed a game variable whole as an argument, and an instance variable keeps it
-        # (`@sound_setting = sound_setting` in `initialize`). The caller gave the part that variable
-        # to change, so it is that instance variable's as well as the place it was made for.
-        def share_argument(value, owner, label)
-          return unless Steps.variable?(value)
+        # Is +value+ a variable another place holds, given to +owner+'s +label+ while setting up?
+        # Another part's (`@held = cursor.selection`, or an argument), a slot of a Hash or an
+        # Array's (`@held = @states[0]`), or a local a `var` line made (`@held = kept`). In Ruby the
+        # instance variable then holds the number, and a line giving it another leaves the other
+        # place as it was, so it keeps a copy of its own (#handed_copy). One a named instance
+        # variable is given has one already (InstanceVariables.first_variable), and one that holds
+        # a truth beside its number is left as it is. So is one whose code calls a changing verb on
+        # it (`@place.increase!(1)`): Ruby's instance variable holds the very object then, and the
+        # verb changes it for every place that holds it (InstanceVariables.changed_by_verb?).
+        def handed_from_elsewhere?(value, owner, label)
+          return false if owner.nil? || Builder::Session.recording? || !Steps.variable?(value)
+          return false if value.holder.nil? || value.held_by?(owner, label) || value.truth
 
-          claim_unheld(value, owner, label)
-          value.note_sharer(owner, label)
+          !InstanceVariables.changed_by_verb?(owner, label)
+        end
+
+        # The copy of +value+ that +owner+'s +label+ keeps of its own, holding +value+'s number from
+        # this line (#handed_from_elsewhere?). Game code that gives the instance variable a number
+        # changes the copy, never +value+. Where no line does, the build leaves the copy out, and
+        # the instance variable reads +value+ as it stands (Builder#drop_unwritten_handed_copies),
+        # so a part that only reads what it was handed costs nothing more. `rom.profile` lists each
+        # copy kept among the hidden variables.
+        def handed_copy(value, owner, label)
+          copy = Builder::Session.builder.handed_copy_variable(like: value)
+          copy.mark_boolean! if value.boolean?
+          copy.store!(value)
+          copy.stand_for(value)
+          keep_as_own(copy, owner, label)
         end
 
         # A place of +owner+'s, +label+, is given +value+ to hold as it is. A variable no place owns
@@ -568,6 +705,37 @@ module VBlank
           when Array
             value.each_with_index { |held, index| keep_as_own(held, value, index) if Steps.variable?(held) && held.holder.nil? }
           end
+        end
+
+        # `counts[0] &&= value` in game code, on a slot holding a number or true (+current+), or
+        # `counts[0] ||= value` on one holding false or a game's true or false. Ruby gives such a
+        # slot its value on every pass where the game would once, while building, so the slot would
+        # keep the number of that one run. Where Ruby never gives it one (`||=` on a number, which is
+        # never nil or false), or the slot holds nil or an object, the line runs as written
+        # (Rewriter#index_logic_write_text).
+        def refuse_logic_slot_write!(current, label, operator)
+          return unless Builder::Session.recording?
+
+          gives = if operator == "&&="
+                    current.is_a?(Value) || current.is_a?(Numeric) || true.equal?(current)
+                  else
+                    false.equal?(current) || Steps.game_test?(current)
+                  end
+          return unless gives
+
+          Steps.refuse_game_code!("This line changes `#{label}` with `#{operator}` as the game plays. VBlank cannot " \
+                                  "do this for a number or a true or false value. To fix this, write " \
+                                  "`#{label} = value`. To change it only some of the time, put that line under an `if`.")
+        end
+
+        # `counts[0] ||= value` reads the slot to see whether Ruby would give it a value, and a slot
+        # holding a number never gets one, so the read is all the line builds. That read is the
+        # line's own, never a number the author threw away (Builder#with_expressions_untracked).
+        def with_slot_reads_untracked(&)
+          builder = Builder::Session.builder
+          return yield unless Builder::Session.recording? && builder.respond_to?(:with_expressions_untracked)
+
+          builder.with_expressions_untracked(&)
         end
 
         # A number given to a key that a Hash of game variables does not hold is a misspelt key: it

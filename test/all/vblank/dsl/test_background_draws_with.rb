@@ -29,7 +29,7 @@ module BackgroundDrawsWithGames
     builder.program
   end
 
-  # THE COLOUR BEHIND EVERYTHING IS NOT ONE OF THE LAYER'S. The very first entry of the
+  # The colour behind everything is not one of the layer's. The very first entry of the
   # scenery's table is the backdrop, shown wherever no layer draws. A list's first place
   # means see-through and is never drawn, but the colour written there is still a colour:
   # were the layer's set of sixteen the first one in the table, writing a list into it
@@ -52,15 +52,15 @@ module BackgroundDrawsWithGames
   end
 end
 
-# A BACKGROUND THAT DRAWS WITH A DIFFERENT SET OF COLOURS while the game runs — shafts of
+# A background that draws with a different set of colours while the game runs — shafts of
 # light that shimmer, water that turns murky, a sky that goes from day to dusk. The scenery
 # does not change: every pixel of every tile keeps its place in the list the tiles were drawn
 # from, and only the colours those places show are swapped for another list's.
 #
 # It is the same verb a sprite already has, and underneath it is not the same thing at all. A
-# sprite is POINTED at another set of sixteen colours — the display holds several sets and the
+# sprite is pointed at another set of sixteen colours — the display holds several sets and the
 # sprite's own entry says which — where a background's every cell names its set, so the layer
-# is recoloured by writing the new colours INTO the set its tiles read. Nothing about that
+# is recoloured by writing the new colours into the set its tiles read. Nothing about that
 # reaches the program, which is the point of the verb reading the same.
 #
 # The Advance cartridge's own pixels are read in
@@ -90,7 +90,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     assert_backends_agree(wall, frames: 4)
   end
 
-  # A SPRITE IN FRONT OF A WALL THAT SHIMMERS, where nothing scrolls. The wall changes colours
+  # A sprite in front of a wall that shimmers, where nothing scrolls. The wall changes colours
   # every other frame while a blue walker moves a pixel every frame: the walker is drawn on
   # every one of them, the frames the wall changed on included.
   private def a_walker_in_front_of_a_shimmering_wall
@@ -194,7 +194,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     assert_backends_agree(a_wall_of_painted_bars_painted_again, frames: 6)
   end
 
-  # --- ONE OF SEVERAL, PICKED BY A NUMBER THE GAME WORKS OUT ---
+  # --- one of several, picked by a number the game works out ---
   #
   # This is the shape the effect is really for: several lists and a counter walking them, so
   # a layer shimmers, or a sky walks from dawn through dusk. The counter here steps every
@@ -259,7 +259,7 @@ class TestBackgroundDrawsWith < Minitest::Test
         end
       end
       game_loop do
-        case_var(:showing) { 3.times { |s| when_val s, :"room#{s}" } }
+        call 3.times.to_h { |s| [s, :"room#{s}"] }, number: :showing
         step += 1
       end
     end
@@ -455,7 +455,7 @@ class TestBackgroundDrawsWith < Minitest::Test
     (2..4).each { |frames| assert_backends_agree(prog, frames: frames) }
   end
 
-  # TWO LISTS NAMED APART ARE TWO LISTS, whatever they hold. A game that brings a screen in
+  # Two lists named apart are two lists, whatever they hold. A game that brings a screen in
   # from white declares every list of it white and walks each to its own colours, so a layer
   # drawn from :sea and :sky starts with both holding the same. Each is still told its own.
   # Given by place, since a list that holds white twice has no other way to say which is which.

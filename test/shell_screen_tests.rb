@@ -2,11 +2,11 @@
 
 require "shell_tests"
 
-# A SHELL'S FIRST SCREEN MADE THE GAME'S OWN (`shell_screen`), shared by the tests of each runtime
+# A shell's first screen made the game's own (`shell_screen`), shared by the tests of each runtime
 # that plays one: the made-up port of ShellTests with a font, colours, a picture and words of its
 # own on its first screen, and a line that shows a credits scene.
 #
-# THE ANSWER KEY is #first_screen_drawn_plainly: the same screen drawn by a plain game through the
+# The answer key is #first_screen_drawn_plainly: the same screen drawn by a plain game through the
 # DSL, each word at a place worked out here from the rule the docs give (.claude/dsl/original.md,
 # "The first screen"), in one state of the screen at a time. A shell's first screen is a VBlank
 # program, so every runtime that plays it must show what this shows, pixel for pixel.
@@ -109,7 +109,7 @@ module ShellScreenTests
   # The styled port as a shell is built from it.
   private def styled_port_without_copy(folder, version: "1") = styled_port(original_nowhere(folder), version: version)
 
-  # THE ANSWER KEY: the styled port's first screen as a plain game draws it, standing still, with
+  # The answer key: the styled port's first screen as a plain game draws it, standing still, with
   # the cursor on line +cursor+ (from 0), that line shown as chosen when +chosen+, or the credits
   # scene up in its place when +credits+.
   private def first_screen_drawn_plainly(cursor: 0, chosen: false, credits: false)
@@ -139,7 +139,7 @@ module ShellScreenTests
     b.program
   end
 
-  # TODAY'S SCREEN, which a game that gives nothing must still show: the screen as VBlank drew it
+  # Today's screen, which a game that gives nothing must still show: the screen as VBlank drew it
   # before a game could change it, written out as a plain game standing still in one state.
   private def default_screen_drawn_plainly(cursor: 0, chosen: false)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gba, for_computer: true))

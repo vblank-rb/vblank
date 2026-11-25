@@ -2,6 +2,8 @@
 
 require "test_helper"
 
+require "ractor_workers"
+
 # The picture check a game includes from the library's test helper (VBlank::Testing::Pictures),
 # where it differs from what this suite already holds it to through Differential: what a game's
 # test sees when the emulator is not there.
@@ -13,9 +15,10 @@ class TestPicturesInterpreter < Minitest::Test
   # cannot run beside tests in other Ractors that need the real one.
   runs_on_the_main_ractor!
 
+  include RactorWorkers
   include VBlank::Testing::Pictures
 
-  # A GAME WITHOUT THE EMULATOR GEM gets a failed test that says what to put in its Gemfile, not an
+  # A game without the emulator gem gets a failed test that says what to put in its Gemfile, not an
   # error from inside the library with a backtrace through it.
   def test_without_the_emulator_the_check_fails_saying_what_to_add
     advice = VBlank::Diagnostics::MissingEmulator.new(detail: "cannot load such file -- ruby_gba_emulator",
@@ -35,23 +38,13 @@ class TestPicturesInterpreter < Minitest::Test
   private
 
   # Run the block with the emulator's loader raising +advice+ as a missing emulator does, and put
-  # the real loader back after, by name: a method defined again from another method's handle could
-  # not be called from any other Ractor for the rest of the run.
+  # the real loader back after.
   #
   # The stand-in raises only on the main Ractor. The workers playing the other files run beside
-  # this class, and one that loads the emulator while it is in place is handed the real loader; a
-  # stand-in made from a block nobody made shareable would stop it with "defined with an
-  # un-shareable Proc in a different Ractor".
-  def without_the_emulator(advice)
-    emulator = VBlank::Diagnostics::Emulator
-    emulator.singleton_class.alias_method(:__real_load!, :load!)
-    emulator.singleton_class.remove_method(:load!)
-    emulator.define_singleton_method(:load!, MissingLoader.stand_in(advice.dup.freeze))
-    yield
-  ensure
-    emulator.singleton_class.remove_method(:load!)
-    emulator.singleton_class.alias_method(:load!, :__real_load!)
-    emulator.singleton_class.remove_method(:__real_load!)
+  # this class, and one that loads the emulator while it is in place is handed the real loader.
+  # RactorWorkers#while_swapped says how the swap keeps the loader callable from every Ractor.
+  def without_the_emulator(advice, &)
+    while_swapped(VBlank::Diagnostics::Emulator, :load!, MissingLoader.stand_in(advice.dup.freeze), &)
   end
 
   # The stand-in #without_the_emulator gives the loader, made in a module so the block's self is

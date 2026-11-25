@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/snake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake").to_s)
 
 # examples/snake.rb on a Super Nintendo, laid out on its 256×224 screen: the title, a game steered
 # into the top wall, the game-over screen and a second game — held to the interpreter after every

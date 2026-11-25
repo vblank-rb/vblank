@@ -197,7 +197,13 @@ class TestIRBackendReference < Minitest::Test
     assert_match(/hardware-only|can't run :raw/i, err.message)
   end
 
-  def test_case_var_dispatches_to_the_matching_scene
+  def test_reading_the_scanline_cannot_be_evaluated_in_the_interpreter
+    # read_scanline is a hardware-only value: the interpreter has no timing to report.
+    err = assert_raises(Reference::ProgramError) { run_ir(program(set(:line, read_scanline))) }
+    assert_match(/hardware-only value/i, err.message)
+  end
+
+  def test_case_dispatches_to_the_matching_scene
     i = run_ir(program(
       set(:state, 1),
       set(:hit, 0),
@@ -208,7 +214,7 @@ class TestIRBackendReference < Minitest::Test
     assert_equal 200, i[:hit] # state == 1 ran :playing, not :title
   end
 
-  def test_case_var_with_no_matching_clause_does_nothing
+  def test_case_with_no_matching_clause_does_nothing
     i = run_ir(program(
       set(:state, 9),
       set(:hit, 0),

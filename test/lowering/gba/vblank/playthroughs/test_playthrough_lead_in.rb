@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "comparison_games"
 
-# A LEAD-IN: a script of its own played on a cartridge before the playthrough starts. A
+# A lead-in: a script of its own played on a cartridge before the playthrough starts. A
 # cartridge somebody else made shows logos and an introduction that another does not, so two
 # cartridges from power-on are out of step before the first press. A lead-in for each gets
 # each to where the playthrough should begin, and nothing in it is counted: its frames are
@@ -17,7 +17,7 @@ class TestPlaythroughLeadIn < Minitest::Test
 
   Tape = VBlank::Playthroughs::Tape
 
-  # A PLAYTHROUGH AFTER A LEAD-IN COUNTS ITS FRAMES FROM THE END OF THE LEAD-IN, and its tape
+  # A playthrough after a lead-in counts its frames from the end of the lead-in, and its tape
   # holds its own presses and none of the lead-in's. So a walker with a logo, led in past
   # it, plays the walk exactly as a walker with none: the same frames, the same moments,
   # the box in the same place, and the same lines on the tape.
@@ -34,7 +34,7 @@ class TestPlaythroughLeadIn < Minitest::Test
 
   # --- a tape recorded after a lead-in ---
 
-  # A TAPE SAYS IT WAS RECORDED AFTER A LEAD-IN and holds none of its presses, so it is
+  # A tape says it was recorded after a lead-in and holds none of its presses, so it is
   # played after one or not at all: with no lead-in the same presses start somewhere else.
   # Written to a file and read back, it still says so.
   def test_a_tape_recorded_after_a_lead_in_says_so_and_is_played_after_one
@@ -62,8 +62,8 @@ class TestPlaythroughLeadIn < Minitest::Test
     (1..).find { game.step(1).blue?(0, 0) }
   end
 
-  # TWO CARTRIDGES THAT DIFFER ONLY IN HOW LONG THEY TAKE TO REACH THEIR FIRST SCREEN DRIFT
-  # FROM POWER-ON, and have no drift once each has a lead-in that waits for that screen —
+  # Two cartridges that differ only in how long they take to reach their first screen drift
+  # from power-on, and have no drift once each has a lead-in that waits for that screen —
   # fed the same tape, or each played by the same script.
   def test_two_cartridges_out_of_step_from_power_on_are_in_step_after_a_lead_in_each
     first = walker
@@ -79,7 +79,7 @@ class TestPlaythroughLeadIn < Minitest::Test
     refute_predicate walk_right.compare(first, second, lead_ins: lead_ins, same: :script), :drift?
   end
 
-  # FRAMES ARE COUNTED FROM THE FIRST FRAME AFTER THE LEAD-INS. This second walker's ground
+  # Frames are counted from the first frame after the lead-ins. This second walker's ground
   # turns red: from power-on, with no logo, that is on a frame found by playing it alone,
   # and after a lead-in it is that many frames sooner as the lead-in is long.
   def test_a_drift_after_lead_ins_is_counted_from_the_end_of_them
@@ -125,7 +125,7 @@ class TestPlaythroughLeadIn < Minitest::Test
     end
   end
 
-  # WHERE THE TWO WERE STARTED DIFFERENTLY THERE IS A TAPE FOR EACH, the same presses under
+  # Where the two were started differently there is a tape for each, the same presses under
   # two headings: a tape says where it starts, and a cartridge that was led in is not
   # started as one that was not. Each plays its own cartridge to the drifting frame.
   def test_cartridges_started_differently_get_a_tape_each

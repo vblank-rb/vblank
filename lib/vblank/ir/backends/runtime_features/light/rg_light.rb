@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A LIGHT (Framebuffer#shade_outside, Reference#work_out_shade): a `spotlight` or an `iris_out`, which
+# A light (Framebuffer#shade_outside, Reference#work_out_shade): a `spotlight` or an `iris_out`, which
 # darkens the picture everywhere outside one span of each row, as it is shown. Joined into the runtime's
 # class after rg_screen.rb for a game that has a light. rg_light.c says how, rule for rule; this is
 # that file written again, method for method.
@@ -42,7 +42,7 @@ def rg_shade_darkness(amount)
   @rg_shade_steps = rg_whole_sixteenths(amount)
 end
 
-# A LIGHT THAT SHOWS NOTHING OUTSIDE IT (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
+# A light that shows nothing outside it (Nodes::ShadeOutside#shuts_out, Framebuffer#outside_light):
 # the same amount, which is then only on (more than no sixteenths) or off, and the rest of each row
 # shows the colour of nothing drawn in place of the picture darkened.
 def rg_shade_shut_out(amount)

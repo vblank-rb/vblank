@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # A MACHINE'S LINK TO A RELAY THAT IS IN THIS PROCESS (StandInRelay): text goes in, text comes out, and
+    # A machine's link to a relay that is in this process (StandInRelay): text goes in, text comes out, and
     # a wait gives the other copies their turn (Scheduler). It answers what a RelayTransport asks of any
     # line, as a WebSocket does for the real relay: send_text, receive_text, wait_for_text, close, closed?.
     class InProcessLine

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME THE COLOR'S BUILD REFUSES IS NOT PLAYED AS ONE: every run that plays games as the Color
+# A game the color's build refuses is not played as one: every run that plays games as the Color
 # (its cartridge's, and the game as C, JavaScript and Ruby built as it) checks the program as that
 # build does before playing it (Testing::BuildChecks), and refuses it in the build's words.
 class TestCheckedPlayerOnTheColor < Minitest::Test

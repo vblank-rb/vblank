@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # TILES THE GAME PAINTS FROM A LIST (`tiles :box, from: list, count: n`), lowered for a Game
+          # Tiles the game paints from a list (`tiles :box, from: list, count: n`), lowered for a Game
           # Boy Color. Mixed into Lowering.
           #
           # The list holds each tile as the Advance's picture memory does: 32 bytes, two pixels a
@@ -19,7 +19,7 @@ module VBlank
           # of a sprite's picture painted from a list (GBC::Art#painted_sprite_picture), whose list
           # keeps its tiles in the order a sprite's pieces are kept.
           #
-          # A GROUP OF `tile_pictures` needs none of that. Its pictures are all known when the
+          # A group of `tile_pictures` needs none of that. Its pictures are all known when the
           # cartridge is built, so its table is written in the Color's own form, and its list is never
           # made here: where a list stood, two bytes name which picture. The console's copy takes the
           # picture straight from the cartridge in the blank, with its bank put in view, so a show
@@ -73,7 +73,7 @@ module VBlank
               @art.run_tile(name, run_colors_shown(run), solid: solid_run?(run), swaps: painted_tile_swaps(name), room: room)
             end
 
-            # A RUN OF A DATA PACK'S TILES TAKING TURNS (Builder::PackTilePictures) is drawn from a bank
+            # A run of a data pack's tiles taking turns (Builder::PackTilePictures) is drawn from a bank
             # of the original's colours, sixteen on most consoles, of which a Color tile shows three
             # and the backdrop. Its pictures are all known as the cartridge is built, so where
             # together they draw three places of the bank or fewer, the run is drawn from those

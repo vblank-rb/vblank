@@ -5,7 +5,7 @@ require "test_helper"
 # The games these tests play, shared with the Advance's own twin of them
 # (test/console/gba/vblank/builder/test_still_frames_on_the_advance.rb).
 #
-# A SCREEN THAT IS REBUILT WHOLE draws its picture again from everything it is made of: the
+# A screen that is rebuilt whole draws its picture again from everything it is made of: the
 # backdrop, each background where it is scrolled to, the sprites over them. A game that scrolls
 # a background even once is one, and so is one that bends, turns or fades a layer. Each such
 # game asks for that rebuild itself every frame, when it says where its backgrounds are and when
@@ -13,7 +13,7 @@ require "test_helper"
 # account. A run that skips the rebuild on a frame where the scroll and the sprites stand still
 # gains a great deal, and finds out whether anything else changes the picture but never asked.
 #
-# Every game here holds its scroll and its sprite exactly still, and on one frame changes ONE
+# Every game here holds its scroll and its sprite exactly still, and on one frame changes one
 # other thing, so nothing else in the picture covers for it. Nine frames follow it, all still,
 # and each is compared with the interpreter on the runs that check every frame, so a picture
 # that should have changed and did not is seen on the frame it was due and on every one after.
@@ -228,10 +228,7 @@ class TestStillFrames < Minitest::Test
       game_loop do
         tick += 1
         state = cover_first ? 0 : 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :bare
-          when_val 1, :covered
-        end
+        call({ 0 => :bare, 1 => :covered }, number: :state)
       end
     end
   end
@@ -259,10 +256,7 @@ class TestStillFrames < Minitest::Test
         state = 1 if tick == 2
         state = 0 if tick == 5
         state = 1 if tick == CHANGE_AT + 4
-        case_var(:state) do
-          when_val 0, :bare
-          when_val 1, :covered
-        end
+        call({ 0 => :bare, 1 => :covered }, number: :state)
       end
     end
 
@@ -278,10 +272,7 @@ class TestStillFrames < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == CHANGE_AT
-        case_var(:state) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :state)
       end
     end
 

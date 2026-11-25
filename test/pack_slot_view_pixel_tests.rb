@@ -2,7 +2,7 @@
 
 require "pack_slot_view_games"
 
-# PIXELS AND TABLES READ THROUGH VIEWS OF A SLOT OF TILES (DSL::PackSlot#as_pixels, #as_numbers),
+# Pixels and tables read through views of a slot of tiles (DSL::PackSlot#as_pixels, #as_numbers),
 # held to the same game holding them itself (PackSlotViewGames#table_and_pixels_game_and_file). The
 # picture is a tile of 256 colours, five of them in one 8x8 square over black, which a Game Boy Color
 # cannot show (it keeps 4 colours in each square), so each console that can has a test file that

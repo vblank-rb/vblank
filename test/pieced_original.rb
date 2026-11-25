@@ -2,7 +2,7 @@
 
 require "made_up_original"
 
-# A MADE-UP ORIGINAL WHOSE MUSIC IS UNPACKED IN PIECES, shared by the tests of pieces on the build,
+# A made-up original whose music is unpacked in pieces, shared by the tests of pieces on the build,
 # on the Ruby shell's workers and on the web page's: the made-up original's copy, read by a routine
 # of three parts. Its tiles are unpacked first and its heights last, each a part of one piece, and
 # between them its "songs" are rendered, a song a piece, into rooms of uneven size, as a port

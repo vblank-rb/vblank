@@ -1,5 +1,5 @@
 /*
- * THE SENTENCES A FILE IS REFUSED IN. Every sentence is made once, in Ruby, when the game is built
+ * The sentences a file is refused in. Every sentence is made once, in Ruby, when the game is built
  * (IR::StartFile#rules, Original::ShellFacts), with {name} where something only the running program
  * knows goes: the size of the file it was handed, the name of the file a player picked. This fills
  * them in, and checks a file against the numbers it must hold, for the game as it starts

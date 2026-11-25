@@ -18,10 +18,21 @@ class TestDslReference < Minitest::Test
   # a line per verb and was capped at 12,000 characters; the map is a few words a page.
   MOST_MAP_CHARACTERS = 5_000
 
+  # Verbs a game never writes: plain Ruby builds into them, an Array of numbers into a list and an
+  # Array of Structs into a pool. Each is told on its page, under "What plain Ruby builds", for a
+  # reader of the build, and is on no page's "On this page" list, which is what an author writes.
+  BUILT_FROM_PLAIN_RUBY = { list: "lists.md", pool: "pools.md" }.freeze
+
   include DslVerbs
 
   # Match the verb name as a whole word (so `set` isn't satisfied by `set_cell`).
   private def mentions?(text, verb) = text.match?(/(?<!\w)#{Regexp.escape(verb.to_s)}(?!\w)/)
+
+  # Does +text+ show +verb+ as a call written in code, `` `list :trail` `` or `` `pool(...)` ``?
+  # The bare word is ordinary prose ("a list of colours"), so it does not count.
+  private def shows_call?(text, verb) = text.match?(/`#{Regexp.escape(verb.to_s)}[ (`]/)
+
+  private def authors_verbs = dsl_verbs - BUILT_FROM_PLAIN_RUBY.keys
 
   # Each page with its "On this page" list and the rest of the page after it, as
   # [file name, list, rest]. A page with no list (a console's, plain-ruby.md) has an empty one.
@@ -39,7 +50,7 @@ class TestDslReference < Minitest::Test
     assert_operator dsl_verbs.length, :>, 40, "DSL verb enumeration looks broken (#{dsl_verbs.length} verbs)"
 
     lists = pages.map { |_, list, _| list }.join("\n")
-    missing = dsl_verbs.reject { |verb| mentions?(lists, verb) }
+    missing = authors_verbs.reject { |verb| mentions?(lists, verb) }
     assert_empty missing, <<~MSG
       These DSL verbs are on no page's "On this page" list under .claude/dsl/:
         #{missing.join(', ')}
@@ -62,13 +73,32 @@ class TestDslReference < Minitest::Test
   # A verb on a page's list has to be told on that page, below the list, and not merely listed.
   def test_every_verb_on_a_list_is_told_in_full_on_its_page
     missing = pages.flat_map do |name, list, rest|
-      dsl_verbs.select { |verb| mentions?(list, verb) && !mentions?(rest, verb) }.map { |verb| "#{verb} (#{name})" }
+      authors_verbs.select { |verb| mentions?(list, verb) && !mentions?(rest, verb) }.map { |verb| "#{verb} (#{name})" }
     end
 
     assert_empty missing, <<~MSG
       These DSL verbs are on a page's list but not told below it on that page:
         #{missing.join(', ')}
       Tell each one in full on that page, or move its line to the page it belongs on.
+    MSG
+  end
+
+  def test_every_verb_plain_ruby_builds_is_told_on_its_page_and_on_no_list
+    assert_empty BUILT_FROM_PLAIN_RUBY.keys - dsl_verbs, "BUILT_FROM_PLAIN_RUBY names a verb Builder no longer has"
+
+    by_name = pages.to_h { |name, list, rest| [name, [list, rest]] }
+    problems = BUILT_FROM_PLAIN_RUBY.flat_map do |verb, page|
+      built = by_name.fetch(page).last[/^## What plain Ruby builds\n(.*?)(?=^## |\z)/m, 1].to_s
+      told = shows_call?(built, verb) ? [] : ["`#{verb}` is not told under \"What plain Ruby builds\" on #{page}"]
+      listed = by_name.select { |_, (list, _)| shows_call?(list, verb) }
+                      .map { |name, _| "`#{verb}` is on the \"On this page\" list of #{name}" }
+      told + listed
+    end
+
+    assert_empty problems, <<~MSG
+      #{problems.join("\n")}
+      A game writes a Ruby Array, and the build makes the list or pool, so these verbs are told
+      under "What plain Ruby builds" on their page and on no author's list.
     MSG
   end
 

@@ -7,6 +7,7 @@ require "all/vblank/builder/test_camera_shake"
 # the shake do on every run is in test/all/vblank/builder/test_camera_shake.rb.
 class TestCameraShakeCartridge < Minitest::Test
   include CameraShakeGames
+  include VBlank::Testing::Pictures
 
   # The shake really moves the picture on the hardware, and really puts it back.
   # Two ROMs of the same game stopped at different frames: one mid-shake, one after.
@@ -53,5 +54,23 @@ class TestCameraShakeCartridge < Minitest::Test
     assert after.green?(100, 60) && !after.green?(99, 60) && !after.green?(100, 59),
            "settled, the sprite is back where it was placed"
     assert after.red?(0, 30) && after.red?(3, 30) && after.blue?(4, 30), "and the background is back too"
+  end
+  # On a tear-free screen the pass draws a page that the next flip shows, and the camera it set moves
+  # that page, not the one on show while it runs: the cartridge's picture is the interpreter's, with
+  # the camera a step further every pass.
+  def test_a_camera_moving_every_pass_on_a_tear_free_screen_moves_the_page_drawn_with_it
+    game = VBlank.game("PAGECAM", consoles: %i[gba]) do
+      screen :bitmap, tear_free: true
+      step = var :step, 0
+      game_loop do
+        clear_screen :blue
+        fill_rect 0, 0, screen_width, 2, :white
+        fill_rect 20, 20, 30, 20, :yellow
+        camera step, step / 2
+        step += 1
+      end
+    end
+
+    assert_backends_agree(game.program, frames: [2, 5, 9], name: "PAGECAM")
   end
 end

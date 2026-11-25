@@ -2822,9 +2822,9 @@
           ]
         },
         {
-          "source": "effects/packs/keep_showing",
+          "source": "effects/packs/redraw_on_change",
           "specifiers": [
-            "effects/packs/keep_showing"
+            "effects/packs/redraw_on_change"
           ]
         }
       ],
@@ -2854,8 +2854,8 @@
       "totalLines": 177,
       "hasStructuralAnalysis": true
     },
-    "lib/vblank/effects/packs/keep_showing.rb": {
-      "filePath": "lib/vblank/effects/packs/keep_showing.rb",
+    "lib/vblank/effects/packs/redraw_on_change.rb": {
+      "filePath": "lib/vblank/effects/packs/redraw_on_change.rb",
       "contentHash": "f6f37782bbc2a245013ae2b66c76002bc5fdc6a222531a0d06ab4cb35f01f3e1",
       "functions": [],
       "classes": [

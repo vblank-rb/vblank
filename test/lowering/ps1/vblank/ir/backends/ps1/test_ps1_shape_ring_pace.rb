@@ -65,13 +65,13 @@ class TestPS1ShapeRingPace < Minitest::Test
     end
   end
 
-  # THE SAME EIGHT BALLS IN VIEW, TWO WAYS, seen by a viewer that moves a little every pass as a
+  # The same eight balls in view, two ways, seen by a viewer that moves a little every pass as a
   # player's does: with the setting balls: :at_spots, one ball drawn at each of AHEAD; with
   # :declared, eight declared in one place where those stand, drawn once; with :none, nothing.
   #
-  # THE VIEWER MUST MOVE. A place drawn where it was declared, by a viewer that has not moved since
+  # The viewer must move. A place drawn where it was declared, by a viewer that has not moved since
   # the pass before, reads the points that pass turned and turns none (IR::PlaceDrawing, "HANDED
-  # OVER UNCHANGED"); a shape at a spot turns its points for every drawing. Measured with the viewer
+  # over unchanged"); a shape at a spot turns its points for every drawing. Measured with the viewer
   # standing still, the declared place costs well under the shapes at spots, and all of the
   # difference is turning it never did. No game holds its viewer still.
   IN_VIEW = VBlank.game("BALLS IN VIEW", consoles: %i[ps1]) do

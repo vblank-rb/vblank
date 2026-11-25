@@ -4,6 +4,23 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning for a layer made so see-through that none of it shows:
+        #
+        # > The layer :<name> is 100 see-through, so none of it shows. The game still draws it and
+        # > still holds its art.
+        #
+        # A layer given `shows:` and `behind:` is told the same thing in other words:
+        #
+        # > The layer :<name> shows <amount> of itself. That rounds to nothing, so none of the
+        # > layer shows. The game still draws it and still holds its art.
+        #
+        # Nothing looks broken: the picture is the same as with no layer at all, and the game
+        # still pays for the layer's art. Most often the number was turned the wrong way. For
+        # see-through, 0 is solid and 100 is invisible, so use a smaller number. For `shows:`, 0
+        # is none of the layer and 100 is all of it, so use a bigger one. Or remove the layer.
+        # An amount the game works out as it runs is not checked.
+        #
+        #--
         # A layer made so see-through that it cannot be seen.
         #
         # `transparency: 100` means none of the layer shows and all of what is behind it
@@ -14,6 +31,7 @@ module VBlank
         #
         # Almost always a slider walked the wrong way: 0 is solid and 100 is invisible,
         # and the two are easy to swap the first time.
+        #++
         class LayerInvisible
           NAME = :layer_invisible
           PLAIN_NAME = "a layer too see-through to see"

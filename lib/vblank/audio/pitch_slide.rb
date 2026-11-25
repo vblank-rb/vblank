@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # HOW A NOTE ON THE FIRST SQUARE VOICE SLIDES ITS OWN PITCH while it holds.
+    # How a note on the first square voice slides its own pitch while it holds.
     #
     # That voice has a circuit the other three lack. Struck at a pitch, every +every+ 128ths of a
     # second it moves the pitch by a part of itself — up or down — with nothing from the game. The
@@ -44,7 +44,7 @@ module VBlank
       # Whether +slide+ — as given, or nil for nothing given — moves the pitch.
       def self.moves?(slide) = !slide.nil? && slide.moves?
 
-      # THE SLIDE A PART OR NOTE GAVE, from the two words a song writes it with: +up+ to slide it up
+      # The slide a part or note gave, from the two words a song writes it with: +up+ to slide it up
       # and +down+ to slide it down. Each is a speed (:fast, :medium or :slow), :none, or the
       # voice's own two numbers ({ every: 1..7, shift: 1..7 }). Nil when it gave neither.
       def self.said(up:, down:, where:)
@@ -84,7 +84,7 @@ module VBlank
                              "square part can slide its notes. To fix this, give the slide to that part."
       end
 
-      # THE COUNT the voice keeps its pitch as, one past the highest there is. A step moves it by
+      # The count the voice keeps its pitch as, one past the highest there is. A step moves it by
       # itself shifted right, and a step past the top is no pitch at all.
       COUNT_TOP = 2048
 

@@ -37,7 +37,7 @@ module VBlank
                       "`screen :rotozoom` " \
                       "works too: the processor draws the turned background. `pixel_size: 2` is refused: the " \
                       "build does not show a painted screen bigger yet."),
-        setting: works,
+        setting: works, feature?: works,
         built_for_computer?: works("false on DOS."),
         built_for?: works("true when asked about :dos."),
         screen_width: works("320 on DOS, or what the variant says."),
@@ -59,7 +59,6 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works,
         fill_rect: works,
-        dma_fill_rect: works("the processor fills the rectangle: DOS has no DMA copy for the picture."),
         draw_rect_at: works,
         draw_column_at: works,
         place: works("a place is data in the program."),
@@ -73,7 +72,7 @@ module VBlank
         inside: works,
         grid: works,
         camera: works,
-        keep_showing: works,
+        redraw_on_change: works,
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` and `tint` change the palette the card shows, so the whole picture changes at once. " \
@@ -158,16 +157,10 @@ module VBlank
         part: works, start_over: works,
         clock: works("the PC's clock chip keeps the date and the time."),
         saves_keep_everything: works,
-        set: works, add: works, add_var: works,
-        sub: works, sub_var: works, copy: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on DOS, which runs all of its code alike."),
         call: works,
         scene: works("see `func` for `fast:`."),
-        case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the program holds what each slot holds, as if the game had written it."),
         dump_func: refused("it lists the ARM a routine was made into, and a PC has no ARM processor to list it for."),
@@ -178,7 +171,9 @@ module VBlank
                     "`:start` Enter, `:select` Right Shift, and the arrows are the D-pad. There is no `:x` or `:y`, " \
                     "and no joystick: the build reads the keyboard alone. `player: 2` is refused."),
         pressed: works("see `held`."),
-        most_players: works,
+        pulled: works("0 or 100. Each key of a keyboard is up or down, so a button reads 100 while it is held and 0 " \
+                      "otherwise."),
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a console is played by one person."),
         mark: works,
         players_connected: works("1."),
@@ -259,12 +254,12 @@ module VBlank
       NOT_MADE_YET_PART = "everything past numbers, the game loop and a painted screen of pixels, rectangles, pictures, text and numbers"
 
       VERBS_NOT_MADE_YET = Ractor.make_shareable({
-        NOT_MADE_YET_PART => ANSWERS.keys - %i[setting built_for_computer? built_for? screen_width screen_height
+        NOT_MADE_YET_PART => ANSWERS.keys - %i[setting feature? built_for_computer? built_for? screen_width screen_height
                                                border halt debug_halt game_loop once_a_frame frames_since_power_on
-                                               each_pass repeat wait_vblank screen clear_screen pixel fill_rect dma_fill_rect
+                                               each_pass repeat wait_vblank screen clear_screen pixel fill_rect max_players
                                                draw_rect_at image blit draw_text draw_number color rgb rgb8
-                                               var set add add_var sub sub_var copy held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
-                                               func call scene case_var every after shake_screen
+                                               var held pressed save_var clock inside sprite fade tint camera pixelate colors recolor draw_column_at
+                                               func call scene every after shake_screen
                                                timer table chance rand roll seed randomize list pool
                                                save_data players_connected drawing_for_local_player tiles background layers layer status_bar
                                                colors_name_of computer_keys computer_gamepad shell_screen]

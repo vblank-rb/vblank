@@ -41,12 +41,12 @@ module DirectionalAnimationGames
   end
 end
 
-# Directional sprite animation: `facing:` given a LIST of frames per direction runs a
+# Directional sprite animation: `facing:` given a list of frames per direction runs a
 # per-direction animation — a character with its own walk cycle each way it faces, or
 # Pac chomping in whichever direction he moves. The pose the sprite shows composes the
 # two selectors: pose = direction * frames_per_direction + frame. These prove, on every
 # run (and on the Advance's cartridge, in the file named above), that facing picks the
-# right ROW and the frame animates WITHIN it.
+# right row and the frame animates within it.
 class TestDirectionalAnimation < Minitest::Test
   include VBlank::Console::Hardware
   include DirectionalAnimationGames

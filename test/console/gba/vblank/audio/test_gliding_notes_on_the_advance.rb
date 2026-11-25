@@ -78,7 +78,7 @@ class TestGlidingNotesOnTheAdvance < Minitest::Test
     assert_mixes_agree bending_effect, frames: 60, at_least: 30
   end
 
-  # A SONG THAT COMES ROUND TO A NOTE IT HOLDS, bent the frame after: the held note is on a recording
+  # A song that comes round to a note it holds, bent the frame after: the held note is on a recording
   # of its own (the harp, not the part's tone), and the glide reads that recording faster each time
   # round. A tick is a frame; the song is 30 frames and comes round to frame 10, so the bend at 11
   # plays on the first pass and again at 31 and 51.

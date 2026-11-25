@@ -3,7 +3,7 @@
 require "test_helper"
 require "first_pass_presses"
 
-# WHAT THE GAME'S SAVES KEEP, READ IN ONE PIECE. A game that saves in the middle of play wants a
+# What the game's saves keep, read in one piece. A game that saves in the middle of play wants a
 # test that loads and asks "did everything come back?". `game_state` holds every variable,
 # including working room no save keeps (a scratch name starting with _, a part's variable marked
 # `game_variables ..., saved: false`), so the test reads `saved_state` instead: the same shape,

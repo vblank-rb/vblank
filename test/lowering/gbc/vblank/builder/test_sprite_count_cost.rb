@@ -3,7 +3,7 @@
 require "test_helper"
 require "sprite_count_cost_games"
 
-# WHAT SPRITES NOT SHOWING COST ON THE GAME BOY COLOR, measured in the emulator. A sprite not
+# What sprites not showing cost on the Game Boy Color, measured in the emulator. A sprite not
 # showing is a test of whether it shows; the budget for one is a test of four bytes and a branch,
 # sixteen machine cycles, so thirty-two of them are under two and a half of the frame's 154 lines.
 # The sprite table's copy is switched off past the last entry a pass wrote only where the pass
@@ -29,7 +29,7 @@ class TestGBCSpriteCountCost < Minitest::Test
 
   # Measured: a line and a half every pass, switching off the thirty-six entries past the four
   # sprites' own, before only the entries the pass before wrote were switched off.
-  # IN A DRAW ORDER a thing not showing is left out of the sort, and the walk that places the sprites
+  # In a draw order a thing not showing is left out of the sort, and the walk that places the sprites
   # stops before it (Lowering::ShownSort): it costs the test of whether it shows and one of whether it
   # showed last pass, a read and a jump each, so thirty-two cost about twice what they cost outside an
   # order, under four lines.

@@ -2,10 +2,10 @@
  * Asks runtime/rg_save.c when a driver that keeps the save in a file would write it, a line of
  * standard input each. See test_native_save_file.rb.
  *
- *   play FRAMES SAVING WRITES
- *                  plays FRAMES frames. The game saves a byte during each of the first SAVING of
+ *   play frames saving writes
+ *                  plays frames frames. The game saves a byte during each of the first saving of
  *                  them. At the end of every frame the driver asks whether the file is due, as
- *                  the window does, and where it is, writes it (WRITES 1) or fails to (WRITES
+ *                  the window does, and where it is, writes it (WRITES 1) or fails to (writes
  *                  0). Prints the frames the file was due at the end of.
  */
 #include <stdarg.h>

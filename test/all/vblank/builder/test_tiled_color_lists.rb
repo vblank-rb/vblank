@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND TILE DRAWN BY PLACE FROM A NAMED LIST OF FOUR COLOURS — the way a cartridge made
+# A background tile drawn by place from a named list of four colours — the way a cartridge made
 # for the Color draws its screens: a palette of four, and each tile's pixels numbers into it. A
 # tile that draws no see-through pixel (no place 0) keeps all four of its list's colours, and
 # every tile naming the same list is drawn from one palette, so a screen of eight such lists fits
@@ -78,7 +78,7 @@ class TestTiledColorLists < Minitest::Test
     assert_backends_agree(lists_game(8), frames: 3, name: "EIGHT")
   end
 
-  # A LIST WITH NO BLACK IN IT, the first the screen draws from: the empty cells around the tiles
+  # A list with no black in it, the first the screen draws from: the empty cells around the tiles
   # still show black, the colour nothing drawn is on every console.
   def test_an_empty_cell_beside_a_list_with_no_black_is_still_black
     game = lists_game(2, lists: ->(n) { list_colors(n, without_black: true) })
@@ -95,7 +95,7 @@ class TestTiledColorLists < Minitest::Test
     assert_backends_agree(game, frames: 3, name: "FIRSTNOBLK")
   end
 
-  # DRAWN WITH ANOTHER LIST, each place shows that list's colour at the same place — black
+  # Drawn with another list, each place shows that list's colour at the same place — black
   # included, which turns white here — while the empty cells around the tiles stay black.
   def test_a_tile_drawn_with_another_list_swaps_place_for_place
     other = [:transparent, rgb_of(2, 20, 2), rgb_of(20, 2, 20), rgb_of(2, 2, 20), rgb_of(31, 31, 31)]
@@ -107,7 +107,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal 0, seen.pixel(100, 100), "an empty cell"
   end
 
-  # A SCREEN FADED IN FROM WHITE BY STEPPING EIGHT LISTS, the way a cartridge made for the Color
+  # A screen faded in from white by stepping eight lists, the way a cartridge made for the Color
   # fades: each tile's own list is four whites — each list's a little off the others', since two
   # lists of the same colours are one list — and the game draws it with the next of four lists a
   # frame, the last its real colours. The map fills the screen, so no empty cell shows.
@@ -157,10 +157,9 @@ class TestTiledColorLists < Minitest::Test
             step = 0
           end
           state = scenes if bare_at && tick == bare_at
-          case_var(:state) do
-            scenes.times { |k| when_val k, :"screen#{k}" }
-            when_val scenes, :bare
-          end
+          screens = scenes.times.to_h { |k| [k, :"screen#{k}"] }
+          screens[scenes] = :bare
+          call screens, number: :state
         end
       end
     end
@@ -183,7 +182,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal VBlank::Testing.shown(VBlank::Graphics::Color.rgb(10, 0, 1)), game_player.run(game, frames: 14).screen.pixel(0, 0)
   end
 
-  # A SCENE WITH NO BACKGROUND OF ITS OWN after them shows nothing but black, the colour of a cell
+  # A scene with no background of its own after them shows nothing but black, the colour of a cell
   # nothing is drawn in, though the scene before it put a list drawn with others first.
   def test_a_bare_scene_after_eight_lists_drawn_with_others_is_black
     game = faded_in_eight(scenes: 2, bare_at: 14)
@@ -191,7 +190,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal 0, game_player.run(game, frames: 20).screen.pixel(100, 100)
   end
 
-  # ONE SCENE OF SEVEN SUCH LISTS that takes over a few frames in: before it does, the screen shows
+  # One scene of seven such lists that takes over a few frames in: before it does, the screen shows
   # cells nothing is drawn in, which are black.
   def test_the_frames_before_a_scene_of_lists_drawn_with_others_are_black
     white = rgb_of(31, 31, 31)
@@ -214,7 +213,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = 0 if tick == 5
-        case_var(:state) { when_val 0, :board }
+        call({ 0 => :board }, number: :state)
       end
     end
     b.finalize_program
@@ -223,7 +222,7 @@ class TestTiledColorLists < Minitest::Test
     assert_backends_agree(b.program, frames: [3, 10], name: "LATE7")
   end
 
-  # ONE TILE IN TWO SCENES' BACKGROUNDS, the first drawn with another list and the second as drawn:
+  # One tile in two scenes' backgrounds, the first drawn with another list and the second as drawn:
   # the second shows the tile's own colours whatever the first was drawn with, and the first comes
   # back in the other list's.
   def test_a_tile_shown_by_a_recoloured_background_and_a_plain_one_shows_each_as_drawn
@@ -243,10 +242,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 4) % 2
-        case_var(:state) do
-          when_val 0, :dim
-          when_val 1, :plain
-        end
+        call({ 0 => :dim, 1 => :plain }, number: :state)
       end
     end
     b.finalize_program
@@ -257,7 +253,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal rgb_of(31, 31, 31), seen.call(11), "the dim scene's again"
   end
 
-  # TWO BACKGROUNDS OF THE SAME TILES AND LISTS, the second told its list in a branch that never
+  # Two backgrounds of the same tiles and lists, the second told its list in a branch that never
   # runs: each is drawn with the list it was told, whatever the other was.
   def test_two_backgrounds_given_the_same_lists_are_each_drawn_as_told
     own = list_colors(0)
@@ -280,10 +276,7 @@ class TestTiledColorLists < Minitest::Test
       game_loop do
         tick += 1
         state = (tick / 4) % 2
-        case_var(:state) do
-          when_val 0, :dim
-          when_val 1, :plain
-        end
+        call({ 0 => :dim, 1 => :plain }, number: :state)
       end
     end
     b.finalize_program
@@ -291,7 +284,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal 0, game_player.run(b.program, frames: 7).screen.pixel(4, 4), "the plain scene's own black"
   end
 
-  # A STATUS BAR OF THE SAME FIVE TILES AS A BACKGROUND told to draw one of their five lists with
+  # A status bar of the same five tiles as a background told to draw one of their five lists with
   # another: only that list's tile is drawn two ways, so six of the Color's eight are enough.
   def test_a_bar_beside_a_background_drawn_with_one_other_list_fits
     lists = (0...5).map { |n| [:transparent, rgb_of(31, n, n), 31 << 5, 31 << 10, 0] }
@@ -319,7 +312,7 @@ class TestTiledColorLists < Minitest::Test
     assert_equal 0, shown.pixel(4, 132), "the bar's, its own"
   end
 
-  # TWO LISTS OF THE SAME COLOURS IN ANOTHER ORDER, each drawing a tile: the Color draws both from
+  # Two lists of the same colours in another order, each drawing a tile: the Color draws both from
   # the same four colours, black first, but drawn with other lists, each place of each shows its
   # own list's colour.
   def test_two_lists_alike_in_colour_each_swap_their_own_places
@@ -337,7 +330,7 @@ class TestTiledColorLists < Minitest::Test
     assert_backends_agree(game, frames: 3, name: "ALIKE")
   end
 
-  # A TILE WITH SEE-THROUGH PIXELS whose list holds one colour at two places: drawn with another
+  # A tile with see-through pixels whose list holds one colour at two places: drawn with another
   # list, the two places show two colours, and the see-through pixels the black nothing is on.
   def test_a_see_through_tile_whose_list_holds_one_colour_twice_swaps_by_place
     white = rgb_of(31, 31, 31)
@@ -353,7 +346,7 @@ class TestTiledColorLists < Minitest::Test
     assert_backends_agree(game, frames: 3, name: "TWICE")
   end
 
-  # A TILE WITH NO SEE-THROUGH PIXEL FROM A LIST OF FIVE, drawing four of its places, two of them
+  # A tile with no see-through pixel from a list of five, drawing four of its places, two of them
   # one colour: all four of the Color's palette are its own, and drawn with another list each place
   # shows that list's colour.
   def test_a_tile_of_four_places_from_a_list_of_five_swaps_by_place

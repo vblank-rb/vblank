@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE CALCULATIONS A RUNTIME'S ARITHMETIC IS HELD TO, for a lowering whose runtime is written
+# The calculations a runtime's arithmetic is held to, for a lowering whose runtime is written
 # again in another language (the JavaScript one's rg_int32.js, the Ruby one's rg_int32.rb): the
 # values where a number of that language and a 32-bit whole number are most likely to part ways —
 # the ends of the range, either side of nought, powers of two, shift counts on and past the edge,

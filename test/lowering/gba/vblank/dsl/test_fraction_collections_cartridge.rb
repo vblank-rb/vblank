@@ -2,11 +2,11 @@
 
 require "test_helper"
 
-# MANY OF SOMETHING THAT HOLDS A FRACTION, on the Advance's own cartridge: its picture, read in
+# Many of something that holds a fraction, on the Advance's own cartridge: its picture, read in
 # the emulator, held to the interpreter's. What a list and a pool field do with a fraction on
 # every run is in test/all/vblank/dsl/test_fraction_collections.rb.
 class TestFractionCollectionsCartridge < Minitest::Test
-  # ON THE CONSOLE TOO. The scale never reaches the IR — it is worked out while building and
+  # On the console too. The scale never reaches the IR — it is worked out while building and
   # what comes out is ordinary whole-number arithmetic — so the two backends cannot disagree
   # about it in principle. This is the proof that they do not in practice: a mark whose
   # position on screen is worked out from a list and a pool field that both hold fractions.

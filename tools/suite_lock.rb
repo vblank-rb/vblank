@@ -3,7 +3,7 @@
 require "digest"
 require "fileutils"
 
-# ONE WHOLE TEST RUN ON THE MACHINE AT A TIME. Each lowering's run — the GBA lowering's (which
+# One whole test run on the machine at a time. Each lowering's run — the GBA lowering's (which
 # plays cartridges in the emulator) and the native lowering's (which builds every game as C) — is
 # sized to use the machine, and two at once take twice as long each and slow everything else
 # besides. So a whole run takes this lock first, once for both lowerings when `rake test` plays
@@ -16,7 +16,7 @@ require "fileutils"
 # since what it guards is the machine — and not in the temporary folder, which a sandboxed session
 # can be given one of its own.
 #
-# TWO CHECKOUTS AT ONCE. Somebody with two checkouts of the repository (a worktree for each piece
+# Two checkouts at once. Somebody with two checkouts of the repository (a worktree for each piece
 # of work, or two sessions) can let each take a lock of its own, so neither waits on the other:
 # start the run with VBLANK_SUITE_LOCK=checkout. The two then share the machine's cores, and each
 # takes about twice as long as it would alone. Two runs in the same checkout still wait for each

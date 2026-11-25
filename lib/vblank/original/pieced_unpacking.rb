@@ -4,13 +4,13 @@ require "etc"
 
 module VBlank
   module Original
-    # AN UNPACKING SPLIT FOR SEVERAL WORKERS. A port's routine can spend most of its time in one
+    # An unpacking split for several workers. A port's routine can spend most of its time in one
     # part that does the same work over and over on things that never meet: a port that renders
     # each of its songs from a sound chip's writes, where one song never reads another. A player's
     # machine has several cores, and the routine as one program keeps one of them busy.
     #
-    # THE DECISION: THE GAME DECLARES ITS
-    # PIECES, and VBlank never works out by itself what may run side by side. A slot is declared in
+    # The decision: the game declares its
+    # pieces, and VBlank never works out by itself what may run side by side. A slot is declared in
     # pieces (`slots.samples :music, count: rooms.sum, pieces: rooms`), and a part of the routine
     # given as many pieces writes it a piece at a time (`slots.fill_from_copy :music, pieces: 27 do
     # |copy, pack, release, song| ... end`, `pack[:music].piece(song)[i] = sample`). Its block is
@@ -32,7 +32,7 @@ module VBlank
     # numbers makes a different pack. The test of a port's own pack (one worker against several)
     # finds that.
     #
-    # HOW IT RUNS. The whole routine is one program, a part in pieces a loop over its pieces
+    # How it runs. The whole routine is one program, a part in pieces a loop over its pieces
     # (Builder::DataPacks#unpacking_program): every build that makes the pack here, every test, and
     # a shell that unpacks on one worker as it always did (the desktop program's, a Ruby script's)
     # play that. A shell that can unpack on workers (Live::Shell, the web page) plays the split
@@ -52,7 +52,7 @@ module VBlank
     # the web page take it as a setting (`--unpack-workers`, #worker_count), one a processor unless
     # told otherwise.
     #
-    # THE PROGRAMS ARE BUILT WHEN FIRST ASKED FOR (#programs). What a runtime is told of the split
+    # The programs are built when first asked for (#programs). What a runtime is told of the split
     # (#plan) follows from the slots and the pieces alone, so a shell whose runtime plays the whole
     # routine (the desktop program's, a Ruby script's) is built with no more programs than before.
     class PiecedUnpacking

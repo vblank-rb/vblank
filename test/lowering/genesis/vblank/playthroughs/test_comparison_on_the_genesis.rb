@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "slow_pass_games"
 
-# TWO GENESIS CARTRIDGES COMPARED on their own screen, 320 by 224 pixels, not the Advance's: a part
+# Two Genesis cartridges compared on their own screen, 320 by 224 pixels, not the Advance's: a part
 # of the screen past the Advance's 240 columns can be left out, and a difference is placed on the
 # console's screen. The cartridges are small games built here: a white box on a blue field that
 # walks two pixels a frame while RIGHT is down, from column +from+.

@@ -2,37 +2,58 @@
 
 module VBlank
   class Builder
-    # A SCENE'S SPRITE PICTURES IN GROUPS, only some of them up at a time. A concern of
-    # {Builder}, mixed in so `picture_groups` stays a flat DSL verb.
+    # Sprite pictures in groups
     #
-    # WHY IT EXISTS. The console draws sprites from pictures kept in a memory of their own,
-    # 32K of it, and every picture a scene's sprites can show is kept there for as long as the
-    # scene is up. A scene made of many rooms shows one room's things at a time — two while the
-    # screen slides from one room to the next — but its pools and lists of things can show any
-    # room's, so all of them have to fit at once, and a game of twenty rooms runs out long
-    # before any one room would. The console's own games load a room's things as the room loads
-    # and let them go as it is left. Named here, a game does the same: it groups its pictures by
-    # room and names which rooms are up, and only those have to fit.
+    # The console draws sprites from pictures kept in a memory of its own, and it is small. A scene
+    # of many rooms shows one room's things at a time, but all of its pictures have to fit at once
+    # unless the game says otherwise. `picture_groups` lets a game group its pictures by room and
+    # name which rooms are up, so that only those have to fit, as the console's own games load a
+    # room's things when the room loads and let them go when it is left.
+    #
+    # ```ruby picture=still
+    # SQUARE = "################\n" * 16
+    #
+    # VBlank.game "ROOMS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:hero, "#" => :cyan) { SQUARE }
+    #   image(:pot, "#" => :orange) { SQUARE }
+    #   image(:chest, "#" => :yellow) { SQUARE }
+    #   rooms = picture_groups :rooms,
+    #                          { 0 => [:pot],
+    #                            1 => [:chest] }
+    #   # room 0's pictures are up; the chest
+    #   # takes no room until room 1 is
+    #   rooms.show 0
+    #   # in no group, so always up
+    #   sprite :hero, at: [84, 72]
+    #   sprite :pot, at: [112, 72]
+    #   sprite :pot, at: [140, 72]
+    #   game_loop {}
+    # end
+    # ```
+    #--
+    # A concern of Builder, mixed in so `picture_groups` stays a flat DSL verb. The sprite picture
+    # memory is 32K.
+    #++
     module PictureGroups
-      # GROUP A SCENE'S SPRITE PICTURES, by room:
+      # Groups a scene's sprite pictures by room, and returns a handle to say which groups are up.
       #
-      #   rooms = picture_groups :rooms, { 0 => [:pot, :bush], 1 => [:pot, :chest] },
-      #                          up_together: [[0, 1]]
-      #   rooms.show room                  # this room's things are up
-      #   rooms.show room, beside          # ...and the room beside's, while the screen slides
+      # A picture in no group is up the whole time, such as the hero, the panel or the shadows. A
+      # picture in a group is up only while one of its groups is. A sprite shown with it at any
+      # other moment is a mistake, and the game stops with a plain error on every build. The first
+      # time a scene takes over, none of its groups is up until the game puts one up. Given the
+      # screen back, the scene has the groups up that it had when it was left.
       #
-      # A picture in no group is up the whole time — the hero, the panel, the shadows. A
-      # picture in a group is up only while one of its groups is, and a sprite drawn showing
-      # it at any other moment is a mistake the game is stopped for, on every build, in plain
-      # words. Groups that can be up at once are named in +up_together+; without it, one group at
-      # a time. The first time a scene takes over, none of its groups is up until the game puts
-      # one up; given the screen back, it has the groups up it had as it was left, as its
-      # sprites are left as they were.
+      # ```ruby
+      # rooms = picture_groups :rooms, { 0 => [:pot, :bush], 1 => [:pot, :chest] },
+      #                        up_together: [[0, 1]]
+      # rooms.show room                  # this room's things are up
+      # rooms.show room, beside          # and the room beside's, while the screen slides
+      # ```
       #
-      # @param name [Symbol] what the groups are called, in errors and reports
-      # @param groups [Hash{Integer => Array<Symbol>}] each group's pictures, by its number
-      # @param up_together [Array<Array<Integer>>] each set of groups that can be up at once
-      # @return [DSL::PictureGroups] the handle to #show groups through
+      # * `name` - what the groups are called, in errors and reports.
+      # * `groups` - each group's pictures, as a hash from the group's number to a list of names.
+      # * `up_together:` - each set of groups that can be up at once. Without it, one group at a time.
       def picture_groups(name, groups, up_together: [])
         refuse_picture_groups_off_tiles!(name)
         refuse_picture_groups_named_twice!(name)
@@ -82,7 +103,7 @@ module VBlank
         end
       end
 
-      # ONCE EVERY PICTURE IS DECLARED: every picture a group names is one, checked here and not
+      # Once every picture is declared: every picture a group names is one, checked here and not
       # where the groups are written, since a game may group its pictures before it draws them.
       # And a picture turned with `mirror` or `upside_down` goes in every group its own picture
       # is in: the console draws it from that picture's tiles, turned, so it is up exactly when

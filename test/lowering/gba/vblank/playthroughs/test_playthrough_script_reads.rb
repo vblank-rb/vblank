@@ -4,13 +4,11 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHAT A SCRIPT CAN ASK OF THE GAME IT STEERS, on every way of running it: how many passes of the game
+# What a script can ask of the game it steers, on every way of running it: how many passes of the game
 # loop have finished (`game.passes`), and whether the game has a variable (`game.var?`). The game counts
 # its own passes at the end of each, and every fourth pass is heavy enough to take the console more than
 # a frame, so on the cartridge the passes fall behind the frames and still match the game's own count.
 class TestPlaythroughScriptReads < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
-
   HEAVY_PASS_ADDITIONS = 3000 # how many times a heavy pass adds one, which takes the Advance over a frame
   FRAMES_READ = 40
 
@@ -47,13 +45,13 @@ class TestPlaythroughScriptReads < Minitest::Test
   end
 
   VBlank::Playthroughs::LoweredGame.ways.each do |way|
-    define_method(:"test_a_steering_script_reads_the_passes_finished_on_#{way}") do
+    define_method(:"test_a_steering_script_reads_the_passes_finished_on_#{way}", &Ractor.shareable_proc {
       seen = []
       played = steering(seen).play(cartridge, on: way)
 
       assert_passes_are_the_games_own(seen)
       assert_equal seen.last.first, played.game.passes, "the game handed back answers the same"
-    end
+    })
   end
 
   def test_the_cartridge_takes_more_frames_than_passes

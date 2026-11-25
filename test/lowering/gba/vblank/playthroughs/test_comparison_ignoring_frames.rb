@@ -3,7 +3,7 @@
 require "test_helper"
 require "comparison_games"
 
-# STRETCHES OF A PLAYTHROUGH LEFT OUT OF A COMPARISON. Both cartridges are still played
+# Stretches of a playthrough left out of a comparison. Both cartridges are still played
 # through a stretch that is left out; what differs inside it is simply not counted. A stretch
 # is said as a range of frame numbers, or as a range from one named moment to another.
 #
@@ -22,7 +22,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     [frames_where(cartridge, tape) { |game| game.red?(0, 0) }, first_frame(cartridge, tape) { |game| specks_showing?(game) }]
   end
 
-  # A DRIFT INSIDE A RANGE OF FRAMES LEFT OUT IS NOT DRIFT, and the comparison carries on to
+  # A drift inside a range of frames left out is not drift, and the comparison carries on to
   # the next one outside it.
   def test_a_drift_inside_a_range_of_frames_left_out_is_passed_over
     plain = walker
@@ -33,7 +33,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     assert_equal specked_on, waiting.compare(plain, changed, ignoring_frames: [red_on.first..red_on.last]).drift.frame
   end
 
-  # A DRIFT THAT BEGINS INSIDE A STRETCH LEFT OUT AND IS STILL THERE WHEN IT ENDS is reported
+  # A drift that begins inside a stretch left out and is still there when it ends is reported
   # on the first frame after the stretch. This ground turns red and stays red.
   def test_a_drift_still_there_when_a_stretch_ends_is_reported_on_the_frame_after
     plain = walker
@@ -45,7 +45,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     assert_equal turned_on + 6, result.frames
   end
 
-  # A RANGE IS A RUBY RANGE, and means what one means: it can leave its last frame out, run
+  # A range is a Ruby range, and means what one means: it can leave its last frame out, run
   # on to the end of the playthrough, or start from its beginning. Several can be given.
   def test_a_range_can_leave_its_end_out_or_have_no_end_or_no_start
     plain = walker
@@ -59,7 +59,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     assert_nil drift_ignoring.call(red_on.first..red_on.last, (specked_on..))
   end
 
-  # A FRAME THAT IS NOT LOOKED AT BREAKS A RUN OF DIFFERING FRAMES. Nothing is known about
+  # A frame that is not looked at breaks a run of differing frames. Nothing is known about
   # that frame, so the ones either side of it are not frames in a row: with the middle of the
   # three red frames left out there are never two together.
   def test_a_frame_left_out_breaks_a_run_of_differing_frames
@@ -73,7 +73,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     assert_equal specked_on, with_the_middle_out.drift.frame
   end
 
-  # A STRETCH CAN RUN FROM ONE NAMED MOMENT TO ANOTHER, which is the form that survives the
+  # A stretch can run from one named moment to another, which is the form that survives the
   # script gaining a step: frame numbers all move, and the moments move with the game. It is
   # the frames the two moments name and every frame between, on a script and on its tape.
   def test_a_stretch_can_run_from_one_named_moment_to_another
@@ -101,7 +101,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
   # These hand over no cartridges at all, which is the proof of "before": had anything been
   # played, it would have failed on that first.
 
-  # A NAME NO MOMENT HAS is refused with the names there are, on a script — before the
+  # A name no moment has is refused with the names there are, on a script — before the
   # script is played, since a script says its moments where it is declared — and on a tape.
   def test_a_moment_that_is_not_declared_is_refused_with_the_ones_that_are
     tape = walk_right.play(walker).tape
@@ -155,7 +155,7 @@ class TestComparisonIgnoringFrames < Minitest::Test
     assert_match(/5\.\.\.10/, err.message)
   end
 
-  # TWO MOMENTS CAN NAME THE SAME FRAME, when one is declared straight after the other, and
+  # Two moments can name the same frame, when one is declared straight after the other, and
   # then three dots between them leave out the only frame there is. That is known once the
   # frames are, which for a tape is before anything is played.
   def test_two_moments_on_one_frame_with_its_frame_left_out_are_refused

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A CHARACTER COSTS THE SPRITE MEMORY OF THE FRAME IT IS SHOWING, not of every frame it could
+# A character costs the sprite memory of the frame it is showing, not of every frame it could
 # show, when that is what it takes to fit.
 #
 # The console draws sprites out of 32K of picture memory. A character with a full set of
@@ -206,7 +206,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
         state = 1 if tick == 3
         state = 0 if tick == 5
         state = 1 if tick == 8
-        case_var(:state) { when_val 0, :playing; when_val 1, :paused }
+        call({ 0 => :playing, 1 => :paused }, number: :state)
       end
     end
   end
@@ -253,7 +253,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
 
   # --- who is kept to one frame ---
 
-  # What has to fit is what every screen shows PLUS one scene's. Here the pictures every screen
+  # What has to fit is what every screen shows plus one scene's. Here the pictures every screen
   # shows are the most of any one group, and none of them animates; the hero in the scene does.
   def test_a_scene_character_keeps_one_frame_when_the_pictures_on_every_screen_are_the_most
     prog = program do |t|
@@ -267,12 +267,12 @@ class TestSpriteOneFrameAtATime < Minitest::Test
       var :state, 0
       scene(:playing) { sprite :hero, at: [40, 40], frames: frames, rate: 1 }
       scene(:paused) {}
-      game_loop { case_var(:state) { when_val 0, :playing; when_val 1, :paused } }
+      game_loop { call({ 0 => :playing, 1 => :paused }, number: :state) }
     end
     assert_operator sprite_memory_used(prog), :<=, SPRITE_MEMORY
   end
 
-  # A POOL'S SLOTS ALL SHOW ONE SET OF PICTURES, stored once. Keeping one slot to a frame gives
+  # A pool's slots all show one set of pictures, stored once. Keeping one slot to a frame gives
   # nothing back while the others still show the set, and keeping all eight costs eight frames,
   # more than the set. Keeping the three-frame sprite beside them to one frame is what fits.
   def test_sprites_that_share_their_pictures_are_not_kept_to_one_frame_when_that_gives_nothing_back
@@ -331,7 +331,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
   # are, on every frame of their animation.
   STANDS_AT = 40
 
-  # A character kept to one frame at a time whose poses do NOT all trim alike. The first is
+  # A character kept to one frame at a time whose poses do not all trim alike. The first is
   # drawn down the left of its canvas, the second in the middle, the next two are those two
   # REVERSED — which is how nearly every 2D game faces a character, and which trims from the
   # other side — and the rest fill their canvas. Every one of them is copied into the same room
@@ -383,7 +383,7 @@ class TestSpriteOneFrameAtATime < Minitest::Test
                     "the poses must really be trimmed differently, or this proves nothing"
   end
 
-  # THE BUG THIS PINS: the trim was looked up by the place in sprite memory a pose sits in, which
+  # The bug this pins: the trim was looked up by the place in sprite memory a pose sits in, which
   # is the same place for every pose of a character kept to one frame. So every pose was given
   # whichever trim was written down last, and the position read back was silently out by the
   # difference for all the others — right on most frames of a cycle and wrong on a few, which is

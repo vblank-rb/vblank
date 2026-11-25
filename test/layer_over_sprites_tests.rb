@@ -43,8 +43,9 @@ module LayerOverSpritesGames
   SWITCH_AT = 4 # with scenes, the pass the room takes over from a title on
 
   # The room. +behind+ lists the ways sprites are behind the cloud. With +scenes+ the room is a
-  # scene of its own, taking over from a title that sees through nothing.
-  private def clouded_room(behind, scenes: false)
+  # scene of its own, taking over from a title that sees through nothing. With +told_in_game_loop+
+  # the sprites it owns are told to go behind the cloud from the game loop, not on the scene's passes.
+  private def clouded_room(behind, scenes: false, told_in_game_loop: false)
     tile = SOLID_TILE
     rows = ROWS
     switch_at = SWITCH_AT
@@ -77,7 +78,7 @@ module LayerOverSpritesGames
         end
         moved.last.spawn x: SPRITE_X, y: rows[:moved_pool] if behind.include?(:moved_pool)
         # A scene's own sprites are told on the scene's passes.
-        moved.each { |thing| thing.put_in_layer :under } if scenes
+        moved.each { |thing| thing.put_in_layer :under } if scenes && !told_in_game_loop
       end
       if scenes
         where = var :where, 0
@@ -87,10 +88,8 @@ module LayerOverSpritesGames
         game_loop do
           pass += 1
           where = 1 if pass == switch_at
-          case_var(:where) do
-            when_val 0, :title
-            when_val 1, :room
-          end
+          call({ 0 => :title, 1 => :room }, number: :where)
+          moved.each { |thing| thing.put_in_layer :under } if told_in_game_loop
         end
       else
         instance_exec(&room)
@@ -117,7 +116,7 @@ module LayerOverSpritesGames
   private def on_bare_floor(way) = [BARE_FLOOR_X, ROWS.fetch(way) + 2]
 end
 
-# A SEE-THROUGH BACKGROUND OVER SPRITES. A cloud's shadow passes over the grass and over whoever
+# A see-through background over sprites. A cloud's shadow passes over the grass and over whoever
 # is walking on it: the layer mixes with the sprites behind it as it mixes with the backgrounds
 # behind it, and a sprite in front of it is drawn over it, as it is.
 #

@@ -7,6 +7,7 @@ require_relative "runtime/frame"
 require_relative "runtime/blank"
 require_relative "runtime/lists"
 require_relative "runtime/picture"
+require_relative "runtime/background_box"
 require_relative "runtime/paint"
 require_relative "runtime/paint_doubled"
 require_relative "runtime/paint_doubled_send"
@@ -26,6 +27,7 @@ require_relative "runtime/chip_columns"
 require_relative "runtime/letterbox"
 require_relative "runtime/saving"
 require_relative "runtime/sound"
+require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/effects"
 require_relative "runtime/recordings"
@@ -34,11 +36,11 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # THE RUNTIME every Super Nintendo cartridge carries: from power-on to the game's first line
+        # The runtime every Super Nintendo cartridge carries: from power-on to the game's first line
         # (Boot), the arithmetic (Int32), the frame and the buttons (Frame), the lists (Lists), the
         # picture (Picture), and save memory (Saving) for a game that saves.
         #
-        # HOW ITS ROUTINES ARE CALLED. With JSL (and they return with RTL), so a routine of the
+        # How its routines are called. With JSL (and they return with RTL), so a routine of the
         # game's in any bank calls them alike; with A, X and Y 16 bits wide, the direct page at
         # $0000 and the data bank at $80 (Boot sets all three, and every routine leaves them so);
         # with their numbers in the working numbers R0, R1, R2... on the direct page
@@ -58,16 +60,17 @@ module VBlank
             elsif c.painted
               Paint.reserve(memory, chip: c.chip?, text_layer: c.text_layer, turns: c.paint_turns)
             end
-            Frame.reserve(memory, second_controller: c.second_controller)
+            Frame.reserve(memory, controllers: c.controllers, counts_players: c.counts_players)
             Picture.reserve(memory, bar: c.bar?, row_held: c.row_held, alone_flag_in_line_table: c.alone_flag_in_line_table,
                                     bends: c.bends, scene_bends: c.scene_bends,
                                     tile_runs: c.tile_runs, held_runs: c.held_runs, math_turns: c.math_turns,
                                     bar_covers: c.bar_covers, tile_sizes: c.tile_sizes, scene_tiles: c.scene_tiles,
-                                    scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer)
+                                    scene_background_tiles: c.scene_background_tiles, third_layer: c.third_layer, boxes: c.boxes)
+            BackgroundBox.reserve(memory) if c.boxes
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
-            Chip.reserve(memory, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Chip.reserve(memory, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
-            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?) if c.sound
+            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?, strikes: !c.effect_clock_step.nil?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
             Mosaic.reserve(memory) if c.mosaic
@@ -76,7 +79,8 @@ module VBlank
           def reserve_music(memory, carries)
             c = carries
             Music.reserve(memory, follows_level: c.follows_level, effects: c.effects, holds: c.holds_music, wobbles: c.wobbles,
-                                  steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides)
+                                  steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides,
+                                  effect_clock_step: c.effect_clock_step)
           end
 
           # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):
@@ -97,12 +101,13 @@ module VBlank
             s = scratch(memory, c, fractions: lowering.fractions?)
             Int32.emit(asm, s.int32, divides: lowering.divides?)
             pad = s.pad
-            Frame.emit(asm, memory, pad: pad, sound: c.sound, extra_buttons: c.extra_buttons,
-                                    second_controller: c.second_controller, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
+            Frame.emit(asm, memory, pad: pad, tap: s.tap, sound: c.sound, extra_buttons: c.extra_buttons,
+                                    controllers: c.controllers, dims: c.dims, sleeps_every_pass: sleeps_every_pass,
                                     count_at: count_at)
             Blank.emit(asm, memory, s.blank)
             lists = s.lists
             Lists.emit(asm, memory, lists)
+            Lists.emit_pack(asm, lists) if lowering.packs_lists?
             run_count = c.tile_runs.length
             Picture.emit(asm, memory, work: s.picture, painted: c.painted, bar: c.bar?, bent: lowered[:bent], banded: lowered[:banded],
                                       tile_runs: run_count, straight_tile_runs: c.straight_tile_runs, held_runs: c.held_runs,
@@ -110,17 +115,19 @@ module VBlank
                                       see_through: lowered[:see_through], sprite_depths: lowered[:sprite_depths], big_tiles: lowered[:big_tiles],
                                       sprite_squares: lowered[:sprite_squares], changing_colors: c.changing_colors,
                                       math_turns: c.math_turns, scene_bars: lowered[:scene_bars], third_layer: c.third_layer,
-                                      held_hides_sprites: c.held_hides_sprites)
+                                      cells_dropped: lowered[:cells_dropped],
+                                      held_hides_sprites: c.held_hides_sprites, sprites_over_picture: c.sprites_over_picture)
+            BackgroundBox.emit(asm, memory, s.picture) if c.boxes
             if c.doubled
               PaintDoubled.emit(asm, memory, s.paint, band: c.shown_band, columns: lowering.paints_columns?)
             elsif c.painted
-              Paint.emit(asm, memory, s.paint, chip: c.chip?, columns: lowering.paints_columns?)
+              Paint.emit(asm, memory, s.paint, chip: c.chip?, columns: lowering.paints_columns?, sprites: c.sprites_over_picture)
             end
             Tint.emit(asm, memory, s.tint, colors_shown: lowered[:colors_shown], changing_colors: c.changing_colors, dims: c.dims,
                                scene_backdrops: c.scene_backdrops, backdrop_follows: c.backdrop_follows)
-            Collide.emit(asm, memory, s.collide)
+            Collide.emit(asm, memory, s.collide) if c.collides
             Mosaic.emit(asm, memory, backgrounds: lowering.mosaic_backgrounds) if c.mosaic
-            Chip.emit(asm, memory, pad: pad, extra_buttons: c.extra_buttons, second_controller: c.second_controller) if c.chip?
+            Chip.emit(asm, memory, pad: pad, tap: s.tap, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             if c.letterboxes?
               Letterbox.emit(asm, memory, black_places: lowering.painted_art.black_places)
             elsif c.shown_band
@@ -157,21 +164,22 @@ module VBlank
 
           # The runtime's scratch on the direct page, one part for each routine that works there,
           # nil for a part the cartridge does not carry.
-          Scratch = Data.define(:int32, :pad, :blank, :lists, :picture, :tile_runs, :paint, :tint, :collide, :saving)
+          Scratch = Data.define(:int32, :pad, :tap, :blank, :lists, :picture, :tile_runs, :paint, :tint, :collide, :saving)
 
           # The scratch #sections works in, taken from +memory+'s direct page, for a cartridge that
           # carries +carries+, with the fractions' part where +fractions+.
           def scratch(memory, carries, fractions:)
             c = carries
             Scratch.new(int32: Int32.scratch(memory, fractions: fractions), pad: memory.scratch(4),
+                        tap: (memory.scratch(8) if c.controllers == Frame::MULTITAP_CONTROLLERS),
                         blank: Blank.scratch(memory), lists: Lists.scratch(memory), picture: memory.scratch(8),
                         tile_runs: (Picture.run_scratch(memory) if c.tile_runs.length.positive?),
                         paint: (Paint.scratch(memory) if c.doubled || c.painted),
-                        tint: Tint.scratch(memory), collide: Collide.scratch(memory),
+                        tint: Tint.scratch(memory), collide: (Collide.scratch(memory) if c.collides),
                         saving: (Saving.scratch(memory) if c.saves))
           end
 
-          # HOW MANY BYTES OF THE DIRECT PAGE #sections TAKES for its scratch, for a cartridge that
+          # How many bytes of the direct page #sections TAKES for its scratch, for a cartridge that
           # carries +carries+, the fractions' part counted where +fractions+. Known before the game is
           # lowered, so the rest of the page can go to the game's busiest variables
           # (Lowering#place_variables) and the scratch still finds its room after them. Scratch that
@@ -197,7 +205,7 @@ module VBlank
               bent: lowering.bent_layers, banded: lowering.bends_by_bands?, see_through: lowering.see_through_layers,
               big_tiles: lowering.big_tile_layers, recorded_parts: carries.songs && lowering.recorded_parts?,
               colors_shown: lowering.colors_shown, sprite_depths: !lowering.painted? && !lowering.sprite_depths.empty?,
-              sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars? }
+              sprite_squares: lowering.sprite_squares?, scene_bars: lowering.scene_bars?, cells_dropped: lowering.cells_dropped? }
           end
 
           def emit_sound_routines(asm, memory, carries, lowered, counted: false)
@@ -207,7 +215,7 @@ module VBlank
             end
             if lowered[:music]
               Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts],
-                                      notes_apart: lowered[:music].notes_apart?)
+                                      notes_apart: lowered[:music].notes_apart?, effect_clock_step: carries.effect_clock_step)
             end
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end

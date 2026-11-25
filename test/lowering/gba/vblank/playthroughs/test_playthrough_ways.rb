@@ -3,12 +3,10 @@
 require "test_helper"
 require "stringio"
 
-# A STEERED PLAYTHROUGH ON EVERY WAY OF RUNNING A GAME. The same script, reading the game through the
+# A steered playthrough on every way of running a game. The same script, reading the game through the
 # same words, plays on the emulator, the interpreter, and the game built as C, as JavaScript and as
 # Ruby, and in a window that shows each frame at the console's rate.
 class TestPlaythroughWays < Minitest::Test
-  runs_on_the_main_ractor! # a run in another process hangs inside a Ractor
-
   # A number that climbs while :right is down, its first values kept in a list.
   private def cartridge
     VBlank.build("WAYS", console: :gba, out: StringIO.new, err: StringIO.new) do
@@ -39,14 +37,14 @@ class TestPlaythroughWays < Minitest::Test
   end
 
   VBlank::Playthroughs::LoweredGame.ways.each do |way|
-    define_method(:"test_a_steered_script_finishes_on_#{way}") do
+    define_method(:"test_a_steered_script_finishes_on_#{way}", &Ractor.shareable_proc {
       played = steered.play(cartridge, on: way)
 
       assert_equal 10, played.game.var(:x), "the steering read the game and stopped where it said"
       assert_operator played.game.list(:trail).length, :>, 0, "a list reads the same way"
       assert_operator played.game.pool(:guards, :step).compact.first, :>, 5, "and so does a pool"
       assert_includes played.moments.keys, :there
-    end
+    })
   end
 
   # What a window is asked, standing in for one.
@@ -162,7 +160,7 @@ class TestPlaythroughWays < Minitest::Test
   end
 
   %w[native web ruby].each do |way|
-    define_method(:"test_a_window_hears_the_game_on_#{way}") do
+    define_method(:"test_a_window_hears_the_game_on_#{way}", &Ractor.shareable_proc {
       heard = []
       window = Screen.new
       window.define_singleton_method(:play_sound) { |left, rate, right| heard << [left, rate, right] }
@@ -173,7 +171,7 @@ class TestPlaythroughWays < Minitest::Test
       assert_equal [rate], heard.map { |_, said, _| said }.uniq
       assert_in_delta frame, heard.last.first.length, 2, "a frame's sound, for each speaker"
       assert heard.last(10).any? { |left, _, _| left.any? { |sample| !sample.zero? } }, "the note reached the speaker"
-    end
+    })
   end
 
   # A game whose every pass takes the console several frames.

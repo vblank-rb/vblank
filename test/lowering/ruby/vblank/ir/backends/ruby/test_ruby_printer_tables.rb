@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW THE RUBY PRINTER WRITES A BIG TABLE (Ruby::Printer#print_const_array): its numbers packed and
+# How the Ruby printer writes a big table (Ruby::Printer#print_const_array): its numbers packed and
 # written as base64, read back as the game starts. A game's recordings can be tens of millions of
 # numbers, so they are checked all at once rather than one by one; these hold that check to what
 # writing them one by one refused, and the table to what it read back.

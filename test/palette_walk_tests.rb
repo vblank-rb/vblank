@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# THE RULES OF A WALK OF THE COLOURS (Backends::PaletteWalk) that only a console's own build can
+# The rules of a walk of the colours (Backends::PaletteWalk) that only a console's own build can
 # show, played by each console that walks its colours for every fade: a test file in that
 # lowering's folder includes this and says its console (CONSOLE) and the runtime routine that works
 # a colour out (COLOR_ROUTINE). How far a walk goes is held to the interpreter for every console by
@@ -10,7 +10,7 @@ require "stringio"
 module PaletteWalkTests
   PART_OF_THE_SCREEN = [{ under: :ui }, { inside: [0, 0, 40, 40] }].freeze
 
-  # A GAME THAT SAYS ITS TINT EVERY PASS, the same tint each time, as `tint :red, hurt` in a game loop
+  # A game that says its tint every pass, the same tint each time, as `tint :red, hurt` in a game loop
   # does: the colours are worked out once, when it changes, and not again on every pass after.
   # Measured past the frames the game settles in, so the one change is behind it and the routine
   # that works a colour out is not run at all; the same game with a tint that moves every pass runs

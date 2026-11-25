@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # WHAT THIS CARTRIDGE'S RUNTIME CARRIES, worked out once for a build from the program and from
+          # What this cartridge's runtime carries, worked out once for a build from the program and from
           # what the build chose to do. Both steps read this one value: Runtime.reserve, which has to
           # keep the runtime's places before the game's, so before the lowering exists, and
           # Runtime.sections, which writes the routines those places serve. Every fact is a field with
@@ -33,7 +33,8 @@ module VBlank
           # (Tint's rt_backdrop_from), and +dims+ fades to black. +math_turns+ turns a see-through
           # layer solid. +bar_covers+ tells a bar to cover sprites. +tile_sizes+ has layers of two tile
           # sizes. +scene_tiles+ and +scene_background_tiles+ bring a scene's tiles in as it arrives.
-          # +extra_buttons+ can ask about X and Y, and +second_controller+ reads it. +glides+ has a
+          # +extra_buttons+ can ask about X and Y, +controllers+ is how many it reads (Frame#controllers_read),
+          # and +counts_players+ asks how many are connected (Frame::PLAYERS_PAST_FIRST). +glides+ has a
           # recorded note that carries on the one sounding at a new pitch (Recordings). +text_layer+
           # shows text at places known when it is built on a layer over the painted one (TextLayer).
           # +paint_turns+ keeps a second painted picture to swap with (PaintTurns). +chip_envelopes+
@@ -43,24 +44,31 @@ module VBlank
           # line the game's picture shows (`screen :bitmap, shown_rows:`), the screen switched off on
           # the rest (Letterbox), or nil where it gives up none. +doubled+ is a painted screen of big
           # pixels (`screen :bitmap, pixel_size: 2`), shown on Mode 7 (PaintDoubled) in place of Paint.
-          Carries = Data.define(:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
+          # +boxes+ holds a background to a box the game moves (BackgroundBox).
+          # +sprites_over_picture+ shows sprites over a painted screen (Paint, "sprites over the picture").
+          # +collides+ asks whether two sprites' drawn pixels touch (Collide), whose scratch takes 52
+          # bytes of the direct page the game's busiest variables would otherwise have.
+          # +effect_clock_step+ is what the sound effects' timer adds a frame, or nil for effects that
+          # count frames (IR::Tunes.effect_clock_step).
+          Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
                                 :scene_backdrops, :backdrop_follows, :dims, :math_turns, :bar_covers, :tile_sizes, :scene_tiles,
-                                :scene_background_tiles, :extra_buttons, :second_controller, :glides, :text_layer,
+                                :scene_background_tiles, :extra_buttons, :controllers, :counts_players, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
-                                :doubled) do
+                                :doubled, :boxes, :sprites_over_picture, :effect_clock_step) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
-            # its layers stack (Stacking.picture), each worked out once a build (BuildCache).
+            # its layers stack (Stacking.picture), each worked out once a build (BuildCache), and +row_bends+
+            # its bends (LoweringPlan#row_bends).
             def self.of(program, board:, screen_colors:, sprite_colors:, sprite_tiles:, background_tiles:,
-                        handover: IR::SceneHandover.of(program), stacking: Stacking.picture(program))
+                        handover: IR::SceneHandover.of(program), stacking: Stacking.picture(program), row_bends: RowBends.new(program))
               picture = Lowering::Picture
               songs = Lowering::Sound.songs?(program)
               backdrops = picture.scene_backdrops?(program, handover)
               walks_areas = picture.walks_areas?(program) # an area's tiles and colours come in as the scene's do
-              new(board: board, painted: Lowering::Paint.painted?(program),
+              new(board: board, painted: Lowering::Paint.painted?(program), collides: Lowering::Collision.pixels_overlap_named?(program),
                   saves: (SaveLayout.memory_of(program).size if SaveLayout.named_by?(program)),
                   sound: Lowering::Sound.sounds?(program), songs: songs, follows_level: songs && SNES::Music.follows_level?(program),
                   effects: IR::Tunes.effects(program).uniq.size, samples: Lowering::Sound.samples?(program),
@@ -70,8 +78,8 @@ module VBlank
                   sides: SNES::Music.sides_under_level?(program), status_bar: picture.status_bar?(program),
                   row_held: picture.background_rows_held?(program), alone_flag_in_line_table: picture.alone_flag_in_line_table?(program),
                   held_hides_sprites: picture.held_hides_sprites?(program),
-                  bends: picture.bends?(program),
-                  scene_bends: picture.scene_bends?(program, handover), tile_runs: picture.tile_run_bytes(program),
+                  bends: !row_bends.empty?,
+                  scene_bends: picture.scene_bends?(row_bends, handover), tile_runs: picture.tile_run_bytes(program),
                   straight_tile_runs: picture.tile_runs(program).any?(&:console_format), held_runs: picture.held_runs(program),
                   changing_colors: screen_colors || sprite_colors || backdrops || picture.changing_colors?(program) || walks_areas ||
                                    Lowering::Paint.inks?(program),
@@ -80,13 +88,16 @@ module VBlank
                   math_turns: picture.see_through_turns_solid?(program, stacking), bar_covers: picture.bar_covers_sprites?(program),
                   tile_sizes: picture.two_tile_sizes?(program), scene_tiles: sprite_tiles,
                   scene_background_tiles: background_tiles || walks_areas, extra_buttons: Frame.reads_extra_buttons?(program),
-                  second_controller: Frame.reads_second_controller?(program), glides: SNES::Music.glides?(program),
+                  controllers: Frame.controllers_read(program), counts_players: Frame.counts_players?(program),
+                  glides: SNES::Music.glides?(program),
                   text_layer: board.name != :super_fx && Lowering::Paint.text_layer?(program),
                   paint_turns: board.name != :super_fx && Lowering::Paint.takes_turns?(program),
                   third_layer: picture.third_layer?(program),
                   chip_envelopes: Lowering::Sound.chip_envelopes?(program), mosaic: picture.pixelates?(program),
                   recorded_pans: IR::Tunes.recorded_pans?(program), shown_band: Letterbox.band_of(program),
-                  doubled: Lowering::Paint.doubled?(program))
+                  doubled: Lowering::Paint.doubled?(program), boxes: picture.boxes?(program),
+                  sprites_over_picture: Lowering::Paint.sprites_over_picture?(program),
+                  effect_clock_step: IR::Tunes.effect_clock_step(program, program.described_console))
             end
 
             # A Super FX on the board (Chip).

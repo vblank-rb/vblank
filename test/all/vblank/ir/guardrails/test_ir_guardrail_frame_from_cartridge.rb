@@ -6,7 +6,7 @@ require "stringio"
 # The guardrail for a game loop whose body did not fit in the console's quick memory
 # (lib/vblank/ir/guardrails/frame_from_cartridge.rb). The loop is where the frame's time
 # goes, so leaving it in the cartridge slows the whole game by the factor the quick memory is
-# worth — and nothing about the symptom points at the cause, because the cause is the SIZE
+# worth — and nothing about the symptom points at the cause, because the cause is the size
 # of code in the loop, not the work it does.
 class TestFrameFromCartridgeGuardrail < Minitest::Test
   # A loop with a large piece of code in it that seldom runs. +cold_in_a_func+ moves that code
@@ -17,7 +17,7 @@ class TestFrameFromCartridgeGuardrail < Minitest::Test
     rom = VBlank.build("COLD", console: :gba, code: "ZCLD", maker: "01", out: StringIO.new, err: err) do
       screen :bitmap
       spin = var :spin, 0
-      cold = lambda { 4000.times { spin += 1 } }
+      cold = lambda { 4000.times { |n| spin += 1 + (n.even? ? 5 : -5) } }
       func(:thinking, fast: false) { cold.call } if cold_in_a_func
       game_loop do
         fill_rect 0, 0, 40, 8, :green
@@ -31,7 +31,7 @@ class TestFrameFromCartridgeGuardrail < Minitest::Test
     [rom, err.string]
   end
 
-  # THE POINT. The loop's body did not fit, so the build says so, in words about the fix
+  # The point. The loop's body did not fit, so the build says so, in words about the fix
   # rather than about the hardware.
   def test_a_loop_too_big_to_fit_is_told_so_and_told_the_fix
     rom, warnings = game(cold_in_a_func: false)
@@ -77,14 +77,11 @@ class TestFrameFromCartridgeGuardrail < Minitest::Test
         fill_rect 0, 0, 40, 8, :green
         inline ? summing.call : call(:sums)
         if spin == 1
-          4000.times { spin += 1 }
+          4000.times { |n| spin += 1 + (n.even? ? 5 : -5) }
         end
         next unless scenes
 
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     [rom, err.string]
@@ -104,7 +101,7 @@ class TestFrameFromCartridgeGuardrail < Minitest::Test
     refute_match(/whole frame/, warnings)
   end
 
-  # ...and where the loop's own code IS the frame's work, the measured build still says so, and
+  # ...and where the loop's own code is the frame's work, the measured build still says so, and
   # says what it measured rather than "the whole frame".
   def test_a_measured_loop_that_holds_the_frames_work_is_told_its_share
     rom, warnings = measured_game(inline: true)
@@ -127,7 +124,7 @@ class TestFrameFromCartridgeGuardrail < Minitest::Test
                  warnings)
   end
 
-  # WHERE THE LINE IS: a tenth of a frame's work. What the check finds for a loop left out of
+  # Where the line is: a tenth of a frame's work. What the check finds for a loop left out of
   # a 2K gap, given the per cent of the busiest scene's work its own code was measured to do —
   # or nil for a build that measured nothing.
   private def findings_for(percent, scene: nil)

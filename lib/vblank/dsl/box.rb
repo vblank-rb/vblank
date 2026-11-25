@@ -2,16 +2,26 @@
 
 module VBlank
   module DSL
-    # A rectangle in screen space — a top-left corner (x, y) and a size (w, h). It
-    # describes a region for collision tests like {Builder#overlaps?}; it draws
-    # nothing itself. Each coordinate can be a fixed number, a :variable, or an
-    # expression {Value}, so one box can describe a moving thing (a ball whose x/y are
-    # variables) as naturally as a fixed wall. Its edges read back as Values —
-    # `right` is `x + w`, `bottom` is `y + h` — so a test composes with the same
-    # expression sugar as everything else. Make one with the `box` verb.
+    # Boxes for collision tests
+    #
+    # A box is a rectangle on the screen, a top-left corner and a size, made with `box`. It
+    # draws nothing: it is a region to test a sprite or another box against, with
+    # Bounds#overlaps? and the screen-edge tests. Each of its numbers can be a number written
+    # in the game or one the game keeps, so one box can follow a moving thing as easily as it
+    # marks a fixed wall.
+    #
+    # ```ruby
+    # wall = box 0, 140, 240, 20
+    # bat  = box bat_x, 150, 32, 4
+    # speed = -speed if ball.overlaps?(bat)
+    # ```
+    #
+    # Its edges read back as numbers to compute with: `right` is `x + w` and `bottom` is
+    # `y + h`.
     class Box
       include Bounds # gains overlaps? from left / top / right / bottom
 
+      # The box's left edge, top edge, width and height, each as a number to compute with.
       attr_reader :x, :y, :w, :h
 
       # A box is exactly its rectangle — its collision edges are its corner and size,
@@ -30,15 +40,15 @@ module VBlank
         @h = coerce(builder, h)
       end
 
-      # The build these coordinates belong to, which {Bounds} asks for the screen.
-      def collision_builder = @builder
+      # The build these coordinates belong to, which Bounds asks for the screen.
+      def collision_builder = @builder # :nodoc:
 
-      # The right edge (x + w), as an expression Value.
+      # The box's right edge, `x + w`, as a number to compute with.
       def right
         @x + @w
       end
 
-      # The bottom edge (y + h), as an expression Value.
+      # The box's bottom edge, `y + h`, as a number to compute with.
       def bottom
         @y + @h
       end

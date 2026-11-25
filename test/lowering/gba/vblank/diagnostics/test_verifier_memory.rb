@@ -3,7 +3,7 @@
 require "test_helper"
 
 # Reading run-time state back off real hardware. the emulator reads the GBA bus directly,
-# so the Verifier can assert what a program actually COMPUTED (a variable in IWRAM)
+# so the Verifier can assert what a program actually computed (a variable in IWRAM)
 # and read hardware registers (VCOUNT) — not just what's on screen. This is the
 # readout channel the draw-cost timing probe will use, and a general way to assert
 # state on hardware. Needs the backend's variable-address map, since the backend —

@@ -80,7 +80,7 @@ class TestSession < Minitest::Test
     assert_in_delta 1 / (2 * frame), rate.passes_per_second, 0.001
   end
 
-  # THE PASS THE GAME SETS ITSELF UP IN IS NOT PART OF ITS SPEED: a big game can take seconds over
+  # The pass the game sets itself up in is not part of its speed: a big game can take seconds over
   # it before its first picture, and then play at the console's speed. Here it takes half a second,
   # and the nine passes after it each a quarter of a frame, so the play went at the console's speed,
   # and the setup is said on a line of its own.
@@ -107,7 +107,7 @@ class TestSession < Minitest::Test
     refute_match(/set itself up/, rate.words(console_frame_seconds: frame))
   end
 
-  # WITH A SPEAKER, THE SPEAKER PACES THE PLAY. A pass that runs two frames long uses up two frames
+  # With a speaker, the speaker paces the play. A pass that runs two frames long uses up two frames
   # of the sound waiting for the speaker, and since a few frames' worth is kept waiting, the speaker
   # never runs dry: every frame's sound is heard with no gap, and the game is moved on a frame a
   # pass, no frame skipped. On the clock's beat the same late pass would skip a frame and leave the
@@ -146,7 +146,7 @@ class TestSession < Minitest::Test
     assert_operator device.now, :>=, (30 - kept) * frame
   end
 
-  # A PAUSE HOLDS THE GAME WHERE IT IS. Paused for ten seconds after the third picture, the game
+  # A pause holds the game where it is. Paused for ten seconds after the third picture, the game
   # carries on from the frame it was on, no frame is counted for the time held, and the play's rate
   # is the game's while it was playing: the pause is not the game running late.
   def test_a_pause_holds_the_game_where_it_is
@@ -172,7 +172,7 @@ class TestSession < Minitest::Test
     assert_equal [20, 20], [rate.passes, rate.frames]
   end
 
-  # FAST FORWARD plays several of the game's frames for each picture shown, as many as its speed
+  # Fast forward plays several of the game's frames for each picture shown, as many as its speed
   # (four, here), so a machine that can goes that many times the console's speed and no faster:
   # sixteen frames in the time of four, one picture for every four, and nothing handed to the
   # speaker meanwhile.
@@ -339,10 +339,10 @@ class TestSession < Minitest::Test
     end
 
     error = assert_raises(VBlank::IR::ProgramError) { Session.new(program).play(Headless.new(frames: 9)) }
-    assert_match(/list :trail is full/, error.message)
+    assert_match(/`trail` is full/, error.message)
   end
 
-  # THE PLAY SAYS WHICH PASSES RAN LATE: the game's own work over a pass, from the buttons handed
+  # The play says which passes ran late: the game's own work over a pass, from the buttons handed
   # to it to the picture it hands back, against a frame. The pass the game sets itself up in is
   # left out, since it is meant to take long.
   def test_a_play_counts_the_passes_that_took_longer_than_a_frame
@@ -362,7 +362,7 @@ class TestSession < Minitest::Test
     assert_equal [3, 0], [rate.lateness.passes, rate.lateness.late_passes]
   end
 
-  # COLLECTING GARBAGE ONCE THE GAME HAS SET ITSELF UP leaves the objects the build and the setup
+  # Collecting garbage once the game has set itself up leaves the objects the build and the setup
   # made behind them, so a big collection does not land in the middle of play. It changes when Ruby
   # collects, never what the game does: the pictures are the same with it and without it.
   #

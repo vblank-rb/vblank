@@ -63,6 +63,11 @@ module RubyGenesisEmulator
     RGB565 = 2
 
     JOYPAD = 1
+    # The core's "MD Joypad 3 Button + Teamplayer": Sega's Team Player with a three-button pad in
+    # each of its four plugs (RETRO_DEVICE_SUBCLASS of the joypad, in the core's libretro/libretro.c).
+    TEAM_PLAYER = 0x601
+    # ...and "MD Joypad 6 Button + Teamplayer", a six-button pad in each plug.
+    TEAM_PLAYER_OF_SIX_BUTTON_PADS = 0x701
 
     # The picture of the usual setting: 320 pixels across and 224 lines down. A game that asks the
     # video chip for 256 across (H32) or 240 lines shows a different size, which #width and #height say.
@@ -84,24 +89,37 @@ module RubyGenesisEmulator
     attr_reader :frames, :width, :height
 
     # +rom_path+ is the cartridge. +save_dir+ is where the core is told to keep files; a core made
-    # without one keeps them in a folder of its own that is gone with it.
-    def initialize(rom_path, save_dir: nil)
+    # without one keeps them in a folder of its own that is gone with it. +settings+ are core settings
+    # by libretro's names, over SETTINGS: "genesis_plus_gx_psg_channel_0_volume" => "0" silences the
+    # first square voice. The core reads them as it loads the cartridge, so they hold for its life.
+    def initialize(rom_path, save_dir: nil, settings: {})
       @dir = Dir.mktmpdir("ruby-genesis-emulator")
       @frames = 0
       @picture = nil
       @audio = "".b
       @width = WIDTH
       @height = HEIGHT
-      start_frontend(save_dir || @dir)
+      start_frontend(save_dir || @dir, SETTINGS.merge(settings))
       load_cartridge(rom_path)
     end
 
-    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS).
+    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are
+    # read only through a Team Player (#plug_in_team_player); without one, nothing asks for them.
     def set_buttons(buttons, port: 0)
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a Genesis controller has no #{unknown.join(', ')} button" unless unknown.empty?
 
       @frontend.set_buttons(port, buttons.uniq.sum { |button| 1 << BUTTONS.fetch(button) })
+    end
+
+    # Sega's Team Player in the second port, in place of the pad there: four plugs, each a
+    # three-button pad of its own (ports 1 to 4 of #set_buttons). The core numbers the pads it asks
+    # libretro for one after another, so the first port's pad stays port 0 and the tap's plugs come
+    # next. A cartridge reads the tap through the port's TH and TR lines (plutiedev, "Sega multitap").
+    # +six_buttons+ fills its plugs with six-button pads, which hand over a nibble more each.
+    def plug_in_team_player(six_buttons: false)
+      @frontend.set_controller_port_device(1, six_buttons ? TEAM_PLAYER_OF_SIX_BUTTON_PADS : TEAM_PLAYER)
+      self
     end
 
     # Plays one frame: up to the moment the console starts its next picture.
@@ -130,6 +148,16 @@ module RubyGenesisEmulator
     # The last frame's picture as the core drew it: #width × #height pixels, two bytes each, row
     # by row.
     def video_buffer = @picture || ("\0".b * (@width * @height * 2))
+
+    # THE CONSOLE'S WHOLE STATE, as Genesis Plus GX saves it: every chip's memory and registers, in
+    # its own format, for #unserialize to put back on a console playing the same cartridge.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "Genesis Plus GX did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
+    end
 
     # --- the memories ---
 
@@ -251,10 +279,10 @@ module RubyGenesisEmulator
 
     # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format
     # PIXEL_COLORS reads.
-    def start_frontend(save_dir)
+    def start_frontend(save_dir, settings)
       copy = KeptCopy.take
       begin
-        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, RGB565)
+        @frontend = Frontend.new(copy.path, @dir, save_dir, settings, RGB565)
       rescue StandardError, LoadError
         copy.give_back
         FileUtils.rm_rf(@dir)
@@ -285,12 +313,13 @@ module RubyGenesisEmulator
       @picture = bytes
     end
 
-    # Hands the core the cartridge's path and bytes, and plugs a pad into the first port.
+    # Hands the core the cartridge's path and bytes, and plugs a pad into each of the two ports.
     def load_cartridge(rom_path)
       loaded = @frontend.load_game(File.expand_path(rom_path), File.binread(rom_path))
       raise ArgumentError, "Genesis Plus GX would not load #{rom_path}" unless loaded
 
       @frontend.set_controller_port_device(0, JOYPAD)
+      @frontend.set_controller_port_device(1, JOYPAD)
     end
   end
 end

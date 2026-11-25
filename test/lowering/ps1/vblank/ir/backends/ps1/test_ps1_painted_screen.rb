@@ -118,7 +118,7 @@ class TestPS1PaintedScreen < Minitest::Test
     assert_match(/fewer colours/, error.message)
   end
 
-  # A GAME THAT FADES ITS PAINTED SCREEN draws it by number and shows a copy in its colours
+  # A game that fades its painted screen draws it by number and shows a copy in its colours
   # (PS1::PaintedNumbers). A game that stops shows the page it showed, copied again in the colours of the
   # fade it stopped under: on a tear-free screen that is the page before the stopping pass's, which the
   # stopping pass never trades for its own.

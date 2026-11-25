@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A CONSOLE'S OWN CARTRIDGE PLAYED IN THE EMULATOR, and then the same buttons, pass for pass,
+      # A console's own cartridge played in the emulator, and then the same buttons, pass for pass,
       # played on the interpreter — stopping at the first pass the two disagree on, about any variable,
       # any list or pool, or any pixel. Every checked run makes the same comparison and says it in the
       # same words (RunComparison).
@@ -49,6 +49,7 @@ module VBlank
           frames ||= max_steps ? frames_within(program, max_steps) : Reference::DEFAULT_FRAMES
           refuse_endless_game_without_frames!(program)
           before = @save.dup # the interpreter starts from the save memory the cartridge started from
+          @uncompared = RunComparison.uncompared_variables(program)
           super(program, frames: frames)
           width, height = screen.then { |picture| [picture.width, picture.height] }
           interpreted = first_moment_of_each_frame(play_on_interpreter(program, frames, width, height, before))
@@ -89,7 +90,7 @@ module VBlank
         # Each frame's buttons as they are sent, kept to play the same ones on the interpreter.
         def buttons_sent(frame) = (@played[frame] = super)
 
-        # THE CARTRIDGE IS BUILT BEFORE THE INTERPRETER PLAYS A FRAME, so that what the build does not
+        # The cartridge is built before the interpreter plays a frame, so that what the build does not
         # make yet (NotMadeYet) is raised before a game it could never be held to is played. Any other
         # refusal is left for the cartridge's own run to make, after the interpreter has had its say:
         # a program the interpreter calls wrong is wrong in the interpreter's words.
@@ -102,7 +103,7 @@ module VBlank
         end
 
         # The first moment the two sides differ at, in words, or nil.
-        def moments_difference(interpreted) = self.class.first_difference(interpreted, moments)
+        def moments_difference(interpreted) = self.class.first_difference(interpreted, moments, uncompared: @uncompared)
 
         # What else the console's cartridge is held to the interpreter on, past the moments: the first
         # difference in words, or nil. +before+ is the save memory the run started from, and the

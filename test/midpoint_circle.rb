@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE CIRCLE THE CONSOLE'S GAMES DRAW THEIR WINDOWS WITH, written out the way The Minish Cap writes
+# The circle the console's games draw their windows with, written out the way The Minish Cap writes
 # it (tmc: src/common.c — sub_0801E24C makes the half widths, and sub_0801E290 turns them into a span
 # for rows y - n and y + n, n below the size). It is the answer key a light's rows are checked
 # against, so it is written here from the game's code and never read from the framework's.

@@ -4,9 +4,9 @@ require "test_helper"
 require "node_copy"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# COPIES OF A GAME BUILT AS JAVASCRIPT, PLAYED BY NODE, IN A MATCH (rg_lockstep.js, the same session as
+# Copies of a game built as JavaScript, played by Node, in a match (rg_lockstep.js, the same session as
 # Network::Lockstep): beside each other under every delay a test sets, and beside a Ruby build of the same game,
 # which they must agree with on the fingerprint and on the number for the game's state on every pass (a
 # checkpoint on every pass makes the machines compare it). The match is carried by test/node_copy.rb.
@@ -154,5 +154,18 @@ class TestNodeLockstep < Minitest::Test
     assert first.success, first.error
     assert_equal 1, first.events.count { |_pass, kind, _player| kind == :left }
     assert_equal first.events, outcomes[1].value.events
+  end
+
+  # A node copy cut off from a room with two others still in it cannot agree with them which pass was
+  # their last, so it stops, saying why, as Lockstep#leave_cut_off_match does.
+  def test_a_node_copy_cut_off_from_two_others_stops_saying_why
+    net = Network::SimulatedNetwork.new
+    net.at_round(6) { net.disconnect(3) }
+    copies = [ruby_copy(net, :right, host: settings(3, delay: 1)), ruby_copy(net, :left), node(net, hold: RIGHT)]
+
+    cut_off = net.play(copies).last.value
+
+    refute cut_off.success, "the copy cut off played on alone"
+    assert_match(/The connection to the match closed/, cut_off.error)
   end
 end

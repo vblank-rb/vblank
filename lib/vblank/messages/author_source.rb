@@ -2,7 +2,7 @@
 
 module VBlank
   module Messages
-    # WHERE THE AUTHOR WROTE IT — the first stack frame outside the framework.
+    # Where the author wrote it — the first stack frame outside the framework.
     #
     # A handle, a comparison and an alignment error are all created deep inside the
     # library, several calls below the line the person actually wrote, so a diagnostic

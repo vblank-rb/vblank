@@ -3,6 +3,45 @@
 module VBlank
   module Effects
     module Packs
+      # Screen shake
+      #
+      # `shake_screen` is the impact effect for a hit, an explosion or a life lost. The jitter
+      # alternates and is not random, so the same hit shakes the same way every time. Afterwards the
+      # picture is put back exactly where it was.
+      #
+      # ```ruby picture=loop frames=60
+      # VBlank.game "SHAKE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   image :crate, "#" => :orange,
+      #                 "+" => :yellow do
+      #     side = "#" * 16 + "\n"
+      #     face = "##" + "+" * 12 + "##\n"
+      #     side * 2 + face * 12 + side * 2
+      #   end
+      #   image :ground, "=" => rgb(8, 12, 8) do
+      #     ("=" * 32 + "\n") * 8
+      #   end
+      #   sprite :ground, at: [88, 88]
+      #   sprite :ground, at: [120, 88]
+      #   sprite :crate, at: [104, 72]
+      #   sprite :crate, at: [120, 72]
+      #   sprite :crate, at: [112, 56]
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 60
+      #     # a hard knock once a second, and
+      #     # still between knocks
+      #     if frame == 25
+      #       shake_screen intensity: 3, frames: 10
+      #     end
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
+      # shake_screen intensity: 3, frames: 8
+      # ```
+      #--
       # Screen shake — the impact effect for a hit, an explosion, a life lost.
       #
       # This is the worked example of what a pack is (see {Effects} for the rule).
@@ -24,31 +63,32 @@ module VBlank
       # The jitter alternates rather than being random, which makes it repeatable: the
       # same hit shakes the same way every time, and both backends agree frame for
       # frame.
+      #++
       module ScreenShake
         # The hidden variables the shake runs on, and the routine that drives them.
         # Named with the framework's underscore prefix so they can never collide with
         # a game's own variables.
-        LEFT = :__shake_left       # Frames of shaking still to run (-1 = settled)
-        POWER = :__shake_power     # How far to move, in pixels
-        DIRECTION = :__shake_dir   # +1 / -1, flipped every frame to make the jitter
-        OFFSET = :__shake_offset   # This frame's offset, power * direction
-        ROUTINE = :__shake_tick
+        LEFT = :__shake_left       # :nodoc: Frames of shaking still to run (-1 = settled)
+        POWER = :__shake_power     # :nodoc: How far to move, in pixels
+        DIRECTION = :__shake_dir   # :nodoc: +1 / -1, flipped every frame to make the jitter
+        OFFSET = :__shake_offset   # :nodoc: This frame's offset, power * direction
+        ROUTINE = :__shake_tick  # :nodoc:
 
-        # Shake the screen — the impact effect for a hit, an explosion, a life lost.
+        # Shakes the screen, as the impact effect for a hit, an explosion or a life lost.
         #
-        # Set how hard and how long, and the framework does the rest: it jitters the
-        # camera for you every frame from here on, then puts the picture back exactly
-        # where it was. You call this once, at the moment of impact, and nothing else.
+        # Set how hard and how long, and the framework does the rest. It jitters the camera for you
+        # every frame from here on, then puts the picture back exactly where it was. You call this
+        # once, at the moment of impact, and nothing else. Calling it again while a shake runs
+        # restarts it, so repeated hits keep shaking and do not queue up.
         #
-        #   shake_screen intensity: 3, frames: 8      # eight frames of shaking
-        #   shake_screen intensity: 3, duration: 0.2  # the same, given in seconds
+        # ```ruby
+        # shake_screen intensity: 3, frames: 8      # eight frames of shaking
+        # shake_screen intensity: 3, duration: 0.2  # the same, given in seconds
+        # ```
         #
-        # Calling it again while a shake runs restarts it, so repeated hits keep
-        # shaking rather than queueing up.
-        #
-        # @param intensity [Integer] how far the picture moves, in pixels
-        # @param frames [Integer, nil] how long to shake, in frames
-        # @param duration [Numeric, nil] how long to shake, in seconds (instead of frames)
+        # * `intensity:` - how far the picture moves, in pixels. The default is 2.
+        # * `frames:` - how long to shake, in frames. The default is 8.
+        # * `duration:` - how long to shake, in seconds, instead of `frames:`.
         def shake_screen(intensity: 2, frames: nil, duration: nil)
           count = shake_screen_frames(frames, duration)
           unless DSL::Whole.positive?(intensity)
@@ -67,24 +107,35 @@ module VBlank
         # build that loaded this pack.
         def self.checks = CHECKS
 
-        # A screen shake that has no frames to happen on.
+        # A warning about a game that shakes the screen and has no `game_loop`:
         #
+        # > This game shakes the screen with `shake_screen`, but it has no `game_loop`. A shake
+        # > moves the picture a small amount on every frame, so it needs frames to run on. With no
+        # > game loop there are none, and the screen never moves. To fix this, put the game in a
+        # > `game_loop`.
+        #
+        # A shake moves the picture a little, a different way each frame, then puts it back. The
+        # framework does that once a frame, as each turn of the `game_loop` ends. Without a game
+        # loop the call to `shake_screen` looks right and the screen stays still. Put the game's
+        # frames in a `game_loop`.
+        #
+        #--
         # A shake works by moving the picture a small amount, a different way each
         # frame, and then putting it back — so it is spread over time by definition.
         # The framework runs that for you once per frame, at the frame boundary a
         # `game_loop` provides. A program with no game loop has no boundary, so the
         # routine is never reached: `shake_screen` sets its counter, nothing ever
-        # reads it, and the screen sits perfectly still. No crash, no warning, and the
-        # call looks right where it is written.
+        # reads it, and the screen sits perfectly still.
         #
         # Read structurally rather than from build-time bookkeeping: the shake routine
         # is declared as soon as anything shakes, and a call to it is placed at each
         # frame boundary. A declared routine with no call to it is exactly this bug.
+        #++
         class NeedsGameLoop
-          NAME = :shake_needs_game_loop
-          PLAIN_NAME = "a shake with no frames to run on"
+          NAME = :shake_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a shake with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game shakes the screen with `shake_screen`, but it has no " \
             "`game_loop`. A shake moves the picture a small amount on every frame, " \
             "so it needs frames to run on. With no game loop there are none, and the " \
@@ -123,9 +174,9 @@ module VBlank
         # the second `shake_screen` finds them rather than declaring a second shake.
         #
         # The routine owns the camera while a shake lasts: it flips the direction,
-        # moves the picture that far, and counts down. The settle branch comes FIRST so
+        # moves the picture that far, and counts down. The settle branch comes first so
         # the last shaking frame is really shown — the branch below it takes the count
-        # to zero, and only the NEXT frame puts the picture back. Once settled the
+        # to zero, and only the next frame puts the picture back. Once settled the
         # count goes negative, so a game that is not shaking does no work at all.
         def screen_shake_state
           @screen_shake_state ||= begin
@@ -173,7 +224,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

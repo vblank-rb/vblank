@@ -2,45 +2,71 @@
 
 module VBlank
   class Builder
-    # THE STACK: naming the depths a picture is built from, and putting things in them.
+    # Layers: what is in front of what
     #
-    # A game is drawn in layers — the scenery, the characters, the score on top — and
-    # without a name for them the only way to set what sits in front of what is the
-    # order the declarations happen to run in. That order is invisible, it lives in
-    # prose comments, and in a game split across files it depends on which file was
-    # required first. `layers` gives those depths names, and `layer do ... end` puts
-    # things in them.
+    # A game is drawn in layers: the scenery, the characters, the score on top. `layers` gives
+    # those depths names in one line, and `layer ... do ... end` puts things in them. Without
+    # names, the only way to set what sits in front is the order the declarations happen to run
+    # in, which is invisible and, in a game split across files, depends on which file loaded first.
     #
-    #   layers :sky, :world, :actors, :ui     # the stack, back to front
-    #
-    #   scene :playing do
-    #     layer :world  do background :level, tiles: :world_tiles, map: LEVEL end
-    #     layer :actors do hero = sprite :hero, at: [100, 60] end
-    #     layer :ui     do draw_number :score, 8, 8, :white end
+    # ```ruby picture=once frames=60
+    # VBlank.game "LAYERS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   image(:post, "#" => :orange) do
+    #     "################\n" * 32
     #   end
+    #   image(:hero, "#" => :yellow) do
+    #     "################\n" * 16
+    #   end
+    #   # the stack, back to front
+    #   layers :back, :actors, :front
+    #   hero = layer(:actors) do
+    #     sprite :hero, at: [72, 72]
+    #   end
+    #   layer(:back) do
+    #     sprite :post, at: [96, 64]
+    #   end
+    #   layer(:front) do
+    #     sprite :post, at: [120, 64]
+    #   end
+    #   game_loop do
+    #     # stops in front of one post
+    #     # and behind the other
+    #     hero.x += 1 if hero.x < 108
+    #   end
+    # end
+    # ```
     #
-    # TWO CONSTRUCTS, AND THE SPLIT IS THE POINT. The ORDER is global, because "in front
-    # of" is a relation across the whole screen — one line answers the question a reader
-    # of somebody else's game actually has. The ASSIGNMENT is local, in a block, so
-    # nothing has to carry a layer keyword and nobody has to reconstruct the order by
-    # finding every declaration in every file.
+    # ```ruby
+    # layers :sky, :world, :actors, :ui     # the stack, back to front
     #
-    # A LAYER HOLDS THINGS, NOT BRUSHSTROKES. The instinct people arrive with is that a
-    # layer is a surface you draw on — clear this layer, put a pixel on this layer.
-    # Nothing on this console works that way, and it is not close: a bitmap screen has
-    # one framebuffer, and a tiled screen's layers are grids of references to shared
-    # tiles rather than canvases of their own. Giving each layer its own pixels would
-    # mean blending two full screens in software every frame, which costs more than
-    # twice the time a frame has and eats the memory besides. So a layer orders the
-    # things the framework draws again for you every frame — a background, a sprite,
-    # tiled text — and anything that paints where it is called stays outside.
+    # scene :playing do
+    #   layer :world  do background :level, tiles: :world_tiles, map: level end
+    #   layer :actors do hero = sprite :hero, at: [100, 60] end
+    #   layer :ui     do draw_number :score, 8, 8, :white end
+    # end
+    # ```
     #
-    # A SCENE AND A LAYER ARE DIFFERENT AXES, and they never need to know about each
-    # other. A scene is WHEN (which state of the game shows this); a layer is WHERE IN
-    # THE STACK (what is in front of what). A HUD can be in `:ui` and in `:playing` —
-    # on top, and only while playing.
+    # The order is global, because "in front of" is a relation across the whole screen, and one
+    # line answers the question a reader of somebody else's game has. The assignment is local, in a
+    # block, so nothing has to carry a layer keyword.
+    #
+    # A layer holds things, not brushstrokes. It is not a surface you draw on, so there is no
+    # "clear this layer" or "put a pixel on this layer". A layer orders the things the framework
+    # draws again for you every frame, which are backgrounds, sprites and tiled text. Anything
+    # that paints where it is called stays outside the layers.
+    #
+    # A scene and a layer are different axes. A scene is when, which state of the game shows
+    # this. A layer is where in the stack, what is in front of what. A score can be in `:ui` and
+    # in `:playing`, which is on top and only while playing.
+    #--
+    # Why a layer is not a surface: a bitmap screen has one framebuffer, and a tiled screen's
+    # layers are grids of references to shared tiles rather than canvases of their own. Giving
+    # each layer its own pixels would mean blending two full screens in software every frame,
+    # which costs more than twice the time a frame has and eats the memory besides.
+    #++
     module Layers
-      # WHAT A LAYER CAN HOLD, by the kind of node a verb records. Held things are the
+      # What a layer can hold, by the kind of node a verb records. Held things are the
       # ones the framework draws again every frame, so an order over them means
       # something. Painted ones happen where the call happens — by the time the next
       # frame is drawn they are already part of the picture, and no ordering can reach
@@ -50,13 +76,13 @@ module VBlank
       # to be classified here on purpose rather than falling into whichever answer the
       # lookup happens to default to.
       #
-      # Painting is refused on EITHER screen, and that is a decision rather than an
+      # Painting is refused on either screen, and that is a decision rather than an
       # oversight. On a bitmap screen a layer block full of straight-line drawing could
       # be read as paint order and quietly allowed — but only while the same layer is
       # written in one place. Write it in two, with a branch between them, and honoring
       # the order would mean moving emitted drawing across that branch, which cannot be
       # done. One answer everywhere beats one that holds until a game grows.
-      IN_A_LAYER = {
+      IN_A_LAYER = {  # :nodoc:
         # held — declared once, drawn again every frame, so a layer can order them
         object: :held,
         background: :held,
@@ -64,7 +90,6 @@ module VBlank
         # painted — these happen where the call happens
         pixel: :painted,
         fill_rect: :painted,
-        dma_fill_rect: :painted,
         draw_rect_at: :painted,
         draw_column_at: :painted,
         fill_face: :painted,
@@ -125,31 +150,34 @@ module VBlank
         see_through: :free,
       }.freeze
 
-      # Declare the program's stack of layers, backmost first — the one line that sets
-      # what is in front of what.
+      # Declares the stack of layers, backmost first. This one line sets what is in front of what.
       #
-      #   layers :sky, :world, :actors, :ui
+      # ```ruby
+      # layers :sky, :world, :actors, :ui
+      # ```
       #
-      # Every layer a `layer` block names has to be in here. Declaring the stack changes
+      # Every layer that a `layer` block names has to be in here. Declaring the stack changes
       # nothing on its own: it names depths, and things put themselves in them.
       #
-      # TWO NEIGHBOURS CAN SHARE A LEVEL, written as a list of their own inside the line:
+      # Two neighbours can share a level, written as a list of their own inside the line. Every
+      # background has a level of its own otherwise, and the console stacks only a few, so four
+      # backgrounds and sprites behind all of them is one level too many. The console can put two
+      # backgrounds at one level and still tell them apart, so the list still sets which is in
+      # front: the later one, as anywhere else in the stack. What it cannot do is put a sprite
+      # between the two. A sprite at that level is drawn in front of both, so a sprite goes in the
+      # list's last layer or somewhere else in the stack, never in an earlier layer of the list.
       #
-      #   layers :stairs, [:ground, :scenery], :walking, :panel
+      # ```ruby
+      # layers :stairs, [:ground, :scenery], :walking, :panel
+      # ```
       #
-      # Every background has a level of its own otherwise, and the console stacks only a
-      # few, so four backgrounds and sprites behind all of them is one level too many. The
-      # console can put two backgrounds at one level and still tell them apart (it draws
-      # one of them first), so the list still sets which is in front: the later one, as
-      # anywhere else in the stack. What it cannot do is put a sprite between the two: a
-      # sprite at that level is drawn in front of both. So a sprite goes in the list's
-      # last layer or somewhere else in the stack, never in an earlier one of the list.
+      # A stack written as one list (`layers %i[sky world ui]`) is the stack, not three layers
+      # sharing one level.
       #
-      # A stack written as one list (`layers %i[sky world ui]`) is the stack, as it always
-      # was, not three layers sharing one level.
+      # * `names` - the layers as symbols, back to front. A list of symbols inside the line is a
+      #   shared level.
       #
-      # @param names [Array<Symbol, Array<Symbol>>] the layers, back to front
-      # @return [Array<Symbol>] the stack
+      # Returns the stack.
       def layers(*names)
         names = names.first if names.length == 1 && names.first.is_a?(Array)
         check_stack_not_declared!
@@ -167,77 +195,67 @@ module VBlank
         names
       end
 
-      # Put everything the block declares in one layer.
+      # Puts everything the block declares in one layer, and returns what the block ends on.
       #
-      #   layer :actors do
-      #     hero = sprite :hero, at: [100, 60]
-      #     enemies = Enemies.new(self)
-      #   end
+      # The block runs as the rest of the game does, so every verb is available inside it and
+      # the pattern of building parts of a game in other files works. Only the things that have a
+      # depth, such as backgrounds and sprites, take this layer's depth. A layer holding one thing
+      # reads as one line, and one holding several is written like anything else with a block.
       #
-      # The block runs on the build, exactly like a `func` body or the build block
-      # itself, so every DSL verb is available inside and the parts-in-files pattern
-      # works (`Enemies.new(self)`). What changes is only that the things which have a
-      # depth take this one.
+      # ```ruby
+      # hero = layer(:actors) { sprite :hero, at: [100, 60] }
       #
-      # It hands back whatever the block ended on, so a layer holding one thing reads as
-      # one line — `hero = layer(:actors) { sprite :hero, at: [100, 60] }` — and a layer
-      # holding several is written the way anything else with a block is.
+      # layer :actors do
+      #   hero = sprite :hero, at: [100, 60]
+      #   enemies = Enemies.new(self)
+      # end
+      # ```
       #
-      # `transparency:` sets how much of what is BEHIND this layer shows through it —
-      # water, glass, fog, a dimmed backdrop behind a menu. 0 is solid (the picture as
-      # drawn) and 100 is invisible:
+      # `transparency:` sets how much of what is behind the layer shows through it, as water,
+      # glass, fog or a dimmed backdrop behind a menu does. 0 is solid and 100 is invisible.
+      # Whatever sits directly under the layer at a pixel shows through it, anything in front of
+      # it draws solid, and where the layer itself has a see-through tile, what is behind shows
+      # plain. Nothing is redrawn, so it costs nothing however much is on screen.
       #
-      #   layer :water, transparency: 40 do
-      #     background :surface, tiles: :ripples, map: WATER
-      #   end
+      # ```ruby
+      # layer :water, transparency: 40 do
+      #   background :surface, tiles: :ripples, map: water
+      # end
+      # ```
       #
-      # What it means is what it looks like. Whatever sits directly under the layer at a
-      # pixel shows through it; anything in FRONT of it draws solid; and where the layer
-      # itself has a see-through tile, what is behind shows plain. The display does the
-      # blending as it draws, so nothing is redrawn and it costs nothing however much is
-      # on screen.
+      # The amount can be something the game works out, such as fog that thickens or a menu
+      # backdrop that dims in. Write a variable where you would write a number. A number is sent
+      # to the display once, and an amount that can change is sent again before every frame.
       #
-      # THE AMOUNT CAN BE SOMETHING THE GAME WORKS OUT, which is fog that thickens, water
-      # that gets murkier as you go down, a menu backdrop that dims in:
+      # ```ruby
+      # mist = var :mist, 0
+      # layer :air, transparency: 100 - mist do
+      #   background :fog, tiles: :weather, map: sky
+      # end
+      # ```
       #
-      #   mist = var :mist, 0
-      #   layer :air, transparency: 100 - mist do
-      #     background :fog, tiles: :weather, map: SKY
-      #   end
+      # To show the layer and what is behind it by different amounts, give `shows:` and
+      # `shows_behind:` instead. Past 100 together, the mix is brighter than either side and stops
+      # at full brightness: a window that glows over its backdrop, or a shaft of light that lifts
+      # the forest under it. The display mixes in sixteenths, so each amount is taken to the
+      # nearest one.
       #
-      # Write a variable where you would write a number and that is the whole of it. The
-      # difference is what it costs: a number is sent to the display once and never again,
-      # where an amount that can change has to be sent again before every frame. That is
-      # one register write, and nothing is redrawn either way.
+      # ```ruby
+      # layer :window, shows: 94, shows_behind: 63 do
+      #   background :box, tiles: :frame, map: BOX
+      # end
+      # ```
       #
-      # TWO AMOUNTS INSTEAD OF ONE, when the layer and what is behind it should not share a
-      # whole: `shows:` is how much of the layer itself shows and `shows_behind:` how much
-      # of what is behind it, each 0 to 100.
+      # A screen has one see-through layer, and a layer sets its amounts once. A game can have one
+      # on each of its screens, in scenes that never show together. A see-through layer needs
+      # `screen :tiled`: a bitmap screen paints its whole picture into one place before the
+      # display sees it, so there is nothing left to see through.
       #
-      #   layer :window, shows: 94, shows_behind: 63 do
-      #     background :box, tiles: :frame, map: BOX
-      #   end
-      #
-      # Past 100 together, the mix is brighter than either side and stops at full
-      # brightness — a window that glows over its backdrop, a shaft of light that lifts
-      # the forest under it. The display mixes in sixteenths, so each amount is taken to
-      # the nearest one (94 is 15 of them, 63 is 10). Either can be something the game
-      # works out. `transparency: t` is the same as the two adding to 100, and keeps the
-      # rounding it always had.
-      #
-      # A SCREEN has one see-through layer, and a layer sets its amounts one time — every
-      # example opens a layer block exactly once, so that is the natural place. A game can
-      # have one on each of its screens: a title whose light rays shimmer and a menu whose
-      # window glows over its backdrop, in two scenes that never show together. Needs
-      # `screen :tiled`: a bitmap screen paints its whole picture into one place before
-      # the display sees it, so by then there is nothing left to see through.
-      #
-      # @param name [Symbol] a layer named in {#layers}
-      # @param transparency [Integer, Symbol, Value, nil] how much of what is behind shows
-      #   through, 0 to 100 — a number, or something the game works out
-      # @param shows [Integer, Symbol, Value, nil] how much of the layer itself shows
-      # @param shows_behind [Integer, Symbol, Value, nil] how much of what is behind shows
-      # @return [Object] the block's value
+      # * `name` - a layer named in `layers`.
+      # * `transparency:` - how much of what is behind shows through, from 0 to 100: a number, or
+      #   something the game works out.
+      # * `shows:` - how much of the layer itself shows, from 0 to 100.
+      # * `shows_behind:` - how much of what is behind it shows, from 0 to 100.
       def layer(name, transparency: nil, shows: nil, shows_behind: nil, &block)
         raise ArgumentError, "`layer :#{name}` needs a block: `layer :#{name} do ... end`." unless block
 
@@ -275,7 +293,7 @@ module VBlank
 
       # A picture is normally scenery at the back and everything that moves in front of
       # it, and something that named no layer is left in that arrangement. Put a
-      # background IN FRONT of a sprite and the arrangement is gone, and with it the
+      # background in front of a sprite and the arrangement is gone, and with it the
       # answer for anything that named no layer — there is no longer a "where it always
       # was" to leave it in. So that picture has to place everything.
       def refuse_unlayered_when_scenery_in_front!
@@ -298,9 +316,9 @@ module VBlank
               "The stack is #{list_of(@layer_stack)}, back to front."
       end
 
-      # An effect can be PLACED in the stack instead of covering the whole screen —
+      # An effect can be placed in the stack instead of covering the whole screen —
       # `fade :black, 100, under: :ui` fades the game and leaves the score showing. What
-      # it names has to be a layer, and the screen has to be one that HAS a stack.
+      # it names has to be a layer, and the screen has to be one that has a stack.
       #
       # A bitmap screen does not. Everything on it — the scenery, the software sprites,
       # the text — is painted into one picture before the display ever sees it, so by
@@ -349,7 +367,7 @@ module VBlank
 
       # What the author wrote about how see-through a layer is, as they wrote it: +word+ is
       # the keyword to name in a message, and +split+ is the one-number form.
-      SeeThroughWords = Data.define(:word, :shows, :behind, :split)
+      SeeThroughWords = Data.define(:word, :shows, :behind, :split)  # :nodoc:
 
       # The amounts a `layer` block was given, checked, or nil for a layer that is not
       # see-through. One number, or two that go together, and never both.
@@ -421,7 +439,7 @@ module VBlank
 
       def as_written(amount) = (DSL::Value.fixed_number(amount) || Messages::PlainWords.words_for_given(amount)).to_s
 
-      # A bitmap screen paints its scenery, its sprites and its text into ONE picture
+      # A bitmap screen paints its scenery, its sprites and its text into one picture
       # before the display ever sees it. By the time an effect could apply there is
       # nothing left to tell apart, so there is nothing to see through. Same shape of
       # answer as `fade ... under:` already gives.
@@ -538,7 +556,7 @@ module VBlank
               "to front. To fix this, use one of those names, or add :#{name} to the `layers` line."
       end
 
-      # A scene cannot go inside a layer, and the reason is about what the two ARE rather
+      # A scene cannot go inside a layer, and the reason is about what the two are rather
       # than about when a body is built. A scene is a state of the game and a state holds
       # things at many depths; a layer is one depth. So this is refused where it is
       # written, whatever the scene turns out to declare.
@@ -551,16 +569,16 @@ module VBlank
               "put the `layer :#{@current_layer}` block inside the scene."
       end
 
-      # A ROUTINE'S BODY IS BUILT LATER, when the `layer` block it was written inside has
+      # A routine's body is built later, when the `layer` block it was written inside has
       # closed, so anything in it that wants a depth would quietly get none. That is the
       # silent wrong picture this whole feature exists to remove.
       #
-      # THE REFUSAL IS ON WHAT ACTUALLY HAPPENED, not on where the routine was written,
+      # The refusal is on what actually happened, not on where the routine was written,
       # and that distinction is the whole design. Refusing every routine declared inside
       # a layer would refuse `pulse coin` on the line after the coin — which is exactly
       # where a game writes it — because `pulse`, `camera_follows`, `fade_out` and
       # `shake_screen` are all built on the public `once_a_frame` and a pack cannot be told
-      # from an author by the verb it calls. Asking instead whether the body DECLARED
+      # from an author by the verb it calls. Asking instead whether the body declared
       # something with a depth lets every one of them through, since a per-frame body is
       # behavior and declares nothing that sits in the picture. It also lets a plain
       # `func` that declares nothing drawable live beside the sprite it moves.
@@ -581,7 +599,7 @@ module VBlank
 
       # What a held node is, in the words the message needs. Text on a tiled screen is one
       # little sprite per character, so a glyph really is a sprite here.
-      HELD_THING = { object: "A sprite", background: "A background" }.freeze
+      HELD_THING = { object: "A sprite", background: "A background" }.freeze  # :nodoc:
 
       # The way round that works, which is not the same for the two. A declaration inside
       # a per-frame body runs once wherever it is put, so moving it out is both the fix
@@ -595,7 +613,7 @@ module VBlank
       end
 
       def refuse_painting_in_layer!(node)
-        # A verb drawing its own text names ITSELF here: a `menu`'s rows really cannot
+        # A verb drawing its own text names itself here: a `menu`'s rows really cannot
         # belong to a layer on a bitmap screen, and the author wrote `menu`, not the
         # `draw_text` underneath it (see Text#with_text_owned_by).
         verb = @verb_owns_text || Messages::PlainWords.verb_written(node)
@@ -607,14 +625,14 @@ module VBlank
       end
 
       # Text is the one verb whose nature changes with the screen. On a tiled screen the
-      # console draws each character for you every frame, so it IS layerable and records
+      # console draws each character for you every frame, so it is layerable and records
       # objects; on a bitmap screen it paints into the framebuffer and reaches here. Say
       # which of the two the author is in, or the rule looks arbitrary.
       def bitmap_screen_suffix(node)
         %i[draw_text draw_digit].include?(node.kind) ? " on a `screen :bitmap`" : ""
       end
 
-      # An effect is PLACED, not contained — which is a different thing from belonging to
+      # An effect is placed, not contained — which is a different thing from belonging to
       # a layer, and the difference is worth teaching here rather than leaving somebody to
       # find it. A layer holds things; a fade is not a thing in the picture, it is
       # something done to the picture from a place in the stack.

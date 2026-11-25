@@ -69,14 +69,14 @@ module VBlank
             @light_off = false
           end
 
-          # TWO PAGES, OR ONE. A tear-free screen is two pictures rather than one: the
+          # Two pages, or one. A tear-free screen is two pictures rather than one: the
           # display shows one of them while the program draws into the other, and they
           # trade places at the frame boundary. That is what stops a player ever seeing a
           # half-drawn picture — nothing is drawn into the page being looked at.
           #
-          # The price is that a frame's drawing lands on ONE of the two. A program that
+          # The price is that a frame's drawing lands on one of the two. A program that
           # repaints everything every frame never notices, because both pages end up
-          # holding a complete picture. A program that ADDS to what is already there — a
+          # holding a complete picture. A program that adds to what is already there — a
           # dissolve, a trail, a plot filling in — puts half its additions on each page,
           # and the console then flickers between two half-drawn pictures.
           #
@@ -112,7 +112,7 @@ module VBlank
             @pixels, @shown_pixels = @shown_pixels, @pixels
           end
 
-          # WHERE DRAWING IS ALLOWED TO LAND, or nil for the whole picture. Everything that
+          # Where drawing is allowed to land, or nil for the whole picture. Everything that
           # paints a cell goes through #paintable?, so setting it here sets it once — and a
           # backend that must instead work the same edges out per shape has this to agree with.
           def draw_inside(x, y, width, height)
@@ -129,14 +129,14 @@ module VBlank
 
           # Move the visible window over the stored picture: after this, screen (0, 0)
           # shows what was drawn at (x, y). Nothing stored moves — a camera changes what
-          # you LOOK at, not what is there — which is why a shake costs no redrawing.
+          # you look at, not what is there — which is why a shake costs no redrawing.
           def camera_to(x, y)
             @camera_x = x
             @camera_y = y
           end
 
           # Blend everything shown toward +toward+ (:black or :white) by +amount+, 0 to
-          # 100. Like the camera, this changes what you SEE and not what is stored, so a
+          # 100. Like the camera, this changes what you see and not what is stored, so a
           # fade costs no redrawing and the picture is still all there underneath.
           def fade_to(toward, amount)
             fade_steps_to(toward, FadeSteps.steps(amount, fraction_bits: nil, walked: false))
@@ -155,7 +155,7 @@ module VBlank
 
           # Does the display's fade reach the screen pixel (x, y)? Everywhere, unless the fade
           # is held to a rectangle: then inside it for :inside and everywhere else for :outside.
-          # Asked by where the pixel is on the SCREEN, since that is where the window is.
+          # Asked by where the pixel is on the screen, since that is where the window is.
           def fade_reaches?(x, y)
             return true unless @fade_side
 
@@ -166,13 +166,13 @@ module VBlank
 
           # Blend everything shown toward +color+ by +amount+, 0 to 100. Same idea as
           # fade_to, for the colors a fade cannot reach: moving a picture toward black or
-          # white is a change of BRIGHTNESS, which a display can do to a finished picture,
-          # while moving it toward red means mixing red IN.
+          # white is a change of brightness, which a display can do to a finished picture,
+          # while moving it toward red means mixing red in.
           #
           # This is the tint the display mixes in as it draws, on a screen that holds a whole
           # color in every pixel (see #mixed_by_display).
           #
-          # A display holds ONE such effect at a time, so setting a tint puts away
+          # A display holds one such effect at a time, so setting a tint puts away
           # whatever fade was in force and the other way round. That is the display's own
           # rule rather than a simplification here, and modelling it is what stops a
           # program looking right on one backend and wrong on another.
@@ -205,17 +205,17 @@ module VBlank
           attr_writer :tint_by_display
 
           # Show the stored picture in flat blocks of +size+ pixels each way, or as it is for
-          # a size of 1. Like the camera and a fade, this changes what you SEE and not what
+          # a size of 1. Like the camera and a fade, this changes what you see and not what
           # is stored, so the picture is all there again when the size goes back to 1.
           #
-          # This is for a picture that is ONE thing to the display — a screen the program
+          # This is for a picture that is one thing to the display — a screen the program
           # paints. A picture built from several things is put into blocks a thing at a
           # time, as it is built, and never comes here.
           def show_in_blocks(size)
             @block = size
           end
 
-          # Blend everything painted FROM HERE ON toward +toward+ by +steps+ sixteenths,
+          # Blend everything painted from here on toward +toward+ by +steps+ sixteenths,
           # or paint colors as they are when +toward+ is nil.
           #
           # This is the other half of fade_to, and the two are not interchangeable. A fade
@@ -230,14 +230,14 @@ module VBlank
             @blending = blending?
           end
 
-          # Blend everything painted FROM HERE ON with what is already in the cell — a
+          # Blend everything painted from here on with what is already in the cell — a
           # see-through layer. +weights+ is [how much of what is painted, how much of what is
           # already there], in steps, or nil for no blend.
           #
-          # This is the one blend that needs the DESTINATION, which is why it cannot be
+          # This is the one blend that needs the destination, which is why it cannot be
           # #set_paint_fade with a different color: a fade mixes toward a color that is the
           # same everywhere, and a see-through layer mixes toward whatever happens to be
-          # underneath at that pixel. And it works BECAUSE the picture is painted back to
+          # underneath at that pixel. And it works because the picture is painted back to
           # front — for scenery, "blend with whatever is already there" and the display's
           # own "blend with the layer directly beneath" are then the same rule, so nothing
           # about the stack has to be modelled a second time.
@@ -252,7 +252,7 @@ module VBlank
             make_room_for_mixes(weights) if weights
           end
 
-          # KEEP THE SCENERY WITH NO SPRITES ON IT, beside the picture — for a screen with a
+          # Keep the scenery with no sprites on it, beside the picture — for a screen with a
           # see-through layer of sprites.
           #
           # "Blend with what is already there" is right for scenery and wrong for a sprite
@@ -290,12 +290,12 @@ module VBlank
             displayed(lit?(x, y) ? color : outside_light(color, x, y))
           end
 
-          # THE COLOUR THE SCREEN SHOWS WHEREVER NOTHING IS DRAWN, as the game has it now: what is
+          # The colour the screen shows wherever nothing is drawn, as the game has it now: what is
           # outside a light that shows nothing outside it. The display keeps that colour in its
           # table with the rest, so a fade or tint that walks the colours reaches it too.
           attr_writer :backdrop
 
-          # WHAT IS SHOWN IN FRONT OF A PAINTED PICTURE: the sprites the console draws over it
+          # What is shown in front of a painted picture: the sprites the console draws over it
           # (`sprite ..., over_picture: true`), one colour or nil for each place on the screen,
           # in rows, or nil for nothing. It is part of neither page and is not in the picture,
           # so painting the picture again leaves it, and it stays where it is on the screen
@@ -304,7 +304,7 @@ module VBlank
           # reaches it as it reaches the picture.
           attr_writer :over_picture
 
-          # DARKEN THE PICTURE OUTSIDE ONE SPAN OF EACH ROW, by +steps+ sixteenths, from now
+          # Darken the picture outside one span of each row, by +steps+ sixteenths, from now
           # on: +spans+ holds a [left, right] for every row, the columns from left up to but
           # not including right left as drawn. A light (see Builder#spotlight).
           #
@@ -345,10 +345,10 @@ module VBlank
           # What a display with its picture switched off shows: plain white.
           HELD_OFF = Graphics::Color.resolve(:white)
 
-          # WHERE THE PICTURE STOPS (`screen :bitmap, shown_rows:`): [first, past] of the rows it
+          # Where the picture stops (`screen :bitmap, shown_rows:`): [first, past] of the rows it
           # shows, or nil for every row. A row outside is given up: it shows black, after every fade,
           # tint and light, whatever is stored there, as a console shows a row with its screen
-          # switched off. Like the camera it changes what you SEE and not what is stored.
+          # switched off. Like the camera it changes what you see and not what is stored.
           attr_writer :shown_rows
 
           # The colour a row given up shows: black.
@@ -359,7 +359,7 @@ module VBlank
           # The color stored at (x, y), ignoring where the window sits. This is what the
           # drawing engine reads — saving the pixels under a sprite has to see what is
           # really in the picture, not what happens to be on screen right now. On a
-          # two-page screen that means the page being DRAWN into, which is the one the
+          # two-page screen that means the page being drawn into, which is the one the
           # engine is about to write over.
           def stored_pixel(x, y)
             return nil unless on_screen?(x, y)
@@ -404,6 +404,24 @@ module VBlank
             @mixed_unders[(y * @width) + x] = under
           end
 
+          # Put back +count+ cells of +scene+ from (x, y) rightwards, each as #put_back_cell
+          # would. Copied as one row where nothing about a cell needs it alone: nothing is
+          # blended as it is painted, nothing is kept beside the picture, the scene has no
+          # mixed cells, and every cell of it in the row holds a colour. Otherwise a cell at a
+          # time, through #put_back_cell, the plain way the row stands in for.
+          def put_back_row(scene, x, y, count)
+            return put_back_cells(scene, x, y, count) unless copies_rows_from?(scene)
+
+            left, top, right, bottom = paintable_box(x, y, x + count, y + 1)
+            return if right <= left || bottom <= top
+
+            at = (top * @width) + left
+            row = scene.stored_row(at, right - left)
+            return put_back_cells(scene, x, y, count) if row.include?(nil)
+
+            @pixels[at, right - left] = row
+          end
+
           # Paint a horizontal run of cells: +count+ of them starting at (x, y), read
           # from +colors+ beginning at +from+. A nil in +colors+ leaves that cell as it
           # is, so a see-through pixel keeps whatever is behind it.
@@ -433,12 +451,27 @@ module VBlank
           end
 
           # Paint a w-by-h rectangle whose top-left is (x, y). Any part hanging off
-          # the screen is clipped, because each cell goes through set_pixel.
+          # the screen, or outside the area drawing is held to, is clipped.
+          #
+          # Painted a row at a time: the rectangle is clipped once to the cells #paintable?
+          # allows, and each row is one fill. Every cell gets the same colour, because without
+          # a see-through layer #blend_into_cell asks only the colour, never the cell. A
+          # see-through layer mixes each cell with what is under it, so that is painted a
+          # cell at a time through #set_pixel, the plain way the rows stand in for.
           def fill_rect(x, y, width, height, color)
-            y.upto(y + height - 1) do |py|
-              x.upto(x + width - 1) do |px|
-                set_pixel(px, py, color)
-              end
+            return fill_rect_cell_by_cell(x, y, width, height, color) if @through
+
+            left, top, right, bottom = paintable_box(x, y, x + width, y + height)
+            return if right <= left || bottom <= top
+
+            color = apply_placed_fade(color)
+            scenery = @painting_sprite ? nil : @scenery
+            count = right - left
+            top.upto(bottom - 1) do |row|
+              at = (row * @width) + left
+              @pixels.fill(color, at, count)
+              scenery&.fill(color, at, count)
+              @mixed_tops&.fill(nil, at, count) # a cell painted solid over a mix is a mix no longer
             end
           end
 
@@ -452,7 +485,7 @@ module VBlank
             @pixels.fill(apply_placed_fade(color))
           end
 
-          # A flat, row-major copy of every cell of the page being SHOWN, as it is stored —
+          # A flat, row-major copy of every cell of the page being shown, as it is stored —
           # for counting how many cells hold a given color, or asserting what was drawn.
           # "Stored" is about effects, not pages: no camera offset and no fade, but still
           # the picture a viewer is looking at (see #shown, which blends this one).
@@ -462,12 +495,12 @@ module VBlank
             @shown_pixels.each_with_index.map { |color, at| @over_picture[at] || color }
           end
 
-          # The same screen as it is SHOWN: the window's offset applied, and whatever fade
+          # The same screen as it is shown: the window's offset applied, and whatever fade
           # or tint is on blended in. The companion to #to_a, and the two are not
           # interchangeable.
           #
           # Where they differ is exactly where an effect is on, and that difference is the
-          # whole point of an effect: a fade changes NOTHING that was drawn, which is what
+          # whole point of an effect: a fade changes nothing that was drawn, which is what
           # makes it cost the same however much is on screen and come back untouched. So
           # anything comparing this screen with a real display has to read this one — the
           # stored cells are a picture nobody is looking at.
@@ -504,7 +537,25 @@ module VBlank
             top && [top, @mixed_unders[at], @mixed_weights]
           end
 
+          # The +count+ stored cells from cell +at+ on, as they are, for #put_back_row.
+          def stored_row(at, count) = @pixels[at, count]
+
+          # Whether any cell was ever mixed with a see-through layer.
+          def keeps_mixes? = !@mixed_tops.nil?
+
           private
+
+          def put_back_cells(scene, x, y, count)
+            count.times { |col| put_back_cell(scene, x + col, y) }
+          end
+
+          # Can a row of +scene+ be copied onto this picture as it stands? Only where a cell
+          # put back is its colour and nothing else: the same size of screen, no blend while
+          # painting, no scenery or mixes kept here, and no mixes kept in the scene.
+          def copies_rows_from?(scene)
+            scene.width == @width && scene.height == @height && !@blending && @scenery.nil? &&
+              @mixed_tops.nil? && !scene.keeps_mixes?
+          end
 
           # What a pixel outside the light's span shows, where the picture has +color+: that colour
           # darkened, or for a light that shows nothing outside it, the colour of nothing drawn.
@@ -525,8 +576,8 @@ module VBlank
           # The screen pixel whose colour (x, y) shows while the picture is in blocks: the
           # top left corner of its block.
           #
-          # DOWN THE SCREEN the blocks are fixed to it, a new one at every row that is a
-          # multiple of the size. ACROSS they are fixed to it too, while the picture covers
+          # Down the screen the blocks are fixed to it, a new one at every row that is a
+          # multiple of the size. Across they are fixed to it too, while the picture covers
           # the row from its first column — which is always, unless the window has been
           # moved off the picture's left edge. Then the first block of a row starts where
           # the picture does, and the rest count from there: a display starts a block at
@@ -549,9 +600,9 @@ module VBlank
           #
           # A fade that walks the colors is a different thing — the game writes those colors
           # into the table and the display shows them as they are — and keeps the console's
-          # documented rule in five bits (#walked_toward). There BOTH DIRECTIONS MOVE BY A
-          # TRUNCATED SHARE: toward white a channel ADDS a share of the headroom it has left,
-          # toward black it TAKES AWAY a share of what it has. Neither keeps a share instead,
+          # documented rule in five bits (#walked_toward). There both directions move by a
+          # truncated share: toward white a channel adds a share of the headroom it has left,
+          # toward black it takes away a share of what it has. Neither keeps a share instead,
           # and the two round in opposite directions: a channel at the top taken a quarter of
           # the way to black comes back 24, where keeping three quarters would leave 23.
           def faded(color, fade_here: true)
@@ -571,10 +622,10 @@ module VBlank
 
           # One color mixed toward another in five bits a channel, the arithmetic a tint that
           # walks the color table writes its colors with: each channel takes its share of the
-          # picture and its share of the other color, the two are ADDED, and only then is the
+          # picture and its share of the other color, the two are added, and only then is the
           # fraction dropped.
           #
-          # WHERE THE TRUNCATION FALLS IS THE WHOLE OF IT. Truncating each share on its own
+          # Where the truncation falls is the whole of it. Truncating each share on its own
           # and adding them can land a whole step lower — white mixed half way toward red
           # keeps 30 of its red that way and 31 this way — so a picture where both sides
           # have something in a channel comes out different.
@@ -595,8 +646,8 @@ module VBlank
             packed
           end
 
-          # The same mix as the display's blend unit does it as it draws, THE WAY THE
-          # EMULATOR THIS IS CHECKED AGAINST WORKS IT OUT: each channel widened to eight bits
+          # The same mix as the display's blend unit does it as it draws, the way the
+          # emulator this is checked against works it out: each channel widened to eight bits
           # first (see #mix_see_through), the two shares added there and the fraction
           # dropped, and only then back to five. So it is a step higher than #mixed wherever
           # the bits five bits throw away would have carried — a channel at 16 taken half way
@@ -634,8 +685,8 @@ module VBlank
 
           # The color shown for the stored cell at (x, y), with the fade or tint in force.
           #
-          # A CELL A SEE-THROUGH LAYER WAS MIXED INTO is the one place the order matters. A
-          # tint on a screen drawn through a color table moves the colors IN the table, and
+          # A cell a see-through layer was mixed into is the one place the order matters. A
+          # tint on a screen drawn through a color table moves the colors in the table, and
           # the display then mixes the moved colors as it draws: the tint reaches each side of
           # the mix before the two are added. Tinting the finished mix instead is the same
           # picture only while the layer's two shares make exactly a whole. Past a whole —
@@ -664,7 +715,7 @@ module VBlank
           # dropped. The two shares need not add to a whole, and past one a channel stops at
           # its brightest, as the display's does.
           #
-          # EACH CHANNEL IS WIDENED TO EIGHT BITS FIRST, the way the emulator this is checked
+          # Each channel is widened to eight bits first, the way the emulator this is checked
           # against mixes: five bits become eight by repeating the top ones underneath
           # (31 becomes 255, 16 becomes 132), the mix is taken there, and the result goes
           # back to five. Mixed in five bits the answer is a step lower on some pixels — for
@@ -688,7 +739,7 @@ module VBlank
           def widen_channel(channel) = (channel << 3) | (channel >> 2)
 
           # One color taken +steps+ sixteenths of the way to black by the display's darkening,
-          # THE WAY THE EMULATOR THIS IS CHECKED AGAINST WORKS IT OUT — which is not the same
+          # the way the emulator this is checked against works it out — which is not the same
           # for every channel, and that is the whole reason this is not #walked_toward.
           #
           # It widens each channel to eight bits (see #mix_see_through) and keeps the three
@@ -716,7 +767,7 @@ module VBlank
           # The other way: one color taken +steps+ sixteenths of the way to white by the
           # display's brightening, the way the same emulator works it out. Each channel is
           # widened to eight bits and gains a share of the headroom it has left there. A
-          # share is ADDED here, so the fraction is dropped from the sum whichever byte a
+          # share is added here, so the fraction is dropped from the sum whichever byte a
           # channel sits in, and the three channels round alike — what makes this differ
           # from five bits is the widening alone: a channel at 16 taken half way is 24
           # here, where five bits give 23.
@@ -769,7 +820,28 @@ module VBlank
             blended[0] | (blended[1] << 5) | (blended[2] << 10)
           end
 
-          # Where a cell may be PAINTED: on the screen, and inside the area drawing is held to.
+          def fill_rect_cell_by_cell(x, y, width, height, color)
+            y.upto(y + height - 1) do |py|
+              x.upto(x + width - 1) do |px|
+                set_pixel(px, py, color)
+              end
+            end
+          end
+
+          # The box from (left, top) up to but not including (right, bottom), cut down to the
+          # cells #paintable? allows, as [left, top, right, bottom]. Empty when right <= left or
+          # bottom <= top.
+          def paintable_box(left, top, right, bottom)
+            left = left.clamp(0, @width)
+            right = right.clamp(0, @width)
+            top = top.clamp(0, @height)
+            bottom = bottom.clamp(0, @height)
+            return [left, top, right, bottom] unless @area
+
+            [[left, @area[0]].max, [top, @area[1]].max, [right, @area[2]].min, [bottom, @area[3]].min]
+          end
+
+          # Where a cell may be painted: on the screen, and inside the area drawing is held to.
           def paintable?(x, y)
             return false unless on_screen?(x, y)
             return true unless @area

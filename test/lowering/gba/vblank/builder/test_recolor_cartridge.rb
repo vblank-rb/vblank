@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_recolor"
 
-# A RECOLORED SPRITE ON THE ADVANCE'S CARTRIDGE, read in the emulator. What `recolor` does on
+# A recolored sprite on the Advance's cartridge, read in the emulator. What `recolor` does on
 # every run is in test/all/vblank/builder/test_recolor.rb.
 class TestRecolorCartridge < Minitest::Test
   include RecolorGames

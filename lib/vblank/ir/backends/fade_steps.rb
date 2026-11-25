@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # HOW FAR A FADE OR A TINT HAS GONE, in the steps the console counts in. Both backends
+      # How far a fade or a tint has gone, in the steps the console counts in. Both backends
       # read it, so the interpreter's picture and the console's are worked out from the same
       # numbers and cannot drift apart a step at a time.
       #
@@ -20,7 +20,7 @@ module VBlank
       # picture is the same to the last bit and only the counting is finer. An amount with a
       # fraction is what asks for the 256ths.
       #
-      # These are what a fade MEANS, on every backend and every console, so they are written here
+      # These are what a fade means, on every backend and every console, so they are written here
       # rather than read off one console's registers. A console whose display blends counts in
       # the same sixteenths (the Advance's BLD_MAX), and a console that cannot blend walks its
       # colours (Console::Description#blends).
@@ -73,7 +73,7 @@ module VBlank
 
         def sixteenths(percent) = ((percent * DISPLAY) / 100).clamp(0, DISPLAY)
 
-        # A DISPLAY THAT DIMS (Console::Description#fades_by_brightness) has sixteen brightnesses and
+        # A display that dims (Console::Description#fades_by_brightness) has sixteen brightnesses and
         # no more, so a fade to black of +steps+ 256ths is the nearest of them: how many levels down
         # from full, 0 to 15. Rounded down, so each level is the same share of the fade: fifteen levels
         # of a fade over fifteen frames is one a frame, and black, the lowest, is for a fade all the

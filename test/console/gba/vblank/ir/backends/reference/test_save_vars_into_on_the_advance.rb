@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE TESTS OF vblank/ir/backends/reference/test_save_vars_into.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/ir/backends/reference/test_save_vars_into.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A TEST WRITES A save_var's NUMBER INTO SAVE MEMORY, so a game starts with a high score it
+# A test writes a save_var's number into save memory, so a game starts with a high score it
 # chose rather than being played until it reaches one. The game's own code writes it, so the
 # game reads it back as its own.
 class TestSaveVarsIntoOnTheAdvance < Minitest::Test

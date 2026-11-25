@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A GAME WITH A LIGHT THAT FADES UNDER A LAYER IN A SCENE THE LIGHT IS OFF IN, on the Advance's
+# A game with a light that fades under a layer in a scene the light is off in, on the Advance's
 # cartridge. The fade keeps the sprites in front of it out with the display's object window, and
 # the light is the display's first window, which wins over the object window wherever the two
 # overlap. So in a scene the light is off in, the light's window has to be shut, or every sprite
@@ -40,7 +40,7 @@ class TestPlacedFadeBesideLightCartridge < Minitest::Test
         turn += 1
         mode.store!(1) if turn == LIT_ON
         mode.store!(0) if turn == BACK_ON
-        case_var(:mode) { when_val 0, :title; when_val 1, :lit }
+        call({ 0 => :title, 1 => :lit }, number: :mode)
       end
     end
     builder.finalize_program

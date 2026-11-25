@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/scoreboard").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/scoreboard").to_s)
 
 # The scoreboard example (examples/scoreboard.rb): a status bar along the bottom of the screen over
 # a field that drifts under it, which slides out of the ball's way while the ball is low and lights

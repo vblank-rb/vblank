@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # WHERE A PLAYER'S SETTINGS ARE KEPT (Settings says what is in them), found as the desktop build
+    # Where a player's settings are kept (Settings says what is in them), found as the desktop build
     # finds them, so the two share them: settings.txt in the folder the operating system keeps for
     # "vblank" and each person — one folder every game shares, "(all games)", and one for each
     # game, named from its title. The shared file is read first; a game that has a file of its own

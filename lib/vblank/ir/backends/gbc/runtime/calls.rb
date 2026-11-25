@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # HOW THE GAME'S CODE AND THE RUNTIME CALL EACH OTHER.
+          # How the game's code and the runtime call each other.
           #
           # A runtime routine taking numbers finds them on the stack: the game pushes each, the first
           # deepest, and calls, so the last is just past the return address. The routine copies them
@@ -245,7 +245,7 @@ module VBlank
               asm.jump("rt_read_int32") # above the ceiling: the ceiling
             end
 
-            # BCDE, already found OUTSIDE the floor (HL) and the ceiling (HL+4), both from nought to
+            # BCDE, already found outside the floor (HL) and the ceiling (HL+4), both from nought to
             # 0xFFFF, made the end it is nearer (Lowering#value_of_clamped): the floor for a number
             # below nought, the ceiling for one past two bytes, and for the rest, which side of the
             # floor its low two bytes are. Every answer is rt_clamp32's, without its two 32-bit

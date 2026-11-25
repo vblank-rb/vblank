@@ -2,19 +2,19 @@
 
 require "test_helper"
 
-# The cross-backend conformance fixture: ONE synthetic IR program that exercises
+# The cross-backend conformance fixture: one synthetic IR program that exercises
 # (nearly) every supported IR feature — not a game, a kitchen sink. It exists so
 # a backend can't silently lag: run it through every backend and an unimplemented
 # feature hits that backend's "unsupported" branch and fails the test.
 #
-# MAINTENANCE OBLIGATION: when you add a new IR feature (a node kind or a binop
+# Maintenance obligation: when you add a new IR feature (a node kind or a binop
 # operator), add it here. The coverage test asserts this fixture touches every
 # kind in Node::CATEGORY and every operator in OPERATORS, so a forgotten feature
 # fails loudly. See the cross-backend rule in .claude/CLAUDE.md.
 #
 # The lone exception is `raw` — pre-assembled native bytes, which the portable
 # interpreter legitimately can't run (there's no ARM CPU behind it). It lives in
-# an UNCALLED func here: present in the tree (so the GBA backend lowers it and
+# an uncalled func here: present in the tree (so the GBA backend lowers it and
 # coverage sees it), but never reached during interpretation. Which kinds are
 # exempt comes straight from each kind's own tier (see Node::Declarations#tier) —
 # not a list hardcoded here.
@@ -141,7 +141,7 @@ module ConformanceFixture
       B.set(:acc, B.binop(:<<, B.int(1), B.int(40))),          # 0 — off the top end
       B.set(:acc, B.binop(:>>, B.int(-1), B.int(40))),         # -1 — the sign fills in
       B.set(:acc, B.binop(:>>, B.int(255), B.int(-1))),        # 0 — a negative count, likewise
-      # Dividing and wrapping with a NEGATIVE numerator, which is where the two round
+      # Dividing and wrapping with a negative numerator, which is where the two round
       # differently and where a backend taking a shortcut goes wrong. -7 / 4 truncates
       # toward zero to -1, while -7 % 4 takes the sign of the divisor and is 1. A
       # backend may reduce a divisor written into the program — one way for a power of
@@ -155,7 +155,7 @@ module ConformanceFixture
       B.set(:acc, B.binop(:/, B.int(3599), B.int(60))), # 59 — frames into seconds, and a
       B.set(:acc, B.binop(:/, B.int(-1), B.int(60))),   # divisor whose reciprocal needs a fixup
       # mul_fix — a multiply whose product is formed at full width. The operands are
-      # chosen so a plain 32-bit multiply gets a DIFFERENT answer: 1.5 * 1.5 with 16
+      # chosen so a plain 32-bit multiply gets a different answer: 1.5 * 1.5 with 16
       # fraction bits needs 9,663,676,416 on the way, which wraps. A backend that
       # lowered this as an ordinary multiply would pass a coverage check and still be
       # wrong, so the differential comparison has something real to disagree about.
@@ -179,6 +179,7 @@ module ConformanceFixture
       B.set(:acc, B.table_get(:lut, B.var_ref(:x))), # table_get reads a ROM table at a run-time index
       B.set(:acc, B.held(:a)),                # held (button read)
       B.set(:acc, B.pressed(:b)),             # pressed (edge read)
+      B.set(:acc, B.pulled(:a)),              # pulled (how far: 0 or 100 for a button)
       B.set(:acc, B.players_connected),       # players_connected (how many are connected)
       B.set(:acc, B.local_player),            # local_player (which player this machine is: 1 here)
       B.set(:acc, B.chance(B.var_ref(:x), 50)), # chance (draw-below-threshold read)
@@ -190,23 +191,23 @@ module ConformanceFixture
       B.clear_screen(:black),
       B.pixel(1, 1, :red),
       B.fill_rect(2, 2, 4, 4, :green),
-      B.dma_fill_rect(8, 8, 4, 4, :blue),
+      B.fill_rect(8, 8, 4, 4, :blue),
       B.draw_rect_at(:x, :y, 4, 4, :white),
       # ...and one whose height the program works out, which a backend fills with a
       # counted loop rather than unrolled rows. :x is 7 here, so it draws seven rows —
       # a backend that mishandled the count would draw a different number of them.
       B.draw_rect_at(B.int(30), B.int(30), B.int(4), B.var_ref(:x), :white),
-      # ...and one whose WIDTH it works out, at an ODD column and an ODD width, which is
+      # ...and one whose width it works out, at an odd column and an odd width, which is
       # the case a backend cannot settle while building: on a screen that writes two
       # pixels at a time, the rect's first and last pixel then land in different halves
       # of their units and have to be spliced in one at a time.
       B.draw_rect_at(B.int(41), B.int(40), B.var_ref(:x), B.int(2), :white),
       # One column of a picture, stretched to a height the program works out (:x is 7). The
-      # stretch is the part a backend can get subtly wrong: it must walk DOWN THE SCREEN asking
+      # stretch is the part a backend can get subtly wrong: it must walk down the screen asking
       # which picture row belongs at each screen row, so seven screen rows show the picture's
       # four rows spread over them — walking the picture instead would leave gaps.
       B.draw_column_at(:sprite, B.int(1), B.int(60), B.int(30), B.var_ref(:x)),
-      # ...and as a STRIP, whose pixels share one walk down the screen. At an odd column, so a
+      # ...and as a strip, whose pixels share one walk down the screen. At an odd column, so a
       # backend whose pixels are packed in pairs has to splice rather than write whole ones.
       B.draw_column_at(:sprite, B.int(1), B.int(71), B.int(30), B.var_ref(:x), width: 3),
       # ...and one held to a part of the picture, which cuts it off short of where it asked to
@@ -215,8 +216,8 @@ module ConformanceFixture
       # point is that they cost nothing.
       B.inside(80, 30, 8, 4,
                B.draw_column_at(:sprite, B.int(1), B.int(82), B.int(28), B.int(12)),
-               B.dma_fill_rect(78, 28, 12, 8, :white)),
-      # A place drawn as a viewer sees it: here the statements under it are one face of FIVE
+               B.fill_rect(78, 28, 12, 8, :white)),
+      # A place drawn as a viewer sees it: here the statements under it are one face of five
       # corners filled with a picture, as a place's routine fills a face the near limit cut. The
       # corners are in sixteenths of a pixel and lean, so every row starts and ends somewhere new,
       # and they fall from -1 to 3 on a picture two pixels wide, so the picture repeats both ways.
@@ -356,7 +357,7 @@ module ConformanceFixture
       # nothing is blended inside it either, so what this pins is that every backend can be
       # told a rectangle at all.
       B.fade(toward: :black, amount: B.int(0), reaches: :inside, area: [0, 0, 120, 80]),
-      # ...and the sibling effect that mixes a color IN rather than changing brightness.
+      # ...and the sibling effect that mixes a color in rather than changing brightness.
       # Also at 0, for the same reason: nothing is blended either way, so the picture is
       # unchanged and what this pins is that every backend can be told to tint at all.
       B.tint(color: :red, amount: B.int(0)),
@@ -465,6 +466,10 @@ module ConformanceFixture
       B.list_new(:primed, 5, width: :byte, full_of: -2), # starts holding five of -2
       B.set(:acc, B.list_len(:primed)),
       B.set(:acc, B.list_get(:primed, 4)),
+      # a list's items written into a byte list lowest byte first: -300's two bytes, 0xD4 and
+      # 0xFE, into slots 1 and 2, which read back -44 and -2, and slot 3 keeps its -2
+      B.list_pack(:owed, into: :primed, at: B.int(1), width: :half, index: :acc),
+      B.set(:acc, B.list_get(:primed, 1)),
 
       # ...and a list of places put in order by the numbers another list holds at them. Two of
       # the numbers are level, so a sort that is not stable puts places 0 and 2 the wrong way
@@ -489,6 +494,18 @@ module ConformanceFixture
       # what the case above set.
       B.call_one_of(%i[scene_a scene_b], which: B.binop(:+, B.var_ref(:sel), B.int(1))),
       B.repeat(3, :ri, B.set(:acc, B.var_ref(:ri))), # counted loop, index 0..2
+      # A `next` on turn 1 and a `break` on turn 3 of five: :jumped is 0 + 2, and :rj stays 3.
+      B.set(:jumped, 0),
+      B.repeat(5, :rj,
+               B.if_(B.binop(:==, B.var_ref(:rj), B.int(1)), B.next_repeat),
+               B.if_(B.binop(:==, B.var_ref(:rj), B.int(3)), B.break_repeat),
+               B.add(:jumped, B.var_ref(:rj))),
+      # ...and a `break` out of a `while wi < 4` ending `wi += 1` (a counted while), on wi == 2.
+      B.set(:wi, 0),
+      B.repeat(0x7FFF_FFFF, :wt,
+               B.if_(B.binop(:==, B.var_ref(:wi), B.int(2)), B.break_repeat),
+               B.add(:wi, B.int(1)),
+               stop_when: B.binop(:==, B.binop(:<, B.var_ref(:wi), B.int(4)), B.int(0))),
 
       # --- timed triggers: a repeating and a one-shot timer (counters cleared
       # up front so the interpreter's schedule is deterministic) ---
@@ -510,6 +527,9 @@ module ConformanceFixture
       # ...and set (nothing happens with no clock, so the saved numbers it would keep stay 0)
       *VBlank::IR::Clock::OFFSETS.map { |offset| B.set(offset, B.int(0)) },
       B.set_clock(year: B.int(2031), month: B.int(5), day: B.int(17), hour: B.int(8), minute: B.int(9), second: B.int(10)),
+
+      # --- a full pool's stop, behind a test the game never passes (acc is never that number) ---
+      B.if_(B.binop(:==, B.var_ref(:acc), B.int(-12_345)), B.stop_full(:never_full, 4)),
 
       # --- terminate: a loop that syncs once then halts (covers loop + halt) ---
       B.loop_(B.wait_vblank, B.halt),

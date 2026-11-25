@@ -826,9 +826,12 @@ module RubyGBAEmulator
     # +touches+ is how many times the program read or wrote each word of the console's two working
     # memories, by the word's address. A byte or half counts against its word; fetching an
     # instruction is not a touch (that is +pc+), and a word the run never touched is not there.
+    #
+    # +gap_writes_missed+ is how many runs of a gap's writes in the picture there was no room to keep
+    # (see {Pass}), so a list cut short says so.
     Profile = Data.define(:frames, :samples, :halted, :elsewhere, :finished, :pc, :cycles, :late,
-                          :cycles_per_frame, :touches, :passes) do
-      def initialize(touches: {}, passes: [], **rest) = super
+                          :cycles_per_frame, :touches, :passes, :gap_writes_missed) do
+      def initialize(touches: {}, passes: [], gap_writes_missed: 0, **rest) = super
       # The addresses that came up most, dearest first.
       #
       # @return [Array<Array(Integer, Integer)>] pairs of [address, times seen]
@@ -896,13 +899,27 @@ module RubyGBAEmulator
     # and a whole frame more for each further break it ran through); nil for a gap that ended in
     # time, and for a pass whose gap end was not seen or not asked about (see #profile's +gap_ends+).
     # Such a pass lost that picture in its gap, however many lines it had to spare at the end.
-    Pass = Data.define(:missed, :ended_before, :gap_overran_by) do
-      def initialize(missed:, ended_before:, gap_overran_by: nil) = super
+    #
+    # +gap_writes_in_picture+ are what that gap wrote to the sprite table, the colours and the
+    # display registers on a row of the picture (each a {GapWrite}): changes meant for the break,
+    # which the screen drew part of the picture without. Empty for a gap that kept to the break, for
+    # a pass whose gap end was not asked about, and for one that never reached a gap end it was asked
+    # about (its gap's end is not known, so its later work is not blamed on the gap).
+    Pass = Data.define(:missed, :ended_before, :gap_overran_by, :gap_writes_in_picture) do
+      def initialize(missed:, ended_before:, gap_overran_by: nil, gap_writes_in_picture: []) = super
 
       # For a pass asleep inside a break it missed, how many lines sooner it had to end to make
       # it; nil for any other.
       def lines_late = ended_before.negative? ? -ended_before : nil
     end
+
+    # WRITES A GAP MADE TO ONE PART OF THE DISPLAY WHILE THE PICTURE WAS BEING DRAWN, one after
+    # another: the sprite table, the backgrounds' colours, the sprites' colours, or one display
+    # register. +from+ and +to+ are the lowest and highest address written (a colour or sprite address
+    # on its first mirror), +rows+ the rows the screen was drawing at the first and the last, and
+    # +writes+ how many there were. Left out: what an interrupt's handler wrote, and what a copy the
+    # screen or the sound started wrote, which is how a game changes the display row by row on purpose.
+    GapWrite = Data.define(:from, :to, :rows, :writes)
 
     # WHAT THE RECORDED SOUND WAS FED, AND WHAT IT PLAYED: run +frames+ frames holding +keys+, and
     # say for each sample the console's recorded-sound channel played where in memory it came from
@@ -972,7 +989,9 @@ module RubyGBAEmulator
     #
     # +gap_ends+ are the addresses whose arrival ends the gap after a game loop's wait, which only
     # the build that made the ROM knows; each pass then says whether its gap ran past a break
-    # ({Pass#gap_overran_by}). Empty asks nothing.
+    # ({Pass#gap_overran_by}). Empty asks nothing. An end in a routine kept in a swapped set of
+    # the quick memory is +[address, set number, address of the word naming the sets in]+, and
+    # counts only while that word's bit for the set is on.
     #
     # @return [Profile]
     def profile(frames: 1, settle: 0, keys: nil, gap_ends: [])
@@ -982,13 +1001,17 @@ module RubyGBAEmulator
       @frames_run += frames
       @prev_pixels = @pixels
       @pixels = @core.video_buffer
-      passes = raw[:passes].map do |missed, ended_before, gap|
-        Pass.new(missed:, ended_before:, gap_overran_by: gap.negative? ? nil : gap)
+      in_picture = raw[:gap_writes].group_by(&:first)
+      passes = raw[:passes].each_with_index.map do |(missed, ended_before, gap), at|
+        writes = in_picture.fetch(at, []).map do |_, from, to, first_row, last_row, count|
+          GapWrite.new(from:, to:, rows: first_row..last_row, writes: count)
+        end
+        Pass.new(missed:, ended_before:, gap_overran_by: gap.negative? ? nil : gap, gap_writes_in_picture: writes)
       end
       Profile.new(frames: raw[:frames], samples: raw[:samples], halted: raw[:halted],
                   elsewhere: raw[:elsewhere], finished: raw[:finished], pc: raw[:pc],
                   cycles: raw[:cycles], late: passes.filter_map(&:lines_late), cycles_per_frame: frame_cycles,
-                  touches: raw[:touches], passes: passes)
+                  touches: raw[:touches], passes: passes, gap_writes_missed: raw[:gap_writes_missed])
     end
 
     # --- stopping inside a frame, for somebody debugging generated code ------

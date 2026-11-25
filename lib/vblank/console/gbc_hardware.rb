@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # THE GAME BOY COLOR'S HARDWARE, NAMED: where its memory is, and the addresses and flags of the
+    # The Game Boy Color's hardware, named: where its memory is, and the addresses and flags of the
     # registers that drive its picture, its sound, its buttons and its cartridge. Names follow Pan
     # Docs (gbdev.io/pandocs), so anyone who has read it recognises them.
     #

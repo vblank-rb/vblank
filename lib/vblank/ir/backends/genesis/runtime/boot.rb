@@ -5,23 +5,23 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # FROM POWER-ON TO THE GAME'S FIRST LINE.
+          # From power-on to the game's first line.
           #
           # The 68000 wakes up with every interrupt held off, reads the stack's first place and the
           # place to start from the first two long words of the cartridge, and starts there
           # (Cartridge::GenesisROM's vectors). Nothing the console keeps is cleared at power-on, so the
           # first thing done is to put it all in a known state.
           #
-          # THE SECURITY CHECK. A console of the later kind refuses to show anything until the cartridge
+          # The security check. A console of the later kind refuses to show anything until the cartridge
           # has written the letters SEGA to a port, and only that kind has the port: the version
           # register shows which (Console::GenesisHardware's TMSS_PORT). The write is made only when the
           # version asks for it.
           #
-          # THE SOUND PROCESSOR starts running memory nobody filled and can write noise into the sound
+          # The sound processor starts running memory nobody filled and can write noise into the sound
           # chip, so its bus is asked for and kept, which stops it; and the sound chip's four square
           # voices are turned off, since they power on at a volume of their own choosing.
           #
-          # THE VIDEO CHIP is told its settings (a table of its registers the lowering writes, since the
+          # The video chip is told its settings (a table of its registers the lowering writes, since the
           # size of a picture's planes is the game's), and its three memories — video RAM, colour
           # memory and scroll memory — are cleared, video RAM by the chip's own fill while the processor
           # clears work RAM (#emit_memories_cleared), the screen off all the while: it stays off until
@@ -44,11 +44,15 @@ module VBlank
             # those are shown frames like any other. So for such a game the screen's interrupt is switched on
             # as soon as the video chip is set up, counting only (Frame::COUNTING), with the part of work RAM
             # it counts in cleared first and left alone by the clearing after (#emit_counting_on).
-            def emit(asm, main:, registers:, held_at:, counting: nil)
+            #
+            # +second+ (a SecondPad) for a game that reads the second pad (Frame#reads_second_pad?), and
+            # +team_player+ for one that reads a Team Player there, whose buttons from power-on are read
+            # once work RAM is cleared (Frame#emit_tap_held_from_power_on) in place of the pad's.
+            def emit(asm, main:, registers:, held_at:, counting: nil, second: nil, team_player: false)
               h = Console::GenesisHardware
               asm.label("rt_boot")
               asm.move_to_sr(asm.imm(0x2700)) # every interrupt held off
-              emit_buttons_from_power_on(asm, h)
+              emit_buttons_from_power_on(asm, h, second: !second.nil?)
               emit_security_check(asm, h)
               emit_sound_quiet(asm, h)
               emit_video_chip(asm, h, registers)
@@ -56,20 +60,50 @@ module VBlank
               emit_memories_cleared(asm, h, kept_bytes: counting ? counting.bytes : 0, counting: !counting.nil?)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.move(:w, asm.d(7), asm.disp(5, held_at))
+              if team_player
+                asm.jsr(asm.abs_l("rt_tap_held_from_power_on"))
+              elsif second
+                emit_second_held_from_power_on(asm, second)
+              end
               asm.jsr(asm.abs_l("rt_start"))
               asm.jsr(asm.abs_l(main))
               asm.label("rt_main_returned")
               asm.jmp(asm.abs_l("rt_halt"))
             end
 
-            # THE BUTTONS HELD FROM POWER-ON are read first of all, before anything that takes a frame:
+            # The buttons held from power-on are read first of all, before anything that takes a frame:
             # a player's hand is on the pad before the console is on. They are kept in D7 until work RAM
             # is cleared, and are the first pass's (Frame::HELD), down before the first frame boundary and
             # not yet seen there, so the first boundary still finds them going down.
-            def emit_buttons_from_power_on(asm, h)
+            #
+            # In a game that reads the second pad (+second+), its port is set the same way and its
+            # buttons kept in D7's high half.
+            def emit_buttons_from_power_on(asm, h, second: false)
               asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD1_CONTROL))
               asm.jsr(asm.abs_l("rt_buttons_now"))
               asm.move(:l, asm.d(0), asm.d(7))
+              return unless second
+
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD2_CONTROL))
+              asm.jsr(asm.abs_l("rt_second_buttons_now"))
+              asm.swap(asm.d(0))
+              asm.or(:l, asm.d(0), asm.d(7))
+            end
+
+            # Where the second pad's buttons held from power-on go (Frame::SECOND_HELD), and whether a
+            # button on it makes the second player connected (Frame::PLAYERS_PAST_FIRST): each a distance
+            # from A5.
+            SecondPad = Data.define(:held_at, :connected_at)
+
+            # The second pad's buttons from power-on, in D7's high half, made the first pass's; a
+            # button down there connects the second player from the first pass, as the interpreter's
+            # `hold` does (Reference#count_connected_players).
+            def emit_second_held_from_power_on(asm, second)
+              asm.swap(asm.d(7))
+              asm.move(:w, asm.d(7), asm.disp(5, second.held_at))
+              asm.branch(:eq, "rt_boot_second_quiet")
+              asm.move(:w, asm.imm(1), asm.disp(5, second.connected_at))
+              asm.label("rt_boot_second_quiet")
             end
 
             def emit_security_check(asm, h)
@@ -96,9 +130,9 @@ module VBlank
               asm.dbra(asm.d(1), "rt_boot_register")
             end
 
-            # THE INTERRUPT ON, COUNTING ONLY: A5 set, the CountingBlock +counting+ at the start of work RAM
+            # The interrupt on, counting only: A5 set, the CountingBlock +counting+ at the start of work RAM
             # cleared, COUNTING set in it, and the screen's interrupt switched on (Runtime#emit_interrupt_on).
-            # The interrupt then counts FRAMES and nothing else until setting up ends (Runtime#emit_start).
+            # The interrupt then counts frames and nothing else until setting up ends (Runtime#emit_start).
             def emit_counting_on(asm, counting)
               asm.movea(:l, asm.imm(Memory::BASE), asm.a(5))
               asm.lea(asm.abs_l(Memory::FIRST), asm.a(0))
@@ -111,7 +145,7 @@ module VBlank
               Runtime.emit_interrupt_on(asm)
             end
 
-            # VIDEO RAM, 64K, IS FILLED BY THE VIDEO CHIP ITSELF WHILE THE PROCESSOR CLEARS WORK RAM. Written
+            # VIDEO RAM, 64K, is filled by the video chip itself while the processor clears work RAM. Written
             # through the data port it was the processor's work, a long word an instruction, the chip taking
             # each at its own pace. A DMA fill instead takes one word through the data port and writes its
             # byte into as many places as the DMA length registers name (nought is 64K), the address moving on

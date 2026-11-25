@@ -2,11 +2,11 @@
 
 module VBlank
   module Console
-    # THE PLAYSTATION'S HARDWARE, NAMED: where its memory is, the addresses of its ports, and the
+    # The PlayStation's hardware, named: where its memory is, the addresses of its ports, and the
     # commands its graphics chip takes. Names and numbers follow psx-spx (nocash's PlayStation
     # specification, psx-spx.consoledev.net), so anyone who has read it recognises them.
     #
-    # THE PROCESSOR IS A MIPS R3000A, AND IT IS LITTLE-ENDIAN like the Advance's: a number's low byte
+    # The processor is a MIPS R3000A, and it is little-endian like the Advance's: a number's low byte
     # is at the lower address. It sees 4 gigabytes of addresses, and the console's memory is in them
     # three times over: from 00000000h, from 80000000h (KSEG0, through the instruction cache, where
     # code runs) and from A0000000h (KSEG1, never cached). The low 29 bits give which byte it is.
@@ -17,13 +17,13 @@ module VBlank
     #   1F801000h-1F802FFFh  the ports: interrupts, DMA, timers, the graphics chip, sound, the pads
     #   BFC00000h-BFC7FFFFh  the BIOS, 512K. The runtime never calls it.
     #
-    # THE GRAPHICS CHIP (the GPU) has a megabyte of video RAM of its own, 1024 by 512 pixels of 16
+    # The graphics chip (the GPU) has a megabyte of video RAM of its own, 1024 by 512 pixels of 16
     # bits, which the processor cannot read or write directly: everything goes through two ports. GP0
     # takes drawing commands (fill this rectangle, draw this triangle, copy this picture in) and GP1
     # takes display commands (show the picture starting at this place in video RAM, this big, now).
     # The picture on the television is a rectangle of video RAM; the rest is free for pictures.
     #
-    # COLOURS ARE 15 BITS in video RAM, red in the low five, then green, then blue (the top bit is a
+    # Colours are 15 BITS in video RAM, red in the low five, then green, then blue (the top bit is a
     # mask bit no game here uses): the Advance's own layout. A command names a colour in 24 bits, a
     # byte each of red, green and blue, and the chip keeps the top five bits of each.
     module PS1Hardware
@@ -123,10 +123,27 @@ module VBlank
       TIMER1_COUNT = 0x1F80_1110
       TIMER1_MODE = 0x1F80_1114
       TIMER1_COUNTS_LINES = 0x0100
+      # ...its target, and the mode's bits that raise its interrupt each time the count reaches the
+      # target (bit 4, and bit 6 for every time rather than once), as a short pulse (bit 7 clear), the
+      # count running on past it (bit 3 clear) (psx-spx, "Timers").
+      TIMER1_TARGET = 0x1F80_1118
+      TIMER1_EVERY_TARGET = (1 << 4) | (1 << 6)
+      # The third timer: its count, how it counts, and the count it raises its interrupt at. Its mode's
+      # bit 9 set counts the processor's clock in eighths (psx-spx gives bits 8 and 9 as 2 or 3 for that,
+      # and Beetle PSX's timer stands still at 3, so 2, bit 8 clear); bit 4 raises the interrupt at the
+      # target, once (bit 6 clear) until the mode is written again, which also starts the count from
+      # nought (psx-spx, "Timers").
+      TIMER2_COUNT = 0x1F80_1120
+      TIMER2_MODE = 0x1F80_1124
+      TIMER2_TARGET = 0x1F80_1128
+      TIMER2_EIGHTHS = 0x0200
+      TIMER2_ONCE_AT_TARGET = 1 << 4
 
       # --- interrupts (I_STAT and I_MASK bits) ---
       IRQ_VBLANK = 1 << 0
-      IRQ_PAD = 1 << 7 # A pad or memory card has acknowledged a byte
+      IRQ_TIMER1 = 1 << 5 # The second timer reached its target
+      IRQ_TIMER2 = 1 << 6 # The third timer reached its target
+      IRQ_PAD = 1 << 7 # A pad or memory card has acknowledged a byte, or sent one back
       # The status register's bits: the hardware interrupt line (IM2, which every one of the ports'
       # interrupts comes in on) and interrupts on (IEc).
       SR_INTERRUPTS_ON = (1 << 10) | 1
@@ -153,6 +170,10 @@ module VBlank
       DMA_BUSY = 1 << 24
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
+      # The lines an NTSC frame has, the blank's among them (psx-spx, "GPU Video Timings"). Every build
+      # sets the NTSC mode above, so this is every build's frame; a build that could be PAL (314 lines)
+      # would take it from the mode it sets.
+      LINES_A_FRAME = 263
       # Where the 320 visible pixels sit on an NTSC line (eight of the chip's clocks a pixel), and the
       # 240 visible lines: the ranges psx-spx gives as the usual ones.
       HORIZONTAL_FIRST = 0x260
@@ -180,7 +201,7 @@ module VBlank
       # << 16 | v << 8 | u, then height << 16 | width. A texel of 0000h, or a number into a colour table
       # whose entry is 0000h, is not drawn.
       GP0_TEXTURED_RECTANGLE = 0x65 << 24
-      # SEMI-TRANSPARENCY. A drawing command with this bit set mixes each texel whose top bit is set
+      # Semi-transparency. A drawing command with this bit set mixes each texel whose top bit is set
       # (every drawn texel: TEXEL_DRAWN) with the pixel already in video RAM under it, in the way the
       # draw mode's bits 5-6 name (SEMI_TRANSPARENCY_SHIFT). The chip has four ways, each worked out in
       # five bits a channel (B the pixel under, F the texel): 0 is B/2 + F/2, the sum halved once; 1 is

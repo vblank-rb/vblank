@@ -3,7 +3,7 @@
 require "digest"
 require "tmpdir"
 
-# SONGS AND SOUND EFFECTS WHOSE NOTES ARE READ FROM THE DATA PACK AS THE GAME STARTS. Built
+# Songs and sound effects whose notes are read from the data pack as the game starts. Built
 # all-in-one, Builder::PackScores reads a part's notes as the game is built and the song is a Score
 # written by hand. With the pack left out (`pack_at_start: true`) the build knows how many notes a
 # part can have and not one of them, so each backend makes the part's events from the start file at
@@ -212,7 +212,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A WAVE OF THE PACK'S, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
+  # A wave of the pack's, read as the game starts (`plays: pack[:waves].wave(1)`): the song's wave
   # part reads its notes from the pack too, and the sound effect's, written in the game, plays the
   # other wave. Each is heard as the same wave's 32 steps written by hand. A build for a computer
   # playing as a console whose voices read sound memory (the PlayStation) writes the wave into its
@@ -228,7 +228,19 @@ module PackScoresAtStartTests
     assert_plays_as_written(parts, frames: 120, buttons: %i[a b], waves: true, &scores)
   end
 
-  # A NOTE'S SPEAKER AND ITS NOISE CLOCK, as a sound driver sets them for each note it strikes. A
+  # A sound effect on a timer of 50 ticks a second (Audio::Score's `on_timer:`), its notes read from the
+  # pack: they are counted in the timer's ticks there too, not turned into frames as the game starts.
+  STRIKES = [[0, 3, 81, OWN, OWN], [3, 2, 76, OWN, 9], [5, 3, 81, OWN, OWN], [8, 2, 76, OWN, OWN], [10, 10, 81, OWN, 6]].freeze
+
+  def test_an_effect_on_a_timer_read_as_the_game_starts_plays_as_written_by_hand
+    assert_plays_as_written({ strikes: STRIKES }, frames: 60, buttons: %i[b]) do |notes_of|
+      { songs: [Score.new(parts: [Part.new(notes: [Note.new(at: 0, key: 60)])], tempo: 150, length: 96)],
+        effects: [Score.new(parts: [Part.new(notes: notes_of.(:strikes))], tempo: 125, ticks_per_beat: 24, length: 20,
+                            on_timer: true)] }
+    end
+  end
+
+  # A note's speaker and its noise clock, as a sound driver sets them for each note it strikes. A
   # square part takes each record's speaker (0 both, 1 the left, 2 the right) over its own, and one
   # that is no speaker is the part's; a part on the noise voice takes each record's clock (the
   # divider in the low three bits, the halvings in the high four) in place of its key, and one
@@ -246,7 +258,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A SONG WHOSE LENGTH AND LOOP ARE IN THE PACK TOO, as a sound driver's song is: where it ends and
+  # A song whose length and loop are in the pack too, as a sound driver's song is: where it ends and
   # where it comes round are commands in its data, which the unpacking runs and writes as numbers.
   # The build knows only the most it can last (`longest:`).
   def test_a_songs_length_and_loop_read_as_the_game_starts_play_as_the_same_numbers_written_by_hand
@@ -284,7 +296,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A LOOP POINT WITH EVERY BIT SET IS NONE, as a hold with every bit set is (IR::StartFile.no_loop?):
+  # A loop point with every bit set is none, as a hold with every bit set is (IR::StartFile.no_loop?):
   # how a sound driver's unpacking writes a song that ends (Original::Packing::M4A's NO_LOOP). The
   # song plays once and ends, as the same Score written with `plays_once: true`, and is not heard
   # again while the game still names it.
@@ -354,7 +366,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A PORT WITH A SOUND DRIVER OF ITS OWN, which VBlank knows nothing of, plays its song through the
+  # A port with a sound driver of its own, which VBlank knows nothing of, plays its song through the
   # pack alone: its unpacking runs the driver's commands forward and writes the notes they play
   # and the song's length, a tick a frame, as a driver that runs once a frame plays them. The
   # made-up driver's commands: OWN_NOTE, a key and how many frames; OWN_REST and how many frames;
@@ -456,7 +468,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A DRIVER WHOSE NOTES PICK THEIR VOICES, each voice a recording of its own with its own rate, hold
+  # A driver whose notes pick their voices, each voice a recording of its own with its own rate, hold
   # point and envelope, as a cartridge's voice group keeps them, and each note its own loudness. A
   # port gives each voice an instrument of its own, every setting of it from the pack, and a note's
   # record names the voice it plays: no envelope or recording needs to be in the note itself. The
@@ -629,7 +641,7 @@ module PackScoresAtStartTests
     assert_plays_as_written(parts, frames: 130, buttons: %i[a b], instruments: named, &scores)
   end
 
-  # A RECORDED PART'S LOUDNESS IN 512THS, as a cartridge's sound engine mixes it: a quiet note, two
+  # A recorded part's loudness in 512THS, as a cartridge's sound engine mixes it: a quiet note, two
   # notes as loud as each other held across the loop, one given a volume and the same loudness as
   # that volume, one past all of the recording, and one of none.
   LOUD_TUNE = [[0, 12, 60, OWN, OWN, 37], [12, 12, 64, OWN, OWN, 241], [24, 12, 67, OWN, 15], [36, 0, 72, OWN, OWN, 512],
@@ -669,7 +681,7 @@ module PackScoresAtStartTests
       effects: [Score.new(parts: [Part.new(plays: :bell, notes: notes_of.(:blip, recorded: true))], tempo: 150, length: 24)] }
   end
 
-  # NOTES WITH THEIR VOICE'S SETTINGS (`slots.voiced_notes`), as a Game Boy sound driver sets them
+  # Notes with their voice's settings (`slots.voiced_notes`), as a Game Boy sound driver sets them
   # for each note it strikes: a pitch number in place of a key, a fade, a duty, vibrato, a slide on
   # the first square, a shade between the speakers. Each record is [at, length, key, volume, its
   # settings by Original::PackNote::NAMES' names, each the number its byte keeps], and beside it
@@ -763,7 +775,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # A DRUM THAT RATTLES ON SOME HITS AND A WAVE PART THAT CHANGES WAVE, read as the game starts from
+  # A drum that rattles on some hits and a wave part that changes wave, read as the game starts from
   # voiced records (Original::PackNote's bytes 25 and 26). A record's wave is one of the part's
   # (`notes(waves: [...])`): a wave of the pack, a shape, the pack's other wave; one past those, and a
   # rattle byte past 1, are the part's own. The pad holds a note across the loop in the copy's wave.
@@ -832,7 +844,7 @@ module PackScoresAtStartTests
     end
   end
 
-  # PITCHES BETWEEN KEYS THAT GLIDE, read as the game starts: a recorded part whose voiced records
+  # Pitches between keys that glide, read as the game starts: a recorded part whose voiced records
   # name hz in 16ths and glides, the first shaded between the speakers, one naming an instrument and a volume as it glides (the part's
   # own, from the file), one out of range (its key), and a noise part whose hits name hz, one
   # beside a noise clock (the clock). The horn's rate is read from the file too.

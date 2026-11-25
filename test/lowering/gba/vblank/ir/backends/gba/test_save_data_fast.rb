@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHERE A RECORD'S SAVE ROUTINES RUN FROM, said by the game: `save_data :file, fast: true`.
+# Where a record's save routines run from, said by the game: `save_data :file, fast: true`.
 #
 # A build that measures its game puts in the console's quick memory the routines a real run
 # spent its frames in. A run with nobody at the controls never saves, so the routines that
@@ -61,14 +61,14 @@ class TestSaveDataFast < Minitest::Test
     game.build_rom(out: StringIO.new, err: StringIO.new, profile: profile).built.placement.funcs
   end
 
-  # THE PREMISE: measured, and saying nothing, the routines that save stay in the cartridge.
+  # The premise: measured, and saying nothing, the routines that save stay in the cartridge.
   def test_a_measured_build_leaves_the_routines_that_save_in_the_cartridge
     kept = kept_in_quick_memory(saving_game, profile: true)
 
     assert_empty kept & routines(:save, :step, :scan, :load)
   end
 
-  # THE WORD KEEPS WHAT EVERY PASS OF A SAVE RUNS: the routine that writes a piece of it, the
+  # The word keeps what every pass of a save runs: the routine that writes a piece of it, the
   # one that looks the copy over when the last piece is in, and the queue's small routines a
   # write goes through on the way.
   def test_a_record_that_says_fast_keeps_the_routines_every_pass_of_a_save_runs
@@ -78,7 +78,7 @@ class TestSaveDataFast < Minitest::Test
     assert_empty QUEUE - kept, "and the queue's, which it goes through on the way"
   end
 
-  # ...AND NOTHING ELSE. A job the game asks for — save, load, erase, copy, put back — runs once,
+  # ...AND nothing else. A job the game asks for — save, load, erase, copy, put back — runs once,
   # on the pass that asks for it, and is a small part of that pass, so it is left to the build
   # like any other routine. Kept, they came to more than twice what a save's passes need.
   def test_the_jobs_a_game_asks_for_are_left_to_the_build
@@ -95,7 +95,7 @@ class TestSaveDataFast < Minitest::Test
     assert_empty kept & (routines(:save, :step, :scan, :load) + QUEUE)
   end
 
-  # ONE RECORD'S WORD IS ABOUT THAT RECORD. A second record that says nothing is left to the
+  # One record's word is about that record. A second record that says nothing is left to the
   # measurement, which here leaves its routines in the cartridge.
   def test_one_records_word_does_not_keep_another_records_routines
     game = VBlank.game("SAVETWO", consoles: %i[gba]) do
@@ -115,7 +115,7 @@ class TestSaveDataFast < Minitest::Test
     assert_empty kept & %i[save step scan].map { |piece| routine(piece, record: :settings) }
   end
 
-  # WITHOUT MEASURING, the routines that save are kept by what the frame can reach. A game
+  # Without measuring, the routines that save are kept by what the frame can reach. A game
   # that would sooner have that room for something else says so, and the queue goes with
   # them.
   def test_a_record_that_says_not_fast_keeps_them_out_where_the_shape_would_keep_them
@@ -127,7 +127,7 @@ class TestSaveDataFast < Minitest::Test
     assert_empty kept_out & (routines(:save, :step, :scan, :load, :erase, :copy, :reset) + QUEUE)
   end
 
-  # ...WHATEVER ELSE THE CARTRIDGE KEEPS. On flash the `save_var` numbers are kept in a
+  # ...WHATEVER else the cartridge keeps. On flash the `save_var` numbers are kept in a
   # record of the framework's own, which has no word to say, and it does not speak for the
   # game's.
   def test_a_record_that_says_not_fast_keeps_the_queue_out_beside_a_save_var_on_flash
@@ -172,7 +172,7 @@ class TestSaveDataFast < Minitest::Test
     [lost, reader.var(:written)]
   end
 
-  # THE SAVE COSTS A FRAME FROM THE CARTRIDGE AND NONE FROM THE QUICK MEMORY. The same game,
+  # The save costs a frame from the cartridge and none from the quick memory. The same game,
   # built the measuring way both times; the one thing that differs is the word.
   def test_a_save_loses_a_frame_without_the_word_and_none_with_it
     lost_without, written_without = frames_lost_to_a_save(saving_game(work: MOST_OF_A_FRAME))
@@ -195,12 +195,15 @@ class TestSaveDataFast < Minitest::Test
 
   # --- what the build says when it cannot ---
 
-  # A list that takes nearly all of the quick memory, so no save routine fits beside it.
+  # A list that takes nearly all of the quick memory, so no save routine fits beside it. It leaves
+  # about two thirds of what the record's routines need, so the record stays too big for the room
+  # as its routines grow or shrink by a few hundred bytes: at 6850 slots the room was eight bytes
+  # short, and a lowering that wrote one instruction fewer made it fit.
   private def game_with_no_room(&saving)
     VBlank.game("SAVEFULL", consoles: %i[gba]) do
       screen :bitmap
       hearts = var :hearts, 3
-      hoard = list :hoard, capacity: 6850, fast: true
+      hoard = list :hoard, capacity: 7000, fast: true
       files = save_data(:file, fast: true) { keep hearts }
       game_loop do
         hoard.push 1
@@ -249,12 +252,12 @@ class TestSaveDataFast < Minitest::Test
       game_loop do
         files[0].save if pressed(:a)
         pile.push 1
-        300.times { spin += 1 }
+        300.times { |n| spin += 1 + (n.even? ? 5 : -5) }
       end
     end
   end
 
-  # A RECORD'S WORD GOES IN AHEAD OF WHAT THE BUILD WOULD PICK, the game loop and the music
+  # A record's word goes in ahead of what the build would pick, the game loop and the music
   # among them. What the author insisted on is the one thing a build can stop on, so nothing the
   # build picks for itself can take its room — and the author is told what that cost.
   def test_a_record_whose_routines_crowd_out_the_game_loop_keeps_them_and_says_so
@@ -268,7 +271,7 @@ class TestSaveDataFast < Minitest::Test
     assert_match(/game loop's body did not fit/, err.string)
   end
 
-  # WHETHER THE RECORD'S WORD FITS IS THE SAME MEASURED OR NOT. The build without a measurement
+  # Whether the record's word fits is the same measured or not. The build without a measurement
   # cannot tell the music is worth the room; the measured one can, and the music still goes in
   # only after the save routines.
   def test_a_record_that_fits_beside_the_game_loop_builds_measured_or_not
@@ -279,9 +282,13 @@ class TestSaveDataFast < Minitest::Test
     end
   end
 
+  # A pile that leaves room for all three, and still has a slot for each pass the measurement plays:
+  # a full pile stops the game, and a game stopped on its second pass has no game loop worth keeping.
+  ROOMY_PILE = 2000
+
   # Where there is room for all of them, all of them are kept.
   def test_a_record_with_room_beside_the_game_loop_and_the_music_keeps_all_three
-    kept = kept_in_quick_memory(game_crowding_its_loop(true, pile_size: 1), profile: true)
+    kept = kept_in_quick_memory(game_crowding_its_loop(true, pile_size: ROOMY_PILE), profile: true)
 
     assert_empty %i[__frame __interrupt] - kept
     assert_empty routines(:step, :scan) - kept

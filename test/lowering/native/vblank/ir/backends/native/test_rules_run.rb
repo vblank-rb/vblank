@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME'S RULES AS FAST AS THE MACHINE CAN PLAY THEM. Every pass ends with the numbers the whole game
+# A game's rules as fast as the machine can play them. Every pass ends with the numbers the whole game
 # ends it with on the interpreter, read a question at a time from a program that says nothing else.
 class TestRulesRun < Minitest::Test
   RulesRun = VBlank::IR::Backends::Native::RulesRun
@@ -103,10 +103,7 @@ class TestRulesRun < Minitest::Test
       game_loop do
         passes += 1
         state = 1 if passes == 60
-        case_var(:state) do
-          when_val 0, :walking
-          when_val 1, :opening
-        end
+        call({ 0 => :walking, 1 => :opening }, number: :state)
       end
     end
     b.finalize_program

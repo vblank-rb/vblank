@@ -22,7 +22,9 @@ from that copy. The game's code says each piece's shape and size; it never depen
     background's `map:` kept among other things in a bigger slot, as a console keeps a map in a block of
     its video memory; any other verb takes the whole slot. Where the bigger slot has another shape
     (tiles), take the map as a view of it: `pack[:video].as_numbers(at:, count:, width: :byte, signed:
-    false)` ("A view", below).
+    false)` ("A view", below). `pack[:hall_map].as_map(across: 30)` (on a slot of numbers or of map cells,
+    or a run of one) is a map that carries its own width, for a background's `map:`, which then needs no
+    `across:` (`backgrounds.md`).
   - `slots.pixels :walls, count: 64 * 64 * 106` — **pixels, one byte each**: pictures of up to 256
     colours, row by row, as a computer game keeps its art. A byte is a byte in every layout, so the line
     names none. How the original lays its art out (column by column, in posts, in pages) is the game's
@@ -176,7 +178,12 @@ from that copy. The game's code says each piece's shape and size; it never depen
   holds a marker for each (`colors` from the pack, below), so a port whose original keeps every colour in
   its data ships none. On a console it
   is a picture of that many colours, so what the console does with one given `data:` it does with this.
-  Worked examples: `test/all/vblank/builder/test_data_packs.rb` and `test/pack_at_start_tests.rb`.
+  **`colors:` can be a list declared with `colors`, by its name** (`colors :writes, pack[:palette].bank(1)`,
+  then `colors: :writes`), up to sixteen colours. Its first place is see-through, as for any picture given
+  a list by name, so the line must say `see_through: 0`, or it is refused. The picture then keeps its
+  places, as one given `places: [...]` does, so a sprite showing it can `draw_with` another list, with the
+  pack held or left out. Worked examples: `test/all/vblank/builder/test_data_packs.rb`,
+  `test/all/vblank/builder/test_pack_pixel_color_lists.rb` and `test/pack_at_start_tests.rb`.
 
 - `colors :logo_cycle_3, pack[:logo_colors].bank(3, size: 11)` — **a list of colours from a slot of
   colours**, for a sprite the original repaints by writing other colours over its palette. The second
@@ -358,6 +365,23 @@ from that copy. The game's code says each piece's shape and size; it never depen
   a build really runs and reads. The key also holds the routine's defaults (the `DEFAULTS` of the
   records it uses), so a changed default plays it again. A pack kept by an older VBlank misses
   once, and the build keeps it again under the new key.
+  A routine of one part whose pack is kept is not even built: beside the pack the cache keeps the
+  files the routine was built from, each hashed (`Original::RoutineFiles`: every file read in the
+  process since VBlank loaded and while the routine was built, and the game's own Ruby files), and a
+  later build whose files all hash the same reads the pack straight away
+  (`PackCache#pack_of_routine`). A changed file builds the routine again, and a program that comes
+  out the same still reads the kept pack. The routine is told apart by where its blocks are written
+  and the plain values (numbers, text, lists of them) they can see (`Original::RoutineDeclaration`).
+  In one process, a routine built once is shared by later builds of the same declaration
+  (`Original::RoutineBuild`). A routine in named parts is built every build, as below.
+  **What a cached routine may depend on**: the game's own Ruby files, files the routine or the game
+  reads by name (`File.read`, `File.open`, `JSON.load_file`, `Zlib::GzipReader.open`), at load or as
+  it builds, and plain local values its blocks can see. **What it must not depend on** without
+  naming it in the declaration (as a plain local, or in the pack's `version:`): `ENV`, a folder's
+  listing (`Dir.glob`, `Dir.children`), a value from the clock or from random numbers, a file read
+  before VBlank loaded, by a C extension, or in the machine's temporary folder outside the routine's
+  own build, and an object's state that no file holds. The cache cannot see those, so a change to
+  them reads a stale pack. A stale pack is cleared by deleting the cache folder.
   The key is the whole routine, so a change to any of it runs all of it again, unless the routine is
   in named parts. Then each part is kept apart, and a change to one part plays that part again and takes
   the rest from the cache (`Original::UnpackingParts`). Two parts are played together when one reads a
@@ -662,9 +686,12 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   its voice is refused at the line, since any key may be in the pack. Worked example:
   `test/pack_scores_at_start_tests.rb`.
 - `background :city, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 32` — a background of the
-  original's own tiles, map and colours (`backgrounds.md`). The program holds a tile for each cell of the map,
-  see-through until the runtime reads the map at power-on and fills each from the cell's tile, turn and bank
-  (`IR::StartFile::Background`, `rg_start_file_fill_background`). Each bank of the slot is a list named
+  original's own tiles, map and colours (`backgrounds.md`); `map: pack[:map].as_map(across: 32)` carries the width
+  in place of `across:`, the same there. The program holds room for the slot's tiles once each, as their
+  places, and a table of colours for each bank; the runtime fills both at power-on, gives each different
+  tile as drawn the map names (a tile, its bank, its turn) a number, and writes each cell of the map to name
+  it, applying the bank and turn as the cell is drawn, as the console does (`IR::StartFile::Background`,
+  `rg_start_file_fill_background`). Areas over one slot of tiles and one of colours share the slot. Each bank of the slot is a list named
   `:<slot>_<bank>`, as built all-in-one, which `draw_with` takes to give that bank a list of the game's own.
   The build does not know a bank's colours, so a bank's list holds a marker for each, as a list declared from
   the pack does (below): `color_walk` of a bank, `recolor` with one, a picture drawn in one and a bank drawn
@@ -739,8 +766,25 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
   `draw_with` that name makes the pool follow the list for all its instances from power-on, since the build cannot write the
   list into one instance's choice: an instance never told then shows what the list holds as well, and a pool told that
   name and another list is a friendly error. `bank:` paints only the
-  pieces whose record names that bank, drawn from that bank's list. A frame of two banks in the player's file, which the
-  all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. On a
+  pieces whose record names that bank, drawn from that bank's list. **`banks: [4, 2]` makes one pose of a frame whose
+  pieces name several banks**, each piece drawn from its own bank's list, as a console's sprite entry names its piece's
+  bank (GBATEK, "LCD OBJ - OAM Attributes"), and one sprite shows and moves the whole frame. The game names the banks,
+  since a build with the pack left out cannot see them; the pose's list is each bank's list `:<slot>_<bank>` after the
+  other, lowest bank first, a piece's places counted into its own bank's part (`IR::StartFile::Pose#banks`,
+  `Nodes::Bitmap#bank_places`). Such a pose names no list, so `colors_name_of` refuses it and it follows no recolour of
+  its banks' lists. All-in-one, a piece of a bank `banks:` does not hold is refused at the line, as are `banks:` with
+  `bank:` and a bank past the slot; with the pack left out such a piece is not painted. A frame of one of the banks is
+  drawn in that bank. One bank named (`banks: [3]`) is the pose `bank: 3` makes, a picture of that bank's list on
+  every console, but a piece of another bank is refused all-in-one rather than left out. A pose's banks hold 256
+  colours at most (16 banks of sixteen-colour tiles), and a sprite showing such a pose is refused `draw_with`. On the Advance each piece of the frame is
+  a sprite entry of its own naming its own bank in attribute 2, the frame's front piece the entry in front, and the
+  sprite is stored half a byte a pixel with each bank's list laid as a bank of sixteen, shared with any sprite drawn
+  from the same list (`SpriteCut#parts_of`, `ScreenLayout#bank_part_pictures`). Such a sprite is as many entries as its
+  frame has pieces, as the console's own games draw it. A sprite that turns or resizes, or a frame of more pieces than
+  one sprite takes, is stored a byte a pixel instead. The Color, the Super Nintendo, the Genesis and the PlayStation builds do not make it yet and refuse it, naming
+  `bank:` and a sprite for each bank as the way round. Without `banks:`, a frame of two banks in the player's file, which
+  the all-in-one build refuses, is drawn whole in its front piece's bank and follows that bank's list. Worked example:
+  `test/all/vblank/builder/test_pack_pose_bank_colors.rb`. On a
   console whose build keeps one list for a whole sprite (the Advance), one sprite may show two such poses of one slot, as
   all-in-one where their frames name one bank; where the player's file names two, which the all-in-one build refuses, each
   pose is drawn in its own frame's bank. On a console whose build keeps a list for each pose and does not follow them (the
@@ -813,6 +857,8 @@ cartridge, cannot be built this way yet; without `--bios` it can. What reads a s
 - `game.data_pack_file` (a `Cartridge::Game`, `settings:`, `console:`) — the pack file the all-in-one
   build makes from the copy, its bytes: what a build with its pack left out is handed, and what a
   shell must make, byte for byte.
+- `game.all_in_one_parts` (`err:`, `settings:`, `console:`) — the program `checked_program` makes and the
+  pack `data_pack_file` makes, as `program` and `data_pack_file`, from one reading of the game.
 
 A cartridge build told `pack_at_start:` is refused at `data_pack`, and `vblank build --pack-at-start`
 for a cartridge before anything is built; every cartridge lowering refuses a program that reads a start
@@ -939,12 +985,28 @@ end
   `test/all/vblank/builder/test_shell_screens.rb` (what is refused).
 
 **A port's shell check** — `rake shell:check`, from `Original::ShellCheckTasks` in the port's Rakefile
-(`t.game_file`, and `t.console` and `t.tape` if wanted), or `Live::ShellCheck.new(game, tape:).run` — does
-what a player does with nobody at the controls: builds the shell with no copy in reach, starts it with
-the copy this machine names, holds the pack it keeps to the all-in-one build's byte for byte, starts it
-again with that copy out of reach, and plays the tape (300 passes with nothing pressed without one) on
-both starts and the all-in-one build, holding every picture and sound to that build's. A machine that
-names no copy fails with `NotSet`'s words. Worked example: `test/lowering/ruby/vblank/live/test_shell_check.rb`.
+(`t.game_file`, and `t.console`, `t.tape` and `t.passes` if wanted), or
+`Live::ShellCheck.new(game, tape:, passes:).run` — does what a player does with nobody at the controls:
+builds the shell with no copy in reach, starts it with the copy this machine names, holds the pack it
+keeps to the all-in-one build's byte for byte, starts it again with that copy out of reach, and plays a
+short stretch on both starts and the all-in-one build, holding every picture and sound to that build's.
+The stretch is the tape's first `passes` passes (`Live::ShellCheck::STRETCH_PASSES`, 300, unless named;
+with no tape, that many with nothing pressed), and it does not follow the tape as the tape grows. The
+all-in-one build is built and played in a process of its own beside the shell's starts, where the check
+runs on the main Ractor; in any other Ractor, after the first start. That side reads the game once for its
+program and its pack (`game.all_in_one_parts`), and plays the unpacking routine only where the pack cache
+(`data_pack cache:`) has no entry: once after each change to the routine, the copy or VBlank. A machine that names no copy fails with `NotSet`'s words. Worked example:
+`test/lowering/ruby/vblank/live/test_shell_check.rb`.
+
+**A port's whole-game check** — `rake shell:whole_game`, from the same `ShellCheckTasks` (its tape is
+`t.whole_game_tape`, or `t.tape` where that is not set), or `Original::WholeGameCheck.new(game, tape:).run`
+— plays the whole tape, however long, on the shell's game and the all-in-one build, both built as C
+(optimised) and played at once, as fast as the computer goes. The shell's game is handed the pack the
+shell's own unpacking writes as C from this machine's copy, held to the all-in-one build's byte for byte
+first. Every picture and every sample of sound is compared pass by pass as the two play, and the check
+stops at the first pass they differ on, naming it. It does not play the shell's menu, which the shell
+check holds. Run it when asked, never on every commit. It needs zig. Worked example:
+`test/lowering/native/vblank/original/test_whole_game_check.rb`.
 
 **The pack file** (`Original::Pack`): `"VBLANKPK"`, the format version (2 bytes), the copy's SHA-1 (20
 bytes), the build version (a length byte and the text), the slot count (2 bytes), each slot's name (a

@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A RUN OF SPRITES DRAWN IN THE ORDER A LIST HOLDS, READ AS THE INTERPRETER READS ANY LIST
+      # A run of sprites drawn in the order a list holds, read as the interpreter reads any list
       # (Reference#names_in_draw_order), for the Color's, the Super Nintendo's, the Genesis's and the
       # PlayStation's lowerings: every entry the list holds now, however many; a place below nought counting back
       # from the run's last sprite, as a Ruby array's does; and a place naming none of the run's
@@ -16,7 +16,7 @@ module VBlank
       # round — so each of those consoles stops on a bad entry where the interpreter stops, rather
       # than placing nothing on one and jumping through a stray address on another.
       #
-      # WHAT THE LOWERING SUPPLIES, beside ControlFlow's fresh_label, place_label, jump, jump_unless,
+      # What the lowering supplies, beside ControlFlow's fresh_label, place_label, jump, jump_unless,
       # keep_local, statement and emit_increment:
       #
       #   emit_draw_order_fault(name, count)   the game stopped: the variable +name+ holds a place

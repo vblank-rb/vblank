@@ -5,7 +5,7 @@ require "stringio"
 require "tmpdir"
 require "zlib"
 
-# A PLAYTHROUGH OF A SUPER FX GAME THAT SAVES hands back the save alone, and starts the next one
+# A playthrough of a super FX game that saves hands back the save alone, and starts the next one
 # in it. The chip's RAM on such a cartridge is 128K: the chip's own working 64K, where it paints
 # the screen, and then the save, the other 64K (Cartridge::SNESROM::SUPER_FX). The emulator keeps all 128K in its
 # save file, so the save a playthrough hands back, the save it starts from and the save a tape

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # THE VARIABLES THAT ONLY EVER HOLD A BYTE OR TWO, though the game never declared them
+        # The variables that only ever hold a byte or two, though the game never declared them
         # narrow, so the Color's lowering keeps each in one byte or two (Lowering::KeptVariables).
         # The Color's processor works a byte at a time, and a four-byte variable read as a list's
         # index is four loads, a bounds check through general code and a whole number made of it;

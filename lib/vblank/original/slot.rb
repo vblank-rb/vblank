@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # ONE SLOT OF A DATA PACK (Pack): a piece of the original's data with a name, a shape and a size,
+    # One slot of a data pack (Pack): a piece of the original's data with a name, a shape and a size,
     # and where in the player's copy its bytes are.
     #
     # The shape and the size are the game's, written in its code, and never worked out from the
@@ -11,7 +11,7 @@ module VBlank
     # So a slot of numbers names its width and whether they can be below zero, where a `table` given
     # plain numbers works that out from them.
     #
-    # A SHAPE (colours, tiles or numbers) IS KEPT IN THE LAYOUT OF THE CONSOLE THE ORIGINAL IS FOR,
+    # A shape (colours, tiles or numbers) is kept in the layout of the console the original is for,
     # where VBlank reads that console's layout, and the pack holds the bytes as the original has
     # them (unpacked, where the original packs them). The original names its platform
     # (Game#platform), and a slot is in that console's layout unless it names another with
@@ -38,7 +38,7 @@ module VBlank
     # share of the time rather than of the bytes (Original::UnpackingProgress). It
     # changes nothing in the pack.
     #
-    # A VIEW OF A SLOT is some of a slot's bytes read in a shape of their own: +count+ items of that
+    # A view of a slot is some of a slot's bytes read in a shape of their own: +count+ items of that
     # shape from a byte of the slot on (#viewed). A console keeps tiles of two kinds and a map in
     # one block of video memory, and a port that keeps the block as one slot reads each part
     # through a view, so its unpacking writes the bytes once. A view is a Slot too, with its own
@@ -50,7 +50,7 @@ module VBlank
     # piece: a slot a part of the routine given `pieces:` writes a piece at a time (PiecedUnpacking).
     Slot = Data.define(:name, :shape, :at, :count, :width, :signed, :format, :cost, :pieces)
 
-    # THE NAME OF A VIEW (see Slot): +size+ bytes of +slot+, a slot the pack names, from its byte
+    # The name of a view (see Slot): +size+ bytes of +slot+, a slot the pack names, from its byte
     # +at+ on. It reads as text where a slot's name does, in a build's messages and in the names
     # of the lists of a view of colours (`:video_at_64_0`).
     SlotView = Data.define(:slot, :at, :size) do
@@ -60,7 +60,7 @@ module VBlank
       def cut_from(slot_bytes) = slot_bytes.byteslice(at, size)
     end
 
-    # WHERE EACH SLOT'S BYTES START IN THE PACK'S FILE, by the slot's name (+by_name+,
+    # Where each slot's bytes start in the pack's file, by the slot's name (+by_name+,
     # Pack::Layout#slot_starts), and so where a view's start: so far into its slot.
     SlotStarts = Data.define(:by_name) do
       def fetch(name) = name.is_a?(SlotView) ? by_name.fetch(name.slot.name) + name.at : by_name.fetch(name)
@@ -74,7 +74,7 @@ module VBlank
       # The layout a slot is read in when it names none.
       DEFAULT_LAYOUT = Original::DEFAULT_PLATFORM
 
-      # WHAT A SHAPE MEANS, once: how many bytes one item of a slot of that shape is kept in, and
+      # What a shape means, once: how many bytes one item of a slot of that shape is kept in, and
       # how bytes are read as that shape (each is given the slot). A new shape is one entry here.
       Shape = Data.define(:item_bytes, :decode)
       SHAPES = Ractor.make_shareable({
@@ -192,7 +192,7 @@ module VBlank
       end
 
       # The layouts +layout+ names (Console::OriginalFormats): a console's own, or VBlank's
-      # (VBLANK_LAYOUT, and COMPUTER, whose numbers are low byte first as VBlank's are).
+      # (VBLANK_LAYOUT, and computer, whose numbers are low byte first as VBlank's are).
       def self.formats_of(name, layout)
         return Console::VBLANK_FORMATS if [VBLANK_LAYOUT, COMPUTER].include?(layout)
 
@@ -264,7 +264,7 @@ module VBlank
       # Where this slot's bytes start in #declared's: 0, or the byte a view starts at.
       def start_in_declared = view? ? name.at : 0
 
-      # A VIEW OF THIS SLOT'S BYTES from byte +at+ on, in the shape the block makes: the block is
+      # A view of this slot's bytes from byte +at+ on, in the shape the block makes: the block is
       # handed a name and a count and gives back a Slot of them (`Slot.tiles(name, count: count,
       # colors: 256)`). +count+ is how many items the view holds, or nil for as many as reach the
       # slot's end. +verb+ names the game's line for the errors (`as_tiles`). A view of a view
@@ -298,7 +298,7 @@ module VBlank
                              "them. To fix this, give count:, or correct at:."
       end
 
-      # THE SLOT IN PIECES (`pieces:` on its `slots.` line): +given+ is how many pieces of equal
+      # The slot in pieces (`pieces:` on its `slots.` line): +given+ is how many pieces of equal
       # size, or the items of each piece in order, which together hold every item of the slot. A
       # piece holds one item at least. Only a slot the routine fills can be in pieces: a slot copied
       # as it is has no routine to write it a piece at a time.

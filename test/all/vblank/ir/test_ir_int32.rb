@@ -122,7 +122,7 @@ class TestIRInt32 < Minitest::Test
 
   # --- the acceptance criterion: a signed compare near the boundary ---
   def test_cmp_is_signed_not_unsigned
-    # 0xFFFF_FFFF is -1, so it is LESS than 1 — the opposite of an unsigned
+    # 0xFFFF_FFFF is -1, so it is less than 1 — the opposite of an unsigned
     # comparison of the raw bits.
     assert_equal(-1, Int32.cmp(0xFFFF_FFFF, 1))
     assert_equal 1, Int32.cmp(Int32::MAX, Int32::MIN) # max > min, signed

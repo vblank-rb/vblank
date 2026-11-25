@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME PLAYED LIVE, IN RUBY: the game built as Ruby (IR::Backends::Ruby) runs in this process a
+# A game played live, in Ruby: the game built as Ruby (IR::Backends::Ruby) runs in this process a
 # pass at a time while a person watches and plays, its picture put on a screen, its buttons read
 # from a keyboard or a pad.
 #
@@ -12,6 +12,7 @@
 # through Fiddle, which a game that only builds cartridges never needs, and Fiddle is loaded only
 # when a window is asked for.
 require_relative "../vblank"
+require_relative "live/yjit"           # Ruby's compiler of hot methods, turned on for a game played here
 require_relative "live/lateness"       # Which passes ran longer than a frame, and how much was garbage collection
 require_relative "live/rate"           # How fast play went: passes and frames a second
 require_relative "live/session"        # The game played a pass at a time through a device
@@ -31,3 +32,9 @@ require_relative "live/worker_unpacking" # The same split in pieces, on a Ractor
 require_relative "live/shell"          # A port with no data: its menu, its unpacking and its kept pack
 require_relative "live/shell_check"    # A port's shell played against its all-in-one build
 require_relative "live/sdl"            # A window for a person: SDL3 through Fiddle, loaded when asked for
+require_relative "live/build_watch"    # A window waiting while a helper process builds its game
+require_relative "live/match_play"     # Hosting or joining a match, from the facts of the game alone
+require_relative "live/build_inputs"   # What a build read, recorded as it read it
+require_relative "live/written_games"  # Games written out by earlier launches, kept while current
+require_relative "live/build_helper"   # That helper: started, and what it runs
+require_relative "live/window_process" # The process vblank run becomes to play what the helper wrote

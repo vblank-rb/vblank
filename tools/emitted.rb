@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "etc"
 require "json"
 require "open3"
 require "tmpdir"
@@ -11,17 +12,18 @@ require_relative "../lib/vblank/root"
 # Builds every example twice, once against the working tree's library and once
 # against the library at another commit, and reports what moved.
 #
-#   rake emitted              the working tree against HEAD, every example
+#   rake emitted              the working tree against head, every example
 #   rake emitted REF=HEAD~3   against some other point in history
 #   rake emitted ONLY=pong    one example (or a few: ONLY=pong,snake)
+#   EMITTED_JOBS=4 rake ...   how many examples build at once (one fewer than the processors)
 #
-# It compares two versions of the LIBRARY, so it only means anything while working
+# It compares two versions of the library, so it only means anything while working
 # on VBlank itself — hence a contributor's rake task and not part of the
 # `vblank` command a game author runs. Every example by default: the question is
 # "did anything move anywhere", and a corpus of real programs answers that far
 # better than one does.
 #
-# THREE NUMBERS, NOT ONE, because they move independently:
+# Three numbers, not one, because they move independently:
 #
 #   code   the emitted instructions. What a change to the lowering moves.
 #   data   the embedded assets — tile pictures, maps, sound samples. A new sprite
@@ -30,7 +32,7 @@ require_relative "../lib/vblank/root"
 #   frame  the estimated work in one frame, in scanlines. An op can cost thirty
 #          instructions of ROM and nothing at all per frame.
 #
-# It reports what the compiler PRODUCES, never how long the compiler takes. A change
+# It reports what the compiler produces, never how long the compiler takes. A change
 # that only makes the build faster correctly reports "identical" here; for compiler
 # speed, reach for a profiler.
 module Emitted
@@ -38,6 +40,8 @@ module Emitted
   PROBE = File.join(__dir__, "emitted_probe.rb").freeze
   COLOR_PROBE = File.join(__dir__, "emitted_color_probe.rb").freeze
   GENESIS_PROBE = File.join(__dir__, "emitted_genesis_probe.rb").freeze
+  SNES_PROBE = File.join(__dir__, "emitted_snes_probe.rb").freeze
+  PS1_PROBE = File.join(__dir__, "emitted_ps1_probe.rb").freeze
 
   # What ends the name of an example's Color cartridge in the baseline.
   COLOR_MARK = "@gbc"
@@ -45,10 +49,20 @@ module Emitted
   # ...and of its Sega Genesis cartridge.
   GENESIS_MARK = "@genesis"
 
+  # ...and of its Super Nintendo cartridge.
+  SNES_MARK = "@snes"
+
+  # ...and of its PlayStation program.
+  PS1_MARK = "@ps1"
+
   # Which Ruby to launch, asked once. Asking reads Ruby's own table of how it was built,
   # which a worker Ractor may not touch.
   RUBY = RbConfig.ruby.freeze
   EXAMPLES = Ractor.make_shareable(File.join(ROOT, "examples"))
+
+  # How many examples are built at once: EMITTED_JOBS, or one fewer than the machine's processors,
+  # so the machine keeps one for everything else. Read once, when this file loads.
+  JOBS = [Integer(ENV.fetch("EMITTED_JOBS", (Etc.nprocessors - 1).to_s)), 1].max
 
   # Every ARM instruction the backend emits is four bytes, so code is reported in
   # instructions — the unit a lowering change is thought about in.
@@ -89,7 +103,7 @@ module Emitted
       after.frame - before.frame
     end
 
-    # Did the two sides build the SAME program? The example file is the same on
+    # Did the two sides build the same program? The example file is the same on
     # both, so a difference here means the library builds something different from
     # it — and then a delta measures that, not just the lowering. Unknown (nil on
     # either side) is not a difference: say nothing rather than guess.
@@ -136,7 +150,7 @@ module Emitted
              "against the working tree and against #{ref}, #{subject(commit)}."
     out.puts
 
-    # The drill-down is for ONE program. Across a corpus a table of funcs and lines
+    # The drill-down is for one program. Across a corpus a table of funcs and lines
     # is a wall of text belonging to no particular game, and the summary already
     # names which example to go and look at — so narrow to it (ONLY=pong) and the
     # breakdown comes with it.
@@ -172,29 +186,61 @@ module Emitted
     Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bgenesis\b/) }
   end
 
-  # Build every example against the library at +lib_root+, one process each.
+  # The examples that say they are for the Super Nintendo, as absolute paths.
+  def snes_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bsnes\b/) }
+  end
+
+  # The examples that say they are for the PlayStation, as absolute paths.
+  def ps1_examples
+    Dir[File.join(EXAMPLES, "*.rb")].sort.select { |path| File.read(path).match?(/consoles: %i\[[^\]]*\bps1\b/) }
+  end
+
+  # Build every example against the library at +lib_root+, one process each, JOBS at once.
   def measure(lib_root, paths, detail: false)
-    paths.to_h { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }
+    in_parallel(paths) { |path| [File.basename(path, ".rb"), probe(lib_root, path, detail: detail)] }.to_h
+  end
+
+  # Each of +items+ handed to the block on up to JOBS threads at once, the answers in the items'
+  # order. Each build is a process of its own, so a thread only waits on its child.
+  def in_parallel(items)
+    queue = Queue.new
+    items.each_with_index { |item, at| queue << [item, at] }
+    queue.close
+    answers = Array.new(items.size)
+    workers = Array.new([JOBS, items.size].min) do
+      Thread.new do
+        while (job = queue.pop)
+          item, at = job
+          answers[at] = yield(item)
+        end
+      end
+    end
+    workers.each(&:join)
+    answers
   end
 
   # Each example's Color cartridge, named apart from its Advance one: +code+ the part always in
   # view, +data+ the banks (tools/emitted_color_probe.rb).
-  def measure_color(lib_root, paths)
-    paths.to_h do |path|
-      name = "#{File.basename(path, '.rb')}#{COLOR_MARK}"
-      stdout, stderr, status = Open3.capture3(RUBY, COLOR_PROBE, lib_root, ROOT, path, chdir: ROOT)
-      [name, measurement(name, stdout, stderr, status)]
-    end
-  end
+  def measure_color(lib_root, paths) = measure_cartridges(lib_root, paths, COLOR_PROBE, COLOR_MARK)
 
   # Each example's Genesis cartridge, named apart from its Advance one: +code+ the bytes the processor
   # runs, +data+ the bytes it only reads (tools/emitted_genesis_probe.rb).
-  def measure_genesis(lib_root, paths)
-    paths.to_h do |path|
-      name = "#{File.basename(path, '.rb')}#{GENESIS_MARK}"
-      stdout, stderr, status = Open3.capture3(RUBY, GENESIS_PROBE, lib_root, ROOT, path, chdir: ROOT)
+  def measure_genesis(lib_root, paths) = measure_cartridges(lib_root, paths, GENESIS_PROBE, GENESIS_MARK)
+
+  # Each example's Super Nintendo cartridge, the same two numbers (tools/emitted_snes_probe.rb).
+  def measure_snes(lib_root, paths) = measure_cartridges(lib_root, paths, SNES_PROBE, SNES_MARK)
+
+  # Each example's PlayStation program, the same two numbers (tools/emitted_ps1_probe.rb).
+  def measure_ps1(lib_root, paths) = measure_cartridges(lib_root, paths, PS1_PROBE, PS1_MARK)
+
+  # Each of +paths+ built by +probe+, one process each, named with +mark+ after the example.
+  def measure_cartridges(lib_root, paths, probe, mark)
+    in_parallel(paths) do |path|
+      name = "#{File.basename(path, '.rb')}#{mark}"
+      stdout, stderr, status = Open3.capture3(RUBY, probe, lib_root, ROOT, path, chdir: ROOT)
       [name, measurement(name, stdout, stderr, status)]
-    end
+    end.to_h
   end
 
   def probe(lib_root, path, detail: false)

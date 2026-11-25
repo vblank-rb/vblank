@@ -3,8 +3,9 @@
 require "test_helper"
 require "differential"
 require "stringio"
+require "color_screen_tests"
 
-# A GAME LAID OUT FOR THE GAME BOY COLOR, ON THE ADVANCE'S CARTRIDGE (Backends::GBA::BorderSprites):
+# A game laid out for the Game Boy Color, on the Advance's cartridge (Backends::GBA::BorderSprites):
 # its 160×144 picture at its own size in the middle of the 240×160 screen, a border round it, read
 # back in the emulator.
 module BorderGames
@@ -175,6 +176,37 @@ class TestBorderSprites < Minitest::Test
     assert_equal %i[bar square], v.sprites.map(&:name).sort
     assert_equal [[30, 20]], v.sprites(:square).map { |row| [row.x, row.y] }
     assert_equal [[100, 120]], v.sprites(:bar).map { |row| [row.x, row.y] }
+  end
+
+  # The bar of ColorScreenGames::BAR has climbed to 100 rows down the game's screen by then.
+  def test_a_status_bar_stands_in_the_game_screen_and_the_border_stays_round_it
+    require_emulator!
+    v = assert_emulator_loads_rom(cartridge(ColorScreenGames::BAR), frames: 60)
+    bar_top = TOP + 100
+
+    assert v.white?(LEFT, bar_top), "the bar's first cell is at the game screen's left edge"
+    assert v.green?(LEFT + 8, bar_top)
+    assert v.white?(LEFT + 152, bar_top), "...and its last at the game screen's right edge"
+    refute v.green?(LEFT + 8, bar_top - 1), "the field shows above the bar"
+    [[LEFT - 1, bar_top], [LEFT + 160, bar_top], [LEFT - 1, TOP + 143], [120, TOP + 144]].each do |x, y|
+      assert_equal default_border_at(x, y), v.pixel_gba(x, y), "the border at (#{x}, #{y})"
+    end
+  end
+
+  # ColorScreenGames::HIDING hides its sprites on every third pass: the border, which is sprites too,
+  # shows on every frame.
+  def test_hiding_the_sprites_keeps_the_border
+    require_emulator!
+    shown = (4..9).map do |frames|
+      v = assert_emulator_loads_rom(cartridge(ColorScreenGames::HIDING), frames: frames)
+      [[0, 0], [LEFT - 1, TOP + 20], [LEFT - 1, TOP + 72], [239, 159]].each do |x, y|
+        assert_equal default_border_at(x, y), v.pixel_gba(x, y), "the border at (#{x}, #{y}) after #{frames} frames"
+      end
+      (LEFT...(LEFT + 160)).any? { |x| v.blue?(x, TOP + 70) }
+    end
+
+    assert_includes shown, true, "the blue square shows on some frames"
+    assert_includes shown, false, "...and is hidden on others"
   end
 
   def test_a_fade_darkens_the_game_screen_and_not_the_border

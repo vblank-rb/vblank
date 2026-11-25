@@ -19,10 +19,10 @@ module VBlank
         class Emit
           include Console::Hardware
 
-          # A PLACEHOLDER WAITING FOR AN ANSWER — the note the first pass leaves itself about a
+          # A placeholder waiting for an answer — the note the first pass leaves itself about a
           # number it cannot know yet, because the thing it refers to has not been placed.
           #
-          # There are THREE of them, and they are three different things rather than one thing
+          # There are three of them, and they are three different things rather than one thing
           # with optional parts. That is worth saying because they used to share a single bag
           # of seven keys, where a branch's +cond+ was missing from an address load and an
           # address load's +reg+ was missing from a branch — both by design, which is exactly
@@ -31,7 +31,7 @@ module VBlank
           # raises rather than answering nil and patching the wrong instruction.
           #
           # +kind+ stays on all three, because it is not the same question as which record this
-          # is: it names which FLAVOUR, and #resolve_fixups dispatches on it — including to
+          # is: it names which flavour, and #resolve_fixups dispatches on it — including to
           # resolvers for kinds this class does not own (see the note above the class).
           #
           # Nothing defaults. Where a field does not apply — a plain branch has no condition,
@@ -43,31 +43,32 @@ module VBlank
 
           # A load-immediate to be rewritten with an address once the thing is placed. +kind+
           # names whose address (:data_addr, :label_addr, :fast_addr) — or :hot_size, which is
-          # the odd one: it patches the same shape of instruction with a transfer's SIZE, so it
+          # the odd one: it patches the same shape of instruction with a transfer's size, so it
           # refers to nothing and its +target+ is nil.
           AddressLoad = Data.define(:pos, :kind, :reg, :target)
 
-          # A word sitting INSIDE a blob rather than in the code, holding another blob's or
+          # A word sitting inside a blob rather than in the code, holding another blob's or
           # label's run-time address — a table saying where several things are, for code that
           # picks one by number. It has no +pos+ in the code at all.
           BlobWord = Data.define(:kind, :blob, :offset, :target)
 
-          # A COPY INTO VIDEO MEMORY THE GAME MAKES WHILE IT RUNS: where the run of instructions
+          # A copy into video memory the game makes while it runs: where the run of instructions
           # that starts it begins in the code, what the profile calls it, and how many bytes it
           # moves. That run is gone through once per copy, so the profile's count of its first
           # instruction is the number of copies (see Profiler.video_copies_in).
           VideoCopy = Data.define(:at, :source, :bytes)
 
-          # A word of a routine's number table that holds an address — of a blob (:data_word)
-          # or of a place in the code (:label_word) — to be written once that thing is placed.
+          # A word of a routine's number table that holds an address — of a blob (:data_word),
+          # of a place in the code (:label_word), or of a place in the code once it is copied to
+          # the quick memory (:fast_word, Placement's) — to be written once that thing is placed.
           # It is to a table what an AddressLoad is to code: the same answer, wanted as one
           # word of data instead of as four instructions that build it.
           TableWord = Data.define(:pos, :kind, :target)
 
           # The kind of table word that stands in for each kind of address load.
-          TABLE_WORD_FOR = { label_addr: :label_word, data_addr: :data_word }.freeze
+          TABLE_WORD_FOR = { label_addr: :label_word, data_addr: :data_word, fast_addr: :fast_word }.freeze
 
-          # A LOAD A NUMBER TABLE COULD TAKE: where it sits, how many instructions it is when
+          # A load a number table could take: where it sits, how many instructions it is when
           # built, and the word a table would hold for it — two loads of the same word share
           # one. Noted in every pass, whether a table is open or not, because the pass that
           # measures the routines runs with none open and still has to work out what each routine
@@ -123,7 +124,7 @@ module VBlank
           # A label is somewhere other code jumps to, so nothing about the registers on
           # the way here holds on the way in.
           #
-          # EVERY LABEL IS KEPT AS A SYMBOL, whichever a caller wrote it as. A table holding both
+          # Every label is kept as a symbol, whichever a caller wrote it as. A table holding both
           # finds nothing when it is asked in the other kind, and gives no sign of it; so each
           # method here that takes a label name turns it into a Symbol itself.
           def place_label(name)
@@ -206,7 +207,7 @@ module VBlank
 
           # --- a routine's number table (see {NumberTable}) ---
 
-          # Give the routine that starts HERE a table for its big numbers. +measured_bytes+ is
+          # Give the routine that starts here a table for its big numbers. +measured_bytes+ is
           # the size it was measured at with every number built, and +read_within+ how far
           # from that measured end a load can be and still be read rather than built (see
           # {NumberTable}). +routine+ is its name.
@@ -229,7 +230,7 @@ module VBlank
             table.words.each { |word| emit_table_word(word) }
           end
 
-          # A BLOCK OF CODE THAT IS COPIED SOMEWHERE ON ITS OWN — by its two labels, not as part
+          # A block of code that is copied somewhere on its own — by its two labels, not as part
           # of the routine around it — has to hold everything it reads. A read from a table
           # outside the block would, in the copy, name whatever happens to sit that far past
           # it. Such a block is written out by hand and builds every number, and it is emitted
@@ -246,7 +247,7 @@ module VBlank
           # Put +value+ in +reg+: read from the routine's table where it has one and the
           # number is worth it, and built an instruction at a time otherwise.
           #
-          # THIS IS HOW A NUMBER IS LOADED in anything emitted as part of a routine. What still
+          # This is how a number is loaded in anything emitted as part of a routine. What still
           # writes `emit(ASM.load_immediate(...))` is code written out by hand: the mixer and
           # the divide routines, which are copied on their own and must build every number
           # (see #refuse_open_number_table!), and the sound voices, the save chips and the
@@ -295,7 +296,7 @@ module VBlank
             @data_links << BlobWord.new(kind: :data_link, blob: blob, offset: offset, target: target)
           end
 
-          # THE CODE BETWEEN +first+ AND +last+ IS COPIED SOMEWHERE ELSE BEFORE IT RUNS — the block
+          # The code between +first+ and +last+ is copied somewhere else before it runs — the block
           # boot copies into the quick memory. A plain jump holds how far to go, not where, and the
           # distance is counted here in the cartridge, so one from inside the block to outside it,
           # or the other way, lands that far from the copy: in whatever the quick memory holds
@@ -366,6 +367,14 @@ module VBlank
             emit_load_address(reg, :label_addr, label.to_sym)
           end
 
+          # Load where code label +label+ runs once boot has copied it to the quick memory: a
+          # read of a table word where the routine has a table that reaches, the fixed four
+          # instructions otherwise. Either is filled in by Placement, which alone knows where
+          # the copy lands.
+          def emit_load_fast_label_address(reg, label)
+            emit_load_address(reg, :fast_addr, label.to_sym)
+          end
+
           # Blobs are copied into palette / video / sound memory by DMA, whose source
           # address must be aligned to its transfer unit — a halfword (2 bytes) for a
           # palette or tilemap, a word (4 bytes) for the sound FIFO. So every blob has
@@ -411,6 +420,11 @@ module VBlank
             @code[pos, 16] = bytes
           end
 
+          # Write the word of code at +pos+: a number table's word a custom resolver fills in.
+          def patch_code_word(pos, value)
+            @code[pos, 4] = [value].pack("V")
+          end
+
           # Write one word of an embedded blob, +offset+ bytes into it — for a blob that is a
           # table of addresses only known in the second pass.
           def patch_word(blob, offset, value)
@@ -435,7 +449,7 @@ module VBlank
             @number_loads << NumberLoad.new(pos: pos, instructions: instructions, word: word)
           end
 
-          # Is a table open, and is a load HERE one it reads rather than one that is built?
+          # Is a table open, and is a load here one it reads rather than one that is built?
           def table_takes_load? = !@number_table.nil? && @number_table.reaches?(pos)
 
           # One read of +word+ into +reg+, in place of a load +built_bytes+ long. How far

@@ -4,7 +4,7 @@ require "test_helper"
 require "vblank/live"
 require "tmpdir"
 
-# THE SAVE FILE OF A GAME PLAYED LIVE (Session, Live::SaveFile): a game that keeps save memory has it
+# The save file of a game played live (Session, Live::SaveFile): a game that keeps save memory has it
 # read from a file as it starts, written soon after it changes and as the play ends, and a state loaded
 # brings its save memory with it, so the file holds that. The device here stands in for the window.
 class TestSessionSaveFile < Minitest::Test

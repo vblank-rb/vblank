@@ -46,7 +46,7 @@ class TestInsideOnTheAdvance < Minitest::Test
     assert_empty painted.reject { |x, y| inside?(x, y) }.first(8), "and nothing outside the area"
   end
 
-  # An area CLIPS, it does not move: a pixel keeps the coordinates it was given, so an area can
+  # An area clips, it does not move: a pixel keeps the coordinates it was given, so an area can
   # be put around drawing that already works and only what fell outside changes.
   def test_an_area_does_not_move_what_it_keeps
     plain = program { game_loop { draw_column_at :bars, slice: 0, x: 100, top: 40, height: 32 } }

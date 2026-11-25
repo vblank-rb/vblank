@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# ONE OBJECT OVER ONE CARTRIDGE, however many kinds of question a test has.
+# One object over one cartridge, however many kinds of question a test has.
 #
 # Reading a running cartridge is several questions at once, and the interesting tests ask two of
 # them in the same breath: which colours is this named thing wearing (its row, and the colour
@@ -12,7 +12,7 @@ require "test_helper"
 # Those used to need two objects — the framework's reader for anything the build knew, and the
 # emulator's own low-level handle for the colours and for leaving a layer or a voice out. Two
 # objects over one cartridge is two readings of the same frame that can disagree, and they did:
-# the low-level handle reports where a sprite's tiles were PUT, which is the picture's corner for
+# the low-level handle reports where a sprite's tiles were put, which is the picture's corner for
 # a sprite facing one way and out by up to a canvas facing the other. A test doing both halves
 # then has to carry a comment saying which of its two readers to believe for which field.
 #
@@ -63,7 +63,7 @@ class TestOneReaderPerCartridge < Minitest::Test
   end
 
   # Naming the half and the group is what makes the table usable, because a sprite's row says
-  # which GROUP of sixteen it draws from and nothing about where that group sits.
+  # which group of sixteen it draws from and nothing about where that group sits.
   def test_a_group_of_the_table_comes_back_on_its_own
     v = running(hurt_hero)
     row = v.sprites(:hero).first
@@ -72,7 +72,7 @@ class TestOneReaderPerCartridge < Minitest::Test
     assert_equal 256, v.palette(:sprites).length
   end
 
-  # THE WHOLE POINT, in one test: where he is, which colours he is wearing, and what is on screen
+  # The whole point, in one test: where he is, which colours he is wearing, and what is on screen
   # there — all off one object, with nothing about which reader to believe for which field.
   def test_one_object_answers_where_he_is_and_what_he_is_wearing
     v = running(hurt_hero)
@@ -84,7 +84,7 @@ class TestOneReaderPerCartridge < Minitest::Test
     assert v.pixel_is?(40, 40, :white), "...and that is what is on the screen"
   end
 
-  # A ROW SAYS WHICH OF THE TWO WAYS ITS PICTURE IS STORED. The field naming a group of sixteen
+  # A row says which of the two ways its picture is stored. The field naming a group of sixteen
   # means nothing for a picture stored the other way, so a row that simply handed over "the
   # sixteen colours at that group" would give the right ones for most sprites and an arbitrary
   # sixteen for the rest, with nothing on it to say which you were holding.
@@ -109,7 +109,7 @@ class TestOneReaderPerCartridge < Minitest::Test
     assert_includes hero.colors, Color.resolve(:red)
   end
 
-  # A FIELD A ROW DOES NOT HAVE CANNOT BE READ AT ALL. As a Hash it read back as nothing, so a
+  # A field a row does not have cannot be read at all. As a Hash it read back as nothing, so a
   # test asserting on a name it got slightly wrong passed, or failed for a reason that was not
   # the one it looked like — the same quiet wrong answer as a row handing over somebody else's
   # colours.

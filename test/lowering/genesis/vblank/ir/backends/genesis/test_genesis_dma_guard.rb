@@ -6,8 +6,8 @@ require "test_helper"
 # out of the cartridge (docs/genesis/dma-and-the-sound-processor.md). The emulator the suite plays in
 # shows nothing wrong without the guard, so what is held here is the code the cartridge carries: the
 # Z80 asked for its bus and waited for before the write that starts a copy, and let go after it, with
-# interrupts held off all the while, in a game that plays recordings and in no other; the controller
-# read in the blank's interrupt with the Z80 stopped in the same games; and the write that starts a
+# interrupts held off all the while, in a game that plays recordings and in no other; the controllers
+# read in the blank's interrupt with the Z80 kept off the cartridge in the same games; and the write that starts a
 # copy a word read from work RAM, in every game.
 class TestGenesisDmaGuard < Minitest::Test
   Genesis = VBlank::IR::Backends::Genesis
@@ -38,7 +38,7 @@ class TestGenesisDmaGuard < Minitest::Test
     assert_equal SPRITES_COMMAND_KEPT + SPRITES_WORD_WRITTEN + SPRITES_WORD_WRITTEN, dma_started(samples: false)
   end
 
-  # THE CONSOLE'S MAKER SAYS a bus request made in an interrupt breaks one the main program has made
+  # The console's maker says a bus request made in an interrupt breaks one the main program has made
   # (Bulletin #3), and the blank's interrupt asks for the bus to read the controller: so the copy's
   # request is made with interrupts held off, and they stay off until the Z80 is let go.
   def test_a_copy_stops_the_sound_processor_with_interrupts_held_off_in_a_game_with_recordings
@@ -67,15 +67,31 @@ class TestGenesisDmaGuard < Minitest::Test
     refute code_of(painted_game(recording: false)).include?(BUS_ASKED_FOR), "a game with no recordings waits for no bus"
   end
 
-  # THE CONTROLLER IS READ IN THE BLANK'S INTERRUPT, and a read of its port just before the Z80 reads
+  # move.b #1,(BLOCK).l, then move.b (UNSAFE).l,d0: the Z80 asked to keep off the cartridge, and
+  # whether it may be reading it now (Recordings#emit_z80_kept_off_for_pad).
+  BLOCK = format("%08x", VBlank::IR::Backends::Genesis::Runtime::Recordings::Z80_MEMORY +
+                         VBlank::IR::Backends::Genesis::Runtime::Recordings::MAILBOX +
+                         VBlank::IR::Backends::Genesis::Runtime::Recordings::BLOCK)
+  UNSAFE = format("%08x", BLOCK.to_i(16) + VBlank::IR::Backends::Genesis::Runtime::Recordings::UNSAFE -
+                          VBlank::IR::Backends::Genesis::Runtime::Recordings::BLOCK)
+  # ...then cmp.b #$FF,d0 and a branch while the bus is still held: a play read straight from the
+  # cartridge (Recordings::UNSAFE_STOPPED), whose Z80 is kept stopped for the read instead.
+  KEPT_OFF = "#{BUS_WAITED_FOR}13fc0001#{BLOCK}1039#{UNSAFE}0c0000ff6700\\h{4}#{BUS_LET_GO}4a00".freeze
+  # ...and clr.b (BLOCK).l, with the bus held, then rts: the Z80 let read the cartridge again.
+  LET_BACK = "4239#{BLOCK}#{BUS_LET_GO}4e75".freeze
+
+  # The controller is read in the blank's interrupt, and a read of its port just before the Z80 reads
   # the cartridge can spoil the byte the Z80 reads (Bulletin #4, Addendum 3): in a game that plays
-  # recordings the interrupt reads it with the Z80 stopped, and the main program's stops never have an
-  # interrupt inside them (above).
-  def test_the_controller_is_read_with_the_sound_processor_stopped_in_a_game_with_recordings
+  # recordings the interrupt asks the Z80 to keep off the cartridge, as Sega's GEMS driver did, and
+  # reads the ports only once the Z80 is seen to be off it; or, for a play the Z80 reads straight from
+  # the cartridge, with the Z80 stopped. The main program's stops never have an interrupt inside them
+  # (above).
+  def test_the_controller_is_read_with_the_sound_processor_off_the_cartridge_in_a_game_with_recordings
     with = code_of(sprites_game(recording: true))
 
-    assert_match(/#{BUS_WAITED_FOR}#{CALL}\h{8}#{BUS_LET_GO}4e75/o, with, "the controller's read called between asking for the bus and letting it go")
-    assert_equal 1, with.scan(/#{BUS_WAITED_FOR}#{CALL}/o).size, "one place asks for the bus round a call: the interrupt's"
+    assert_match(/#{KEPT_OFF}6700\h{4}\h{4,40}#{CALL}\h{8}#{BUS_WAITED_FOR}#{LET_BACK}#{CALL}\h{8}60/o, with,
+                 "the controller's read called once the Z80 is off the cartridge or stopped, and the Z80 let back after")
+    assert_equal 1, with.scan(/#{CALL}\h{8}#{BUS_WAITED_FOR}#{LET_BACK}/o).size, "one place lets the Z80 back after the read"
     refute_includes code_of(sprites_game(recording: false)), BUS_ASKED_FOR, "a game with no recordings asks for no bus to read it"
   end
 

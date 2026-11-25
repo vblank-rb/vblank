@@ -3,7 +3,7 @@
 require "test_helper"
 require "sound_comparison"
 
-# A SONG THAT PLAYS ONCE, on the desktop build: it lasts exactly its length, its parts go quiet
+# A song that plays once, on the desktop build: it lasts exactly its length, its parts go quiet
 # on the frame after its last, and it stays ended while the game goes on naming it — until the
 # game stops the music and names it again, or names another song first. The rule every backend
 # keeps is at IR::Tunes.plays_once?, and the tests that pin it on the interpreter and the

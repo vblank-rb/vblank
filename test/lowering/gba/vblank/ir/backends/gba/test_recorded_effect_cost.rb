@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A SOUND EFFECT THAT PLAYS A RECORDING COSTS THE ROUTINE THAT ANSWERS THE DISPLAY, which
+# What a sound effect that plays a recording costs the routine that answers the display, which
 # every frame runs and which is kept in the quick memory first.
 #
 # Such an effect makes every note in the game rank against every other for a voice, and a
@@ -14,7 +14,7 @@ require "stringio"
 # had. Now the voice routines put the rank on, once, and a note with no voice is written to a
 # slot nothing mixes, so the cost is the same however many parts there are.
 #
-# A GAME WITH A RECORDED EFFECT NEARLY ALWAYS HAS TONE ONES TOO, and then the routine keeps the
+# A game with a recorded effect nearly always has tone ones too, and then the routine keeps the
 # code for both kinds. Starting a recorded note — the voice, the recording, how fast, how loud,
 # its shape — used to be written out whole at each place one starts: once for every recorded part
 # of every song, and once more for the effects. It is one routine now, called from each.
@@ -57,7 +57,7 @@ class TestRecordedEffectCost < Minitest::Test
     assert_operator cost, :<, 352, "a recorded effect costs the routine #{cost} bytes"
   end
 
-  # A GAME WHOSE ONE EFFECT PLAYS A RECORDING keeps none of the square-wave effects' code, so there
+  # A game whose one effect plays a recording keeps none of the square-wave effects' code, so there
   # the recording costs less again: what it adds, less what it no longer needs.
   def test_a_lone_recorded_effect_costs_under_a_quarter_of_a_kilobyte
     cost = answering_routine(16, [:piano]) - answering_routine(16, [nil])
@@ -65,7 +65,7 @@ class TestRecordedEffectCost < Minitest::Test
     assert_operator cost, :<, 256, "a lone recorded effect costs the routine #{cost} bytes"
   end
 
-  # A SONG'S RECORDED PART costs the routine its place in the walk and a call, not a copy of the
+  # A song's recorded part costs the routine its place in the walk and a call, not a copy of the
   # whole note: a game whose music is a dozen recorded parts would otherwise spend kilobytes of the
   # quick memory writing the same note out a dozen times. The whole note written out again would
   # put a part past this.

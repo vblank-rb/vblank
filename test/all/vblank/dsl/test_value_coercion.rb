@@ -61,7 +61,7 @@ class TestValueCoercion < Minitest::Test
     assert_nil Value.fixed_number(binop(:+, var_ref(:score), int(1))), "an expression"
   end
 
-  # THE ONE THAT ASKING AFTER THE CLASS GOT WRONG. `is_a?(Integer)` is false for a literal
+  # The one that asking after the class got wrong. `is_a?(Integer)` is false for a literal
   # that has already been wrapped, so a caller handed one took the run-time path for a
   # number that was sitting right there. The two readings have to agree, because the
   # surface and the backend both ask this and they must not answer differently.

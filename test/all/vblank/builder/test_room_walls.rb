@@ -3,13 +3,13 @@
 require "test_helper"
 require "differential"
 
-# A MOVER IS STOPPED BY THE WALLS OF THE ROOM IT IS STANDING IN.
+# A mover is stopped by the walls of the room it is standing in.
 #
 # A background with several maps is a game with several rooms, and walking through a
 # door is naming one. The walls follow: a cell that is a wall in the hall can be open
 # floor in the cave, because the check reads the grid of the map that is really showing.
 #
-# And WHAT STOPS a mover is said apart from what it SEES. Without `walls:` the walls are
+# And what stops a mover is said apart from what it SEES. Without `walls:` the walls are
 # the tileset's `solid:` tiles, read off the picture, which is what a small game wants.
 # With `walls:` they are their own data — which is what a real game's collision is, and
 # what lets a map say it has no walls at all.
@@ -55,7 +55,7 @@ class TestRoomWalls < Minitest::Test
   include Differential
   include RoomWallsGames
 
-  # The same two rooms drawn IDENTICALLY, so nothing about the picture says where the
+  # The same two rooms drawn identically, so nothing about the picture says where the
   # walls are. Only `walls:` does.
   PLAIN = [".....", ".....", "....."].freeze
   HALL_WALLS = ["     ", "  #  ", "     "].freeze
@@ -98,7 +98,7 @@ class TestRoomWalls < Minitest::Test
     assert_equal 8, walked_to(program), "the hall's own wall grid stops the hero"
   end
 
-  # A MAP `walls:` DOES NOT NAME HAS NO WALLS. That is the explicit way to say a room is
+  # A map `walls:` does not name has no walls. That is the explicit way to say a room is
   # somewhere you walk anywhere — a fly-over map, a cut-scene tableau, scenery rather than
   # a place — and it is one missing line, not a second background.
   def test_a_map_that_walls_does_not_name_has_none

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/font_styles").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/font_styles").to_s)
 
 # The font-styles example's cartridge: the three fonts render on the console, read in the
 # emulator. What the game shows is in test/console/gba/examples/test_font_styles_example.rb.

@@ -5,7 +5,7 @@ require "tmpdir"
 
 module VBlank
   module Playthroughs
-    # ANY CARTRIDGE DRIVEN A FRAME AT A TIME BY SOMEBODY WATCHING IT, and read by the names its
+    # Any cartridge driven a frame at a time by somebody watching it, and read by the names its
     # decompilation gave to what it keeps in memory. It is how a port measures its original: the
     # decompilation shows what the game does, and this measures how much, frame by frame, from the real
     # cartridge in the emulator.
@@ -17,12 +17,12 @@ module VBlank
     #     probe.reader.screenshot("level.png")
     #   end
     #
-    # IT WAITS ON THE GAME, never on a count of frames: step_until and press_until play until the
+    # It waits on the game, never on a count of frames: step_until and press_until play until the
     # block answers yes, so the drive keeps working when a screen takes a frame longer than it did. One
     # that never answers yes within its frames raises NeverHappened, naming what was waited for, the
     # frame it stopped on, and the values of the labels it was told to watch.
     #
-    # A CARTRIDGE VBLANK BUILT needs no labels: opened as the built cartridge (not its file), its
+    # A cartridge VBLANK built needs no labels: opened as the built cartridge (not its file), its
     # variables, lists and pools are read by the names the game gave them, as every other reader
     # reads them, from the build's record of where each is and how wide.
     #
@@ -31,25 +31,51 @@ module VBlank
     #     probe.var(:hearts)   # => 3, the number the game starts it at
     #   end
     #
-    # EVERY PROBE OPENS AT POWER-ON, a built cartridge's too, so a port can play its build frame for
+    # Every probe opens at power-on, a built cartridge's too, so a port can play its build frame for
     # frame beside its original. Until the game has run its lines before its first wait for the
     # screen (#game_started?), what it keeps in memory is what memory held at power-on, or the
     # nought a runtime clears it to while it sets up, and a read by name hands that back as if the
     # game had set it. The Color's runtime takes several frames over that. So step until the game
     # has started (#step_until_started) before reading the numbers it starts with.
     #
-    # WHAT THE GAME SUPPLIES: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
+    # What the game supplies: the cartridge (a path, or anything Diagnostics::CartridgeFile takes) and
     # its labels, as its decompilation's RAM map has them: a name to an address on the console's bus,
     # or to an address and how it is read (WIDTHS), one byte unsigned unless set. A read or a write
     # takes a label or an address. +save+ (an IR::SaveImage) is what the save memory holds as the
     # console is switched on: a save file of the player's, say.
     #
-    # THE SAVE MEMORY GOES TO A FOLDER OF ITS OWN, made when the probe opens and removed when it
+    # The save memory goes to a folder of its own, made when the probe opens and removed when it
     # closes, so no run finds a save another left; +save_dir+ names one to keep instead.
     #
     # Everything else is read through #reader, the one reader over a running cartridge
     # (Diagnostics::Verifier): the picture, its pixels and colours, the sound, each console its own
     # way. Step the cartridge through the probe, never the reader, or #frame goes out of step.
+    #
+    # ### Opening part way through a tape
+    #
+    # A test that asks about a moment deep in a game opens the probe there: given a +tape+ and
+    # +starting_after+ (a frame of it, or the name of one of its moments), the probe plays the
+    # tape's presses up to that frame before it is handed over, and #frame reads that frame, so
+    # frames still count from power-on. Given +snapshots+ as well (a SnapshotCache), the console is
+    # put on that frame from a snapshot kept on disk, made the first time and loaded every time
+    # after, under the same key a comparison's start uses, so the two share one.
+    #
+    #   SNAPSHOTS = VBlank::Playthroughs::SnapshotCache.new(".cache/snapshots")
+    #   Probe.open("original.sfc", tape: tape, starting_after: 4194, snapshots: SNAPSHOTS) do |probe|
+    #     probe.frame                  # => 4194
+    #     probe.step(300)              # the emulator steps 300 frames, not 4494, once a snapshot is kept
+    #   end
+    #
+    # A snapshot is loaded with no frame played from it, so the picture is there after the first
+    # #step; what memory holds is there at once.
+    #
+    # A probe is a side of a film as it stands (Diagnostics::Film): it answers what a film asks of a
+    # side (#step with `keys:`, #screenshot, #last_frame_samples, #close), so a probe driven to the
+    # moment worth filming is filmed from its next frame, and the film closes it, save folder and all.
+    #
+    #   probe = Probe.open(rom)
+    #   probe.press_until(:start, "the first level", within: 20) { probe.var(:level) == 1 }
+    #   Diagnostics::Film.make("level.mp4", sides: { "ours" => -> { probe } }, parts: [1..120])
     class Probe
       # What was waited for did not happen in the frames allowed.
       class NeverHappened < StandardError; end
@@ -70,13 +96,16 @@ module VBlank
       PRESS_FRAMES = 4
       RELEASE_FRAMES = 8
 
-      # The reader over the running cartridge, and how many frames have been played since power-on.
-      attr_reader :reader, :frame
+      # The reader over the running cartridge, how many frames have been played since power-on, and
+      # the folder the save memory is kept in.
+      attr_reader :reader, :frame, :save_dir
 
       # A probe on +cartridge+ for the length of the block, closed when it ends; without a block, the
       # probe, for the caller to close.
-      def self.open(cartridge, labels: {}, save: nil, save_dir: nil)
-        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir)
+      def self.open(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false, tape: nil, starting_after: nil,
+                    snapshots: nil)
+        probe = new(cartridge, labels: labels, save: save, save_dir: save_dir, multitap: multitap, tape: tape,
+                               starting_after: starting_after, snapshots: snapshots)
         return probe unless block_given?
 
         begin
@@ -86,14 +115,18 @@ module VBlank
         end
       end
 
-      def initialize(cartridge, labels: {}, save: nil, save_dir: nil)
+      def initialize(cartridge, labels: {}, save: nil, save_dir: nil, multitap: false, tape: nil, starting_after: nil,
+                     snapshots: nil)
         @labels = labels.to_h { |name, place| [name.to_s, label_from(place)] }
+        refuse_multitap_on_built!(cartridge) if multitap
+        start = start_frame(tape, starting_after, snapshots)
         @owns_save_dir = save_dir.nil?
         @save_dir = save_dir || Dir.mktmpdir("vblank-probe")
-        cartridge = Diagnostics::CartridgeFile.new(cartridge) unless cartridge.respond_to?(:console)
+        cartridge = Diagnostics::CartridgeFile.new(cartridge, multitap: multitap) unless cartridge.respond_to?(:console)
         @kit = Console.for(cartridge.console)
-        @reader = Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir)
-        @frame = 0
+        refuse_snapshot_without_save_memory!(cartridge) if snapshots
+        @reader = reader_after(cartridge, save, tape, start, snapshots)
+        @frame = start
       rescue StandardError
         FileUtils.remove_entry(@save_dir, true) if @owns_save_dir && @save_dir
         raise
@@ -101,7 +134,11 @@ module VBlank
 
       # Play +frames+ frames holding +holding+: a button, a list of them, nil for none, or a block
       # (anything answering `call`) handed the probe before each frame and answering what to hold.
-      def step(frames = 1, holding: nil)
+      # +keys+ is the same buttons as a mask (IR::Buttons.mask, a bit each), as Diagnostics::Film and
+      # the Verifier step a cartridge; give one or the other.
+      def step(frames = 1, holding: nil, keys: nil)
+        refuse_holding_and_keys!(holding, keys)
+        return step_with_mask(frames, keys) unless keys.nil?
         return step_holding_buttons(frames, holding) unless holding.respond_to?(:call)
 
         frames.times { step_holding_buttons(1, holding.call(self)) }
@@ -199,18 +236,19 @@ module VBlank
       # The emulator writes a whole word of four bytes at a time, so the word holding the value is
       # read, changed in its place, and written back: the bytes beside it are written again with
       # what they held, which is no change in memory and can be one in a register the console acts
-      # on when it is written. A value the Color keeps across two words is written into each of them
-      # in turn. Only the consoles whose emulator writes memory can be written (the Advance and the
-      # Color, whose processors keep the low byte first); on another it is refused saying so.
+      # on when it is written. A value kept across two words (the Color and the Super Nintendo keep
+      # one at any address) is written into each of them in turn. Each byte goes where the console's
+      # processor keeps it: the low byte first on most, the high byte first on the Genesis's 68000
+      # (Console::Kit#high_byte_first?).
       def write(place, value, as: nil)
         at, width = located(place, as)
         (at...(at + width.bytes)).group_by { |address| address & ~3 }.each do |boundary, addresses|
-          write_into_word(boundary, addresses.to_h { |address| [address, (value >> ((address - at) * 8)) & 0xFF] })
+          write_into_word(boundary, addresses.to_h { |address| [address, (value >> byte_shift(address - at, width.bytes)) & 0xFF] })
         end
         self
       end
 
-      # LIST EVERY WRITE THE GAME MAKES TO ITS SOUND CHIP from now on, which is how a port sees each note
+      # List every write the game makes to its sound chip from now on, which is how a port sees each note
       # its original starts: a voice starts when the top bit of its last register is written, and that
       # bit reads back the same whether or not one did. Gives back what the registers hold now, by
       # address; after each #step, #sound_writes is what it wrote. The Advance and the Color only, for
@@ -225,14 +263,23 @@ module VBlank
       # Diagnostics::Verifier::SoundWrite (address, value as written). Empty until #watch_sound.
       def sound_writes = @reader.sound_writes
 
-      # WHAT THE CARTRIDGE PUT OUT ON THE FRAME PLAYED LAST (Diagnostics::FrameSound): its +samples+,
+      # What the cartridge put out on the frame played last (Diagnostics::FrameSound): its +samples+,
       # 16 bits each, left and right by turns, and the +loudest+ of them, the furthest any is from
-      # nought. The same on every console whose emulator hands its sound over, for any cartridge
-      # file; a PlayStation program is refused, saying its emulator gives no samples yet.
+      # nought. The same on every console, for any cartridge file.
       #
       #   probe.step
       #   probe.last_frame_sound.loudest   # => 0 for a frame of silence
       def last_frame_sound = @reader.last_frame_sound
+
+      # The samples of the frame played last, left and right by turns (Verifier#last_frame_samples):
+      # what a film asks of a side it hears.
+      def last_frame_samples = @reader.last_frame_samples
+
+      # Write the picture on screen now to +path+, a PNG (Verifier#screenshot).
+      def screenshot(path) = @reader.screenshot(path)
+
+      # The picture on screen now (Verifier#screen_picture): what a film asks of a side.
+      def screen_picture = @reader.screen_picture
 
       # Write the console's whole state to +path+, to come back to with #load_state.
       def save_state(path)
@@ -258,21 +305,90 @@ module VBlank
 
       private
 
-      def step_holding_buttons(frames, buttons)
-        @reader.step(frames, keys: Playthrough.key_mask(Array(buttons)))
+      # The reader over +cartridge+, switched on and brought to frame +start+ of +tape+: from a
+      # snapshot in +snapshots+ where one is given, else by playing the presses from power-on.
+      def reader_after(cartridge, save, tape, start, snapshots)
+        open = -> { Diagnostics::Verifier.new(cartridge, frames: 0, save: save, save_dir: @save_dir) }
+        return open.call if start.zero?
+
+        presses = SnapshotCache.presses_up_to(tape, start)
+        return snapshots.console_after(presses, cartridge, save: save, &open) if snapshots
+
+        open.call.tap { |reader| presses.each { |held| reader.step(held.frames, keys: held.keys) } }
+      end
+
+      # The frame of +tape+ the probe opens on, 0 for power-on: +starting_after+ as a number, or the
+      # frame of the moment it names.
+      def start_frame(tape, starting_after, snapshots)
+        refuse_unusable_start!(tape, starting_after, snapshots)
+        starting_after.nil? ? 0 : tape.start_frame(starting_after)
+      end
+
+      def refuse_unusable_start!(tape, starting_after, snapshots)
+        SnapshotCache.refuse_not_cache!(snapshots)
+        Tape.refuse_unusable_start!(starting_after)
+        if starting_after.nil?
+          return if tape.nil? && snapshots.nil?
+
+          raise ArgumentError, "The probe was given #{[('`tape:`' if tape), ('`snapshots:`' if snapshots)].compact.join(' and ')} " \
+                               "and no `starting_after:`. They are used only to open the probe after a frame of the tape. " \
+                               "Give `starting_after:` the frame, or remove them."
+        end
+        return if tape.is_a?(Tape)
+
+        raise ArgumentError, "The probe was given `starting_after:` and no `tape:`. The presses up to the frame come " \
+                             "from a tape. Give `tape:` the tape (Tape.read(path)), or remove `starting_after:`."
+      end
+
+      # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
+      # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).
+      def refuse_snapshot_without_save_memory!(cartridge)
+        return unless @kit.snapshot_leaves_out_save_memory?(cartridge)
+
+        raise ArgumentError, "The cartridge keeps a save, and a snapshot of a #{@kit.title} does not hold what it " \
+                             "saved. A probe opened from a snapshot would play with the save it had at power-on. " \
+                             "To fix this, remove `snapshots:`, and the cartridge is played to the start."
+      end
+
+      def step_holding_buttons(frames, buttons) = step_with_mask(frames, Playthrough.key_mask(Array(buttons)))
+
+      def step_with_mask(frames, mask)
+        @reader.step(frames, keys: mask)
         @frame += frames
         self
+      end
+
+      # `multitap:` is for a cartridge opened by its path. A built cartridge, or a CartridgeFile
+      # already opened, is played as it was given: with the adapter only if the file was opened so.
+      def refuse_multitap_on_built!(cartridge)
+        return unless cartridge.respond_to?(:console)
+        return if cartridge.respond_to?(:multitap?) && cartridge.multitap?
+
+        raise ArgumentError, "The probe got `multitap: true` and a built cartridge, not the path of a cartridge file. " \
+                             "`multitap:` works only on a cartridge file. To fix this, give the path of the file. Or " \
+                             "open the file with `CartridgeFile.new(path, multitap: true)`."
+      end
+
+      def refuse_holding_and_keys!(holding, keys)
+        return if holding.nil? || keys.nil?
+
+        raise ArgumentError, "A step was given `holding:` and `keys:`. They name the same buttons in two ways. " \
+                             "Give one of them: `holding: :a`, or `keys:` as a mask."
       end
 
       # The word at +boundary+ (a multiple of four) with +bytes+ (an address to its byte) put in it,
       # read and written back once, low byte first.
       def write_into_word(boundary, bytes)
         word = bytes.reduce(@reader.mem32(boundary)) do |kept, (address, byte)|
-          shift = (address - boundary) * 8
+          shift = byte_shift(address - boundary, 4)
           (kept & ~(0xFF << shift) & 0xFFFF_FFFF) | (byte << shift)
         end
         @reader.write32(boundary, word)
       end
+
+      # How far up a number of +size+ bytes its byte +offset+ bytes from its start is, in bits, in the
+      # processor's byte order.
+      def byte_shift(offset, size) = (@kit.high_byte_first? ? size - 1 - offset : offset) * 8
 
       def label_from(place)
         at, as = Array(place)

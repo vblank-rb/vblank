@@ -2,13 +2,14 @@
 
 module VBlank
   class Builder
-    # A 3D PLACE READ FROM THE DATA PACK: a port whose original keeps its levels as data (Descent's
+    #--
+    # A 3D place read from the data pack: a port whose original keeps its levels as data (Descent's
     # mines: corners, rooms' sides, each side's pictures, where each corner falls on them and its
     # light) reads the level from the player's copy, as it reads the copy's pictures and colours.
     # So the place (`place`), the shading it is lit by (`shading`) and where the viewer starts
     # (`viewer`) each take slots of the pack in place of Ruby data. A concern of {Builder}.
     #
-    #   pack = data_pack from: ORIGINAL, version: "1" do |slots|
+    #   pack = data_pack from: original, version: "1" do |slots|
     #     slots.numbers :points, count: 2800 * 3, width: :word, signed: true     # the most the original has
     #     slots.numbers :faces,  count: 9600 * 17, width: :word, signed: true
     #     slots.numbers :sizes,  count: 1, width: :word, signed: true            # how many faces are used
@@ -23,7 +24,7 @@ module VBlank
     #   eye = viewer :eye, at: pack[:start].as_numbers(at: 0, count: 3, width: :word, signed: true),
     #                      facing: pack[:start].as_numbers(at: 12, count: 9, width: :word, signed: true)
     #
-    # WHERE THE DATA LIVES. A place is already drawn from two tables, its points and its faces
+    # Where the data lives. A place is already drawn from two tables, its points and its faces
     # (Builder::Places#declare_place_data; IR::PlaceDrawing reads them as the game runs and works
     # nothing out from them as it is built). So a place from the pack is those two tables read from
     # slots, by `table`'s own reading of a slot (Builder#table): all-in-one the build reads the slot,
@@ -39,7 +40,7 @@ module VBlank
     # (`places: pack[:walls].pixels(...)`), so this adds nothing for them: `pictures:` lists the
     # most the level can show, and a face picks one by number.
     #
-    # HOW A COUNT LIMITS WHAT IS DRAWN. The game gives the shape and the most there can be: the
+    # How a count limits what is drawn. The game gives the shape and the most there can be: the
     # slots' sizes, the original's limits (MAX_VERTICES, MAX_SEGMENTS times six sides of up to two
     # faces). The pack says what is there: `faces_used:` names one number of the pack, read into a
     # table of one entry, and a drawing draws that many faces, held to 0 and the most, as it starts
@@ -47,32 +48,33 @@ module VBlank
     # the count is passed over in a list of faces too. The drawing's lists are sized by the most,
     # so a point past those used is never read unless a face names it.
     #
-    # NOTHING THE PACK HOLDS STOPS THE GAME. The numbers are the player's, so the drawing holds each
+    # Nothing the pack holds stops the game. The numbers are the player's, so the drawing holds each
     # point number and picture number a face names to those the place has (IR::PlaceDrawing,
     # +numbers_held+), the fill holds a light to 0..1 as it always does, and a shading's place past
     # its colours is place 0. Built all-in-one, the same tables are drawn the same way, so the two
     # builds draw alike; nothing is checked as the game is built beyond the slots' shapes. A point
     # past -8191..8191 draws bent, as written in Ruby it would be refused.
     #
-    # THE SHADING keeps its colours and levels in a node of its own (IR::Nodes::Shading). All-in-one
+    # The shading keeps its colours and levels in a node of its own (IR::Nodes::Shading). All-in-one
     # the build reads both slots and the shading is the one the game would write. With the pack left
     # out it holds zeros of their number and where they are in the file (IR::StartFile::Shading):
     # the interpreter reads them as it starts (StartFile.fill_shading), and the C, JavaScript and Ruby
     # runtimes fill the array each lit fill hands them (Computer::StartFileFills
     # #record_start_file_shading_fill, rg_start_file_fill_colors and rg_start_file_fill_places).
     #
-    # THE VIEWER'S START is a table of three numbers (at:) and one of nine (facing:), read as any
+    # The viewer's start is a table of three numbers (at:) and one of nine (facing:), read as any
     # slot of numbers is, and the viewer's variables are set from them where the viewer is declared.
     #
-    # EACH CONSOLE'S CARTRIDGE. A cartridge holds its data, so it is always built all-in-one (a
+    # Each console's cartridge. A cartridge holds its data, so it is always built all-in-one (a
     # cartridge told to leave its pack out is refused at `data_pack`): the place is the same two
     # tables, and the Advance and the PlayStation draw it as they draw any place. The Color, the
     # Super Nintendo and the Genesis refuse `draw_place` as they always do.
     #
-    # NOT OFFERED: a place from the pack drawn where the game puts it (`draw_place ..., at:,
+    # Not offered: a place from the pack drawn where the game puts it (`draw_place ..., at:,
     # facing:`), whose test of being in view needs the points while the game is built; and a picture
     # given as numbers into a shading from the pack (`image ..., shading:`), whose colours the build
     # does not hold. Each is refused in plain words.
+    #++
     module PackPlaces
       private
 
@@ -95,7 +97,7 @@ module VBlank
                              "faces_used: says how many faces of a data pack slot are used. To fix this, remove faces_used:."
       end
 
-      # THE PLACE'S POINTS AND FACES AS TABLES READ FROM +points+ AND +faces+ (slots of the pack),
+      # The place's points and faces as tables read from +points+ AND +faces+ (slots of the pack),
       # and the count of faces used from +faces_used+ (a DSL::PackNumber, or nil for all of them).
       def declare_place_from_pack(shape, points, faces, faces_used)
         most_points = pack_place_records(shape.name, points, "points:", IR::PlaceDrawing::POINT_STRIDE)
@@ -129,7 +131,7 @@ module VBlank
                              "pictures in the order the faces number them."
       end
 
-      # A TABLE OF ONE ENTRY, number +number+ (a DSL::PackNumber) of its slot, read as the slot is:
+      # A table of one entry, number +number+ (a DSL::PackNumber) of its slot, read as the slot is:
       # by the build all-in-one, from the file with the pack left out. +where+ names the line.
       def pack_number_table(name, number, where)
         unless number.is_a?(DSL::PackNumber)
@@ -169,7 +171,7 @@ module VBlank
         handles == 2
       end
 
-      # THE SHADING FROM +colors+ (a slot of colours, or a bank of one) AND +levels+ (a slot of
+      # The shading from +colors+ (a slot of colours, or a bank of one) AND +levels+ (a slot of
       # bytes, each level's places in turn, darkest first): the node `shading` records.
       def pack_shading(name, colors, levels)
         colors_where = "shading :#{name}'s colors:"
@@ -203,9 +205,9 @@ module VBlank
                              "To fix this, make the slot like that, with a count that is a multiple of #{count}."
       end
 
-      # WHERE A VIEWER STARTS, FROM THE PACK: +at+ a handle on three numbers, +facing+ a handle on
+      # Where a viewer starts, from the pack: +at+ a handle on three numbers, +facing+ a handle on
       # nine, each nil where the game writes it.
-      ViewerStart = Data.define(:at, :facing)
+      ViewerStart = Data.define(:at, :facing)  # :nodoc:
 
       def viewer_start_in_pack(name, at, facing)
         ViewerStart.new(at: (viewer_start_handle(name, at, "at:", 3) if at.is_a?(DSL::PackSlot)),

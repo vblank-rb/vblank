@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # WHICH ROWS OF THE SCREEN THE BOX OF A TURNED SPRITE IS SHOWN ON.
+        # Which rows of the screen the box of a turned sprite is shown on.
         #
         # A sprite that turns or resizes is drawn in a box twice its picture's size. A
         # display that draws sprites as objects counts the rows of that box in a fixed

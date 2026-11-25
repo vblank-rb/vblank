@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A COLOR GAME'S SONGS IN THE CARTRIDGE'S BANKS (GBC::Music). The part of a Color cartridge that is
+# A color game's songs in the cartridge's banks (GBC::Music). The part of a Color cartridge that is
 # always in view holds 16384 bytes, the framework's own code among them, and every song is kept
 # there while they fit. A game with more music than that has its songs' notes kept in the banks
 # instead, and the player puts a song's bank in view as it reads it. The run checks the cartridge
@@ -64,7 +64,7 @@ class TestGBCMusic < Minitest::Test
     assert_operator voice_entries(program, 40), :>=, 18
   end
 
-  # A SONG THAT COMES ROUND, kept in a bank beside long ones: its notes are read again from its
+  # A song that comes round, kept in a bank beside long ones: its notes are read again from its
   # bank once it has played to its end.
   def test_a_song_kept_in_a_bank_comes_round
     program = long_songs do |tick|
@@ -79,7 +79,7 @@ class TestGBCMusic < Minitest::Test
     assert_operator voice_entries(program, 40), :>=, 9
   end
 
-  # A TUNE STARTED WHERE IT IS NAMED (`this_frame: true`) takes its first frame there, its bank put
+  # A tune started where it is named (`this_frame: true`) takes its first frame there, its bank put
   # in view outside the frame's interrupt.
   def test_a_song_kept_in_a_bank_starts_on_the_frame_it_is_named
     program = long_songs do |tick|
@@ -92,7 +92,7 @@ class TestGBCMusic < Minitest::Test
     assert_operator voice_entries(program, 20), :>=, 8
   end
 
-  # A SOUND EFFECT over a song kept in a bank: its notes stay in the part always in view, and it
+  # A sound effect over a song kept in a bank: its notes stay in the part always in view, and it
   # takes its voice from the song and gives it back.
   def test_a_sound_effect_plays_over_a_song_kept_in_a_bank
     score = VBlank::Audio::Score
@@ -144,7 +144,7 @@ class TestGBCMusic < Minitest::Test
     b.program
   end
 
-  # SOUND EFFECTS BY THE DOZEN. Each effect written out in the part always in view takes more than
+  # Sound effects by the dozen. Each effect written out in the part always in view takes more than
   # its notes, so a game with many cannot fit. One that does not fit otherwise keeps every effect
   # in the banks with one player, and they sound as the interpreter says.
   def test_many_sound_effects_build_and_play_as_the_interpreter_plays_them
@@ -172,7 +172,7 @@ class TestGBCMusic < Minitest::Test
     refute code.key?("rt_sfx_frame_0"), "one player for every effect, not a player each"
   end
 
-  # EFFECTS ASKED FOR IN ANY ORDER still play highest rank first, since whoever writes a voice first
+  # Effects asked for in any order still play highest rank first, since whoever writes a voice first
   # on a frame keeps it.
   def test_sound_effects_asked_for_out_of_rank_order_play_highest_rank_first
     program = many_effects_game(60) do |sfx, tick|

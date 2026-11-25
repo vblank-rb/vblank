@@ -3,12 +3,14 @@
 module VBlank
   module Effects
     module Packs
-      # HOW MANY STEPS AN EFFECT WALKED OVER FRAMES TAKES, from the `frames:` or `duration:`
+      #--
+      # How many steps an effect walked over frames takes, from the `frames:` or `duration:`
       # its verb was given — the one reading every walk shares (a pixelate, an iris), so
       # each says the same thing about a length that makes no sense.
       #
       # It counts the first frame and the last, as the screen fade counts its own: a walk of
       # ten frames is nine steps, landing on the tenth.
+      #++
       module WalkLength
         module_function
 

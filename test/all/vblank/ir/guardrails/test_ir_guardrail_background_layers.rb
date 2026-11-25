@@ -71,7 +71,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert_match(/4 scrolling backgrounds/, message, "...and how many the console stacks")
   end
 
-  # THE SMALLER COUNT. Once a layer turns there are two scrolling ones rather than
+  # The smaller count. Once a layer turns there are two scrolling ones rather than
   # four, so a third has nowhere to go — and the message has to say which background
   # cost it the other two, or the count looks arbitrary.
   def test_a_third_scrolling_layer_beside_a_turning_one_is_refused
@@ -110,7 +110,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert_empty report.findings
   end
 
-  # TWO SCREENS THAT TAKE TURNS EACH HOLD THEIR OWN LAYERS. A title that zooms, handing
+  # Two screens that take turns each hold their own layers. A title that zooms, handing
   # over to a game with four scrolling layers, is two arrangements one after the other —
   # the console is never in both at once. Counting them together would refuse a program
   # that has always built.
@@ -132,10 +132,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -144,7 +141,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert report.ok?, "the title's turning layer is on a screen of its own"
   end
 
-  # ...AND SO DOES A TITLE THAT TURNS ON THE TILED SCREEN, which is the arrangement a real
+  # ...AND so does a title that turns on the tiled screen, which is the arrangement a real
   # game wants: two scrolling layers with something flying at the player over them, handing
   # over to a game played with four scrolling layers and nothing turning. Both are the tiled
   # screen, so the test above does not cover it — that title is a screen of another kind.
@@ -171,10 +168,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -184,7 +178,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert report.ok?, "the title's turning layer cost the play scene its four: #{messages(report)}"
   end
 
-  # ...and the screen that DOES turn one is still held to what fits beside it. Said here
+  # ...and the screen that does turn one is still held to what fits beside it. Said here
   # because the change above loosens the count, and a loosened count that stopped refusing
   # anything at all would be worse than the one it replaced.
   def test_a_scene_that_turns_one_still_cannot_stack_three_beside_it
@@ -202,7 +196,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     b.finalize_program
@@ -213,7 +207,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert_match(/:title/, messages(report), "the refusal does not say which scene ran out")
   end
 
-  # TWO SCENES CAN EACH TURN A BACKGROUND OF THEIR OWN. The console turns one at a time, and
+  # Two scenes can each turn a background of their own. The console turns one at a time, and
   # these two are never up at the same time — a title that zooms, handing over to a map
   # screen that spins. Counted across the program they read as two turners and the game was
   # refused outright.
@@ -236,10 +230,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :map_screen
-        end
+        call({ 0 => :title, 1 => :map_screen }, number: :state)
       end
     end
     b.finalize_program
@@ -267,7 +258,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     b.finalize_program
@@ -283,7 +274,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
 
   # No false alarm: a program drawn entirely on a bitmap screen stamps each background
   # into its one picture where it is declared, so it has no layers to run out of. A
-  # program that ALSO has a tiled scene is a different case, and its bitmap backgrounds
+  # program that also has a tiled scene is a different case, and its bitmap backgrounds
   # are counted — see the note on which side of the count is per screen.
   def test_a_program_drawn_only_on_a_bitmap_screen_has_no_layers_to_run_out_of
     b = Builder.new
@@ -302,14 +293,14 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert_empty report.findings
   end
 
-  # WHERE THE AUTHOR IS SENT. A finding blames a node, and the node it blames is the
+  # Where the author is sent. A finding blames a node, and the node it blames is the
   # first layer with nowhere to go — not the first layer in the stack, which fits.
   def test_the_finding_blames_a_layer_that_has_nowhere_to_go
     report = validator.run(five_scrolling_layers, autofix: false)
     assert_equal :five, report.errors.first.node.name
   end
 
-  # A SECOND BACKGROUND THAT TURNS is the other refusal, and it is reported FIRST when a
+  # A second background that turns is the other refusal, and it is reported first when a
   # program has both problems: cutting a scrolling layer would not save it, and the
   # arrangement the scrolling ones were counted against is not one the console has.
   def test_a_second_turning_background_is_reported_before_the_count
@@ -333,7 +324,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     refute_match(/scrolling/, message, "and does not send the author to cut a scrolling layer")
   end
 
-  # THE GAP THIS CLOSES. The interpreter is the answer key a game's own tests run
+  # The gap this closes. The interpreter is the answer key a game's own tests run
   # against, and it has no layers of its own — only a picture — so it drew five happily
   # while the cartridge refused them. Now it refuses in the same sentence. (The interpreter
   # by name: a run that plays the program as another console's refuses it in that console's
@@ -344,7 +335,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
                  error.message
   end
 
-  # ONE RULE, ONE WORDING. The lowering keeps a refusal of its own, so a program that
+  # One rule, one wording. The lowering keeps a refusal of its own, so a program that
   # skipped the guardrails still cannot build a cartridge that drops a layer — and it
   # comes here for the words, so the three can never say different things.
   def test_the_lowering_refuses_in_exactly_the_same_words
@@ -379,7 +370,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     background :sky, tiles: :floor, map: ["#" * 4] * 4
     var :state, 0
     scene(:town) { background :town, tiles: :floor, map: ["#" * 4] * 4 }
-    game_loop { case_var(:state) { when_val 0, :town } }
+    game_loop { call({ 0 => :town }, number: :state) }
   end
 
   # A second scene with a background of its own takes turns with the first, and is not refused.
@@ -391,10 +382,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     scene(:town) { background :town, tiles: :floor, map: ["#" * 4] * 4 }
     scene(:cave) { background :cave, tiles: :floor, map: ["#" * 4] * 4 }
     game_loop do
-      case_var :state do
-        when_val 0, :town
-        when_val 1, :cave
-      end
+      call({ 0 => :town, 1 => :cave }, number: :state)
       state = 1 - state
     end
   end
@@ -412,7 +400,7 @@ class TestIRGuardrailBackgroundLayers < Minitest::Test
     assert validator.run(TWO_UP.program(console: :gba), autofix: false).ok?
   end
 
-  # THE SUPER NINTENDO'S THIRD LAYER is for a background shown on some rows only: a status bar,
+  # The Super Nintendo's third layer is for a background shown on some rows only: a status bar,
   # or a background kept above a row (Console::Description#layer_for_held_rows). So it shows two
   # backgrounds, and one of those beside them; a third plain one is refused here, before any
   # build, in words that name the bar, rather than by the build later as not made yet.

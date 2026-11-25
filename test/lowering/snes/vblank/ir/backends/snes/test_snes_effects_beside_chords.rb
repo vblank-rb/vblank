@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SOUND EFFECT ANSWERS ITS PRESS, even with a song striking chords in a nearly full pass. The sound
+# A sound effect answers its press, even with a song striking chords in a nearly full pass. The sound
 # chip is told things through a mailbox, a write at a time, while the game waits for the screen, and
 # a chord is a great many writes, so what is asked for after one has a long way to wait in line. An
 # effect is a press answered, and goes ahead of it.

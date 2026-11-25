@@ -10,13 +10,13 @@
 # past the last item — stops the game with the interpreter's words, through rg_fault. A run that
 # carried on past one of those would be answering a different question.
 #
-# A LIST OF BYTES (`width: :byte`) IS KEPT AS BYTES, an RgByteList over a binary String, one byte
+# A list of bytes (`width: :byte`) IS KEPT AS BYTES, an RgByteList over a binary String, one byte
 # a slot. An Array keeps every item as a Ruby number of eight bytes, and a data pack's unpacking
 # writes its whole pack into one list of bytes: a pack of hundreds of megabytes held that way
 # would want gigabytes. The two classes answer the same few methods, so nothing else knows which
 # it holds.
 #
-# A READ OR WRITE OF ONE ITEM IS ONE CALL (#get, #set), which the printer writes where the game
+# A read or write of one item is one call (#get, #set), which the printer writes where the game
 # reads or writes (Printer#list_item_call): the check of the index and the ring's slot worked out
 # inside it, on the list's own instance variables. An unrolled routine paid for a few reads; a
 # routine that loops over a list by an index it works out as it runs pays for one at every turn,
@@ -27,7 +27,8 @@
 # game in the interpreter's words; a list item is never nil, so nothing else reads as a refusal.
 
 class RgList
-  attr_reader :capacity, :width, :name, :refused_index
+  attr_reader :width, :name, :refused_index
+  attr_accessor :capacity # set again by a declaration of another capacity (rg_list_set_capacity)
   attr_accessor :front, :length
 
   # The list for the build's ListStorage: kept as bytes when +width+ is 1, and fitting each number
@@ -174,7 +175,7 @@ class RgHalfList < RgList
   end
 end
 
-# A LIST THAT IS ALWAYS FULL: one the game only ever declares full of a number (`full_of:`), and
+# A list that is always full: one the game only ever declares full of a number (`full_of:`), and
 # never pushes onto, drops from or copies into, so it holds its whole capacity from its declaration
 # on, its first item in its first slot (Printer#always_full_lists picks these, of numbers wider
 # than a byte). A port keeps its chip's operators so, a list a field, and reads them at an index it
@@ -234,6 +235,12 @@ def rg_list_check_index(list, index)
   rg_fault("index #{index} is out of range for list :#{list.name} (valid indexes are 0..#{list.length - 1})")
 end
 
+# A list declared with several capacities takes the one its declaration gives before it starts
+# again; its items have room for the most of them.
+def rg_list_set_capacity(list, capacity)
+  list.capacity = capacity
+end
+
 # A list declared where the program reaches it starts again, empty.
 def rg_list_empty(list)
   list.front = 0
@@ -249,10 +256,21 @@ end
 
 def rg_list_length(list) = list.length
 
-def rg_list_push(list, value)
-  if list.length >= list.capacity
-    rg_fault("list :#{list.name} is full (capacity #{list.capacity}): drop an item first, or give it a larger capacity")
+# The game stops: +name+, holding +capacity+, is full (IR::Faults.list_full's words), or, +in_walk+
+# not nought, full only of items a walk took out (IR::Faults.full_in_walk's). Raised by a push onto
+# a full list, and by a full pool told to stop (IR::Nodes::StopFull).
+def rg_stop_full(name, capacity, in_walk)
+  if in_walk != 0
+    rg_fault("`#{name}` has no room yet: it has room for #{capacity} items, and an item taken out inside a walk " \
+             "of it gives its place back only when the walk ends. To fix this, add the new item after the walk, " \
+             "or give it a larger capacity.")
   end
+  rg_fault("`#{name}` is full: it has room for #{capacity} items, and a console cannot make it bigger. " \
+           "To fix this, take an item out or test its size before you add one, or give it a larger capacity.")
+end
+
+def rg_list_push(list, value)
+  rg_stop_full(list.name, list.capacity, 0) if list.length >= list.capacity
   list.set_item(rg_list_slot(list, list.length), rg_list_fit(list, value))
   list.length += 1
 end

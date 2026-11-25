@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A CARTRIDGE BUILD'S TRIES (Backends::BuildTries), walked over a made-up build whose tries need
+# A cartridge build's tries (Backends::BuildTries), walked over a made-up build whose tries need
 # room: each try fits when its settings give at least the room it asks for, and stops with an
 # error naming what it is short of otherwise. The consoles' own builds are held to the cartridges
 # they make in their own folders; this is the order the tries go in.

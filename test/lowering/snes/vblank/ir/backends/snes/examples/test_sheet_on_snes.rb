@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/sheet").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sheet").to_s)
 
 # examples/sheet.rb on a Super Nintendo: a room and an animated hero both cut from picture
 # files, held to the interpreter — every variable and every pixel — after every pass.

@@ -1,5 +1,5 @@
 /*
- * WHICH MACHINE THE GAME IS RUNNING ON: a window (rg_sdl.c), or no window at all (rg_headless.c).
+ * Which machine the game is running on: a window (rg_sdl.c), or no window at all (rg_headless.c).
  *
  * The game calls rg_wait_vblank, rg_held and the rest of rg_runtime.h without knowing which, and
  * rg_runtime.c hands each call to the driver chosen when the program started. That is what lets
@@ -52,7 +52,7 @@ void rg_players_read(int32_t count, const uint32_t *masks);
  * reads it down. */
 void rg_players_held_from_power_on(int32_t count, const uint32_t *masks);
 
-/* WHERE THE CARTRIDGE'S CLOCK GETS ITS TIME, given by the driver before it starts the game, or not
+/* Where the cartridge's clock gets its time, given by the driver before it starts the game, or not
  * at all for a cartridge with no clock. Either way the time is the date and the hour a clock
  * SHOWS, with no time zone, as IR::Clock reads it.
  *
@@ -71,7 +71,7 @@ void rg_clock_reads(int32_t year, int32_t month, int32_t day, int32_t hour, int3
 /* What every driver does as a frame begins, after deciding to play it: the picture's work for
  * the frame boundary, then one frame of the music — the interpreter's order.
  *
- * In a game whose timer's handler waits (rg_runtime.c, "A HANDLER THAT WAITS") it gives back 1 when
+ * In a game whose timer's handler waits (rg_runtime.c, "a handler that waits") it gives back 1 when
  * the handler stopped part way through the timers: the frame has begun, but nothing of it is shown
  * and no buttons are read until the boundary is over. A window can show it all the same. And when
  * rg_frame_ends_late is 1 the boundary to come only ends the frame such a walk began: it is no new
@@ -79,7 +79,7 @@ void rg_clock_reads(int32_t year, int32_t month, int32_t day, int32_t hour, int3
 int32_t rg_frame_begins(void);
 int32_t rg_frame_ends_late(void);
 
-/* The windowless driver: plays FRAMES frames under the buttons on standard input and prints
+/* The windowless driver: plays frames frames under the buttons on standard input and prints
  * every frame (see rg_headless.c). Its arguments are the number of frames, then nothing:
  * argv as main() gets it, less anything that came before the number. */
 int rg_headless_main(int argc, char **argv);

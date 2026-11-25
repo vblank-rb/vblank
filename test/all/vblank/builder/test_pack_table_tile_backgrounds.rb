@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_table_tile_background_games"
 
-# WHAT A GAME IS TOLD when a map of map cells over tiles of 256 colours names a bank of colours
+# What a game is told when a map of map cells over tiles of 256 colours names a bank of colours
 # (Builder::PackBackgrounds), and what such tiles under cells of 16x16 are made of. A tile of 256
 # colours picks from the whole table, so a cell has no bank to pick. What such a background shows
 # is test/console/gba/vblank/builder/test_pack_table_tile_backgrounds_on_the_advance.rb's.

@@ -4,7 +4,7 @@ require "test_helper"
 require "socket"
 require "timeout"
 
-# JOINING AND HOSTING BY ADDRESS, where it goes wrong: whatever stops a machine joining or hosting leaves no
+# Joining and hosting by address, where it goes wrong: whatever stops a machine joining or hosting leaves no
 # socket of its own open. The other end here is a plain TCP server that says what the test wants it to.
 class TestDirectPlay < Minitest::Test
   Network = VBlank::Network

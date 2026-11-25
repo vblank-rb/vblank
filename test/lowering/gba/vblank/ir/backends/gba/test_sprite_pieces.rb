@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SPRITE CAN BE BIGGER THAN THE CONSOLE'S LARGEST OBJECT.
+# A sprite can be bigger than the console's largest object.
 #
 # The console draws twelve rectangles and the largest is 64x64, so a boss, a vehicle, a
 # title-screen character used to have to be hand-assembled out of several sprite handles
@@ -11,7 +11,7 @@ require "differential"
 # standing shoulder to shoulder look exactly like one big one — so the framework cuts the
 # picture up and moves the pieces itself.
 #
-# WHAT CAN GO WRONG IS THE PLACE, not the pixels: a piece put one cell out, or a mirrored
+# What can go wrong is the place, not the pixels: a piece put one cell out, or a mirrored
 # piece reflected about the wrong middle, still draws a plausible-looking picture. So
 # nearly every test here compares the two backends pixel for pixel — the interpreter draws
 # the whole picture at once and knows nothing about pieces, which makes it the answer key.
@@ -147,7 +147,7 @@ class TestSpritePieces < Minitest::Test
     assert_backends_agree(b.program, frames: 8, name: "BIGMOVE")
   end
 
-  # Poses that need DIFFERENT numbers of pieces: one fills the canvas, one is a blob in
+  # Poses that need different numbers of pieces: one fills the canvas, one is a blob in
   # the corner. The short pose is filled out with pieces that draw nothing, so the frame
   # never has to test how many there are — and the picture must show only the blob.
   def test_poses_that_need_different_numbers_of_pieces_draw_the_same
@@ -173,7 +173,7 @@ class TestSpritePieces < Minitest::Test
     assert_backends_agree(prog, frames: 4, name: "BIGPAD")
   end
 
-  # A big sprite facing the other way is the same pieces reflected about the CANVAS, not
+  # A big sprite facing the other way is the same pieces reflected about the canvas, not
   # about each piece's own middle — get that wrong and the character turns inside out.
   # `face` picks the direction so the compared frame is a known one rather than wherever
   # a cycle happened to land.

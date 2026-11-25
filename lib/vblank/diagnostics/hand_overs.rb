@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHICH SCENES RUN LATE ON THE FRAME THE GAME HANDS OVER TO THEM, measured on the console.
+    # Which scenes run late on the frame the game hands over to them, measured on the console.
     #
     # A scene's pictures go into video memory as it takes over, on the same pass as its first
     # pass of game, so a scene with a lot of art can run that one pass past the end of its frame

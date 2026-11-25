@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A POOL DECLARED IN A SCENE, DRAWN AS THE GAME WALKS INTO THAT SCENE AND OUT AGAIN.
+# A pool declared in a scene, drawn as the game walks into that scene and out again.
 #
 # A pool's things are put in the order they are drawn in only while its scene is up, since they
 # show only then. So the first frame back in the scene has to be put in order and drawn from the
@@ -33,10 +33,7 @@ class TestPoolDrawnByScene < Minitest::Test
         t += 1
         where = 1 if t == 6
         where = 0 if t == 12
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :where)
       end
     end
     builder.finalize_program

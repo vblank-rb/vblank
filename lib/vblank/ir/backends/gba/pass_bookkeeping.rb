@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHERE A CHECKED BUILD KEEPS HOW THE RUN STANDS, by the names every console's reader asks
+        # Where a checked build keeps how the run stands, by the names every console's reader asks
         # for them by (Backends::CartridgeHeadlessRun): how many passes have ended, which one the
         # screen shows, whether the game waits at the end of one, how it stands and what went wrong.
         # The Color's runtime keeps these in every cartridge (GBC::Runtime::Frame); the Advance's
@@ -45,7 +45,7 @@ module VBlank
           end
         end
 
-        # THE BOOKKEEPING A CHECKED BUILD EMITS (Runtime::Frame): at power-on, at the end of each pass,
+        # The bookkeeping a checked build emits (Runtime::Frame): at power-on, at the end of each pass,
         # where the game halts and where a list is read past its end. Each word is a variable of the
         # build's own, placed as every variable is, and the two longer records are kept at the far
         # end of the quick memory.
@@ -114,13 +114,13 @@ module VBlank
             emit_word(Frame::WAITING, 0)
           end
 
-          # THE GAME HALTS: marked so, its last picture shown, and the end marked as on the screen.
+          # The game halts: marked so, its last picture shown, and the end marked as on the screen.
           def emit_halt
             emit_word(Frame::STATE, Frame::HALTED)
             emit_jump_far(stopping_label)
           end
 
-          # A LIST READ OR WRITTEN PAST ITS END stops the game, as the interpreter stops it: r0 holds
+          # A list read or written past its end stops the game, as the interpreter stops it: r0 holds
           # the index, which is checked unsigned so a negative one is caught too, and +length+ is the
           # variable that holds how many items the list has. +place+ is where the list is kept, which
           # names it to the reader. r1 is spent; the read or write after loads what it needs again.
@@ -141,14 +141,28 @@ module VBlank
             @emitter.place_label(within)
           end
 
+          # What went wrong is in the record (FaultStops#emit_fault_routine): the game stops as it
+          # stops on a list read past its end.
+          def emit_went_wrong
+            emit_word(Frame::STATE, Frame::WENT_WRONG)
+            emit_jump_far(stopping_label)
+          end
+
+          # Where what went wrong is kept, a word each (Frame::FAULT).
+          def fault_at = @fault_at ||= @memory.alloc(Frame::FAULT_BYTES)
+
           # Where a halt and a fault go, emitted once at the end of the program: the frame after
           # shows what the game drew last, then the end is marked as on the screen and the game
           # sleeps from frame to frame. A held pass stops at the same sleep, with its own pass shown.
           # In a game that never waits for the screen (+frames+ false) its interrupt is not armed:
-          # what it drew is on the screen already, and it stops where it is.
+          # what it drew is on the screen already, and it stops where it is. The block, where given,
+          # is what the drawing puts right in the gap after that last picture.
           def emit_stopping(frames:)
             @emitter.place_label(stopping_label)
-            @emitter.emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16)) if frames
+            if frames
+              @emitter.emit(ASM.swi(GBA::SWI_VBLANK_INTR_WAIT << 16))
+              yield if block_given?
+            end
             emit_word(Frame::SHOWN, Frame::END_SHOWN)
             @emitter.place_label(stopped_label)
             if frames
@@ -177,7 +191,6 @@ module VBlank
           def stopped_label = @stopped_label ||= @emitter.gensym
 
           def steps_at = @steps_at ||= @memory.alloc(Frame::STEPS_KEPT)
-          def fault_at = @fault_at ||= @memory.alloc(Frame::FAULT_BYTES)
         end
       end
     end

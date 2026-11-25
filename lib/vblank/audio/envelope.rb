@@ -2,10 +2,10 @@
 
 module VBlank
   module Audio
-    # HOW A NOTE STARTS AND HOW IT ENDS — the shape of its loudness over time, the thing that
+    # How a note starts and how it ends — the shape of its loudness over time, the thing that
     # makes a plucked string different from a bowed one played at the same pitch.
     #
-    # WHY IT HAS TO EXIST AT ALL, which is not obvious until you hear it: a recorded note that
+    # Why it has to exist at all, which is not obvious until you hear it: a recorded note that
     # simply stops leaves the speaker wherever the wave happened to be at that instant, and the
     # jump from there to silence is a CLICK. It is loud — a note cut at the top of its wave moves
     # the speaker further in one step than the music ever does — and it comes and goes, because a
@@ -15,7 +15,7 @@ module VBlank
     # So a note ends by getting quieter over a few frames instead of stopping. A twentieth of a
     # second is enough to remove the click completely and far too short to hear as a fade.
     #
-    # WHAT THE FOUR NUMBERS ARE. A sounding note keeps a LEVEL, from nothing up to however loud
+    # What the four numbers are. A sounding note keeps a level, from nothing up to however loud
     # the note was asked to be, and the four numbers move that level once a frame:
     #
     #   attack   how fast it climbs when the note starts.
@@ -27,9 +27,9 @@ module VBlank
     # key is let go. A bowed or blown one climbs, holds where it is, and stops soon after. Both are
     # these four numbers.
     #
-    # TWO WAYS TO WRITE THEM, and they are for two different people.
+    # Two ways to write them, and they are for two different people.
     #
-    # Write a Hash and give it in TIME, which is what somebody writing music means:
+    # Write a Hash and give it in time, which is what somebody writing music means:
     #
     #   envelope: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.25 }
     #
@@ -44,12 +44,12 @@ module VBlank
     #
     # That form is for a game whose music came out of another cartridge: its instruments already
     # carry these four bytes, and there is nothing to convert. Their meanings are the ones the
-    # original hardware's sound engine uses, so the numbers drop straight in: +attack+ is ADDED to
+    # original hardware's sound engine uses, so the numbers drop straight in: +attack+ is added to
     # the level each frame, +decay+ and +release+ are what the level is MULTIPLIED by each frame
     # (out of 256, so 216 keeps about six sevenths of it and 89 keeps about a third), and
     # +sustain+ is the level it holds at.
     #
-    # WHAT IT COSTS is one pass over the sounding voices once a frame, where the four numbers move
+    # What it costs is one pass over the sounding voices once a frame, where the four numbers move
     # the level — and then one addition per sample, in the mix, to slide the loudness there. The
     # console's own retail sound engine moves the level at the frame boundary and nowhere else,
     # which makes a fade a staircase, and a fast fade takes most of its fall in the first step: the
@@ -64,7 +64,7 @@ module VBlank
       MOST = 255
       FULL = MOST
 
-      # THE LEVEL IS A BYTE AND NOTHING FINER, which is worth saying because keeping it finer
+      # The level is a byte and nothing finer, which is worth saying because keeping it finer
       # looks like an improvement and is not. A fall is a multiply by a fraction, so it loses its
       # remainder every frame, and that lost remainder is most of how fast a quiet note dies: the
       # same 216 that keeps five sixths of a loud level takes a level of 3 straight to 2. Kept to a
@@ -88,7 +88,7 @@ module VBlank
         ((loudness * (level + (level >> 7))) >> WHOLE_GAIN_SHIFT) << Sound::GAIN_FRACTION
       end
 
-      # AS IT WAS WITHOUT AN ENVELOPE: full at once, no fall, and it stops the instant the note
+      # As it was without an envelope: full at once, no fall, and it stops the instant the note
       # ends. So `envelope: {}` changes nothing, and each key you write changes one thing.
       PLAIN = { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.0 }.freeze
 
@@ -127,7 +127,7 @@ module VBlank
             sustain: sustain, release: fall_for(times[:release], FULL, 0))
       end
 
-      # HOW FAST THE LEVEL CLIMBS to reach full in about +seconds+. It is added each frame, so the
+      # How fast the level climbs to reach full in about +seconds+. It is added each frame, so the
       # step is the whole climb shared out over the frames there are. A time of nothing at all
       # means full on the first frame, which is what a struck instrument does.
       def self.attack_for(seconds)
@@ -137,7 +137,7 @@ module VBlank
         (MOST.to_f / frames).ceil.clamp(1, MOST)
       end
 
-      # HOW FAST THE LEVEL FALLS from +from+ to +to+ in about +seconds+ — the number it is
+      # How fast the level falls from +from+ to +to+ in about +seconds+ — the number it is
       # multiplied by each frame, out of 256.
       #
       # Found by trying it rather than by a formula, and that is deliberate: the level is a whole
@@ -218,14 +218,14 @@ module VBlank
         super
       end
 
-      # WHICH PART OF A NOTE A VOICE IS IN. Climbing to full, then holding (which covers both the
+      # Which part of a note a voice is in. Climbing to full, then holding (which covers both the
       # fall to the sustain level and the hold there — one test against the level tells them
       # apart), then falling away once the note has ended.
       CLIMBING = :climbing
       HOLDING = :holding
       FALLING = :falling
 
-      # ONE FRAME OF THE NOTE'S SHAPE: where the level and the phase are after it. This is the
+      # One frame of the note's shape: where the level and the phase are after it. This is the
       # rule, written once, in the plainest form there is — both backends do exactly this, one in
       # Ruby and one in ARM, and a test holds them against each other. Whole numbers throughout,
       # because that is what the console has and a fall loses its remainder every frame.

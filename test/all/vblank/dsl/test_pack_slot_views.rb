@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_slot_view_games"
 
-# A VIEW OF A SLOT OF A DATA PACK (DSL::PackSlot#as_tiles and its siblings): some of a slot's bytes
+# A view of a slot of a data pack (DSL::PackSlot#as_tiles and its siblings): some of a slot's bytes
 # read in a shape of their own, and what a game is told when a view cannot be made. What a game
 # that reads its pixels and tables through views shows, held to the same game holding them itself,
 # is in test/pack_slot_view_pixel_tests.rb, played by each console that shows its picture (not the

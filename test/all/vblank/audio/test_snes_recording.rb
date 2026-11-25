@@ -3,7 +3,7 @@
 require "test_helper"
 require "brr_recordings"
 
-# A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S OWN FORMAT (Audio::SNESRecording), decoded as the
+# A recording in the Super Nintendo sound chip's own format (Audio::SNESRecording), decoded as the
 # chip decodes it, which is what the interpreter and every console but the Super Nintendo play. The
 # answer key is the chip's decoder as fullsnes writes it (BRRRecordings.chip_samples), and a few
 # samples worked out by hand in each test's comment. What bsnes makes of the same bytes is

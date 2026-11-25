@@ -4,7 +4,7 @@ require "test_helper"
 
 VBlank.require_game_file "../../../fixtures/game_with_working_variables/screen_flash"
 
-# SAVES KEEP EVERYTHING: a game that saves in the middle of play says so once, and the build
+# Saves keep everything: a game that saves in the middle of play says so once, and the build
 # refuses a cartridge where some of the game's own state is kept by no save_data record — a
 # forgotten `keep` becomes a friendly error at build time instead of a load that quietly puts
 # back only part of the game.
@@ -143,7 +143,7 @@ class TestSavesKeepEverything < Minitest::Test
     assert_match(/declares no save_data record/, refused { var :hearts, 3; saves_keep_everything })
   end
 
-  # WORKING ROOM A PART MARKS. `game_variables ..., saved: false` says a save never keeps those
+  # Working room a part marks. `game_variables ..., saved: false` says a save never keeps those
   # instance variables, so the check passes them over, with no name of their own starting _.
   private def flash_game(part, tick, except: [])
     builder = Builder.new

@@ -18,6 +18,7 @@ and a test fails when the two differ. The Advance's answers are in
 
 - `screen` — works: `screen :tiled` and `screen :bitmap` work. A Super Nintendo has no painted screen, so a painted (bitmap) screen is made of tiles internally. `tear_free: true` keeps one picture, because the picture is copied to the console whole before it shows. `screen :rotozoom` is refused: the build does not use the one layer a Super Nintendo can turn. `screen :bitmap, pixel_size: 2` shows each pixel of the game's 128×112 picture as a square of four. The build keeps the picture as one byte for each pixel. It shows the picture on the layer that can turn, at twice its size. Then a change to the picture copies a quarter of the bytes, or fewer. `shown_rows:` works: the rows outside the range are black. The screen is off on those rows, so the build copies the picture to video memory on those rows and in the gap after each picture. Then a picture that changes many tiles in each pass shows sooner. With `pixel_size: 2` the rows are rows of the small picture.
 - `setting` — works: the same as on the Advance.
+- `feature?` — works: the same as on the Advance.
 - `built_for_computer?` — works: false on a cartridge.
 - `built_for?` — works: true when asked about :snes.
 - `screen_width` — works: 256 on a Super Nintendo. 128 with `pixel_size: 2`.
@@ -36,7 +37,6 @@ and a test fails when the two differ. The Advance's answers are in
 - `timer` — works: a timer ticks by the frame, as the interpreter counts it.
 - `pixel` — works: the same as on the Advance.
 - `fill_rect` — works: the same as on the Advance.
-- `dma_fill_rect` — works: the same as on the Advance.
 - `draw_rect_at` — works: the same as on the Advance.
 - `draw_column_at` — works: the same as on the Advance.
 - `place` — works: a place is data in the cartridge. To draw it is refused: see `draw_place`.
@@ -49,7 +49,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `inside` — works: the same as on the Advance.
 - `grid` — works: the same as on the Advance.
 - `camera` — works: a painted screen is the size of the screen, so moving the view over it shows black past the picture's edge. To move over a bigger world, use a tiled background and `scroll_to`. On a tiled screen the camera moves the backgrounds and the sprites together.
-- `keep_showing` — works: a painted screen is always shown whole, so a picture kept showing never tears.
+- `redraw_on_change` — works: a painted screen is always shown whole, so a picture painted only on a change never tears.
 - `fade` — works: `fade` to black is the display's own brightness, in sixteen levels, and costs no time. `tint`, and `fade` to white, change the colours the console shows, not the picture. `inside:`, `outside:` and `under:` are refused: the build cannot fade part of the screen on a Super Nintendo.
 - `tint` — works: the same as on the Advance.
 - `fade_in` — works: the same as on the Advance.
@@ -79,15 +79,15 @@ and a test fails when the two differ. The Advance's answers are in
 - `mirror` — works: the same as on the Advance.
 - `upside_down` — works: the same as on the Advance.
 - `blit` — works: the same as on the Advance.
-- `sprite` — works: a sprite is made of the console's pieces, 128 pieces at once. On any one row of the screen it shows 32 pieces, and 34 strips of them 8 pixels wide. If there are more, some are not shown: past 32 pieces on a row, the pieces furthest back; past 34 strips, the right side of the pieces in front; past 128 pieces, the pieces in front, on the whole screen. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. It can draw all those lists with one other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists (`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 pieces too, wherever they sit. No error shows as the game runs when a piece is not shown. The build warns when the sprites one screen declares pass 128, and when it gives up the squares of 16×16 to fit the tiles. On a screen whose pictures do not all fit as squares, the pictures that fit keep their squares, and the build names the pictures that do not and the rows they add. It does not count pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` on a painted screen is not made yet: the build refuses it and says so. That painted screen uses nearly all the video memory and all 256 colours, and the sprites need some of both.
+- `sprite` — works: a sprite is made of the console's pieces, 128 pieces at once. On any one row of the screen it shows 32 pieces, and 34 strips of them 8 pixels wide. If there are more, some are not shown: past 32 pieces on a row, the pieces furthest back; past 34 strips, the right side of the pieces in front; past 128 pieces, the pieces in front, on the whole screen. A sprite whose poses are drawn from different lists of colors shows each pose in the colors of its own list. It can draw all those lists with one other list (`draw_with({ hero: :white, cape: :white })`). It cannot follow those lists (`draw_with({ hero: :hero })`): this build does not make that yet, and refuses it. A square of 16×16 in a picture is one piece, so a screen of big sprites fits. A picture given with `pieces:` is those pieces, one each, 16×16 pieces too, wherever they sit. No error shows as the game runs when a piece is not shown. The build warns when the sprites one screen declares pass 128, and when it gives up the squares of 16×16 to fit the tiles. On a screen whose pictures do not all fit as squares, the pictures that fit keep their squares, and the build names the pictures that do not and the rows they add. It does not count pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with `over_picture: true` shows over a painted screen. The painted screen uses most of the video memory, so those sprites have room for 124 different 8×8 squares of picture. Each list of colours that they use takes 16 of the 256 colours of the painted screen. If the game paints too many colours or its sprites use too many squares, the build stops and says so. The build refuses such a sprite on a Super FX cartridge: it does not make that yet.
 - `draw_in_order` — works: the same as on the Advance.
 - `hide_sprites` — works: on the next frame, no sprite shows. On the frame after, every sprite shows where it is.
 - `picture_groups` — works: the same as on the Advance.
 - `pool` — works: its sprites count towards the 128.
 - `box` — works: the same as on the Advance.
 - `tiles` — works: tiles of sixteen colours each.
-- `background` — works: `cells_in_front: true` is refused: this build does not make it yet. A Super Nintendo keeps a priority bit for each cell of its map. two backgrounds at a time, and a status bar or a background held above a row beside them. A screen with three backgrounds and neither among them is refused before the build. The backgrounds are scrolled and changed as on the Advance. `above_row:` keeps a background to the rows above that row, and takes no processor time as the screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the console shows only that background and the sprites above the row, so its see-through pixels show the backdrop. With `alone: :without_sprites`, the console shows only that background above the row, and no sprite. Beside two other backgrounds, the held background shows alone above its row, in tiles of 3 colours and see-through. Without `alone:`, it must be in front of the other backgrounds. Its tiles must have no see-through pixel. Each cell of its map that can show must have a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` is refused: this build does not make it yet. `rotate` and `scale` are refused: the build does not use the one layer a Super Nintendo can turn. A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. A cell of its map is then one 16×16 tile. A `scroll_each_row` block runs for all 224 rows each pass, so a block that reads a table can take more than a frame. If a block only compares the row with numbers, as `row >= 68 ? a : b` does, it runs once for each band of rows, and the game keeps up. A scene can bend a background of its own. The rows go straight when that scene leaves. A block with no statement and no `?` takes none of the frame while that scene is away. Any other block runs as usual, because it can change a number. `held: true` changes nothing: a Super Nintendo writes its video memory only between frames, so the cells a pass changes with `set_tile` already show together.
-- `status_bar` — works: beside one background, the bar is one of the two background layers. Beside two backgrounds, or beside a sprite behind a background, the bar is on the third layer. That layer has tiles of four colours. Then each tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles and a bar of tiles painted from a list are refused: this build does not make them yet. `set_tile` with `now: true` is refused: a Super Nintendo writes its video memory only between frames, so a change shows on the frame after the pass.
+- `background` — works: `cells_in_front: true` is refused: this build does not make it yet. A Super Nintendo keeps a priority bit for each cell of its map. two backgrounds at a time, and a status bar or a background held above a row beside them. A screen with three backgrounds and neither among them is refused before the build. The backgrounds are scrolled and changed as on the Advance. `above_row:` keeps a background to the rows above that row, and takes no processor time as the screen is drawn. A game with it cannot have a status bar yet. With `alone: true`, the console shows only that background and the sprites above the row, so its see-through pixels show the backdrop. With `alone: :without_sprites`, the console shows only that background above the row, and no sprite. Beside two other backgrounds, the held background shows alone above its row, in tiles of 3 colours and see-through. It can change its colours with `draw_with`. Then each place of a list that its tiles use takes one colour of the layer's 8 lists of 3. Only one background on that layer can use `draw_with`. Without `alone:`, it must be in front of the other backgrounds. Its tiles must have no see-through pixel. Each cell of its map that can show must have a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` uses the console's windows, one for each of the two layers, and takes no processor time as the screen is drawn. `hide` and `show` use the same windows as a box with nothing in it. A background held to a box beside a see-through layer, or on the third layer, is refused: this build does not make it yet. `rotate` and `scale` are refused: the build does not use the one layer a Super Nintendo can turn. A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. A cell of its map is then one 16×16 tile. A `scroll_each_row` block runs for all 224 rows each pass, so a block that reads a table can take more than a frame. If a block only compares the row with numbers, as `row >= 68 ? a : b` does, it runs once for each band of rows, and the game keeps up. A scene can bend a background of its own. The rows go straight when that scene leaves. A block with no statement and no `?` takes none of the frame while that scene is away. Any other block runs as usual, because it can change a number. `held: true` changes nothing: a Super Nintendo writes its video memory only between frames, so the cells a pass changes with `set_tile` already show together.
+- `status_bar` — works: beside one background, the bar is one of the two background layers. Beside two backgrounds, or beside a sprite behind a background, the bar is on the third layer. That layer has tiles of four colours. Then each tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. On the third layer, a bar of 16×16 tiles and a bar of tiles painted from a list are refused: this build does not make them yet. `set_tile` with `now: true` is refused: a Super Nintendo writes its video memory only between frames, so a change shows on the frame after the pass.
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: pictures of 8×8 or 16×16, each change one copy from the cartridge, however many cells show the tile. A group must fit one bank of the cartridge.
 - `sprite_tiles` — works: a Super Nintendo can draw poses from tiles the game loads, but this build does not make it yet. A game with a pose drawn from sprite tiles is refused, and the build says so (see Not made yet).
@@ -106,40 +106,22 @@ and a test fails when the two differ. The Advance's answers are in
 - `start_over` — works: the same as on the Advance.
 - `clock` — **refused**: a Super Nintendo cartridge built here has no clock chip. Ask the player for the time on a screen of the game's own, if the game needs it.
 - `saves_keep_everything` — works: the same as on the Advance.
-- `set` — works: the same as on the Advance.
-- `add` — works: the same as on the Advance.
-- `add_var` — works: the same as on the Advance.
-- `sub` — works: the same as on the Advance.
-- `sub_var` — works: the same as on the Advance.
-- `copy` — works: the same as on the Advance.
-- `negate` — works: the same as on the Advance.
-- `negate!` — works: the same as on the Advance.
-- `flip` — works: the same as on the Advance.
-- `flip!` — works: the same as on the Advance.
-- `abs` — works: the same as on the Advance.
-- `abs!` — works: the same as on the Advance.
-- `negate_abs` — works: the same as on the Advance.
-- `negate_abs!` — works: the same as on the Advance.
-- `clamp` — works: the same as on the Advance.
-- `clamp!` — works: the same as on the Advance.
-- `approach` — works: the same as on the Advance.
-- `approach!` — works: the same as on the Advance.
 - `list` — works: the same as on the Advance.
 - `func` — works: `fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` runs the routine on a Super FX cartridge's chip (sums, fractions, `if`, loops, tables, lists and a copy from a table into one, and calls of other `on_chip` routines; any other step is refused).
 - `call` — works: the same as on the Advance.
 - `scene` — works: see `func` for `fast:`.
-- `case_var` — works: the same as on the Advance.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Super Nintendo has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have.
-- `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve. `player: 2` reads the second controller, and `player: :any` reads either. `player: 3` or more is refused, and `players:` more than 2 is refused too: this build reads two controllers, and does not read a Multitap yet.
+- `held` — works: the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has twelve. `player: 2` reads the second controller. `player: 3` and `player: 4` read the controllers in a Super Multitap in the second port. `player: :any` reads all of them. The build refuses `player: 5` or more, and `players:` more than 4, because it reads four controllers. If no Multitap is connected, players 3 and 4 hold no buttons.
 - `pressed` — works: see `held`.
-- `most_players` — works: the same as on the Advance.
+- `pulled` — works: 0 or 100. Each button of a Super Nintendo controller is on or off, so a button reads 100 while it is held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as `held` does.
+- `max_players` — works: the same as on the Advance.
 - `drawing_for_local_player` — works: the player is always 1: a cartridge is played by one person.
 - `mark` — works: the mark is one more of the console's sprites, shown over the sprite it marks.
-- `players_connected` — works: a build for a computer answers it. The cartridge build does not make it yet: it refuses it and says so, because it cannot yet tell if the second controller is connected. A controller that is not connected holds no buttons, so a cartridge can wait for a button on it instead, like `pressed(:start, player: 2)`.
+- `players_connected` — works: 1 at the start. A player is connected from the first frame that one of their buttons is down. Then the player stays connected. Players 3 and 4 can connect only through a Super Multitap in the second port. If no Multitap is connected, the count is 1 or 2.
 - `rumble` — works: nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays the same without it.
 - `computer_keys` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
 - `computer_gamepad` — works: they are for the game built for a computer (the window, `vblank run`, the web page): the cartridge is built byte for byte as without it.
@@ -175,4 +157,3 @@ and a game that reaches one of these steps is refused, naming the step, until it
 
 - the picture: `show_picture_group`, `data_byte`
 - sprite tiles the game loads: `load_sprite_tiles`
-- telling which controllers are connected: `players_connected`

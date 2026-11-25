@@ -56,7 +56,7 @@ class TestRubyColorGames < Minitest::Test
     assert_equal 0, run[:rows_worked_out] % 144, "every frame works out the Color's 144 rows"
   end
 
-  # A HISS FASTER THAN THE ADVANCE HANDS ITS VOICES TO THE SPEAKER. The Advance looks at the noise
+  # A hiss faster than the Advance hands its voices to the speaker. The Advance looks at the noise
   # voice 32,768 times a second and holds what it saw until the next look, which is longer than a
   # sample, so neighbouring samples are alike more often than two coin tosses would be. The Color's
   # speaker is handed every step of the hiss, so its neighbours are alike about half the time.

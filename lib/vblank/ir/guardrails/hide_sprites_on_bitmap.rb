@@ -6,6 +6,19 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error for `hide_sprites` on a bitmap screen:
+        #
+        # > `hide_sprites` cannot work on a bitmap screen. A bitmap screen paints its sprites into
+        # > the picture. So it has no sprite layer that it can hide, and this line does nothing.
+        #
+        # The line would build and run and change nothing, so the build stops instead. To hide
+        # every sprite at once, use `screen :tiled` where the call is. On a bitmap screen, call
+        # `hide` on each sprite to hide it, and `show` to show it again.
+        #
+        # The screen is read where the call is, so a tiled scene can hide its sprites in a game
+        # whose title screen is a bitmap one.
+        #
+        #--
         # `hide_sprites` where there is no sprite layer to switch off.
         #
         # On a screen drawn from tiles the console draws its sprites as a layer of their own,
@@ -18,6 +31,7 @@ module VBlank
         #
         # The screen is read where the call is, so a tiled scene of a game whose title is a
         # bitmap one can hide its sprites.
+        #++
         class HideSpritesOnBitmap
           NAME = :hide_sprites_on_bitmap
           PLAIN_NAME = "hiding every sprite on a bitmap screen"

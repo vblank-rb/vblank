@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # A DRAW ORDER'S SORT WRITTEN OUT A PLACE AT A TIME (LoweringPlan#sorts_kept_apart). Mixed
+          # A draw order's sort written out a place at a time (LoweringPlan#sorts_kept_apart). Mixed
           # into Lowering.
           #
           # A draw order is a list of bytes, each a thing's number, always as long as it can be, sorted
@@ -20,7 +20,7 @@ module VBlank
           # does. The order the list ends in is that sort's, the interpreter's (Reference#exec_list_sort),
           # so nothing that reads it changes.
           #
-          # AN ORDER THAT TURNS ROUND. Moving an item back a place at a time is a step for every pair
+          # An order that turns round. Moving an item back a place at a time is a step for every pair
           # of things that passed each other, so when every thing passes every other (everything
           # flipped top to bottom) a pool of 32 is nearly 500 steps, far more than a frame holds. So
           # before an item goes back, the routine that turns a run round looks for a run
@@ -46,7 +46,7 @@ module VBlank
             end
 
             #
-            # A SORT HANDED +shown+ (ShownSort) starts past the entries not showing, the first +hidden+:
+            # A sort handed +shown+ (ShownSort) starts past the entries not showing, the first +hidden+:
             # it goes on, through a table, to the place after the first entry showing, and an item is
             # moved back no further than that entry.
             def emit_keyed_sort(node, shown = nil)

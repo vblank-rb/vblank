@@ -3,7 +3,7 @@
 require "test_helper"
 require "many_tiles"
 
-# EACH SCREEN'S BACKGROUND TILES ARE ITS OWN TO COUNT. Video memory holds 1024 background tiles at
+# Each screen's background tiles are its own to count. Video memory holds 1024 background tiles at
 # once, and a Super Nintendo's own games load a screen's with the screen, so two screens of 600 each
 # never meet.
 class TestSceneBackgroundTilesOnTheSuperNintendo < Minitest::Test
@@ -25,10 +25,7 @@ class TestSceneBackgroundTilesOnTheSuperNintendo < Minitest::Test
         tick += 1
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program
@@ -72,10 +69,7 @@ class TestSceneBackgroundTilesOnTheSuperNintendo < Minitest::Test
         tick += 1
         state = 1 if tick == switch
         water.show 1 if tick == switch + 2
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program

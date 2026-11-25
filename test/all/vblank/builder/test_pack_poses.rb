@@ -116,7 +116,7 @@ module PackPoseGames
   private def pose_game(...) = pose_game_and_file(...).first
 end
 
-# A POSE THAT IS ONE OF THE ORIGINAL'S OWN FRAMES (Builder::PackPoses), read from a made-up original
+# A pose that is one of the original's own frames (Builder::PackPoses), read from a made-up original
 # that keeps its frames as many retail games do: a count, then five bytes a piece. The answer key is
 # the made-up frame itself: each piece's tile, turned as it says, where it says from the origin.
 class TestPackPoses < Minitest::Test

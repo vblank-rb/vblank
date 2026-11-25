@@ -8,16 +8,16 @@ require_relative "lowering"
 
 module VBlank
   module Testing
-    # HOW FAR `rake test:all` GOT, so a run stopped at a failure can pick up there. A whole run takes
+    # How far `rake test:all` got, so a run stopped at a failure can pick up there. A whole run takes
     # most of an hour, and a fault found near the end used to cost the hour again. FAIL_FAST=1 keeps
     # this record and RESUME=1 reads it. A plain `rake test:all` neither writes nor reads it.
     #
-    # WHAT IS KEPT, in a folder that tells git to leave it alone: a digest of each file of the
+    # What is kept, in a folder that tells git to leave it alone: a digest of each file of the
     # project, which runs finished, and for each run a file of lines its test process adds to as
     # results come in. Lines rather than a count, because a run in several processes finishes its
     # tests in no fixed order, and written at once, because FailFast can end the process at any moment.
     #
-    # WHAT A RESUME KEEPS depends on what changed since, the rules `.claude/CLAUDE.md` gives for which
+    # What a resume keeps depends on what changed since, the rules `.claude/CLAUDE.md` gives for which
     # run a change needs. A file every run reads starts everything again and says which file. A file
     # one lowering owns redoes that lowering's runs. A test file is played again, alone, on each run
     # that had finished. A document changes nothing. So a resumed pass is good evidence and not

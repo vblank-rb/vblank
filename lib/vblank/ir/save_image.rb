@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # A CARTRIDGE'S SAVE MEMORY, held in Ruby: the bytes the chip keeps when the console is off.
+    # A cartridge's save memory, held in Ruby: the bytes the chip keeps when the console is off.
     #
     # The interpreter reads and writes one of these where the console reads and writes its
     # chip, and it outlives the interpreter on purpose: hand the same one to a second run and
@@ -51,7 +51,7 @@ module VBlank
         @wiping = nil
       end
 
-      # THE CARTRIDGE'S CLOCK CHIP AS AN EMULATOR LEFT IT, kept beside the save memory, or nil.
+      # The cartridge's clock chip as an emulator left it, kept beside the save memory, or nil.
       # A cartridge with a clock has a chip that goes on counting while the console is off, on
       # a battery of its own, as the save memory keeps its bytes; an emulator writes what that
       # chip holds, and when, after the save memory in the same file. These are those bytes, in
@@ -144,7 +144,7 @@ module VBlank
       # returns. Without, the chip is still at it: it is busy until the program reads the block
       # (see #read_bytes), and a write or another wipe before then is refused.
       #
-      # A WIPE IS TWO STEPS of a cut (see #cut_power_after), because it takes long enough for
+      # A wipe is two steps of a cut (see #cut_power_after), because it takes long enough for
       # the power to go off in the middle of it. Cut before it starts, the block keeps what it
       # held; cut half way, the first half reads 0xFF and the rest is as it was. A real chip cut
       # in a wipe leaves the whole block in no state anybody can count on; this is one such
@@ -166,7 +166,7 @@ module VBlank
         @wiping = start unless wait
       end
 
-      # TURN THE POWER OFF part way through a save: once +steps+ more steps are taken, the next
+      # Turn the power off part way through a save: once +steps+ more steps are taken, the next
       # one raises PowerOff, with what was done kept and nothing after. A byte written is one
       # step and a wipe is two, so a cut can land in the middle of a wipe. The cut is for one
       # run, which ends it with #restore_power. Returns self.
@@ -187,16 +187,16 @@ module VBlank
         @wiping = nil
       end
 
-      # THE TABLE OF PLACES, written straight in as a good first half with +sequence+: what an
+      # The table of places, written straight in as a good first half with +sequence+: what an
       # earlier build left in save memory, so a test can start a game from a table it chose.
-      # +rows+ are SaveLayout::Table::Row, at most SaveLayout::TABLE_ROWS. Returns self.
+      # +rows+ are SaveLayout::Table::Row, at most as many as the memory's table has rows. Returns self.
       def write_table(rows, sequence: 1)
         words = SaveLayout::TABLE_COLUMNS.flat_map do |column|
           values = rows.map { |row| row.to_h.fetch(column) }
-          [SaveLayout::TABLE_ROWS, *values, *Array.new(SaveLayout::TABLE_ROWS - values.size, 0)]
+          [memory.table_rows, *values, *Array.new(memory.table_rows - values.size, 0)]
         end
         body = words.flat_map { |word| le_bytes(word) }
-        header = [SaveLayout::MARKER, SaveLayout::Table.shape, sequence, SaveLayout::SAVED, SaveLayout.checksum(body)]
+        header = [SaveLayout::MARKER, SaveLayout::Table.shape(memory.table_rows), sequence, SaveLayout::SAVED, SaveLayout.checksum(body)]
         (header.flat_map { |word| le_bytes(word) } + body).each_with_index do |byte, i|
           @bytes[memory.table_at + i] = byte
         end
@@ -206,12 +206,12 @@ module VBlank
       # The rows in use in the table of places, read from its newer good half, or nil when
       # neither half is good.
       def table
-        body_bytes = SaveLayout::TABLE_BODY
+        body_bytes = memory.table_body
         second = memory.table_at + memory.room(SaveLayout.half_bytes(body_bytes))
         halves = [memory.table_at, second].filter_map do |at|
           body = read_bytes(at + SaveLayout::HEADER, body_bytes)
           good = word(at + SaveLayout::MARKER_AT) == SaveLayout::MARKER &&
-                 word(at + SaveLayout::SHAPE_AT) == SaveLayout::Table.shape &&
+                 word(at + SaveLayout::SHAPE_AT) == SaveLayout::Table.shape(memory.table_rows) &&
                  word(at + SaveLayout::CHECKSUM_AT) == SaveLayout.checksum(body)
           [word(at + SaveLayout::SEQUENCE_AT), at + SaveLayout::HEADER] if good
         end
@@ -219,10 +219,10 @@ module VBlank
         return nil unless body_at
 
         columns = SaveLayout::TABLE_COLUMNS.each_with_index.to_h do |column, c|
-          start = body_at + (c * (4 + (SaveLayout::TABLE_ROWS * 4)))
-          [column, (0...SaveLayout::TABLE_ROWS).map { |r| word(start + 4 + (r * 4)) }]
+          start = body_at + (c * (4 + (memory.table_rows * 4)))
+          [column, (0...memory.table_rows).map { |r| word(start + 4 + (r * 4)) }]
         end
-        (0...SaveLayout::TABLE_ROWS).map { |r| SaveLayout::Table::Row.new(**columns.transform_values { |values| values[r] }) }
+        (0...memory.table_rows).map { |r| SaveLayout::Table::Row.new(**columns.transform_values { |values| values[r] }) }
                                     .reject { |row| row.key.zero? }
       end
 

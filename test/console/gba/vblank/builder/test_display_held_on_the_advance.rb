@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GAME THAT WAITS FOR FRAMES SHOWS NOTHING UNTIL ITS FIRST FRAME IS SET UP. Everything said before
+# A game that waits for frames shows nothing until its first frame is set up. Everything said before
 # the game loop reaches the screen by work done between frames, so the display is switched off
 # until then and shows plain white, the same on every lowering that plays the Advance: a picture read
 # before the first frame is white, and one read after it is the picture the game made. The Color's

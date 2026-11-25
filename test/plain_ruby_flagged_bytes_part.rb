@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# BYTES UNPACKED BY FLAGS, written in normal Ruby in a file of a game's own, as a port writes the
+# Bytes unpacked by flags, written in normal Ruby in a file of a game's own, as a port writes the
 # original's unpacking: brought in by `VBlank.require_game_file` for
 # test/all/vblank/dsl/test_plain_ruby_parts.rb, test/copy_reader_tests.rb and test/pack_games.rb.
 #

@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # PUTTING THINGS IN THE ORDER THE STACK ASKS FOR.
+    # Putting things in the order the stack asks for.
     #
     # A program can name the depths its picture is built from (see the +layers+ node)
     # and name which one a thing belongs to. Turning that into a drawing order is one
@@ -11,12 +11,12 @@ module VBlank
     # thing is in front is exactly the kind that shows up as a wrong picture on one
     # machine and a right one on another.
     #
-    # THE RULE, and the second half is what makes it safe to adopt a bit at a time:
+    # The rule, and the second half is what makes it safe to adopt a bit at a time:
     #
     #   * Things that named a layer are put in the stack's order, back to front. Two
     #     things in the same layer keep the order they were declared in.
-    #   * Things that named NO layer do not move. They keep the exact places they had,
-    #     and the layered things are rearranged among the places THEY had. So wrapping
+    #   * Things that named no layer do not move. They keep the exact places they had,
+    #     and the layered things are rearranged among the places they had. So wrapping
     #     one part of a game in a layer cannot pick up and move a part that names
     #     no layer.
     module Stacking
@@ -56,37 +56,61 @@ module VBlank
         declared = program.walk.find { |node| node.kind == :layers }
         stack = declared&.names || []
         shared = declared&.shared || []
-        scenery = order_by_stack(program.walk.select { |node| node.kind == :background }, stack, &:layer)
+        scenery = order_by_stack(scenery_reached(program), stack, &:layer)
         objects = objects_in_draw_order(program)
         Picture.new(stack: stack, shared: shared, scenery: scenery, objects: objects,
                     depths: depths(scenery: scenery, objects: objects, stack: stack, shared: shared))
       end
 
+      # Every background +program+ declares, less one on no screen: declared only in a routine no
+      # run calls, and named by nothing outside such routines. Its line never runs, so it is never
+      # put up, and a scene the game never picks owns none of the room the scenes it does pick are
+      # counted in. (The builder ties a declaration to its scene only where the game picks that
+      # scene, so such a background would otherwise be counted on every screen.) A background
+      # that a line that can run still names is kept. The builder puts a scene's scroll in the
+      # game loop, for one. A bend and a timer's handler stand from power-on wherever they are
+      # written (Reference#collect_definitions), so the routines they call are reached
+      # (Reach.routines). A bend of a background left out bends nothing (RowBends).
+      def scenery_reached(program)
+        declared = program.walk.select { |node| node.kind == :background }
+        funcs = program.walk.select { |node| node.kind == :func }
+        return declared if funcs.empty?
+
+        called = Reach.routines(program, also: program.walk.select { |node| %i[on_timer scroll_rows].include?(node.kind) })
+        unreached = Set.new.compare_by_identity
+        funcs.reject { |func| called.include?(func.name) }.each { |func| unreached.merge(Reach.statements_under(func)) }
+        return declared if unreached.none? { |node| node.kind == :background }
+
+        named = program.walk.reject { |node| unreached.include?(node) || node.kind == :func }
+                       .flat_map { |node| node.named_operands.flat_map { |_, held| Array(held).flatten } }
+        declared.reject { |node| unreached.include?(node) && !named.include?(node.name) }
+      end
+
       # --- one screenful at a time ---
       #
-      # WHAT CAN BE ON SCREEN AT ONCE, which is a different question from what a program
+      # What can be on screen at once, which is a different question from what a program
       # declares, and it is the one that decides every scarce thing about a picture.
       #
       # A machine that composites in hardware has a fixed, small number of places to put a
-      # layer, and a fixed, small number of depths to stack them at. Both are spent WHILE
-      # SOMETHING IS BEING DRAWN, so what has to fit is one screenful — never the whole
+      # layer, and a fixed, small number of depths to stack them at. Both are spent while
+      # something is being drawn, so what has to fit is one screenful — never the whole
       # program. A game whose scenes take turns shows one of them at a time, so two scenes
       # of four backgrounds each need four places, not eight. That is already how the room
       # for sprite pictures is reckoned, and it is what lets a game declare a room's
       # scenery in the scene the room belongs to.
       #
       # A screenful is the scenery every screen shows, plus one scene's own. Scenery that
-      # named no scene is in EVERY screenful, and it comes first, because nothing re-points
+      # named no scene is in every screenful, and it comes first, because nothing re-points
       # it as scenes come and go — it has to keep the same place throughout.
       Screenful = Data.define(:scene, :scenery, :objects, :depths) do
-        # The scenery that PANS rather than turning. A machine may hold a different number
+        # The scenery that pans rather than turning. A machine may hold a different number
         # of each — and may put the turning one somewhere of its own — so the two are
         # counted apart wherever room is being found for them.
         def scrolling = scenery.reject(&:affine)
 
         def turning = scenery.select(&:affine)
 
-        # This screenful's turning scenery that is on the TILED screen — which is a
+        # This screenful's turning scenery that is on the tiled screen — which is a
         # different question from which of it turns. A machine may keep a screen of its own
         # for turning a picture, and scenery up on that one is up at another moment
         # entirely, so it costs the tiled screen nothing and does not decide how the tiled
@@ -109,7 +133,7 @@ module VBlank
         scenes.map { |scene| screenful(whole, scene) }
       end
 
-      # EVERY SCENE THE PROGRAM CAN BE IN, and not only the ones that own something.
+      # Every scene the program can be in, and not only the ones that own something.
       #
       # A scene that declares nothing is still a screen: what is on it is the scenery that
       # belongs to no scene, and nothing else. Left out, a program of one scene with
@@ -117,7 +141,7 @@ module VBlank
       # with itself, so nothing is ever written per scene and the console keeps whatever
       # boot set up. A layer belonging to the scene that has not run is then switched on
       # with no map of its own, which is not blank: it reads its grid from the start of
-      # video memory, where the tile PICTURES are, and draws the art as a grid over the
+      # video memory, where the tile pictures are, and draws the art as a grid over the
       # game.
       #
       # The scenes are taken from where the program dispatches to them, so one that
@@ -167,13 +191,13 @@ module VBlank
 
       # --- how deep each thing sits ---
       #
-      # A picture is built up in LEVELS, counted from the back. Everything on one level
+      # A picture is built up in levels, counted from the back. Everything on one level
       # is painted before anything on the next, and the things sharing a level are told
       # apart by rules a machine already has: a moving object is drawn over the scenery
       # it shares a level with, and two objects on one level keep their draw order.
       #
       # A level is the scarce thing — a machine with dedicated stacking hardware has
-      # only a few — so the point of this is to spend as FEW as the picture needs, not
+      # only a few — so the point of this is to spend as few as the picture needs, not
       # one per name. Any number of named layers can share a level, as long as what
       # comes out is the order that was declared. Only scenery opens a new level,
       # because scenery is the one thing that cannot be told apart from other scenery
@@ -182,7 +206,7 @@ module VBlank
       # Where everything sits: +of+ maps a name to its level (0 is the backmost), and
       # +count+ is how many levels the picture needs.
       #
-      # A BACKGROUND OF ONE NAME DECLARED IN TWO SCENES is two declarations, at two places in
+      # A background of one name declared in two scenes is two declarations, at two places in
       # the sequence, and only one of them can be its name's level: the later one, which in
       # the earlier scene would put the background in front of everything declared between
       # them. So each declaration's level is kept as well, under a Declaration, and anything
@@ -251,7 +275,7 @@ module VBlank
       # Something that named no layer takes the place it has always had: scenery at the
       # back, objects in front of it. That keeps a picture that names no layers exactly
       # as it was, and it is what #scenery_over_objects? watches, because the two rules
-      # only disagree once the stack asks for scenery in FRONT of an object.
+      # only disagree once the stack asks for scenery in front of an object.
       #
       # An object that can be put in other layers as the program runs is in each of them
       # here too, as a stand-in named by #choice_name, so every place it can go has a level
@@ -291,7 +315,7 @@ module VBlank
 
       # --- placing an effect in the stack ---
       #
-      # An effect (a fade, and in time a tint or a blend) can be placed UNDER a layer
+      # An effect (a fade, and in time a tint or a blend) can be placed under a layer
       # instead of covering everything: what is behind it changes, what is at that layer
       # or in front of it is left alone. "Fade the game out and keep the score showing"
       # is that, and it is the reason a stack is worth naming at all.
@@ -299,7 +323,7 @@ module VBlank
       # Everything at +layer+ and in front of it, scenery and objects together — what an
       # effect placed under that layer leaves alone.
       #
-      # Read off the STACK and not the levels, and the difference matters: a background
+      # Read off the stack and not the levels, and the difference matters: a background
       # and the sprites over it share one level, so a line drawn between levels could not
       # separate them. A line drawn between layers can, and each side then gets whichever
       # mechanism its machine has for it.
@@ -317,7 +341,7 @@ module VBlank
         end
       end
 
-      # Does the stack put any scenery IN FRONT OF an object? That is the one arrangement
+      # Does the stack put any scenery in front of an object? That is the one arrangement
       # a picture cannot fall into by accident, and it is where "it named no layer, so
       # leave it where it was" stops having an answer: once the levels are no longer
       # simply scenery-then-objects, a thing with no layer has no place among them.

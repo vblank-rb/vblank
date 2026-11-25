@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pong").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
 
 # The pong ball/paddle/scoring core — the focused integration test for the
 # collision fix. It isn't the whole game (that's examples/pong.rb); it's the part
@@ -129,7 +129,7 @@ class TestPongScoring < Minitest::Test
     [color & 0x1F, (color >> 5) & 0x1F, (color >> 10) & 0x1F]
   end
 
-  # A flash is FULL on the frame it happens, which is the frame it exists for — so the
+  # A flash is full on the frame it happens, which is the frame it exists for — so the
   # gray line is nothing but red there, not a shade of it.
   def test_the_screen_goes_fully_red_on_the_frame_the_cpu_scores
     assert_equal [31, 0, 0], pong_line_at(THE_POINT)

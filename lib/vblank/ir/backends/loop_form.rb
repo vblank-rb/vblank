@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHICH SHAPE A `repeat` IS LOWERED TO ON A CARTRIDGE, decided from the program alone, for
+      # Which shape a `repeat` is lowered to on a cartridge, decided from the program alone, for
       # every console whose loops Backends::ControlFlow writes.
       #
       # A loop keeps a count of the turns it has made. The interpreter keeps that count to itself
@@ -17,7 +17,7 @@ module VBlank
       # to read: then it holds the turn's number through every turn, as the interpreter's does,
       # and the loop counts in it.
       #
-      # THE ADVANCE ASKS MORE, in GBA::LoopForm, which is still its own: whether the count can stay
+      # The Advance asks more, in GBA::LoopForm, which is still its own: whether the count can stay
       # in two registers, whether one statement that would overwrite them can be bracketed, and
       # whether a loop whose index nothing reads can count down. Those answers rest on which
       # registers each kind of statement leaves alone, which is each processor's to say. Sharing
@@ -25,16 +25,16 @@ module VBlank
       # GBA::LoopForm's three lists do, and a count kept in a register put back in the variable
       # wherever a pass can end, since every variable is compared with the interpreter's then.
       #
-      # NOR WHEN A SECOND CALL OF ITS ROUTINE CAN COME while the loop is part way through
+      # Nor when a second call of its routine can come while the loop is part way through
       # (LoweringPlan#routines_reentered_at_frame_boundary): the second call's turns write the variable,
       # and the interpreter's loop goes on from its own count, so the count is kept apart and put back.
       #
-      # A COUNTED WHILE. A game's `while i < n` with `i += 1` as the last line of its body is a
+      # A counted while. A game's `while i < n` with `i += 1` as the last line of its body is a
       # repeat with no count of its own (the most turns there are, Guardrails::LoopNeverWaits) that
       # stops when `i < n` no longer holds. Written as it reads, every turn counts its hidden index,
       # reads `i` from memory to ask whether to stop, and adds one to `i` in memory: three times the
       # turn of a repeat on the Genesis. Where nothing but that last line writes `i` while the loop
-      # runs, `i` IS the loop's count, and the loop is lowered as a counted one (#counted_while,
+      # runs, `i` is the loop's count, and the loop is lowered as a counted one (#counted_while,
       # ControlFlow#emit_counted_while).
       class LoopForm
         # A `while` lowered as a counted loop: the game's +variable+ counting up by one to +limit+, a
@@ -84,6 +84,7 @@ module VBlank
         # - the last statement of its body adds one to +variable+, and no other statement the body
         #   runs, in it or in a routine it calls, names +variable+ (or +limit+, where that is a
         #   variable) but to read it, so the variable moves only by that one more;
+        # - no `next` in the body leaves the one more out of a turn (a `break` may leave the loop);
         # - nothing in the body can reach a frame boundary or stop the game: the checked run compares
         #   every variable as a pass ends, the loop's hidden index among them, and a counted while
         #   keeps that index only as it ends (it is the turns made, the variable less where it
@@ -102,6 +103,9 @@ module VBlank
 
         def find_counted_while(node)
           return unless node.kind == :repeat && node.count.kind == :int && node.count.value == WHILE_TURNS && counts_in_index?(node)
+          # A `next` leaves out the rest of its turn, the one more among it, so the variable does not
+          # count the turns.
+          return if LoopJumps.next_in?(node)
 
           variable, limit = below_test(node.stop_when)
           step = node.children.last
@@ -135,12 +139,12 @@ module VBlank
           [below.lhs.name, below.rhs]
         end
 
-        # Whether +node+ names any of +names+ but by reading it in a value.
+        # Whether +node+ writes any of +names+. A read is a var_ref, and what else writes a variable
+        # is listed in Reach::VARIABLES_OF, which a test holds to what the interpreter writes.
         def names_any?(node, names)
           return false if node.kind == :var_ref
 
-          written = Reach::VARIABLES_OF[node.kind]&.call(node) || []
-          (written + node.operand_nodes.grep(Symbol)).intersect?(names)
+          (Reach::VARIABLES_OF[node.kind]&.call(node) || []).intersect?(names)
         end
 
         # The number the statement just before +node+ sets +variable+ to, or nil.

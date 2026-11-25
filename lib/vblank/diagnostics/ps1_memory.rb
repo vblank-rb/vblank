@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING PLAYSTATION PROGRAM'S MEMORY, read by the address its own code uses. Two kinds of memory
+    # A running PlayStation program's memory, read by the address its own code uses. Two kinds of memory
     # hold a game's numbers: main RAM, and the scratchpad, the 1K inside the processor at 1F800000h where
     # the build keeps the numbers read most (IR::Backends::PS1::Memory). The emulator hands each over
     # by itself.

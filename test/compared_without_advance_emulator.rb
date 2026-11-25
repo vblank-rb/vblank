@@ -3,8 +3,8 @@
 require "open3"
 require "tmpdir"
 
-# TWO CARTRIDGES OF A CONSOLE THAT IS NOT THE ADVANCE, COMPARED IN A PROCESS WHERE THE ADVANCE'S
-# EMULATOR CANNOT BE LOADED. A game for the Genesis or the Super Nintendo has its own console's
+# Two cartridges of a console that is not the Advance, compared in a process where the Advance's
+# emulator cannot be loaded. A game for the Genesis or the Super Nintendo has its own console's
 # emulator and has no use for ruby-gba-emulator, whose C extension a `path:` source in its Gemfile
 # never builds. A comparison of its cartridges must play them without asking for that emulator.
 #
@@ -17,6 +17,9 @@ require "tmpdir"
 # The two cartridges are a white box on a blue field that walks two pixels a frame while RIGHT is
 # down, from column +from+, with a background +columns+ cells wide.
 module ComparedWithoutAdvanceEmulator
+  # The Ruby the child is, read once here: only the main Ractor may read RbConfig.
+  RUBY = RbConfig.ruby.freeze
+
   CHILD = <<~'RUBY'
     module RefuseAdvanceEmulator
       def require(name)
@@ -57,7 +60,7 @@ module ComparedWithoutAdvanceEmulator
     said, status = Dir.mktmpdir("compared-without-advance") do |dir|
       script = File.join(dir, "compare.rb")
       File.write(script, CHILD)
-      Open3.capture2e(RbConfig.ruby, "-I", VBlank.root.join("lib").to_s, script, console.to_s, columns.to_s)
+      Open3.capture2e(RUBY, "-I", VBlank.root.join("lib").to_s, script, console.to_s, columns.to_s)
     end
 
     assert status.success?, said

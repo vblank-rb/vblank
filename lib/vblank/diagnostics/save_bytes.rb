@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # THE BYTES OF A SAVE FILE, KEPT AS THEY ARE: the save memory of a cartridge whose chip is
+    # The bytes of a save file, kept as they are: the save memory of a cartridge whose chip is
     # not one this framework's own cartridges have.
     #
     # Save memory comes in more kinds than the framework builds with. It models the ones it
@@ -35,7 +35,7 @@ module VBlank
         self
       end
 
-      # THE SAVE THESE BYTES ARE: an IR::SaveImage when they are the size of a chip this
+      # The save these bytes are: an IR::SaveImage when they are the size of a chip this
       # framework's cartridges have, and otherwise the bytes kept as they are. +clock_state+ is
       # what the emulator kept of the cartridge's clock beside them, carried with the save.
       def self.save_holding(bytes, from:, clock_state: nil)
@@ -47,7 +47,7 @@ module VBlank
 
       # Write the bytes to +path+ as a .sav file. The path is handed back.
       def write_sav(path)
-        Cartridge::ROM.write_bytes(path, to_sav)
+        File.binwrite(path, to_sav)
         path
       end
 

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A SCRIPT THAT CHOOSES ITS PRESSES FROM THE GAME. The prize here jumps about by itself, so what to
+# A script that chooses its presses from the game. The prize here jumps about by itself, so what to
 # press depends on where it is on that frame, and no list of presses written down beforehand could
 # catch it. A steering script catches it three times, and the tape it wrote does it again with no
 # block at all.
@@ -81,7 +81,7 @@ class TestPlaythroughSteering < Minitest::Test
     assert_equal [[1..4, [:right]]], played.tape.presses_within(1..4).map { |stretch| [stretch.frames, stretch.buttons] }
   end
 
-  # A COUNT KEPT BESIDE A STEER STARTS AGAIN ON EVERY PLAYING: the same playthrough played twice
+  # A count kept beside a steer starts again on every playing: the same playthrough played twice
   # walks as far each time.
   private def walk_ten
     VBlank.playthrough("walk ten") do

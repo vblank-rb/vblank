@@ -7,7 +7,7 @@ require_relative "test_task"
 
 module VBlank
   module Testing
-    # A TEST TASK FOR EACH FOLDER OF A GAME'S TESTS, for a game that keeps its own test tasks rather
+    # A test task for each folder of a game's tests, for a game that keeps its own test tasks rather
     # than RakeTasks (whose `t.groups` plays each group on every lowering). In the game's Rakefile:
     #
     #   require "vblank/testing/group_tasks"

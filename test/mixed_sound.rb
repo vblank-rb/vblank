@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE SOUND OF EVERY FRAME, ON BOTH BACKENDS, BYTE FOR BYTE.
+# The sound of every frame, on both backends, byte for byte.
 #
 # The interpreter works out every byte of sound the cartridge's mixer writes (Reference#mixed_sound),
 # and this holds it to the cartridge. The cartridge keeps two buffers and mixes into the one that is
@@ -10,7 +10,7 @@
 # The two backends do not start counting frames at the same moment — the console spends frames
 # setting itself up before the game's first pass — so each list is taken from its first slice
 # with any sound in it, and the two must agree from there for as long as both run. What that
-# cannot see is the two being a frame apart on EVERYTHING; it does see one sound landing a frame
+# cannot see is the two being a frame apart on everything; it does see one sound landing a frame
 # late against another, which is what a test plays two sounds for.
 module MixedSound
   # How many frames more the console is run than the interpreter, to cover the frames it spends
@@ -25,12 +25,10 @@ module MixedSound
     rom = VBlank::Cartridge::ROM.assemble(gba.lower(program), title: "MIXBYTES", built: gba.build_record(program))
     keys = ->(frame) { VBlank::IR::Buttons.mask(presses.fetch(frame, [])) }
     console = VBlank::Diagnostics::Verifier.new(rom, frames: 1, keys: keys, vars: gba.var_addresses)
-    slice = console.sample_clock.samples_a_frame
     Array.new(frames) do
-      newest = console.var(VBlank::IR::Backends::GBA::Mixer::MIX_FRONT).zero? ? gba.mix_buf1 : gba.mix_buf0
-      bytes = (0...slice).map { |i| signed_byte(console.mem8(newest + i)) }
+      mixed = console.last_frame_mix
       console.step
-      bytes
+      mixed
     end
   end
 
@@ -66,7 +64,4 @@ module MixedSound
     assert_operator from_sound.length, :>=, at_least, "too few frames with sound in them to compare"
     assert_equal interpreted, native
   end
-
-  # The console's memory reads a byte back unsigned; the mix holds signed ones.
-  def signed_byte(byte) = byte >= 128 ? byte - 256 : byte
 end

@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# THE CELLS A PASS CHANGES ON A GENESIS, kept in a queue in work memory and written in the blank
+# The cells a pass changes on a Genesis, kept in a queue in work memory and written in the blank
 # (Runtime::Tiles's rt_note_cell and the cells' part of rt_upload). A message box opening rewrites
 # up to 30 by 8 cells in one pass, and a game doing that must lose no frame and stop for nothing.
 class TestGenesisCellQueue < Minitest::Test
@@ -92,10 +92,7 @@ class TestGenesisCellQueue < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 3
-        case_var(:state) do
-          when_val 0, :waiting
-          when_val 1, :boxed
-        end
+        call({ 0 => :waiting, 1 => :boxed }, number: :state)
       end
     end
     run = game_player.run(game.program(console: :genesis), frames: 3)

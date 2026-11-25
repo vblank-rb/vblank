@@ -32,7 +32,7 @@ module ClockOnTheAdvanceGames
   end
 end
 
-# THE DATE AND TIME THE ADVANCE'S CLOCK CHIP KEEPS, read by the game with nothing set. The chip the
+# The date and time the Advance's clock chip keeps, read by the game with nothing set. The chip the
 # Advance's cartridges carry holds the date, so a game reads it straight away; the Color's counts
 # days and holds none, and a game there reads the date only once it sets the clock
 # (test/clock_tests.rb, ClockSetToTests). A test says what time the clock starts at, the way it says
@@ -83,7 +83,7 @@ class TestClockOnTheAdvance < Minitest::Test
   # to be told: test/interpreter/vblank/builder/test_clock_on_the_advance_interpreter.rb.
 
   # A game that keeps 1 in :present and :set while the clock says so, and its hour.
-  private def asking_program
+  private def asking_program_in_plain_locals
     b = Builder.new
     b.instance_eval do
       now = clock
@@ -101,7 +101,7 @@ class TestClockOnTheAdvance < Minitest::Test
   end
 
   def test_a_clock_that_was_set_says_both
-    player = game_player.clock_at(THURSDAY).run(asking_program, frames: 2)
+    player = game_player.clock_at(THURSDAY).run(asking_program_in_plain_locals, frames: 2)
 
     assert_equal({ present: 1, set: 1, hour: 21 }, { present: player[:present], set: player[:set], hour: player[:hour] })
   end

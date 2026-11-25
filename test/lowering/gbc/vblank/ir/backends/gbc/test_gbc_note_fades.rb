@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SONG'S NOTES THAT FADE OR SWELL, as the Color's cartridge tells its voices. Each square and
+# A song's notes that fade or swell, as the Color's cartridge tells its voices. Each square and
 # noise voice keeps how its note fades in the low four bits of its volume register (NR12, NR22,
 # NR42), under the volume it starts at: the step, and 8 more when it swells. Whether the song plays
 # as the interpreter plays it is test/all/vblank/audio/test_song_note_fades.rb's, on every lowering;
@@ -85,7 +85,7 @@ class TestGBCNoteFades < Minitest::Test
     assert_equal 0xC3, nr42
   end
 
-  # A PAD HELD UNDER THE MUSIC VOLUME is struck again at the loudest the volume lets it be, with no
+  # A pad held under the music volume is struck again at the loudest the volume lets it be, with no
   # fade under it, so the voice stops counting it up there.
   def test_a_swelling_pad_held_at_half_is_told_to_hold
     b = Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))

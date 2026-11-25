@@ -13,18 +13,18 @@ module VBlank
         # function (runtime/rg_int32.js) — so nothing here has to know JavaScript's precedence, or
         # that its numbers are 64-bit floats.
         #
-        # WAITING FOR A FRAME. A browser cannot stop a script part way: a page that never gives
+        # Waiting for a frame. A browser cannot stop a script part way: a page that never gives
         # control back never shows a picture. Every routine that can reach a wait is resumable
         # (Computer::Resumable): it gives back 1 when it stops for a frame and carries on from its own
         # counter when called again, so the driver plays the game by calling rg_game_main once a
         # frame, and the browser keeps control between frames, with the place the game has reached
         # kept in its globals, which a save state can write.
         #
-        # THE GAME'S OWN ARITHMETIC IS WRITTEN AS JAVASCRIPT'S OPERATORS (OPERATORS, SHIFTS), each
+        # The game's own arithmetic is written as JavaScript's operators (operators, shifts), each
         # the runtime function's body with its numbers put in, so V8 need not inline a call for every
         # number a game works out: in a long function it inlines only some of them.
         #
-        # A LONG ROUTINE IS SEVERAL FUNCTIONS. V8 optimises a function only while its bytecode is
+        # A long routine is several functions. V8 optimises a function only while its bytecode is
         # under a limit (--max-optimized-bytecode-size); one past it runs
         # in V8's interpreter for good. A data pack's unpacking is all one routine, unrolled as the
         # port's Ruby builds it, and printed whole its rg_game_main was hundreds of thousands of lines,
@@ -75,13 +75,13 @@ module VBlank
           SHIFTS = Ractor.make_shareable({ "rg_shl" => "<<", "rg_shr" => ">>" })
 
           # The heaviest one printed function is (#weight_of), well inside what V8 optimises (see
-          # "A LONG ROUTINE" in the class's heading).
+          # "a long routine" in the class's heading).
           MOST_WEIGHT_A_FUNCTION = 2_000
 
           # What a part of a routine gives back to the function that called it, besides nothing (it
           # ran to its end, so the caller goes on) and the routine's own 0 or 1 (the routine gives
           # that back at once): that the routine goes on to its next step, leaves its loop, or returns.
-          PART_ENDINGS = Ractor.make_shareable({ goto: -1, break: -2, return: -3 })
+          PART_ENDINGS = Ractor.make_shareable({ goto: -1, break: -2, return: -3, continue: -4 })
 
           # A routine in parts keeps its steps in groups of this many (#print_steps_in_groups), the
           # group a step is in being its number shifted down by STEP_GROUP_BITS.
@@ -118,7 +118,7 @@ module VBlank
             @out
           end
 
-          # THE DATA FILE, with the data separate: a fingerprint of what it holds (DATA_STAMP_BYTES
+          # The data file, with the data separate: a fingerprint of what it holds (DATA_STAMP_BYTES
           # of its SHA-256), then every big table's bytes one after another. The file's script
           # holds the same fingerprint and refuses a data file without it, so a data file left
           # from another build of the game is said to be one rather than played as this one's.
@@ -305,16 +305,18 @@ module VBlank
             line(depth, "const #{ended} = #{name}();")
             if @in_part
               line(depth, "if (#{ended} === #{PART_ENDINGS[:break]}) break;") if endings.include?(:break) && @loops_open.positive?
+              line(depth, "if (#{ended} === #{PART_ENDINGS[:continue]}) continue;") if endings.include?(:continue) && @loops_open.positive?
               line(depth, "if (#{ended} !== undefined) return #{ended};")
             else
               line(depth, "if (#{ended} === #{PART_ENDINGS[:goto]}) continue;") if endings.include?(:goto)
               line(depth, "if (#{ended} === #{PART_ENDINGS[:break]}) break;") if endings.include?(:break)
+              line(depth, "if (#{ended} === #{PART_ENDINGS[:continue]}) continue;") if endings.include?(:continue)
               line(depth, "if (#{ended} === #{PART_ENDINGS[:return]}) return;") if endings.include?(:return)
               line(depth, "if (#{ended} !== undefined) return #{ended};") if endings.include?(:value)
             end
           end
 
-          # How +list+ can leave the function it is printed in: :goto, :break (of a loop outside it),
+          # How +list+ can leave the function it is printed in: :goto, :break or :continue (of a loop outside it),
           # :return, or :value (the routine's own 0 or 1).
           def endings_of(list, in_loop:)
             list.each_with_object(Set.new) do |statement, endings|
@@ -323,6 +325,7 @@ module VBlank
               when Statements::Pause, Statements::Finish, Statements::Resume then endings << :value
               when Statements::Return then endings << :return
               when Statements::Break then endings << :break unless in_loop
+              when Statements::Continue then endings << :continue unless in_loop
               when Statements::If then endings.merge(endings_of(statement.body, in_loop: in_loop))
                                                 .merge(endings_of(statement.otherwise, in_loop: in_loop))
               when Statements::Block then endings.merge(endings_of(statement.body, in_loop: in_loop))
@@ -418,6 +421,8 @@ module VBlank
             when Statements::If then print_if(depth, item)
             when Statements::While then print_while(depth, item)
             when Statements::Break then @loops_open.positive? || !@in_part ? line(depth, "break;") : leave(depth, :break, "break;")
+            when Statements::Continue
+              @loops_open.positive? || !@in_part ? line(depth, "continue;") : leave(depth, :continue, "continue;")
             when Statements::Return then leave(depth, :return, "return;")
             when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)
@@ -535,7 +540,7 @@ module VBlank
             end
           end
 
-          # AN ITEM OF A LIST READ IN PLACE, for a list whose first item stays in its first slot
+          # An item of a list read in place, for a list whose first item stays in its first slot
           # (#lists_dropped_from_front): the index checked against the list's length and read from
           # its typed array at that slot, where rg_list_get is a call. V8 inlines a call only in a
           # function light enough, and a port's unpacking loop round its chip's operators reads a

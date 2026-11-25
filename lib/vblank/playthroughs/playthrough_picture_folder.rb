@@ -5,10 +5,10 @@ require "fileutils" # here and not where it is used: see the note at the top of 
 module VBlank
   module Playthroughs
     class Playthrough
-      # THE FOLDER A PLAYING WRITES ITS PICTURES INTO: the screen at each named moment, as a
+      # The folder a playing writes its pictures into: the screen at each named moment, as a
       # PNG named for the moment.
       #
-      # EVERYTHING THAT CAN BE WRONG WITH IT IS FOUND BEFORE A FRAME IS PLAYED, because the
+      # Everything that can be wrong with it is found before a frame is played, because the
       # first picture may be minutes of play in and that is a poor place to learn the folder
       # was never going to work. So the folder is made here, and the moments the playing
       # will name are looked at here too.

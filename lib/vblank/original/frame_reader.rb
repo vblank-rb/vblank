@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # A PIECE READ BY A FEW LINES OF THE GAME'S OWN RUBY (`FrameLayout.new(..., piece: READER)`), for
+    # A piece read by a few lines of the game's own Ruby (`FrameLayout.new(..., piece: READER)`), for
     # an original that keeps a frame in a way no option of FrameLayout says. The reader is handed
     # the piece's bytes and the values the pose gives (`frame(at, layout:, with: { block: 5 })`), and
     # gives back a FrameLayout::Piece:
@@ -17,14 +17,14 @@ module VBlank
     #     )
     #   end
     #
-    # IT RUNS TWO WAYS, as everything in FrameLayout does (see WHAT READS A FRAME'S BYTES there).
+    # It runs two ways, as everything in FrameLayout does (see WHAT READS A FRAME'S BYTES there).
     # The build that holds the pack hands it numbers. The pack's unpacking hands it the game's
     # values (DSL::Value), read from the pack as the game starts, and keeps the sums it gives back
     # as the routine (FrameRewrite). So a reader is arithmetic both read alike: + - * & | ^ and the
     # shifts, the byte on the LEFT of a shift. A Ruby `if`, a comparison, or a lookup in a Ruby
     # Array or Hash by a byte decides once, as the game is built, with nothing to decide on.
     #
-    # SO A READER IS TRIED ONCE WHEN ITS LAYOUT IS MADE, on stand-ins (Probe) that do the
+    # So a reader is tried once when its layout is made, on stand-ins (Probe) that do the
     # arithmetic and refuse the rest in plain words, the same in every build: a comparison (`==`,
     # `<`, `zero?`, `nil?`, `case`, a `?:` on one), a byte as the index of an Array or the key of a
     # Hash, a byte on the right of a shift, a byte past the piece, and an answer that is not a
@@ -32,7 +32,7 @@ module VBlank
     # The same try says which of the pose's values it reads (#pose_names), so a frame given others
     # is refused at its line, and whether it names a bank of colours.
     #
-    # WHAT THE TRY CANNOT SEE: a test Ruby makes without asking the byte. `if bytes[4]`,
+    # What the try cannot see: a test Ruby makes without asking the byte. `if bytes[4]`,
     # `bytes[4] && 1` and `bytes[4] || 1` take any byte as true: Ruby asks no object whether it is
     # true, and only nil and false are not. So no stand-in can answer otherwise, and running the try
     # again on other stand-ins (bytes of 0, then of 255) would take the same branch every time. It
@@ -95,7 +95,7 @@ module VBlank
                   "pack is read as the game starts, the byte is not a number yet. To fix this, work the answer out " \
                   "with shifts, masks and sums instead of a Hash."
 
-      # A STAND-IN FOR A BYTE, OR FOR A NUMBER WORKED OUT FROM ONE, for the try. It does what a
+      # A stand-in for a byte, or for a number worked out from one, for the try. It does what a
       # game's value does as arithmetic, and refuses what only a number can do, in the words above.
       class Probe
         def self.operand!(other, op)
@@ -211,14 +211,14 @@ module VBlank
                              "It takes the piece's bytes, and the pose's values where it reads some. Got #{reader.inspect}."
       end
 
-      # A READER EVERY RACTOR CAN SHARE. A game's tests build in Ractors, and a layout kept in a
+      # A reader every Ractor can share. A game's tests build in Ractors, and a layout kept in a
       # constant is read by each of them, so its reader must be a Proc that Ruby can share: its
       # `self` shareable (a module or class, as at the top of one, not an object a method runs on)
       # and every local variable it uses holding a shareable value (a number, a frozen constant).
       # One that is not fails only where a test first reads the layout in a Ractor of its own, in
       # Ruby's words, far from the line that wrote it. So it is refused here.
       #
-      # The question is put to Ruby itself, by making a COPY of the reader shareable: Ruby refuses
+      # The question is put to Ruby itself, by making a copy of the reader shareable: Ruby refuses
       # the copy for exactly the reasons it would refuse the reader, and a refused copy changes
       # nothing (the values it reads are checked, not frozen). The reader the layout keeps is the
       # one given, not the copy, so two layouts made from one reader stay equal (FrameRewrite

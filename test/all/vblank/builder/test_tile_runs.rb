@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 require "stringio"
 
-# TILES WHOSE PIXELS COME FROM A LIST THE GAME OWNS — `tiles :box, from: list, count: n`.
+# Tiles whose pixels come from a list the game owns — `tiles :box, from: list, count: n`.
 #
 # Every other tile a game has is a picture fixed while the cartridge is built. These are the
 # ones a game paints as it runs: a name, a count, a message typed a letter at a time, a meter,
@@ -48,7 +48,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking; when_val 1, :walking }
+        call({ 0 => :talking, 1 => :walking }, number: :state)
       end
     end
     b.finalize_program
@@ -86,7 +86,7 @@ class TestTileRuns < Minitest::Test
       var :state, 0
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking }
+        call({ 0 => :talking }, number: :state)
       end
     end
     b.finalize_program
@@ -126,7 +126,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :road }
+        call({ 0 => :house, 1 => :road }, number: :state)
       end
     end
     b.finalize_program
@@ -541,7 +541,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :talking; when_val 1, :walking }
+        call({ 0 => :talking, 1 => :walking }, number: :state)
       end
     end
     b.finalize_program
@@ -587,7 +587,7 @@ class TestTileRuns < Minitest::Test
       end
       game_loop do
         frame += 1
-        case_var(:state) { when_val 0, :house; when_val 1, :shop }
+        call({ 0 => :house, 1 => :shop }, number: :state)
       end
     end
     b.finalize_program
@@ -744,7 +744,7 @@ class TestTileRuns < Minitest::Test
     assert_includes b.variables, :__tile_runs_pending_1, "the second group has a variable of its own"
   end
 
-  # THE GAME LOOP IS EVERY SCENE'S, so what a picture on one screen adds there is paid on all
+  # The game loop is every scene's, so what a picture on one screen adds there is paid on all
   # of them — the scene the player plays in included. Twenty painted pictures add nothing to it.
   def test_twenty_painted_pictures_add_nothing_to_the_game_loop
     sizes = [1, 20].map do |count|
@@ -755,7 +755,7 @@ class TestTileRuns < Minitest::Test
     assert_equal sizes.first, sizes.last
   end
 
-  # THE ROUTINE THAT COPIES THEM is one walk over a table, so a picture adds a row to the
+  # The routine that copies them is one walk over a table, so a picture adds a row to the
   # table and a two-instruction step (see GBA BackgroundDrawing#emit_copy_owed_tiles), not a
   # copy of its own.
   def test_twenty_painted_pictures_share_one_copy_routine

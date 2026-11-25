@@ -65,7 +65,8 @@ module VBlank
             interpreters_save = save_as_handed_over
             super(program, frames: frames)
             interpreter, interpreted = play_on_interpreter(program, frames, interpreters_save)
-            difference = self.class.first_difference(interpreted, moments) ||
+            uncompared = RunComparison.uncompared_variables(program)
+            difference = self.class.first_difference(interpreted, moments, uncompared: uncompared) ||
                          self.class.sounds_difference(interpreter.audio, audio_played) ||
                          self.class.mix_difference(interpreter.full_depth_sound, mixed_sound) ||
                          self.class.drops_difference(interpreter.sound_drops, sound_drops) ||

@@ -25,6 +25,51 @@ class TestDrawNumber < Minitest::Test
     builder.program
   end
 
+  private def built(&block)
+    builder = Builder.new
+    builder.instance_eval(&block)
+    builder.finalize_program
+    builder
+  end
+
+  # The variables a game made that it did not name.
+  private def hidden_numbers(builder) = builder.variables - %i[score]
+
+  # +lines+ numbers worked out from the score in the game loop, as many in a routine it calls, one
+  # of the score itself and one with leading zeros. Public, as the game's block calls it.
+  def many_number_lines(game, lines:)
+    game.instance_eval do
+      screen :bitmap
+      score = var :score, 37
+      func(:more_lines) { lines.times { |k| draw_number score * 2 + k, 120, 8 + (k * 9), :yellow } }
+      game_loop do
+        clear_screen :black
+        lines.times { |k| draw_number score + k, 8, 8 + (k * 9), :white }
+        draw_number :score, 60, 8, :white
+        draw_number score - 30, 60, 17, :white, leading_zeros: true
+        call :more_lines
+        wait_vblank
+      end
+    end
+  end
+
+  # The picture of #many_number_lines, drawn as words.
+  private def numbers_as_text(lines:)
+    tree do
+      screen :bitmap
+      game_loop do
+        clear_screen :black
+        lines.times do |k|
+          draw_text (37 + k).to_s, 8 + (2 * W), 8 + (k * 9), :white
+          draw_text (74 + k).to_s, 120 + (2 * W), 8 + (k * 9), :yellow
+        end
+        draw_text "37", 60 + (2 * W), 8, :white
+        draw_text "0007", 60, 17, :white
+        wait_vblank
+      end
+    end
+  end
+
   # Assert two horizontal bands of pixels are identical — the way to say "these
   # rendered the same glyphs" without pinning exact font pixels.
   private def assert_bands_match(screen, x:, w:, y1:, y2:, h: 7)
@@ -108,6 +153,42 @@ class TestDrawNumber < Minitest::Test
     end
     assert_region_is(fb, 40, 20, 3 * W, 7, :black) # no leading zeros
     assert_bands_match(fb, x: 40 + 3 * W, w: W, y1: 20, y2: 40)
+  end
+
+  # ---- what it keeps while it draws ----
+
+  # Many lines drawing numbers the game works out, in the game loop and in a routine it calls:
+  # each line keeps its number, a digit and whether a digit has shown only while it draws, so the
+  # lines of one routine share where they keep them. Eight lines in each draw what draw_text draws
+  # there, and keep no more hidden numbers than one line in each.
+  def test_many_lines_keep_the_hidden_numbers_of_one_line_a_routine
+    test = self
+    many = built { test.many_number_lines(self, lines: 8) }
+    one = built { test.many_number_lines(self, lines: 1) }
+
+    assert_equal game_player.run(numbers_as_text(lines: 8), frames: 3).screen.to_a,
+                 game_player.run(many.program, frames: 3).screen.to_a
+    assert_equal hidden_numbers(one).length, hidden_numbers(many).length
+    assert_equal hidden_numbers(many).length, many.hidden_variable_notes.length,
+                 "the hidden variables report lists every number draw_number keeps"
+  end
+
+  # A line keeps its number and a digit, and without leading zeros whether a digit has shown. With
+  # them every column draws, so nothing need be kept for that.
+  def test_leading_zeros_keep_no_flag_for_a_digit_shown
+    blanked = built do
+      screen :bitmap
+      var :score, 42
+      draw_number :score, 8, 8, :white
+    end
+    zeros = built do
+      screen :bitmap
+      score = var :score, 42
+      draw_number score, 8, 8, :white, leading_zeros: true
+    end
+
+    assert_equal 3, hidden_numbers(blanked).length
+    assert_equal 2, hidden_numbers(zeros).length
   end
 
   # ---- guardrails ----

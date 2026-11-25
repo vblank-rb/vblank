@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_slot_view_pixel_tests"
 
-# PIXELS AND TABLES READ THROUGH VIEWS OF A SLOT OF TILES, on the Super Nintendo: the tests every
+# Pixels and tables read through views of a slot of tiles, on the Super Nintendo: the tests every
 # console that shows the picture plays (PackSlotViewPixelTests in test/pack_slot_view_pixel_tests.rb).
 class TestPackSlotViewPixelsOnTheSuperNintendo < Minitest::Test
   include PackSlotViewPixelTests

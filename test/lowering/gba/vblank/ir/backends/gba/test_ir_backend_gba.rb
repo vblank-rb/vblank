@@ -364,11 +364,11 @@ class TestIRBackendGBA < Minitest::Test
     assert v.black?(26, 0)
   end
 
-  # ---- extended draws: dma_fill_rect / draw_rect_at / draw_text ----
+  # ---- extended draws: fill_rect / draw_rect_at / draw_text ----
 
-  def test_dma_fill_rect_paints_its_block
+  def test_a_fill_rect_four_wide_paints_its_block
     rom = lower(program(screen(:bitmap), clear_screen(:black),
-                        dma_fill_rect(4, 6, 4, 2, :red), halt))
+                        fill_rect(4, 6, 4, 2, :red), halt))
     v = assert_emulator_loads_rom(rom)
     assert v.red?(4, 6)
     assert v.red?(7, 7)   # bottom-right (4+4-1, 6+2-1)
@@ -411,13 +411,6 @@ class TestIRBackendGBA < Minitest::Test
     assert v.white?(40, 30)      # left post of 'H'
     assert v.white?(44, 30)      # right post of 'H'
     assert v.black?(42, 30)      # gap between the posts
-  end
-
-  def test_odd_width_dma_fill_is_a_friendly_error
-    err = assert_raises(GBA::LoweringError) do
-      lower(program(screen(:bitmap), dma_fill_rect(0, 0, 3, 2, :red), halt))
-    end
-    assert_match(/even/, err.message)
   end
 
   # ---- sound: lower it, then read the audio that actually came out ----
@@ -496,7 +489,7 @@ class TestIRBackendGBA < Minitest::Test
     end
   end
 
-  def test_case_var_dispatches_to_the_active_scene
+  def test_case_dispatches_to_the_active_scene
     # state == 1 -> the :playing scene draws blue; :title (state 0) draws red.
     rom = lower(program(
       screen(:bitmap),

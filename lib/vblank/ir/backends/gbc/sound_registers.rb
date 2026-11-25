@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # WHERE THE COLOR KEEPS ITS SOUND CHIP, for the writes Backends::GameBoySound works out: the
+        # Where the color keeps its sound chip, for the writes Backends::GameBoySound works out: the
         # Color's byte-wide registers, a value's two bytes going to two of them, and the runtime
         # writes them in a row (Runtime::Sound).
         module SoundRegisters

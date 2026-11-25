@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# RECTANGLES ON A SUPER FX CARTRIDGE ARE PAINTED BY THE CHIP (Runtime::ChipFill): fill_rect,
+# Rectangles on a super FX cartridge are painted by the chip (Runtime::ChipFill): fill_rect,
 # draw_rect_at and pixel on a painted screen. The console hands the chip the rectangle and the
 # chip paints it; the picture is the interpreter's on every pass, and a rectangle costs the frame
 # a small part of what the console's own processor took.

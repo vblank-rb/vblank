@@ -5,7 +5,7 @@ require "rake/tasklib"
 
 module VBlank
   module Diagnostics
-    # A GAME'S RAKE TASK FOR PROFILES: `rake profile TAPE=roulette FRAMES=590..610` plays the tape in
+    # A game's rake task for profiles: `rake profile TAPE=roulette FRAMES=590..610` plays the tape in
     # tapes/roulette.tape on the game's cartridge from power-on and reports each of those frames by
     # itself (TapeProfile): its lines to spare, how much of it the game was awake, and its busiest
     # routines. Without TAPE= it is the profile standing still (`rom.profile`), over FRAMES= frames.
@@ -20,7 +20,7 @@ module VBlank
     #     t.cartridge = -> { MyGame.game.build_rom(console: :gbc) }
     #   end
     #
-    # THE CARTRIDGE is a built one, or a lambda answering one, called only when the task runs. It
+    # The cartridge is a built one, or a lambda answering one, called only when the task runs. It
     # has to be one the library built, since the profile names routines from the record the build
     # keeps. FORMAT=json gives the same as data.
     #

@@ -3,7 +3,7 @@
 require "tmpdir"
 require "made_up_original"
 
-# A RECORDING'S HOLD READ FROM THE DATA PACK, BUILT ALL-IN-ONE (Builder::SampledAudio#pack_hold_value):
+# A recording's hold read from the data pack, built all-in-one (Builder::SampledAudio#pack_hold_value):
 # a number of the pack is the sample a held note reads back to, and one with every bit set is no
 # hold, which is how a pack says a recording does not loop. The answer key is the same instrument
 # written without `holds_from:`. Played by each console that plays an instrument, its cartridge

@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# THE HEADLESS DEVICE ASKS A GAME WHAT THE WINDOW ASKS (Live::SDL). A play that passes on Headless
+# The headless device asks a game what the window asks (Live::SDL). A play that passes on Headless
 # and stops in a window is a check that missed something, so each question the session puts to the
 # window, and each picture the window refuses, is put to and refused by Headless too: the players
 # the game seats, its save memory kept between plays, and a picture the size the window was opened for.

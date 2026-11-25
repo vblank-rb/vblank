@@ -34,25 +34,7 @@ module VBlank
 
           attr_writer :layout
 
-          # Forwards to @emitter/@primitives, exactly as every other converted
-          # collaborator's do (see e.g. {Collision}).
-          def emit(bytes) = @emitter.emit(bytes)
-          def emit_number(reg, value) = @emitter.emit_number(reg, value)
-          def pos = @emitter.pos
-          def place_label(name) = @emitter.place_label(name)
-          def gensym = @emitter.gensym
-          def emit_branch(kind, target, cond: nil) = @emitter.emit_branch(kind, target, cond: cond)
-          def emit_load_data_address(reg, name) = @emitter.emit_load_data_address(reg, name)
-          def var_addr(name) = @primitives.var_addr(name)
-          def load_var(reg, name) = @primitives.load_var(reg, name)
-          def const_int(node) = @primitives.const_int(node)
-          def constant_ints!(node, **sides) = @primitives.constant_ints!(node, **sides)
-          def store_word_immediate(value, address) = @primitives.store_word_immediate(value, address)
-          def emit_start_copy_engine(from:, to:, control:) = @primitives.emit_start_copy_engine(from: from, to: to, control: control)
           def in_register(register) = Primitives::InRegister.new(register)
-          def emit_row_loop(counter, &block) = @primitives.emit_row_loop(counter, &block)
-          def emit_add_const(rd, rn, imm, scratch) = @primitives.emit_add_const(rd, rn, imm, scratch)
-          def emit_call_cold_routine(label) = @placement.emit_call_cold_routine(label)
 
           # Clear the hidden page to a solid color: one DMA that repeats the packed
           # index word across the whole page.
@@ -65,32 +47,43 @@ module VBlank
             end
 
             scratch = emit_index_fill_word(node.color)
-            load_var(ACC, BACKBUF) # to the hidden page, wherever it is this frame
+            return emit_shown_rows_filled(scratch, first: :hidden_page) if @layout.fills_shown_rows_alone?(1)
+
+            @primitives.load_var(ACC, BACKBUF) # to the hidden page, wherever it is this frame
             count = SCREEN_WIDTH * @layout.shown_rows / 4 # 32-bit words, 4 indices each
-            emit_start_copy_engine(from: scratch, to: in_register(ACC), control: @framebuffer.dma_fill_control(count))
+            @primitives.emit_start_copy_engine(from: scratch, to: in_register(ACC), control: @framebuffer.dma_fill_control(count))
+          end
+
+          # The shown part of every row of a page, a row at a time (Framebuffer#emit_shown_rows_filled).
+          def emit_shown_rows_filled(scratch, first:)
+            @framebuffer.emit_shown_rows_filled(scratch, first: first, rows: @layout.shown_rows,
+                                                         row_bytes: @layout.shown_columns, stride: SCREEN_WIDTH)
           end
 
           # Both pages in +color+, for a tear-free screen arriving over what another screen left.
           def emit_both_pages_filled(color)
             scratch = emit_index_fill_word(color)
+            if @layout.fills_shown_rows_alone?(1)
+              return [PAGE0, PAGE1].each { |page| emit_shown_rows_filled(scratch, first: page) }
+            end
+
             count = SCREEN_WIDTH * @layout.shown_rows / 4
             [PAGE0, PAGE1].each do |page|
-              emit_start_copy_engine(from: scratch, to: page, control: @framebuffer.dma_fill_control(count))
+              @primitives.emit_start_copy_engine(from: scratch, to: page, control: @framebuffer.dma_fill_control(count))
             end
           end
 
           # A rectangle at a constant position/size, filled per row into the hidden
-          # page. fill_rect and dma_fill_rect share this — in Mode 4 both are the same
-          # packed block fill.
+          # page, in Mode 4's packed block fill.
           #
           # A fill moves whole 16-bit units, so it can only START on an even column.
           # Asked for an odd one, the rect's first and last pixel each share a unit
-          # with a pixel that is NOT part of the rect — so those two are written one
+          # with a pixel that is not part of the rect — so those two are written one
           # at a time (read the unit, change that pixel's half, write it back) and the
           # DMA fills the even middle between them. The column is known while
           # building, so which of the two shapes a row takes is settled here.
           def emit_fill_rect_buffered(node)
-            x, y, w, h = constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
+            x, y, w, h = @primitives.constant_ints!(node, x: node.x, y: node.y, w: node.w, h: node.h)
             @framebuffer.refuse_odd_width!(w, node.kind)
             emit_buffered_rect(x, y, w, h, node.color)
           end
@@ -102,7 +95,7 @@ module VBlank
           # instructions whatever it then moves (ten where the row's address is one the chip
           # can name outright), and a row written out is its address and then one instruction
           # per pair, which is three plus one per pair for most rows. So the written-out row
-          # is the SMALLER one up to nine pairs, and it stays the faster one further than
+          # is the smaller one up to nine pairs, and it stays the faster one further than
           # that: starting the engine costs the register writes AND the stall while the
           # engine copies, which stops the CPU dead.
           #
@@ -139,7 +132,7 @@ module VBlank
             scratch = emit_index_fill_word(color)
             index = @layout.palette.index_of(color)
 
-            # WHICH PIXELS CANNOT GO IN AS PAIRS. A fill moves whole 16-bit units, so a run that
+            # Which pixels cannot go in as pairs. A fill moves whole 16-bit units, so a run that
             # starts on an odd column shares its first unit with a pixel outside the rectangle,
             # and one holding an odd number of pixels shares its last. Either is written on its
             # own — read the unit, change that half, write it back — and the pairs between them
@@ -152,10 +145,10 @@ module VBlank
             middle_w -= 1 if last_alone
 
             base = 6
-            load_var(base, BACKBUF) # the hidden page base, held for the whole rect
+            @primitives.load_var(base, BACKBUF) # the hidden page base, held for the whole rect
             # A row narrow enough to be written out needs the fill unit in a register, and it
             # is the same unit for every row — so it is loaded once here rather than per row.
-            emit_number(RECT_FILL, fill_unit(index)) if direct_fill?(middle_w)
+            @emitter.emit_number(RECT_FILL, fill_unit(index)) if direct_fill?(middle_w)
 
             # A rect as wide as the screen is one unbroken run of memory: there is no gap
             # to skip between rows, because the next row starts exactly where the last one
@@ -206,8 +199,8 @@ module VBlank
           def emit_buffered_row_fill(base:, x:, row:, w:, scratch:)
             return emit_buffered_row_stores(base: base, x: x, row: row, w: w) if direct_fill?(w)
 
-            emit_add_const(ACC, base, (row * SCREEN_WIDTH) + x, TMP) # that row: + byte offset (1 byte/pixel)
-            emit_start_copy_engine(from: scratch, to: in_register(ACC), control: dma_fill_control_16(w / 2))
+            @primitives.emit_add_const(ACC, base, (row * SCREEN_WIDTH) + x, TMP) # that row: + byte offset (1 byte/pixel)
+            @primitives.emit_start_copy_engine(from: scratch, to: in_register(ACC), control: dma_fill_control_16(w / 2))
           end
 
           # The same row written out: the fill unit — the palette index in both of its bytes,
@@ -215,8 +208,8 @@ module VBlank
           # building, so a row is one address built into r1 and then a store per pair at a
           # fixed offset from it.
           def emit_buffered_row_stores(base:, x:, row:, w:)
-            emit_add_const(1, base, (row * SCREEN_WIDTH) + x, ACC) # r1 = the row's first unit
-            (w / 2).times { |unit| emit(ASM.store_halfword_offset(RECT_FILL, 1, unit * 2)) }
+            @primitives.emit_add_const(1, base, (row * SCREEN_WIDTH) + x, ACC) # r1 = the row's first unit
+            (w / 2).times { |unit| @emitter.emit(ASM.store_halfword_offset(RECT_FILL, 1, unit * 2)) }
           end
 
           # The 16-bit unit a packed fill writes: the palette index in both of its pixels.
@@ -234,10 +227,10 @@ module VBlank
           # (#emit_buffered_rect_at_computed), since neither the width nor the position is
           # known well enough while building to rule an edge out.
           def emit_draw_rect_at_buffered(node)
-            x = const_int(node.x)
-            y = const_int(node.y)
-            w = const_int(node.w)
-            h = const_int(node.h)
+            x = @primitives.const_int(node.x)
+            y = @primitives.const_int(node.y)
+            w = @primitives.const_int(node.w)
+            h = @primitives.const_int(node.h)
             return if w && w < 1 # a rect with no width draws nothing
             return if h && h < 1 # ...or no height
 
@@ -257,7 +250,7 @@ module VBlank
           RECT_ADDR = 5
           RECT_ROWS_LEFT = 6
 
-          # Put the hidden page's address of column 0 on the rect's FIRST row in r4, once
+          # Put the hidden page's address of column 0 on the rect's first row in r4, once
           # for the whole rect.
           #
           # Every row after that starts exactly one screen width further on, so the rows
@@ -265,14 +258,14 @@ module VBlank
           # again. Working it out again is what this used to do on every row: a multiply
           # by the screen width, a load of the hidden page's address, and an add — five
           # instructions before a single pixel was written. On a tall thin column, which is
-          # what a per-column renderer draws hundreds of, that WAS the column: measured, a
+          # what a per-column renderer draws hundreds of, that was the column: measured, a
           # rect cost the same per row at 2 pixels wide as at 16, because almost none of
           # the cost was the pixels.
           def emit_row_address_setup
-            emit_number(RECT_ADDR, SCREEN_WIDTH)
-            emit(ASM.mul(RECT_ROW, RECT_ADDR, RECT_Y)) # r4 = SCREEN_WIDTH * y, 1 byte/pixel
-            load_var(RECT_ADDR, BACKBUF)               # r5 = hidden page base
-            emit(ASM.add_reg(RECT_ROW, RECT_ROW, RECT_ADDR))
+            @emitter.emit_number(RECT_ADDR, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(RECT_ROW, RECT_ADDR, RECT_Y)) # r4 = SCREEN_WIDTH * y, 1 byte/pixel
+            @primitives.load_var(RECT_ADDR, BACKBUF)               # r5 = hidden page base
+            @emitter.emit(ASM.add_reg(RECT_ROW, RECT_ROW, RECT_ADDR))
           end
 
           # One row down the screen: the address (240 bytes a row on this display, which
@@ -280,8 +273,8 @@ module VBlank
           # r4 by the time the first row runs, so from here it tracks which row this is,
           # for #emit_buffered_computed_row's own top/bottom check.
           def emit_advance_row
-            emit(ASM.add_imm(RECT_ROW, RECT_ROW, SCREEN_WIDTH))
-            emit(ASM.add_imm(RECT_Y, RECT_Y, 1))
+            @emitter.emit(ASM.add_imm(RECT_ROW, RECT_ROW, SCREEN_WIDTH))
+            @emitter.emit(ASM.add_imm(RECT_Y, RECT_Y, 1))
           end
 
           # +h+ is the height when it is settled while building — then the rows are
@@ -301,7 +294,7 @@ module VBlank
               return
             end
 
-            emit_row_loop(RECT_ROWS_LEFT) do
+            @primitives.emit_row_loop(RECT_ROWS_LEFT) do
               emit_buffered_rect_row(**row)
               emit_advance_row
             end
@@ -355,45 +348,45 @@ module VBlank
 
             @framebuffer.eval_rect_position(node, x_reg: RECT_X, y_reg: RECT_Y, rows_reg: RECT_ROWS_LEFT)
 
-            needs_clip = gensym
-            done = gensym
+            needs_clip = @emitter.gensym
+            done = @emitter.gensym
 
-            emit(ASM.cmp_imm(RECT_X, @framebuffer.clip_left))
-            emit_branch(:bcond, needs_clip, cond: :lt)
-            emit_add_const(ACC, RECT_X, w, TMP)
-            emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
-            emit_branch(:bcond, needs_clip, cond: :gt)
-            emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_top))
-            emit_branch(:bcond, needs_clip, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(RECT_X, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, needs_clip, cond: :lt)
+            @primitives.emit_add_const(ACC, RECT_X, w, TMP)
+            @emitter.emit(ASM.cmp_imm(ACC, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, needs_clip, cond: :gt)
+            @emitter.emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_top))
+            @emitter.emit_branch(:bcond, needs_clip, cond: :lt)
             if h
-              emit_add_const(ACC, RECT_Y, h, TMP)
+              @primitives.emit_add_const(ACC, RECT_Y, h, TMP)
             else
-              emit(ASM.add_reg(ACC, RECT_Y, RECT_ROWS_LEFT))
+              @emitter.emit(ASM.add_reg(ACC, RECT_Y, RECT_ROWS_LEFT))
             end
-            emit(ASM.cmp_imm(ACC, @framebuffer.clip_bottom))
-            emit_branch(:bcond, needs_clip, cond: :gt)
+            @emitter.emit(ASM.cmp_imm(ACC, @framebuffer.clip_bottom))
+            @emitter.emit_branch(:bcond, needs_clip, cond: :gt)
 
             parity = Parity.of(node.x)
             rows = { w: w, h: h, scratch: scratch, index: index }
             if parity
               emit_buffered_rect_rows(**rows, starts_odd: parity == :odd)
             else
-              odd_column = gensym
-              emit(ASM.and_imm(ACC, RECT_X, 1))
-              emit(ASM.cmp_imm(ACC, 0))
-              emit_branch(:bcond, odd_column, cond: :ne)
+              odd_column = @emitter.gensym
+              @emitter.emit(ASM.and_imm(ACC, RECT_X, 1))
+              @emitter.emit(ASM.cmp_imm(ACC, 0))
+              @emitter.emit_branch(:bcond, odd_column, cond: :ne)
               emit_buffered_rect_rows(**rows, starts_odd: false)
-              emit_branch(:b, done)
-              place_label(odd_column)
+              @emitter.emit_branch(:b, done)
+              @emitter.place_label(odd_column)
               emit_buffered_rect_rows(**rows, starts_odd: true)
             end
-            emit_branch(:b, done)
+            @emitter.emit_branch(:b, done)
 
-            place_label(needs_clip)
-            emit_number(RECT_MIDDLE, w)
+            @emitter.place_label(needs_clip)
+            @emitter.emit_number(RECT_MIDDLE, w)
             emit_buffered_rect_clip_and_rows(node, scratch, index)
 
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # A rect with at least one edge the game works out as it runs, so the clip has
@@ -407,12 +400,12 @@ module VBlank
           # block fill. Both ends come down to one rule, worked out once above the rows
           # because every row of a rect starts and ends in the same columns:
           #
-          #   - the first pixel needs splicing when the rect starts on an ODD column;
-          #   - the last one needs splicing when it ends on an EVEN column;
+          #   - the first pixel needs splicing when the rect starts on an odd column;
+          #   - the last one needs splicing when it ends on an even column;
           #   - what is left between them is always an even number of pixels beginning
           #     on an even column, which is exactly what a block fill wants.
           #
-          # x and width settle to one CLIPPED span before any row fires — a rect has one
+          # x and width settle to one clipped span before any row fires — a rect has one
           # x for its whole height — and every row then checks its own y against the
           # area (#emit_buffered_computed_row), because a run-time y or height means a
           # run-time set of rows survives: an unclipped row is what wrapped a rect onto
@@ -423,7 +416,7 @@ module VBlank
 
             @framebuffer.eval_rect_position(node, x_reg: RECT_X, y_reg: RECT_Y,
                                      rows_reg: RECT_ROWS_LEFT, width_reg: RECT_MIDDLE)
-            emit_number(RECT_MIDDLE, w) if w # a fixed width isn't loaded above
+            @emitter.emit_number(RECT_MIDDLE, w) if w # a fixed width isn't loaded above
 
             emit_buffered_rect_clip_and_rows(node, scratch, index)
           end
@@ -434,88 +427,88 @@ module VBlank
           # unclipped width) are already loaded, and r6 (rows left) is too when the height
           # is not settled while building.
           def emit_buffered_rect_clip_and_rows(node, scratch, index)
-            done = gensym
+            done = @emitter.gensym
 
             # right = x + width, unclipped, worked out before x itself is touched.
-            emit(ASM.add_reg(RECT_RIGHT, RECT_X, RECT_MIDDLE))
-            keep_right = gensym
-            emit(ASM.cmp_imm(RECT_RIGHT, @framebuffer.clip_right))
-            emit_branch(:bcond, keep_right, cond: :le)
-            emit_number(RECT_RIGHT, @framebuffer.clip_right)
-            place_label(keep_right)
+            @emitter.emit(ASM.add_reg(RECT_RIGHT, RECT_X, RECT_MIDDLE))
+            keep_right = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_RIGHT, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, keep_right, cond: :le)
+            @emitter.emit_number(RECT_RIGHT, @framebuffer.clip_right)
+            @emitter.place_label(keep_right)
 
-            keep_left = gensym
-            emit(ASM.cmp_imm(RECT_X, @framebuffer.clip_left))
-            emit_branch(:bcond, keep_left, cond: :ge)
-            emit_number(RECT_X, @framebuffer.clip_left)
-            place_label(keep_left)
+            keep_left = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_X, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+            @emitter.emit_number(RECT_X, @framebuffer.clip_left)
+            @emitter.place_label(keep_left)
 
             # A rect the game shrank to nothing, or slid entirely off the area, draws
             # nothing — and a block fill asked for zero units would move 65536 of them,
             # so this is not optional.
-            emit(ASM.sub_reg(RECT_MIDDLE, RECT_RIGHT, RECT_X))
-            emit(ASM.cmp_imm(RECT_MIDDLE, 0))
-            emit_branch(:bcond, done, cond: :le)
+            @emitter.emit(ASM.sub_reg(RECT_MIDDLE, RECT_RIGHT, RECT_X))
+            @emitter.emit(ASM.cmp_imm(RECT_MIDDLE, 0))
+            @emitter.emit_branch(:bcond, done, cond: :le)
 
-            emit(ASM.sub_imm(RECT_RIGHT, RECT_RIGHT, 1))       # the last column, one back from "past the end"
-            emit(ASM.and_imm(RECT_LEFT, RECT_X, 1))            # starts on an odd column?
-            emit(ASM.and_imm(ACC, RECT_RIGHT, 1))
-            emit(ASM.rsb_imm(ACC, ACC, 1))                     # ends on an even one?
-            emit(ASM.sub_reg(RECT_MIDDLE, RECT_MIDDLE, RECT_LEFT)) # what the two ends
-            emit(ASM.sub_reg(RECT_MIDDLE, RECT_MIDDLE, ACC))       # do not cover
+            @emitter.emit(ASM.sub_imm(RECT_RIGHT, RECT_RIGHT, 1))       # the last column, one back from "past the end"
+            @emitter.emit(ASM.and_imm(RECT_LEFT, RECT_X, 1))            # starts on an odd column?
+            @emitter.emit(ASM.and_imm(ACC, RECT_RIGHT, 1))
+            @emitter.emit(ASM.rsb_imm(ACC, ACC, 1))                     # ends on an even one?
+            @emitter.emit(ASM.sub_reg(RECT_MIDDLE, RECT_MIDDLE, RECT_LEFT)) # what the two ends
+            @emitter.emit(ASM.sub_reg(RECT_MIDDLE, RECT_MIDDLE, ACC))       # do not cover
 
             # Turn that into a transfer count, or leave it at zero to mean "no middle".
-            no_middle = gensym
-            emit(ASM.cmp_imm(RECT_MIDDLE, 0))
-            emit_branch(:bcond, no_middle, cond: :eq)
-            emit(ASM.lsr_imm(RECT_MIDDLE, RECT_MIDDLE, 1)) # two pixels per unit moved
-            emit_number(TMP, dma_fill_control_16(0))
-            emit(ASM.orr_reg(RECT_MIDDLE, RECT_MIDDLE, TMP))
-            place_label(no_middle)
+            no_middle = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_MIDDLE, 0))
+            @emitter.emit_branch(:bcond, no_middle, cond: :eq)
+            @emitter.emit(ASM.lsr_imm(RECT_MIDDLE, RECT_MIDDLE, 1)) # two pixels per unit moved
+            @emitter.emit_number(TMP, dma_fill_control_16(0))
+            @emitter.emit(ASM.orr_reg(RECT_MIDDLE, RECT_MIDDLE, TMP))
+            @emitter.place_label(no_middle)
 
-            height = const_int(node.h)
-            emit_number(RECT_ROWS_LEFT, height) if height
+            height = @primitives.const_int(node.h)
+            @emitter.emit_number(RECT_ROWS_LEFT, height) if height
             emit_row_address_setup
-            emit_row_loop(RECT_ROWS_LEFT) do
+            @primitives.emit_row_loop(RECT_ROWS_LEFT) do
               emit_buffered_computed_row(index: index, scratch: scratch)
               emit_advance_row
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
           # One row of a computed-width rect: skipped outright if its y falls outside
-          # the area (a row above or below it draws NOTHING, not a row wrapped onto its
+          # the area (a row above or below it draws nothing, not a row wrapped onto its
           # neighbor); else at most two spliced pixels with a block fill between them,
           # which of the three actually run having been decided above the loop.
           def emit_buffered_computed_row(index:, scratch:)
-            row_skip = gensym
-            emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_top))
-            emit_branch(:bcond, row_skip, cond: :lt)
-            emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_bottom))
-            emit_branch(:bcond, row_skip, cond: :ge)
+            row_skip = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_top))
+            @emitter.emit_branch(:bcond, row_skip, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(RECT_Y, @framebuffer.clip_bottom))
+            @emitter.emit_branch(:bcond, row_skip, cond: :ge)
 
-            skip_left = gensym
-            emit(ASM.cmp_imm(RECT_LEFT, 0))
-            emit_branch(:bcond, skip_left, cond: :eq)
+            skip_left = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_LEFT, 0))
+            @emitter.emit_branch(:bcond, skip_left, cond: :eq)
             emit_splice_column(index: index, col_reg: RECT_X, high: true)
-            place_label(skip_left)
+            @emitter.place_label(skip_left)
 
-            skip_middle = gensym
-            emit(ASM.cmp_imm(RECT_MIDDLE, 0))
-            emit_branch(:bcond, skip_middle, cond: :eq)
-            emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
-            emit(ASM.add_reg(RECT_ADDR, RECT_ADDR, RECT_LEFT)) # past a spliced first pixel
-            emit_start_copy_engine(from: scratch, to: in_register(RECT_ADDR), control: in_register(RECT_MIDDLE))
-            place_label(skip_middle)
+            skip_middle = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(RECT_MIDDLE, 0))
+            @emitter.emit_branch(:bcond, skip_middle, cond: :eq)
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ADDR, RECT_LEFT)) # past a spliced first pixel
+            @primitives.emit_start_copy_engine(from: scratch, to: in_register(RECT_ADDR), control: in_register(RECT_MIDDLE))
+            @emitter.place_label(skip_middle)
 
-            skip_right = gensym
-            emit(ASM.and_imm(ACC, RECT_RIGHT, 1))
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, skip_right, cond: :ne) # ends on an odd column: nothing to splice
+            skip_right = @emitter.gensym
+            @emitter.emit(ASM.and_imm(ACC, RECT_RIGHT, 1))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, skip_right, cond: :ne) # ends on an odd column: nothing to splice
             emit_splice_column(index: index, col_reg: RECT_RIGHT, high: false)
-            place_label(skip_right)
+            @emitter.place_label(skip_right)
 
-            place_label(row_skip)
+            @emitter.place_label(row_skip)
           end
 
           # Splice one pixel of a rect into the hidden page: the pixel in the column
@@ -524,25 +517,25 @@ module VBlank
           # and write it back. An odd column is the HIGH half of its unit, so its
           # address needs the low bit cleared to name the unit.
           def emit_splice_column(index:, col_reg:, high:)
-            emit(ASM.add_reg(RECT_ADDR, RECT_ROW, col_reg))
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ROW, col_reg))
             if high
-              emit(ASM.lsr_imm(RECT_ADDR, RECT_ADDR, 1))
-              emit(ASM.lsl_imm(RECT_ADDR, RECT_ADDR, 1))
+              @emitter.emit(ASM.lsr_imm(RECT_ADDR, RECT_ADDR, 1))
+              @emitter.emit(ASM.lsl_imm(RECT_ADDR, RECT_ADDR, 1))
             end
-            emit(ASM.load_halfword(ACC, RECT_ADDR))
+            @emitter.emit(ASM.load_halfword(ACC, RECT_ADDR))
             emit_splice_index_const(ACC, index, high)
-            emit(ASM.store_halfword(ACC, RECT_ADDR))
+            @emitter.emit(ASM.store_halfword(ACC, RECT_ADDR))
           end
 
           def emit_rect_fill_value(index)
-            emit_number(RECT_FILL, (index << 8) | index)
+            @emitter.emit_number(RECT_FILL, (index << 8) | index)
           end
 
           # Fill the middle of one row of a fits-whole, run-time-positioned rect: +w+
           # pixels starting +offset+ columns right of the rect's x, on the row whose
           # address r4 holds.
           #
-          # A NARROW middle is written straight out, one 16-bit store per pair of pixels,
+          # A narrow middle is written straight out, one 16-bit store per pair of pixels,
           # rather than handing it to the block-fill engine. Starting that engine costs the
           # same whatever it then moves — the register writes, and the stall while it copies
           # — so for a pair or two the starting is nearly all of the work, and a two-pixel
@@ -553,17 +546,17 @@ module VBlank
           def emit_buffered_rect_row_middle(offset:, w:, scratch:)
             return emit_buffered_rect_row_dma(offset: offset, w: w, scratch: scratch) unless direct_fill?(w)
 
-            emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
-            emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
-            (w / 2).times { |unit| emit(ASM.store_halfword_offset(RECT_FILL, RECT_ADDR, unit * 2)) }
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
+            @primitives.emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
+            (w / 2).times { |unit| @emitter.emit(ASM.store_halfword_offset(RECT_FILL, RECT_ADDR, unit * 2)) }
           end
 
           # DMA one row of a fits-whole, run-time-positioned rect: +w+ pixels starting
           # +offset+ columns right of the rect's x, on the row whose address r4 holds.
           def emit_buffered_rect_row_dma(offset:, w:, scratch:)
-            emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
-            emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
-            emit_start_copy_engine(from: scratch, to: in_register(RECT_ADDR), control: dma_fill_control_16(w / 2))
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
+            @primitives.emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
+            @primitives.emit_start_copy_engine(from: scratch, to: in_register(RECT_ADDR), control: dma_fill_control_16(w / 2))
           end
 
           # Splice one edge pixel of a fits-whole, run-time-positioned rect into the
@@ -574,15 +567,15 @@ module VBlank
           # the right edge (x + w - 1, an even column, since the width is even) the low
           # half of its own — so only the left edge's address needs its low bit cleared.
           def emit_splice_rect_edge(index:, offset:, high:)
-            emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
-            emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
+            @emitter.emit(ASM.add_reg(RECT_ADDR, RECT_ROW, RECT_X))
+            @primitives.emit_add_const(RECT_ADDR, RECT_ADDR, offset, ACC)
             if high
-              emit(ASM.lsr_imm(RECT_ADDR, RECT_ADDR, 1)) # clear the low bit ->
-              emit(ASM.lsl_imm(RECT_ADDR, RECT_ADDR, 1)) # r5 = the containing unit's address
+              @emitter.emit(ASM.lsr_imm(RECT_ADDR, RECT_ADDR, 1)) # clear the low bit ->
+              @emitter.emit(ASM.lsl_imm(RECT_ADDR, RECT_ADDR, 1)) # r5 = the containing unit's address
             end
-            emit(ASM.load_halfword(ACC, RECT_ADDR))      # r0 = the current pixel pair
+            @emitter.emit(ASM.load_halfword(ACC, RECT_ADDR))      # r0 = the current pixel pair
             emit_splice_index_const(ACC, index, high)
-            emit(ASM.store_halfword(ACC, RECT_ADDR))
+            @emitter.emit(ASM.store_halfword(ACC, RECT_ADDR))
           end
 
           # Stash a solid fill color as a word of four packed indices in IWRAM and
@@ -591,8 +584,8 @@ module VBlank
           def emit_index_fill_word(color)
             index = @layout.palette.index_of(color)
             word = index * 0x01010101 # the same index in all four bytes
-            scratch = var_addr(Primitives::FILL_SCRATCH)
-            store_word_immediate(word, scratch)
+            scratch = @primitives.var_addr(Primitives::FILL_SCRATCH)
+            @primitives.store_word_immediate(word, scratch)
             scratch
           end
 
@@ -613,14 +606,14 @@ module VBlank
           # and held in a register the pixel writes splice from, where one colour splices a
           # number written into each of them.
           def emit_draw_text_buffered(node)
-            x, y = constant_ints!(node, x: node.x, y: node.y)
+            x, y = @primitives.constant_ints!(node, x: node.x, y: node.y)
             index = @layout.palette.index_of(node.color) unless node.picked
             @framebuffer.emit_text_color(node, TEXT_INDEX) { |color| @layout.palette.index_of(color) } if node.picked
             points = @framebuffer.text_points(node, x, y)
             return emit_text_points_call(points, index) if points.length >= Framebuffer::TEXT_POINTS_LINE
 
             base = 6
-            load_var(base, BACKBUF) # the hidden page base, held for the whole line
+            @primitives.load_var(base, BACKBUF) # the hidden page base, held for the whole line
 
             points.each do |point|
               emit_write_index_pixel_const(base, point % SCREEN_WIDTH, point / SCREEN_WIDTH, index || TEXT_INDEX, held: node.picked)
@@ -629,47 +622,47 @@ module VBlank
 
           # A line in a table: the colour's slot in r0, then the table and how many it holds.
           def emit_text_points_call(points, index)
-            index ? emit_number(ACC, index) : emit(ASM.mov_reg(ACC, TEXT_INDEX))
-            emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
-            emit_number(SPARE, points.length)
+            index ? @emitter.emit_number(ACC, index) : @emitter.emit(ASM.mov_reg(ACC, TEXT_INDEX))
+            @emitter.emit_load_data_address(TMP, @framebuffer.text_points_blob(points))
+            @emitter.emit_number(SPARE, points.length)
             @text_points_used = true
-            emit_call_cold_routine(TEXT_POINTS)
+            @placement.emit_call_cold_routine(TEXT_POINTS)
           end
 
           TEXT_POINTS = Messages::MadeNames.make(:buffered_text_points_routine)
 
-          # THE ROUTINE THAT STAMPS A TABLE OF PIXELS onto the hidden page: r0 the colour's slot, r1
+          # The routine that stamps a table of pixels onto the hidden page: r0 the colour's slot, r1
           # the table, r2 how many. Each pixel is half of a 16-bit unit, read, spliced and written
           # back, and which half is the pixel's column being odd.
           def emit_text_points_routine
             return unless @text_points_used
 
-            pixel = gensym
-            odd = gensym
-            write = gensym
-            emit(ASM.loop_forever) # fall-through guard
-            place_label(TEXT_POINTS)
-            emit(ASM.push(14))
-            load_var(9, BACKBUF)
-            place_label(pixel)
-            emit(ASM.load_halfword(3, 1))
-            emit(ASM.add_imm(1, 1, 2))
-            emit(ASM.add_reg(10, 9, 3))             # the pixel's byte
-            emit(ASM.lsr_imm(10, 10, 1))
-            emit(ASM.lsl_imm(10, 10, 1))            # r10 = the 16-bit unit it is in
-            emit(ASM.load_halfword(11, 10))
-            emit(ASM.tst_imm(3, 1))
-            emit_branch(:bcond, odd, cond: :ne)
+            pixel = @emitter.gensym
+            odd = @emitter.gensym
+            write = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard
+            @emitter.place_label(TEXT_POINTS)
+            @emitter.emit(ASM.push(14))
+            @primitives.load_var(9, BACKBUF)
+            @emitter.place_label(pixel)
+            @emitter.emit(ASM.load_halfword(3, 1))
+            @emitter.emit(ASM.add_imm(1, 1, 2))
+            @emitter.emit(ASM.add_reg(10, 9, 3))             # the pixel's byte
+            @emitter.emit(ASM.lsr_imm(10, 10, 1))
+            @emitter.emit(ASM.lsl_imm(10, 10, 1))            # r10 = the 16-bit unit it is in
+            @emitter.emit(ASM.load_halfword(11, 10))
+            @emitter.emit(ASM.tst_imm(3, 1))
+            @emitter.emit_branch(:bcond, odd, cond: :ne)
             emit_splice_index_reg(11, 0, false)
-            emit_branch(:b, write)
-            place_label(odd)
+            @emitter.emit_branch(:b, write)
+            @emitter.place_label(odd)
             emit_splice_index_reg(11, 0, true)
-            place_label(write)
-            emit(ASM.store_halfword(11, 10))
-            emit(ASM.subs_imm(2, 2, 1))
-            emit_branch(:bcond, pixel, cond: :ne)
-            emit(ASM.pop(15))
-            place_label(DerivedNames.routine_end(TEXT_POINTS))
+            @emitter.place_label(write)
+            @emitter.emit(ASM.store_halfword(11, 10))
+            @emitter.emit(ASM.subs_imm(2, 2, 1))
+            @emitter.emit_branch(:bcond, pixel, cond: :ne)
+            @emitter.emit(ASM.pop(15))
+            @emitter.place_label(DerivedNames.routine_end(TEXT_POINTS))
           end
 
           # Where a two-colour line's slot waits while its pixels are written: clear of the
@@ -685,10 +678,10 @@ module VBlank
           def emit_draw_digit_data_buffered(node, font, width, x, y)
             index = @layout.palette.index_of(node.color)
             @lowering.value(node.value)             # r0 = the digit (0..9)
-            emit_number(1, x)
-            emit_number(2, y)
-            emit_number(3, index)
-            emit_call_cold_routine(digit_routine_label(node.font, font, width))
+            @emitter.emit_number(1, x)
+            @emitter.emit_number(2, y)
+            @emitter.emit_number(3, index)
+            @placement.emit_call_cold_routine(digit_routine_label(node.font, font, width))
           end
 
           # The shared routine's label for a font, reserved the first time a digit in
@@ -719,23 +712,23 @@ module VBlank
             return unless @pending_digit_routines
 
             @pending_digit_routines.each do |font_name, font, width|
-              emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
-              place_label(Messages::MadeNames.make(:buffered_digit_routine, font: font_name))
-              emit(ASM.push(14))
-              emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
-              emit(ASM.mov_reg(11, 2)) # r11 = y
-              emit(ASM.mov_reg(8, 3))  # r8 = the palette index
+              @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call above
+              @emitter.place_label(Messages::MadeNames.make(:buffered_digit_routine, font: font_name))
+              @emitter.emit(ASM.push(14))
+              @emitter.emit(ASM.mov_reg(10, 1)) # r10 = x, held across the routine
+              @emitter.emit(ASM.mov_reg(11, 2)) # r11 = y
+              @emitter.emit(ASM.mov_reg(8, 3))  # r8 = the palette index
               @framebuffer.emit_digit_glyph_loop(font_name, font, width) do |phase|
                 case phase
-                when :hold then load_var(9, BACKBUF)          # r9 = the hidden page base, held
+                when :hold then @primitives.load_var(9, BACKBUF)          # r9 = the hidden page base, held
                 when :plot then emit_plot_digit_index(10, 11, 8)
                 end
               end
-              emit(ASM.pop(15))
+              @emitter.emit(ASM.pop(15))
               # Where it ends, so a profile of the finished game can say how much of a frame
-              # went into drawing digits. A routine the LOWERING makes has no other record of
+              # went into drawing digits. A routine the lowering makes has no other record of
               # its span — func_ranges only knows routines somebody wrote.
-              place_label(DerivedNames.routine_end(Messages::MadeNames.make(:buffered_digit_routine, font: font_name)))
+              @emitter.place_label(DerivedNames.routine_end(Messages::MadeNames.make(:buffered_digit_routine, font: font_name)))
             end
           end
 
@@ -746,27 +739,27 @@ module VBlank
           # base; x_reg/y_reg/index_reg are the shared routine's arguments (see
           # #emit_digit_routines); r5/r4 are the live row/col; r0–r3 are scratch.
           def emit_plot_digit_index(x_reg, y_reg, index_reg)
-            emit(ASM.add_reg(0, y_reg, 5))          # r0 = screen_y = y + row
-            emit_number(1, SCREEN_WIDTH)
-            emit(ASM.mul(2, 0, 1))                  # r2 = screen_y * width
-            emit(ASM.add_reg(0, x_reg, 4))          # r0 = screen_x = x + col
-            emit(ASM.add_reg(2, 2, 0))              # r2 = byte offset = screen_y*width + screen_x
-            emit(ASM.add_reg(1, 9, 2))              # r1 = page_base + offset (the pixel's byte, maybe odd)
-            emit(ASM.lsr_imm(1, 1, 1))              # clear the low bit ->
-            emit(ASM.lsl_imm(1, 1, 1))              # r1 = the containing 16-bit unit's address
-            emit(ASM.load_halfword(0, 1))           # r0 = the current pixel pair
+            @emitter.emit(ASM.add_reg(0, y_reg, 5))          # r0 = screen_y = y + row
+            @emitter.emit_number(1, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(2, 0, 1))                  # r2 = screen_y * width
+            @emitter.emit(ASM.add_reg(0, x_reg, 4))          # r0 = screen_x = x + col
+            @emitter.emit(ASM.add_reg(2, 2, 0))              # r2 = byte offset = screen_y*width + screen_x
+            @emitter.emit(ASM.add_reg(1, 9, 2))              # r1 = page_base + offset (the pixel's byte, maybe odd)
+            @emitter.emit(ASM.lsr_imm(1, 1, 1))              # clear the low bit ->
+            @emitter.emit(ASM.lsl_imm(1, 1, 1))              # r1 = the containing 16-bit unit's address
+            @emitter.emit(ASM.load_halfword(0, 1))           # r0 = the current pixel pair
             # width is even, so the offset's parity is the column's: 0 = low/even byte.
-            emit(ASM.and_imm(3, 2, 1))              # r3 = screen_x & 1
-            emit(ASM.cmp_imm(3, 0))
-            high = gensym
-            done = gensym
-            emit_branch(:bcond, high, cond: :ne)
+            @emitter.emit(ASM.and_imm(3, 2, 1))              # r3 = screen_x & 1
+            @emitter.emit(ASM.cmp_imm(3, 0))
+            high = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_branch(:bcond, high, cond: :ne)
             emit_splice_index_reg(0, index_reg, false) # even column: the low byte
-            emit_branch(:b, done)
-            place_label(high)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(high)
             emit_splice_index_reg(0, index_reg, true)  # odd column: the high byte
-            place_label(done)
-            emit(ASM.store_halfword(0, 1))          # write the spliced pair back
+            @emitter.place_label(done)
+            @emitter.emit(ASM.store_halfword(0, 1))          # write the spliced pair back
           end
 
           # The same splice as #emit_splice_index_const, with the index arriving in a
@@ -774,11 +767,11 @@ module VBlank
           # needs, since one routine's index varies with which digit call reached it.
           def emit_splice_index_reg(reg, index_reg, high)
             if high
-              emit(ASM.and_imm(reg, reg, 0x00FF))         # keep the left (low) pixel
-              emit(ASM.orr_reg_lsl(reg, reg, index_reg, 8)) # set the right (high) pixel
+              @emitter.emit(ASM.and_imm(reg, reg, 0x00FF))         # keep the left (low) pixel
+              @emitter.emit(ASM.orr_reg_lsl(reg, reg, index_reg, 8)) # set the right (high) pixel
             else
-              emit(ASM.and_imm(reg, reg, 0xFF00))         # keep the right (high) pixel
-              emit(ASM.orr_reg(reg, reg, index_reg))      # set the left (low) pixel
+              @emitter.emit(ASM.and_imm(reg, reg, 0xFF00))         # keep the right (high) pixel
+              @emitter.emit(ASM.orr_reg(reg, reg, index_reg))      # set the left (low) pixel
             end
           end
 
@@ -787,14 +780,14 @@ module VBlank
           # the live x at run time.
           def emit_pixel_buffered(node)
             index = @layout.palette.index_of(node.color)
-            xi = const_int(node.x)
-            yi = const_int(node.y)
+            xi = @primitives.const_int(node.x)
+            yi = @primitives.const_int(node.y)
 
             if xi && yi
               return unless @framebuffer.in_bounds?(xi, yi)
 
               base = 6
-              load_var(base, BACKBUF)
+              @primitives.load_var(base, BACKBUF)
               emit_write_index_pixel_const(base, xi, yi, index)
             else
               emit_pixel_buffered_runtime(node, index)
@@ -807,72 +800,81 @@ module VBlank
           # +index+ is the slot itself, or — with +held+ — the register already holding it.
           def emit_write_index_pixel_const(base_reg, px, py, index, held: false)
             halfword_offset = ((py * SCREEN_WIDTH) + px) & ~1 # start of the pixel's 16-bit unit
-            emit_add_const(1, base_reg, halfword_offset, ACC) # r1 = &unit (scratch r0)
-            emit(ASM.load_halfword(ACC, 1))                   # r0 = the current pixel pair
+            @primitives.emit_add_const(1, base_reg, halfword_offset, ACC) # r1 = &unit (scratch r0)
+            @emitter.emit(ASM.load_halfword(ACC, 1))                   # r0 = the current pixel pair
             held ? emit_splice_index_reg(ACC, index, px.odd?) : emit_splice_index_const(ACC, index, px.odd?)
-            emit(ASM.store_halfword(ACC, 1))
+            @emitter.emit(ASM.store_halfword(ACC, 1))
           end
 
           # Read-modify-write one pixel whose coordinates are computed at run time: the
           # address and which half to touch both come from the live x/y. r2/r3 hold
           # x/y; r1 the unit address; r0 the value being spliced; r4/r5 scratch.
+          #
+          # ## Why a pixel is a read, a change and a write
+          #
+          # A pixel here is one byte, a number picking out of the colour table, but video memory
+          # takes only whole 16-bit units, so a lone byte cannot be stored. The unit holding the
+          # pixel is read, its half is replaced, and the unit written back:
+          #
+          #   unit at an even address:  [ low byte: even x | high byte: odd x ]
+          #   read it (r0), keep the half that is not ours, put the colour number in ours, store it.
           def emit_pixel_buffered_runtime(node, index)
             @lowering.value(node.x)
-            emit(ASM.mov_reg(2, ACC))
+            @emitter.emit(ASM.mov_reg(2, ACC))
             @lowering.value(node.y)
-            emit(ASM.mov_reg(3, ACC))
+            @emitter.emit(ASM.mov_reg(3, ACC))
 
-            emit_number(4, SCREEN_WIDTH)
-            emit(ASM.mul(4, 3, 4))          # r4 = y * width
-            emit(ASM.add_reg(4, 4, 2))      # r4 = y*width + x (byte offset)
-            load_var(5, BACKBUF)            # r5 = hidden page base
-            emit(ASM.add_reg(1, 5, 4))      # r1 = base + byte offset (maybe odd)
-            emit(ASM.lsr_imm(1, 1, 1))      # clear the low bit ->
-            emit(ASM.lsl_imm(1, 1, 1))      # r1 = the containing 16-bit unit's address
-            emit(ASM.load_halfword(ACC, 1)) # r0 = the current pixel pair
+            @emitter.emit_number(4, SCREEN_WIDTH)    # a byte a pixel, so a row is SCREEN_WIDTH bytes
+            @emitter.emit(ASM.mul(4, 3, 4))          # r4 = y * width
+            @emitter.emit(ASM.add_reg(4, 4, 2))      # r4 = y*width + x (byte offset)
+            @primitives.load_var(5, BACKBUF)            # r5 = hidden page base
+            @emitter.emit(ASM.add_reg(1, 5, 4))      # r1 = base + byte offset (maybe odd)
+            @emitter.emit(ASM.lsr_imm(1, 1, 1))      # clear the low bit ->
+            @emitter.emit(ASM.lsl_imm(1, 1, 1))      # r1 = the containing 16-bit unit's address
+            @emitter.emit(ASM.load_halfword(ACC, 1)) # r0 = the current pixel pair
 
-            emit(ASM.and_imm(4, 2, 1))      # r4 = x & 1 (0 = left/low byte, 1 = right/high)
-            emit(ASM.cmp_imm(4, 0))
-            high = gensym
-            done = gensym
-            emit_branch(:bcond, high, cond: :ne)
+            @emitter.emit(ASM.and_imm(4, 2, 1))      # r4 = x & 1 (0 = left/low byte, 1 = right/high)
+            @emitter.emit(ASM.cmp_imm(4, 0))
+            high = @emitter.gensym
+            done = @emitter.gensym
+            @emitter.emit_branch(:bcond, high, cond: :ne)
             emit_splice_index_const(ACC, index, false) # even x: low byte
-            emit_branch(:b, done)
-            place_label(high)
+            @emitter.emit_branch(:b, done)
+            @emitter.place_label(high)
             emit_splice_index_const(ACC, index, true)  # odd x: high byte
-            place_label(done)
-            emit(ASM.store_halfword(ACC, 1))
+            @emitter.place_label(done)
+            @emitter.emit(ASM.store_halfword(ACC, 1))
           end
 
           # Replace one byte of the 16-bit pixel pair in +reg+ with +index+, keeping
           # the other pixel: the high byte when +high+ (an odd column), else the low.
           def emit_splice_index_const(reg, index, high)
             if high
-              emit(ASM.and_imm(reg, reg, 0x00FF))     # keep the left (low) pixel
-              emit(ASM.orr_imm(reg, reg, index << 8)) # set the right (high) pixel
+              @emitter.emit(ASM.and_imm(reg, reg, 0x00FF))     # keep the left (low) pixel
+              @emitter.emit(ASM.orr_imm(reg, reg, index << 8)) # set the right (high) pixel
             else
-              emit(ASM.and_imm(reg, reg, 0xFF00))     # keep the right (high) pixel
-              emit(ASM.orr_imm(reg, reg, index))      # set the left (low) pixel
+              @emitter.emit(ASM.and_imm(reg, reg, 0xFF00))     # keep the right (high) pixel
+              @emitter.emit(ASM.orr_imm(reg, reg, index))      # set the left (low) pixel
             end
           end
 
           # One column of a picture, stretched to a height the game works out — on the
           # tear-free screen.
           #
-          # It walks DOWN THE SCREEN and asks which picture row belongs at each screen row,
+          # It walks down the screen and asks which picture row belongs at each screen row,
           # exactly as the direct-color screen does, because that is what makes the two
           # screens and the interpreter land every pixel in the same place. What differs is
           # the two things this screen forces: a pixel is one BYTE (a number picking a color
           # out of the shared table) rather than two, and video memory refuses a lone byte —
-          # the smallest write covers a side-by-side PAIR of pixels. So every pixel is a
+          # the smallest write covers a side-by-side pair of pixels. So every pixel is a
           # read of its pair, a splice of its own half, and a write back.
           #
-          # TWO QUESTIONS ARE ANSWERED ONCE HERE THAT THE OTHER SCREEN ASKS AT EVERY PIXEL,
-          # and both come from the same fact: a column has ONE x for its whole height.
+          # Two questions are answered once here that the other screen asks at every pixel,
+          # and both come from the same fact: a column has one x for its whole height.
           #
           #   - The screen's left and right edges. A column is either on the screen or it is
           #     not, so it is tested before the first row instead of at every one.
-          #   - WHICH HALF OF THE PAIR to write. A row is an even number of bytes across, so
+          #   - Which half of the pair to write. A row is an even number of bytes across, so
           #     the parity of a pixel's address is the parity of its column — the same half,
           #     every row, all the way down. That also means the unit's address needs no
           #     rounding as it walks: it starts on the pair the column sits in and steps one
@@ -886,7 +888,7 @@ module VBlank
             # reaches is a pixel, and then none is.
             clear = @layout.indexed_bitmaps[node.name] unless @framebuffer.column_rows_all_pixels?(node.name)
 
-            done = gensym
+            done = @emitter.gensym
             @framebuffer.emit_column_setup(node, bmp, done, blob: @framebuffer.column_blob(node.name), pixel_bytes: 1,
                                                             by_column: true)
             @framebuffer.emit_column_runs(node.name, bmp, done) do |leave|
@@ -898,25 +900,25 @@ module VBlank
               # A strip wholly inside the edges writes with nothing to test; one hanging over an
               # edge takes a second copy of the rows that tests each of its pixels. A strip one
               # pixel wide has no second case — it is inside or it draws nothing.
-              clipped = gensym
-              emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
-              emit_branch(:bcond, clipped, cond: :lt)
-              emit_number(TMP, @framebuffer.clip_right - width)
-              emit(ASM.cmp_reg(COLUMN_X, TMP))
-              emit_branch(:bcond, clipped, cond: :gt)
+              clipped = @emitter.gensym
+              @emitter.emit(ASM.cmp_imm(COLUMN_X, @framebuffer.clip_left))
+              @emitter.emit_branch(:bcond, clipped, cond: :lt)
+              @emitter.emit_number(TMP, @framebuffer.clip_right - width)
+              @emitter.emit(ASM.cmp_reg(COLUMN_X, TMP))
+              @emitter.emit_branch(:bcond, clipped, cond: :gt)
 
               emit_buffered_column_bodies(width, clear, Parity.of(node.x))
-              emit_branch(:b, leave) if width > 1
-              place_label(clipped)
+              @emitter.emit_branch(:b, leave) if width > 1
+              @emitter.place_label(clipped)
               emit_buffered_column_rows { emit_buffered_column_row(width, clear, nil) } if width > 1
             end
-            place_label(done)
+            @emitter.place_label(done)
           end
 
-          # THE STRIP WRITES WHOLE PAIRS WHERE IT CAN, which needs to know whether it starts on
+          # The strip writes whole pairs where it can, which needs to know whether it starts on
           # an even column or an odd one. Proved while building, that is one copy of the rows —
           # a view drawing its strips two pixels wide writes `col * 2`, and twice anything is
-          # even. Otherwise the low bit is tested ONCE, here, and each answer gets its own copy:
+          # even. Otherwise the low bit is tested once, here, and each answer gets its own copy:
           # every row of a strip starts in the same column, so a test inside the walk would ask
           # the same question a hundred and sixty times over.
           def emit_buffered_column_bodies(width, clear, parity)
@@ -926,16 +928,16 @@ module VBlank
               end
             end
 
-            odd = gensym
-            both = gensym
-            emit(ASM.and_imm(ACC, COLUMN_X, 1))
-            emit(ASM.cmp_imm(ACC, 0))
-            emit_branch(:bcond, odd, cond: :ne)
+            odd = @emitter.gensym
+            both = @emitter.gensym
+            @emitter.emit(ASM.and_imm(ACC, COLUMN_X, 1))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+            @emitter.emit_branch(:bcond, odd, cond: :ne)
             emit_buffered_column_rows { emit_buffered_column_row(width, clear, false) }
-            emit_branch(:b, both)
-            place_label(odd)
+            @emitter.emit_branch(:b, both)
+            @emitter.place_label(odd)
             emit_buffered_column_rows { emit_buffered_column_row(width, clear, true) }
-            place_label(both)
+            @emitter.place_label(both)
           end
 
           # The unit the strip's first row writes into: the hidden page, that row, and the
@@ -943,13 +945,13 @@ module VBlank
           # address before the page, which is fine — the walk steps forward to it and writes
           # nothing until the row is on screen.
           def emit_column_destination
-            emit_number(TMP, SCREEN_WIDTH)
-            emit(ASM.mul(COLUMN_DEST, COLUMN_Y, TMP)) # 1 byte a pixel, so this is bytes
-            load_var(TMP, BACKBUF)
-            emit(ASM.add_reg(COLUMN_DEST, COLUMN_DEST, TMP))
-            emit(ASM.lsr_imm(TMP, COLUMN_X, 1)) # clear the low bit ->
-            emit(ASM.lsl_imm(TMP, TMP, 1))      # ...the pair this column sits in
-            emit(ASM.add_reg(COLUMN_DEST, COLUMN_DEST, TMP))
+            @emitter.emit_number(TMP, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(COLUMN_DEST, COLUMN_Y, TMP)) # 1 byte a pixel, so this is bytes
+            @primitives.load_var(TMP, BACKBUF)
+            @emitter.emit(ASM.add_reg(COLUMN_DEST, COLUMN_DEST, TMP))
+            @emitter.emit(ASM.lsr_imm(TMP, COLUMN_X, 1)) # clear the low bit ->
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))      # ...the pair this column sits in
+            @emitter.emit(ASM.add_reg(COLUMN_DEST, COLUMN_DEST, TMP))
           end
 
           # The walk down the screen. The destination steps one screen width a row, which is
@@ -958,10 +960,10 @@ module VBlank
           # also why the walk keeps no count of which screen row it is on — the destination
           # already holds it, and nothing in the walk asks.
           def emit_buffered_column_rows
-            emit_row_loop(COLUMN_ROWS) do
+            @primitives.emit_row_loop(COLUMN_ROWS) do
               yield
-              emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
-              emit(ASM.add_imm(COLUMN_DEST, COLUMN_DEST, SCREEN_WIDTH)) # one row down
+              @emitter.emit(ASM.add_reg(COLUMN_POS, COLUMN_POS, COLUMN_STEP))
+              @emitter.emit(ASM.add_imm(COLUMN_DEST, COLUMN_DEST, SCREEN_WIDTH)) # one row down
             end
           end
 
@@ -970,7 +972,7 @@ module VBlank
           # case the walk goes on without drawing, so a wall taller than the screen still lands
           # where it should. +starts_odd+ is nil in the copy that has to test each pixel.
           def emit_buffered_column_row(width, clear, starts_odd)
-            skip = gensym
+            skip = @emitter.gensym
             emit_read_column_number(clear, skip)
 
             if starts_odd.nil?
@@ -978,7 +980,7 @@ module VBlank
             else
               emit_buffered_column_units(width, starts_odd)
             end
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # number = column[pos >> 16], COLUMN_SRC already pointing at the picture's column in
@@ -988,19 +990,19 @@ module VBlank
           # the row back — see the note on the direct screen's reader for why it cannot run past
           # the picture.
           def emit_read_column_number(clear, skip)
-            emit(ASM.ldrb_reg_lsr(ACC, COLUMN_SRC, COLUMN_POS, COLUMN_FIXED))
+            @emitter.emit(ASM.ldrb_reg_lsr(ACC, COLUMN_SRC, COLUMN_POS, COLUMN_FIXED))
 
             # A see-through pixel carries the one number that is not any color in the table,
             # so it means "leave this one alone" and the pair is not touched at all.
             return unless clear
 
-            emit_number(TMP, clear)
-            emit(ASM.cmp_reg(ACC, TMP))
-            emit_branch(:bcond, skip, cond: :eq)
+            @emitter.emit_number(TMP, clear)
+            @emitter.emit(ASM.cmp_reg(ACC, TMP))
+            @emitter.emit_branch(:bcond, skip, cond: :eq)
           end
 
           # WHICH 16-BIT UNITS a strip of +width+ pixels touches, and what each one needs. A
-          # unit whose BOTH pixels belong to the strip is written outright — no read, no
+          # unit whose both pixels belong to the strip is written outright — no read, no
           # splice, since nothing of it survives. Only a unit the strip half covers has to be
           # read and spliced. That is what makes a strip cheaper than its pixels: three pixels
           # are one whole pair and one splice, not three splices.
@@ -1018,20 +1020,20 @@ module VBlank
           def emit_buffered_column_units(width, starts_odd)
             units = column_units(width, starts_odd)
             # The number in both halves, for the units the strip covers whole.
-            emit(ASM.orr_reg_lsl(SPARE, ACC, ACC, 8)) if units.any? { |(_, kind)| kind == :both }
+            @emitter.emit(ASM.orr_reg_lsl(SPARE, ACC, ACC, 8)) if units.any? { |(_, kind)| kind == :both }
 
             units.each do |offset, kind|
-              next emit(ASM.store_halfword_offset(SPARE, COLUMN_DEST, offset)) if kind == :both
+              next @emitter.emit(ASM.store_halfword_offset(SPARE, COLUMN_DEST, offset)) if kind == :both
 
-              emit(ASM.load_halfword_offset(TMP, COLUMN_DEST, offset))
+              @emitter.emit(ASM.load_halfword_offset(TMP, COLUMN_DEST, offset))
               if kind == :high
-                emit(ASM.and_imm(TMP, TMP, 0x00FF))
-                emit(ASM.orr_reg_lsl(TMP, TMP, ACC, 8))
+                @emitter.emit(ASM.and_imm(TMP, TMP, 0x00FF))
+                @emitter.emit(ASM.orr_reg_lsl(TMP, TMP, ACC, 8))
               else
-                emit(ASM.and_imm(TMP, TMP, 0xFF00))
-                emit(ASM.orr_reg(TMP, TMP, ACC))
+                @emitter.emit(ASM.and_imm(TMP, TMP, 0xFF00))
+                @emitter.emit(ASM.orr_reg(TMP, TMP, ACC))
               end
-              emit(ASM.store_halfword_offset(TMP, COLUMN_DEST, offset))
+              @emitter.emit(ASM.store_halfword_offset(TMP, COLUMN_DEST, offset))
             end
           end
 
@@ -1039,45 +1041,136 @@ module VBlank
           # half of its pair it lands in is worked out as it goes. The dear way of doing it,
           # and only the strips at the edges of the screen ever run it.
           def emit_buffered_column_pixel_clipped(offset)
-            past = gensym
-            emit(ASM.add_imm(SPARE, COLUMN_X, offset))
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
-            emit_branch(:bcond, past, cond: :lt)
-            emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
-            emit_branch(:bcond, past, cond: :ge)
+            past = @emitter.gensym
+            @emitter.emit(ASM.add_imm(SPARE, COLUMN_X, offset))
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_left))
+            @emitter.emit_branch(:bcond, past, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(SPARE, @framebuffer.clip_right))
+            @emitter.emit_branch(:bcond, past, cond: :ge)
 
             # The pixel's own byte, then the pair it sits in and which half of it that is.
-            emit(ASM.and_imm(TMP, COLUMN_X, 1))
-            emit(ASM.add_imm(TMP, TMP, offset))
-            emit(ASM.add_reg(TMP, TMP, COLUMN_DEST))
-            emit(ASM.and_imm(HIGH, TMP, 1))
-            emit(ASM.lsr_imm(TMP, TMP, 1))
-            emit(ASM.lsl_imm(TMP, TMP, 1))
-            emit(ASM.load_halfword(SPARE, TMP))
+            @emitter.emit(ASM.and_imm(TMP, COLUMN_X, 1))
+            @emitter.emit(ASM.add_imm(TMP, TMP, offset))
+            @emitter.emit(ASM.add_reg(TMP, TMP, COLUMN_DEST))
+            @emitter.emit(ASM.and_imm(HIGH, TMP, 1))
+            @emitter.emit(ASM.lsr_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))
+            @emitter.emit(ASM.load_halfword(SPARE, TMP))
 
-            high = gensym
-            wrote = gensym
-            emit(ASM.cmp_imm(HIGH, 0))
-            emit_branch(:bcond, high, cond: :ne)
-            emit(ASM.and_imm(SPARE, SPARE, 0xFF00))
-            emit(ASM.orr_reg(SPARE, SPARE, ACC))
-            emit_branch(:b, wrote)
-            place_label(high)
-            emit(ASM.and_imm(SPARE, SPARE, 0x00FF))
-            emit(ASM.orr_reg_lsl(SPARE, SPARE, ACC, 8))
-            place_label(wrote)
-            emit(ASM.store_halfword(SPARE, TMP))
-            place_label(past)
+            high = @emitter.gensym
+            wrote = @emitter.gensym
+            @emitter.emit(ASM.cmp_imm(HIGH, 0))
+            @emitter.emit_branch(:bcond, high, cond: :ne)
+            @emitter.emit(ASM.and_imm(SPARE, SPARE, 0xFF00))
+            @emitter.emit(ASM.orr_reg(SPARE, SPARE, ACC))
+            @emitter.emit_branch(:b, wrote)
+            @emitter.place_label(high)
+            @emitter.emit(ASM.and_imm(SPARE, SPARE, 0x00FF))
+            @emitter.emit(ASM.orr_reg_lsl(SPARE, SPARE, ACC, 8))
+            @emitter.place_label(wrote)
+            @emitter.emit(ASM.store_halfword(SPARE, TMP))
+            @emitter.place_label(past)
           end
 
-          # DRAW A WHOLE PICTURE on the hidden page.
+          # Stamp a tile at a place known while building, leaving the pixels of +see_through+ (a tile
+          # with the see-through pixels marked, Image#with_tile_see_through_marked) as they are. A row
+          # copy cannot skip a pixel, so each row is written a pair of pixels at a time, the unit
+          # video memory takes: a pair both drawn is copied across whole, a pair with one drawn pixel
+          # has that half spliced in, and a pair with none is not touched. Pixels outside the draw
+          # area are left out the same way, so nothing is written past the end of a line.
           #
-          # The picture is shipped a second time as one NUMBER a pixel (see
+          # The pairs are the screen's: a tile at an odd column, or of an odd width, has a pixel of
+          # its own in a pair whose other half is another's. A pair both drawn whose two pixels sit
+          # on one halfword of the tile too is copied as it is; otherwise its two bytes are read
+          # one at a time and put together.
+          #
+          # Must only be asked of a tile #stamp_by_pairs? accepts. A tile whose pixels all draw, in
+          # whole pairs of the screen's, is blitted whole instead (#emit_blit_buffered).
+          def emit_stamp_tile_buffered(node, see_through)
+            x = @primitives.const_int(node.x)
+            y = @primitives.const_int(node.y)
+            @emitter.emit_load_data_address(BLIT_SRC, @framebuffer.indexed_blob(node.name))
+            @primitives.load_var(BLIT_TO, BACKBUF)
+            see_through.height.times do |row|
+              next unless (@framebuffer.clip_top...@framebuffer.clip_bottom).cover?(y + row)
+
+              emit_stamp_row_in_pairs(see_through, row, x, y + row)
+            end
+          end
+
+          # Whether +picture+ (a tile with its see-through pixels marked) at the place +node+ has to be
+          # stamped by #emit_stamp_tile_buffered: the place is known while building, and some pixel of
+          # the tile is not drawn or the tile is not whole pairs of the screen's (an odd column or
+          # width), which a row copy cannot take.
+          def stamp_by_pairs?(node, picture)
+            x = @primitives.const_int(node.x)
+            return false unless x && @primitives.const_int(node.y)
+            return true if x.odd? || picture.width.odd?
+
+            (0...(picture.width * picture.height)).any? { |at| !picture.drawn_at?(at) }
+          end
+
+          # How far, in pixels, one base address of a row's stamp reaches: a halfword's load and
+          # store take an offset of under 256 bytes, so a wider row is stamped from a new base
+          # every this many pixels.
+          STAMP_REACH = 240
+
+          # One row of a see-through stamp. Both base registers point at the same screen column, the
+          # first of a pair, one on the page and one in the tile (a column before the tile's first,
+          # for a tile at an odd column), so a pixel's offset is the same from either.
+          def emit_stamp_row_in_pairs(picture, row, x, screen_row)
+            first = x & ~1
+            pairs = (first...(x + picture.width)).step(2).filter_map do |column|
+              low = stamped_pixel?(picture, row, column - x, column)
+              high = stamped_pixel?(picture, row, column + 1 - x, column + 1)
+              [column, low, high] if low || high
+            end
+            pairs.group_by { |column, _, _| (column - first) / STAMP_REACH }.each_value do |reach|
+              base = first + (((reach.first[0] - first) / STAMP_REACH) * STAMP_REACH)
+              tile_at = (row * picture.width) + base - x
+              @primitives.emit_add_const(BLIT_FROM, BLIT_SRC, tile_at, SPARE)
+              @primitives.emit_add_const(BLIT_LEFT, BLIT_TO, (screen_row * SCREEN_WIDTH) + base, SPARE)
+              reach.each do |column, low, high|
+                emit_stamp_pair(column - base, low, high, tile_halfword: tile_at.even?)
+              end
+            end
+          end
+
+          # One pair of pixels of a stamp, +offset+ bytes past both bases: its +low+ and +high+ pixels
+          # each written where it is drawn. +tile_halfword+ is whether the pair is one halfword of the
+          # tile as well as of the page.
+          def emit_stamp_pair(offset, low, high, tile_halfword:)
+            if low && high && tile_halfword
+              @emitter.emit(ASM.load_halfword_offset(ACC, BLIT_FROM, offset))
+            elsif low && high
+              @emitter.emit(ASM.ldrb_offset(ACC, BLIT_FROM, offset))
+              @emitter.emit(ASM.ldrb_offset(SPARE, BLIT_FROM, offset + 1))
+              @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, SPARE, 8))
+            else
+              @emitter.emit(ASM.ldrb_offset(ACC, BLIT_FROM, offset + (low ? 0 : 1)))
+              @emitter.emit(ASM.load_halfword_offset(SPARE, BLIT_LEFT, offset))
+              emit_splice_index_reg(SPARE, ACC, !low)
+              return @emitter.emit(ASM.store_halfword_offset(SPARE, BLIT_LEFT, offset))
+            end
+            @emitter.emit(ASM.store_halfword_offset(ACC, BLIT_LEFT, offset))
+          end
+
+          # Whether the tile's pixel at +column+ of its +row+, which lands on the screen's
+          # +screen_column+, is stamped: it is one of the tile's, draws something, and sits inside the
+          # draw area.
+          def stamped_pixel?(picture, row, column, screen_column)
+            (0...picture.width).cover?(column) && picture.drawn_at?((row * picture.width) + column) &&
+              (@framebuffer.clip_left...@framebuffer.clip_right).cover?(screen_column)
+          end
+
+          # Draw a whole picture on the hidden page.
+          #
+          # The picture is shipped a second time as one number a pixel (see
           # GBA#prepare_indexed_bitmaps), so a row of it is already the bytes the screen
           # wants and a row copy is a straight run of memory — the same shape the
           # direct-color blit has, with a byte a pixel instead of two.
           #
-          # WHAT MAKES IT A STRAIGHT COPY IS THAT EVERYTHING LINES UP IN PAIRS. Video
+          # What makes it a straight copy is that everything lines up in pairs. Video
           # memory here takes two pixels at a time and will not take one, so the copying
           # engine moves 16-bit units and every end of the run has to fall on one: the
           # column the picture starts at, the picture's own width, and therefore the part
@@ -1112,52 +1205,62 @@ module VBlank
           # start of the next one.
           def emit_blit_rows_buffered(node, bmp)
             @lowering.value(node.x)
-            emit(ASM.mov_reg(BLIT_X, ACC))
+            @emitter.emit(ASM.mov_reg(BLIT_X, ACC))
             @lowering.value(node.y)
-            emit(ASM.mov_reg(BLIT_Y, ACC))
-            emit_load_data_address(BLIT_SRC, @framebuffer.indexed_blob(node.name))
+            @emitter.emit(ASM.mov_reg(BLIT_Y, ACC))
+            @emitter.emit_load_data_address(BLIT_SRC, @framebuffer.indexed_blob(node.name))
 
             bmp.height.times { |row| emit_blit_row_buffered(bmp, row) }
           end
 
+          #
+          # ## A row, from the picture to the page
+          #
+          #   picture row (bytes):     [ ..cut.. | shown part, r4 pixels | ..cut.. ]
+          #   copied by the engine:                r5 ---------------------> r3
+          #   hidden page, line r9:    [          ...      r3 ........ ]
+          #
+          # Each row goes through the same five steps below: is the line on the page, which part
+          # of the row is left after the sides, the odd single pixels at an area's edge, the two
+          # addresses, and the copy.
           def emit_blit_row_buffered(bmp, row)
-            skip = gensym
-            emit_add_const(BLIT_ROW_Y, BLIT_Y, row, SPARE)
-            emit(ASM.cmp_imm(BLIT_ROW_Y, @framebuffer.clip_top))
-            emit_branch(:bcond, skip, cond: :lt)
-            emit(ASM.cmp_imm(BLIT_ROW_Y, @framebuffer.clip_bottom))
-            emit_branch(:bcond, skip, cond: :ge)
+            skip = @emitter.gensym
+            @primitives.emit_add_const(BLIT_ROW_Y, BLIT_Y, row, SPARE)
+            @emitter.emit(ASM.cmp_imm(BLIT_ROW_Y, @framebuffer.clip_top))
+            @emitter.emit_branch(:bcond, skip, cond: :lt)
+            @emitter.emit(ASM.cmp_imm(BLIT_ROW_Y, @framebuffer.clip_bottom))
+            @emitter.emit_branch(:bcond, skip, cond: :ge)
 
             emit_blit_row_span(bmp, skip)
             emit_blit_row_odd_ends(bmp, row, skip)
             emit_blit_row_addresses(bmp, row)
             emit_blit_row_copy
-            place_label(skip)
+            @emitter.place_label(skip)
           end
 
           # What is left of this row after the sides: r10 its first column, r11 one past
           # its last, r4 how many pixels that is. A row entirely off to one side leaves.
           def emit_blit_row_span(bmp, skip)
-            emit(ASM.mov_reg(BLIT_LEFT, BLIT_X))
-            emit(ASM.cmp_imm(BLIT_X, @framebuffer.clip_left))
-            keep_left = gensym
-            emit_branch(:bcond, keep_left, cond: :ge)
-            emit_number(BLIT_LEFT, @framebuffer.clip_left)
-            place_label(keep_left)
+            @emitter.emit(ASM.mov_reg(BLIT_LEFT, BLIT_X))
+            @emitter.emit(ASM.cmp_imm(BLIT_X, @framebuffer.clip_left))
+            keep_left = @emitter.gensym
+            @emitter.emit_branch(:bcond, keep_left, cond: :ge)
+            @emitter.emit_number(BLIT_LEFT, @framebuffer.clip_left)
+            @emitter.place_label(keep_left)
 
-            emit_add_const(BLIT_RIGHT, BLIT_X, bmp.width, SPARE)
-            emit(ASM.cmp_imm(BLIT_RIGHT, @framebuffer.clip_right))
-            keep_right = gensym
-            emit_branch(:bcond, keep_right, cond: :le)
-            emit_number(BLIT_RIGHT, @framebuffer.clip_right)
-            place_label(keep_right)
+            @primitives.emit_add_const(BLIT_RIGHT, BLIT_X, bmp.width, SPARE)
+            @emitter.emit(ASM.cmp_imm(BLIT_RIGHT, @framebuffer.clip_right))
+            keep_right = @emitter.gensym
+            @emitter.emit_branch(:bcond, keep_right, cond: :le)
+            @emitter.emit_number(BLIT_RIGHT, @framebuffer.clip_right)
+            @emitter.place_label(keep_right)
 
-            emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
-            emit(ASM.cmp_imm(BLIT_UNITS, 0))
-            emit_branch(:bcond, skip, cond: :le)
+            @emitter.emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
+            @emitter.emit(ASM.cmp_imm(BLIT_UNITS, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :le)
           end
 
-          # THE ENDS OF A ROW CUT BY AN AREA WITH AN ODD EDGE. The picture starts on an even
+          # The ends of a row cut by an area with an odd edge. The picture starts on an even
           # column and is an even number of pixels wide, so only an area's edge can cut a row
           # halfway through a pair. A pixel left alone at either end is written on its own — read
           # the pair, change that half, write it back — and the row is narrowed past it, so the
@@ -1170,11 +1273,11 @@ module VBlank
             right_odd = @framebuffer.clip_right.odd?
             return unless left_odd || right_odd
 
-            emit_blit_row_end_pixel(bmp, row, BLIT_LEFT, high: true, after: -> { emit(ASM.add_imm(BLIT_LEFT, BLIT_LEFT, 1)) }) if left_odd
-            emit_blit_row_end_pixel(bmp, row, BLIT_RIGHT, high: false, before: -> { emit(ASM.sub_imm(BLIT_RIGHT, BLIT_RIGHT, 1)) }) if right_odd
-            emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
-            emit(ASM.cmp_imm(BLIT_UNITS, 0))
-            emit_branch(:bcond, skip, cond: :le)
+            emit_blit_row_end_pixel(bmp, row, BLIT_LEFT, high: true, after: -> { @emitter.emit(ASM.add_imm(BLIT_LEFT, BLIT_LEFT, 1)) }) if left_odd
+            emit_blit_row_end_pixel(bmp, row, BLIT_RIGHT, high: false, before: -> { @emitter.emit(ASM.sub_imm(BLIT_RIGHT, BLIT_RIGHT, 1)) }) if right_odd
+            @emitter.emit(ASM.sub_reg(BLIT_UNITS, BLIT_RIGHT, BLIT_LEFT))
+            @emitter.emit(ASM.cmp_imm(BLIT_UNITS, 0))
+            @emitter.emit_branch(:bcond, skip, cond: :le)
           end
 
           # One end of the row written alone when the end in +column+ is odd. The left end's
@@ -1182,52 +1285,52 @@ module VBlank
           # last pixel, leaves that last pixel as the left half of its own. +before+ and +after+
           # move the end past the pixel, so +column+ names that pixel's column while it is written.
           def emit_blit_row_end_pixel(bmp, row, column, high:, before: nil, after: nil)
-            whole = gensym
-            emit(ASM.tst_imm(column, 1))
-            emit_branch(:bcond, whole, cond: :eq)
+            whole = @emitter.gensym
+            @emitter.emit(ASM.tst_imm(column, 1))
+            @emitter.emit_branch(:bcond, whole, cond: :eq)
             before&.call
-            emit(ASM.sub_reg(ACC, column, BLIT_X))         # how far into the picture's row
-            emit_add_const(ACC, ACC, row * bmp.width, SPARE)
-            emit(ASM.ldrb_reg(ACC, BLIT_SRC, ACC))         # r0 = its colour slot
-            emit_number(SPARE, SCREEN_WIDTH)
-            emit(ASM.mul(TMP, BLIT_ROW_Y, SPARE))
-            emit(ASM.add_reg(TMP, TMP, column))
-            load_var(SPARE, BACKBUF)
-            emit(ASM.add_reg(TMP, TMP, SPARE))
-            emit(ASM.bic_imm(TMP, TMP, 1)) if high         # the pair it is the right half of
-            emit(ASM.load_halfword(SPARE, TMP))
+            @emitter.emit(ASM.sub_reg(ACC, column, BLIT_X))         # how far into the picture's row
+            @primitives.emit_add_const(ACC, ACC, row * bmp.width, SPARE)
+            @emitter.emit(ASM.ldrb_reg(ACC, BLIT_SRC, ACC))         # r0 = its colour slot
+            @emitter.emit_number(SPARE, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(TMP, BLIT_ROW_Y, SPARE))
+            @emitter.emit(ASM.add_reg(TMP, TMP, column))
+            @primitives.load_var(SPARE, BACKBUF)
+            @emitter.emit(ASM.add_reg(TMP, TMP, SPARE))
+            @emitter.emit(ASM.bic_imm(TMP, TMP, 1)) if high         # the pair it is the right half of
+            @emitter.emit(ASM.load_halfword(SPARE, TMP))
             emit_splice_index_reg(SPARE, ACC, high)
-            emit(ASM.store_halfword(SPARE, TMP))
+            @emitter.emit(ASM.store_halfword(SPARE, TMP))
             after&.call
-            place_label(whole)
+            @emitter.place_label(whole)
           end
 
           # Where the row is read from (r5) and written to (r3). Both are byte addresses
           # and both are even: the picture's width is even so a row starts on a pair, and
           # the column is even so what the sides cut off is a whole number of pairs.
           def emit_blit_row_addresses(bmp, row)
-            emit(ASM.sub_reg(BLIT_FROM, BLIT_LEFT, BLIT_X))     # how much of the row the left edge ate
-            emit_add_const(BLIT_FROM, BLIT_FROM, row * bmp.width, SPARE)
-            emit(ASM.add_reg(BLIT_FROM, BLIT_SRC, BLIT_FROM))
+            @emitter.emit(ASM.sub_reg(BLIT_FROM, BLIT_LEFT, BLIT_X))     # how much of the row the left edge ate
+            @primitives.emit_add_const(BLIT_FROM, BLIT_FROM, row * bmp.width, SPARE)
+            @emitter.emit(ASM.add_reg(BLIT_FROM, BLIT_SRC, BLIT_FROM))
 
-            emit_number(SPARE, SCREEN_WIDTH)
-            emit(ASM.mul(BLIT_TO, BLIT_ROW_Y, SPARE)) # a byte a pixel, so this is already bytes
-            emit(ASM.add_reg(BLIT_TO, BLIT_TO, BLIT_LEFT))
-            load_var(SPARE, BACKBUF)
-            emit(ASM.add_reg(BLIT_TO, BLIT_TO, SPARE))
+            @emitter.emit_number(SPARE, SCREEN_WIDTH)
+            @emitter.emit(ASM.mul(BLIT_TO, BLIT_ROW_Y, SPARE)) # a byte a pixel, so this is already bytes
+            @emitter.emit(ASM.add_reg(BLIT_TO, BLIT_TO, BLIT_LEFT))
+            @primitives.load_var(SPARE, BACKBUF)
+            @emitter.emit(ASM.add_reg(BLIT_TO, BLIT_TO, SPARE))
           end
 
           # Hand the row to the copying engine: two pixels a unit, source and destination
           # both stepping forward.
           def emit_blit_row_copy
-            emit(ASM.lsr_imm(BLIT_UNITS, BLIT_UNITS, 1))
-            emit_number(SPARE, DMA_ENABLE)
-            emit(ASM.orr_reg(BLIT_UNITS, BLIT_UNITS, SPARE))
-            emit_start_copy_engine(from: in_register(BLIT_FROM), to: in_register(BLIT_TO),
+            @emitter.emit(ASM.lsr_imm(BLIT_UNITS, BLIT_UNITS, 1))
+            @emitter.emit_number(SPARE, DMA_ENABLE)
+            @emitter.emit(ASM.orr_reg(BLIT_UNITS, BLIT_UNITS, SPARE))
+            @primitives.emit_start_copy_engine(from: in_register(BLIT_FROM), to: in_register(BLIT_TO),
                                    control: in_register(BLIT_UNITS))
           end
 
-          # WHY THE SCREEN WANTS PAIRS, said the same way in every one of these three. It is
+          # Why the screen wants pairs, said the same way in every one of these three. It is
           # the one fact behind all of them, and a person who reads it once has read it.
           TAKES_PAIRS = "The screen takes two pixels at a time and will not take one."
 
@@ -1240,7 +1343,7 @@ module VBlank
           end
 
           def refuse_odd_blit_column!(node)
-            column = const_int(node.x)
+            column = @primitives.const_int(node.x)
             found = column ? "This picture starts at column #{column}." : "The game works this column out as it runs."
             fix = column ? "Move the picture one pixel." : "Work the column out as an even number. Multiply it by 2."
             raise LoweringError,

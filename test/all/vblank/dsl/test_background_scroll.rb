@@ -8,7 +8,7 @@ module BackgroundScrollGames
   include SharedConstants
 
   # A 32x32-tile world (256x256, bigger than the 240x160 screen and wrapping at 256).
-  # It's blue, with a RED landmark tile at cell (10, 10) — map pixels (80, 80) — and a
+  # It's blue, with a red landmark tile at cell (10, 10) — map pixels (80, 80) — and a
   # GREEN one at cell (0, 0), so a wrap brings green in from the map's left edge.
   private def world_scrolled_to(sx, sy)
     map = Array.new(32) do |r|
@@ -32,7 +32,7 @@ module BackgroundScrollGames
     builder.program
   end
 
-  # A blue world with a RED landmark tile at cell (10,10) -> map px (80,80), a GREEN
+  # A blue world with a red landmark tile at cell (10,10) -> map px (80,80), a green
   # hero sprite parked at screen (100,60), and the view scrolling right 2px/frame,
   # halting after 20 frames so it settles at offset 40 (the landmark has slid left to
   # screen x=40, while the hero stays put on top).

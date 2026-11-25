@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original_layouts"
 require "pack_background_tests"
 
-# TWO SCENES, EACH IN COLOURS OF ITS OWN, as a Genesis game's title and the screen after it are: each
+# Two scenes, each in colours of its own, as a Genesis game's title and the screen after it are: each
 # scene's background is read from a made-up Genesis original through a data pack, its cells drawn
 # from two banks of fifteen colours of that scene's own, and two sprites of the scene's own are drawn
 # in seven colours each, fourteen that fill a palette. Beside them a list every scene uses: the
@@ -154,17 +154,14 @@ module SceneColorGames
         level = 0 if level < 0
         state = 0 if pass == FIRST_SCENE_AGAIN_PASS
         fade :black, level
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program
     b.program
   end
 
-  # A TITLE AND A SCREEN AFTER IT THAT NEEDS ALL FOUR PALETTES, as a Genesis game's story screen does
+  # A title and a screen after it that needs all four palettes, as a Genesis game's story screen does
   # after its title. The title draws a sprite with each of two lists the game changes, and the
   # backdrop follows the first list's second colour. The lair's four sprites are fifteen colours
   # each, none another's. Nothing in the lair draws with either list, so on a Genesis the lair has the
@@ -229,17 +226,14 @@ module SceneColorGames
         recolor :lights_colors, %i[lights_dim_colors], showing: 1 if pass == LIGHTS_BACK_PASS
         state = 1 if pass == LAIR_PASS
         state = 0 if pass == TITLE_AGAIN_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :lair
-        end
+        call({ 0 => :title, 1 => :lair }, number: :state)
       end
     end
     b.finalize_program
     b.program
   end
 
-  # A SCENE WHOSE PICTURES ARE DRAWN FROM THREE LISTS OF FIFTEEN COLOURS, as a Genesis game's pieces each
+  # A scene whose pictures are drawn from three lists of fifteen colours, as a Genesis game's pieces each
   # name one of its palette lines. Each picture uses a few of its list's colours, and the pictures are
   # in an order that spreads their colours over four palettes when they are packed by colour: two
   # halves of each list, then pictures of a list's first and last colours, which no palette holds
@@ -291,10 +285,7 @@ module SceneColorGames
       game_loop do
         pass += 1
         state = 1 if pass == LIST_SCENE_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :pieces
-        end
+        call({ 0 => :title, 1 => :pieces }, number: :state)
       end
     end
     b.finalize_program

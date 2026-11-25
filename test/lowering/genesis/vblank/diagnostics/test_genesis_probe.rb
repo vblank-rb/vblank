@@ -3,7 +3,7 @@
 require "test_helper"
 require "tmpdir"
 
-# A PORT OPENS ITS ORIGINAL GENESIS CARTRIDGE IN A PROBE, steps it, reads its work RAM by address,
+# A port opens its original Genesis cartridge in a probe, steps it, reads its work RAM by address,
 # and reads the console's tables off the file, which has no build record: the video memory, the
 # colours, the sprite table, the FM chip's registers, the scroll memory and the video registers, as
 # bytes, and the sprite table as boxes. The cartridge is a small game built here and written to a
@@ -141,6 +141,25 @@ class TestGenesisProbe < Minitest::Test
     refute_equal before, reader.picture
     assert reader.white?(164, 64), "the box has moved right"
     assert reader.blue?(41, 64), "the box has left where it was"
+  ensure
+    reader&.close
+  end
+
+  # The reader's button mask holds the second player's buttons on the second pad, and Start on the
+  # first pad is not the second player's.
+  def test_a_step_holds_the_second_pads_buttons
+    built = VBlank.build("JOINS", console: :genesis, out: StringIO.new, err: StringIO.new) do
+      joins = var :joins, 0
+      game_loop { joins += 1 if pressed(:start, player: 2) }
+    end
+    reader = VBlank::Diagnostics::Verifier.new(built, frames: 8, vars: built.var_addresses)
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:start))
+
+    assert_equal 0, reader.var(:joins)
+
+    reader.step(4, keys: VBlank::IR::Buttons.mask(:p2_start))
+
+    assert_equal 1, reader.var(:joins)
   ensure
     reader&.close
   end

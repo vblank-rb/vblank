@@ -2,31 +2,44 @@
 
 module VBlank
   module DSL
-    # A BLOCK OF A BACKGROUND'S CELLS CHANGED IN ONE LINE: filled with one tile (`fill_tiles`), with
-    # one of the cells a background from the data pack was told (`fill_cells`), or put back to the
-    # background's own map (`restore_cells`).
+    # Blocks of background cells
     #
-    #   speech.fill_cells left, top, 27, 1, EDGE          # the box's top edge
-    #   speech.fill_cells left + 1, top + 1, 25, 5, BLANK # ...and its inside
-    #   speech.restore_cells left - 1, top - 1, 29, 7     # the box closed: the picture under it again
+    # A background changes a block of its cells in one line: filled with one tile (#fill_tiles),
+    # with one of the cells a background from the data pack was told (#fill_cells), or put back
+    # to the background's own map (#restore_cells). Every Background has these.
     #
-    # A speech box opening, a menu's frame, a panel slid away: a retail game writes each block with
-    # one command, which the gap between frames carries out, cell after cell into video memory.
-    # Written as two loops of `set_tile`, the same box is a test and a note for every cell, and two
-    # hundred of them are more than a pass has time for on a slow processor. So the block is one
-    # step of the program (IR::Nodes::SetTileBlock), and a console whose games write blocks that
-    # way writes it that way; every other console plays the loops, which are the step's meaning.
+    # ```ruby
+    # speech.fill_cells left, top, 27, 1, EDGE          # the box's top edge
+    # speech.fill_cells left + 1, top + 1, 25, 5, BLANK # and its inside
+    # speech.restore_cells left - 1, top - 1, 29, 7     # the box closed: the picture under it again
+    # ```
     #
-    # Each block is +across+ cells by +down+ from +col+ and +row+, counted as `set_tile` and
-    # `set_cell` count them, and any of the four may be worked out as the game runs. A cell off the
-    # map is left alone, as `set_tile` leaves it, and a block of no cells changes nothing. The
-    # cells change where the line is, in order with every other change: a letter written into the
-    # box after it is filled shows over it.
+    # A speech box opening, a menu's frame, a panel slid away: a console's own games write each
+    # block with one command, which the gap between frames carries out cell after cell into video
+    # memory. Written as two loops of `set_tile`, the same box is a test and a note for every
+    # cell, and a few hundred of them are more than a pass has time for on a slow processor.
+    #
+    # Each block is `across` cells by `down` from `col` and `row`, counted as Background#set_tile
+    # and Background#set_cell count them, and any of the four may be worked out as the game runs.
+    # A cell off the map is left alone, and a block of no cells changes nothing. The cells change
+    # where the line is, in order with every other change: a letter written into the box after it
+    # is filled shows over it.
+    #--
+    # The block is one step of the program (IR::Nodes::SetTileBlock), and a console whose games
+    # write blocks that way writes it that way; every other console plays the loops, which are the
+    # step's meaning.
     #
     # Mixed into Background. Written as plain Ruby, not as game code: what it builds is the game's steps.
+    #++
     module BackgroundCellBlocks
-      # FILL A BLOCK OF CELLS WITH ONE TILE of the tileset, named as `set_tile` names it: a key the
-      # map was written in, or a number the game works out counting through the keys.
+      # Fills a block of cells with one tile of the tileset.
+      #
+      # The tile is named as Background#set_tile names it: a key the map was written in, or a
+      # number the game works out, counting through the keys from 0.
+      #
+      # ```ruby
+      # room.fill_tiles 0, 0, 30, 2, "#"    # a wall two cells deep along the top
+      # ```
       def fill_tiles(col, row, across, down, tile)
         refuse_unblocked_background!("fill_tiles")
         index = (@tile_index[tile] unless tile.is_a?(Value))
@@ -38,8 +51,14 @@ module VBlank
         end
       end
 
-      # FILL A BLOCK OF CELLS WITH ONE OF THE CELLS A BACKGROUND FROM THE DATA PACK WAS TOLD, named as
-      # `set_cell` names it: the original's cell number, or its place in the slot that told them.
+      # Fills a block of cells with one of the cells a background from the data pack was told.
+      #
+      # The cell is named as Background#set_cell names it: the original's cell number, or its
+      # place in the slot that told them.
+      #
+      # ```ruby
+      # speech.fill_cells left + 1, top + 1, 25, 5, BLANK
+      # ```
       def fill_cells(col, row, across, down, word)
         refuse_unblocked_background!("fill_cells")
         if @pack_cells.nil?
@@ -53,14 +72,21 @@ module VBlank
         return fill_tiles(col, row, across, down, cells.tile) if cells.tile
 
         picks = cells.picks.map { |key| key && @tile_index.fetch(key) }
-        kept = cells.picked_by.hidden_copy(:cell_block)
+        kept = cells.picked_by.hidden_copy(:cell_block_pick)
         record_tile_block(col, row, across, down, picked_by: kept, tiles: picks, from: cells.from) do |c, r|
           record(IR::Build.set_tile_picked(@name, Value.node_for(c), Value.node_for(r), Value.node_for(kept), picks, from: cells.from))
         end
       end
 
-      # PUT A BLOCK OF CELLS BACK TO THE BACKGROUND'S OWN MAP, as it was declared: what a box covered
-      # shows again. On a background from the data pack, the map is the original's.
+      # Puts a block of cells back to the background's own map, as it was declared, so what a box
+      # covered shows again.
+      #
+      # On a background from the data pack, the map is the original's. A background of several
+      # maps, or one whose walls follow its tiles, cannot put a block back, and says so.
+      #
+      # ```ruby
+      # speech.restore_cells left - 1, top - 1, 29, 7    # the box closed
+      # ```
       def restore_cells(col, row, across, down)
         refuse_unblocked_background!("restore_cells")
         refuse_restore_unknown_map!
@@ -95,7 +121,7 @@ module VBlank
 
       private
 
-      # THE MAP AS DECLARED, A TABLE IN THE CARTRIDGE that `restore_cells` reads a cell of at a time:
+      # The map as declared, a table in the cartridge that `restore_cells` reads a cell of at a time:
       # for each cell, row by row, its tile's place among the tiles the map uses, or -1 for a cell
       # that names none. So a cell put back picks among the map's own tiles, not every cell of it.
       def restore_table
@@ -106,7 +132,7 @@ module VBlank
         end
       end
 
-      # A BLOCK PUT BACK ON A BACKGROUND READ FROM THE DATA PACK AS THE GAME STARTS has no children:
+      # A block put back on a background read from the data pack as the game starts has no children:
       # its map is the file's, which the build does not hold, so it cannot be written a cell at a
       # time from a table. Only the interpreter and the builds for a computer leave a pack out, and
       # each puts the block back from the map it read (Reference#exec_set_tile_block, the runtimes'
@@ -118,7 +144,7 @@ module VBlank
         self
       end
 
-      # THE BLOCK AS ONE STEP, whose children are the same cells a cell at a time: two counted loops
+      # The block as one step, whose children are the same cells a cell at a time: two counted loops
       # over +across+ and +down+ handing +body+ each cell's column and row, then every variable the
       # loops changed (theirs, and +also_zeroed+) set back to nought, so a console that writes the
       # block its own way, and never runs them, holds the same numbers.
@@ -179,10 +205,10 @@ module VBlank
                 "#{verb} cannot change a block of it. To fix this, give each look of the room a map of its own " \
                 "and use show_map."
         end
-        refuse_set_tile_on_streamed_map!
+        refuse_block_on_streamed_map!(verb)
       end
 
-      # RESTORING NEEDS THE MAP AS THE BUILD KNOWS IT. A background of several maps shows whichever
+      # Restoring needs the map as the build knows it. A background of several maps shows whichever
       # the game last handed it; one whose walls go with its tiles would need each cell's wall put
       # back too; and one read from the data pack as the game starts, declared `held: true`, would
       # hold cells the build cannot name, since its map is the file's.

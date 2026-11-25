@@ -7,7 +7,7 @@ require "tmpdir"
 require "vblank/live"
 require "shell_screen_tests"
 
-# A SHELL'S FIRST SCREEN MADE THE GAME'S OWN, IN A WEB PAGE (`shell_screen`; ShellScreenTests has
+# A shell's first screen made the game's own, in a web page (`shell_screen`; ShellScreenTests has
 # the port and the answer key). The browser is node with a stand-in for it (page_harness.js), as in
 # test_js_shell.rb. Each picture the page shows is held to the same screen drawn by a plain game,
 # pixel for pixel, and LOAD ROM still unpacks the copy and plays the game.

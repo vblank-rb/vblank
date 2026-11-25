@@ -42,6 +42,19 @@ class TestCore < Minitest::Test
     played(red_screen, 120) { |core| assert_equal MARKER, core.ram_read32(MARKER_AT) }
   end
 
+  # A state saved puts back the RAM it was saved with, over whatever was written after.
+  def test_a_saved_state_puts_ram_back
+    played(red_screen, 120) do |core|
+      core.ram_write32(0x0010_0000, 0x1234_5678)
+      state = core.serialize
+      core.ram_write32(0x0010_0000, 0x0BAD_F00D)
+      core.unserialize(state)
+
+      assert_equal 0x1234_5678, core.ram_read32(0x0010_0000)
+      assert_raises(ArgumentError) { core.unserialize("not a state".b) }
+    end
+  end
+
   def test_the_screen_is_the_red_the_program_filled_it_with
     played(red_screen, 120) do |core|
       assert_equal [320, 240], [core.width, core.height]
@@ -122,6 +135,27 @@ class TestCore < Minitest::Test
   def test_a_button_the_pad_does_not_have_is_refused
     played(red_screen, 0) do |core|
       assert_raises(ArgumentError) { core.set_buttons(%i[a]) }
+    end
+  end
+
+  # The console is switched on again with a Multitap in, and plays the program as before. Its plugs are
+  # read in VBlank's own tests, by the runtime that reads them (test_ps1_multitap.rb).
+  def test_a_multitap_is_plugged_in_before_the_first_frame
+    played(red_screen, 0) do |core|
+      core.plug_in_multitap
+      core.set_buttons(%i[cross], port: 4)
+      120.times { core.run_frame }
+
+      assert core.multitap?
+      assert_equal MARKER, core.ram_read32(MARKER_AT)
+    end
+  end
+
+  def test_a_multitap_is_refused_once_a_frame_has_run
+    played(red_screen, 1) do |core|
+      error = assert_raises(ArgumentError) { core.plug_in_multitap }
+
+      assert_match(/before the first frame/, error.message)
     end
   end
 

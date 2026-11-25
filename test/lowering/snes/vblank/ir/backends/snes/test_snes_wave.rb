@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE WAVE VOICE ON A SUPER NINTENDO. The Advance's third voice loops 32 steps of four bits that the
+# The wave voice on a Super Nintendo. The Advance's third voice loops 32 steps of four bits that the
 # game chooses, at one of five loudnesses, which it makes by keeping so many quarters of each step
 # and dropping what does not divide; it never fades. The S-DSP plays recordings, so each waveform a
 # game names, at each loudness it plays it, is a looped recording of those steps, held at a fixed

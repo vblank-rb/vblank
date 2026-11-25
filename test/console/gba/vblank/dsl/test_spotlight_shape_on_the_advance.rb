@@ -32,7 +32,7 @@ class TestSpotlightShapeOnTheAdvance < Minitest::Test
 
   private def shown(program, frames: 2) = game_player.run(program, frames: frames).screen
 
-  # A DIAMOND, said as how far the light reaches either side of its middle on each row: 40 on the
+  # A diamond, said as how far the light reaches either side of its middle on each row: 40 on the
   # middle row, one less for each row away, nothing past 40 rows.
   def test_a_light_can_take_a_shape_the_game_gives_it_a_row_at_a_time
     diamond = lit_room { |light| light.shape { |row| 40 - (row - light.y).abs } }
@@ -71,7 +71,7 @@ class TestSpotlightShapeOnTheAdvance < Minitest::Test
     assert_backends_agree(widening, frames: [2, 4, 7], name: "WIDEN")
   end
 
-  # A VARIABLE A SHAPE DECLARES STARTS EVERY ROW AS IT WAS DECLARED, so nothing is carried from one
+  # A variable a shape declares starts every row as it was declared, so nothing is carried from one
   # row to the next or one frame to the next: a row is the row and the game's numbers, and nothing
   # else, which is what lets the console keep rows it has already worked out.
   def test_a_shapes_own_variable_starts_every_row_afresh

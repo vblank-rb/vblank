@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# THE MIXER: several recordings sounding at once, added together a frame at a time into one stream
+# The mixer: several recordings sounding at once, added together a frame at a time into one stream
 # of sound, the way a console that mixes in software does it. The arithmetic is runtime_features/
 # mix/rg_mix.c's, kept to the bit, and that file says it and the layout of @rg_game_mix and
 # @rg_game_recordings. Joined into the runtime's class for a game that has a recording. A console

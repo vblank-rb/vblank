@@ -4,9 +4,9 @@ require "test_helper"
 require "node_copy"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# COPIES OF A GAME BUILT AS JAVASCRIPT MAKE AND JOIN A ROOM ON THE STAND-IN RELAY (rg_relay.js): they speak the
+# Copies of a game built as JavaScript make and join a room on the stand-in relay (rg_relay.js): they speak the
 # relay's messages, get a code, give it to the others, and play, beside each other and beside a Ruby build of the
 # game. A browser can only make a WebSocket connection, so this is how a page reaches a match. In these tests
 # the line to the relay is carried by test/node_copy.rb, as the match's messages are in test_node_lockstep.rb.

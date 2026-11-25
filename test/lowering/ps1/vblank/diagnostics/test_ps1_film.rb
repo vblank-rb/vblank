@@ -6,14 +6,16 @@ require "open3"
 require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
+require "heard_film"
 
-# A FILM OF A PLAYSTATION PROGRAM: a side naming a PS-X EXE opens in Beetle PSX, the PlayStation's
+# A film of a PlayStation program: a side naming a PS-X EXE opens in Beetle PSX, the PlayStation's
 # emulator, and not in the Advance's, and plays and shows frames as any console's side does. The game
 # is a small one of this repository's own: a red square on blue that walks right while right is down.
 class TestPS1Film < Minitest::Test
   # A film is made by ImageMagick and ffmpeg and read back by ffprobe: child processes, which hang
   # inside a Ractor. And the task is defined in a rake application of the test's own.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   FilmCartridge = VBlank::Diagnostics::FilmCartridge
   Verifier = VBlank::Diagnostics::Verifier
@@ -60,13 +62,16 @@ class TestPS1Film < Minitest::Test
     %w[interpreter ruby].each do |lowering|
       program = FilmCartridge.open(game)
       lowered = FilmCartridge.open(game, lowering: lowering)
+      # A press reaches a PlayStation program a frame after its pad saw it, as it reaches the console's
+      # own games (PS1::Runtime::Pads), so the lowering's side is handed the same presses a frame later.
       (1..12).each do |frame|
-        keys = frame.between?(4, 8) ? RIGHT : 0
-        shown = [program, lowered].map do |side|
-          File.binread(side.step(1, keys: keys).screenshot(File.join(scratch, "side.png")))
+        keys = [frame.between?(4, 8) ? RIGHT : 0, frame.between?(5, 9) ? RIGHT : 0]
+        shown = [program, lowered].zip(keys).map do |side, held|
+          File.binread(side.step(1, keys: held).screenshot(File.join(scratch, "side.png")))
         end
-        # Frame 1 is the console's own start, before the program's first picture.
-        assert_equal shown.first, shown.last, "on #{lowering}, frame #{frame}" if frame > 1
+        # Frames 1 and 2 are the console's own start, before the program's first picture: it waits two
+        # blanks before its first pass (PS1::Runtime::Boot#emit).
+        assert_equal shown.first, shown.last, "on #{lowering}, frame #{frame}" if frame > 2
       end
     ensure
       program&.close
@@ -152,6 +157,20 @@ class TestPS1Film < Minitest::Test
     error = assert_raises(ArgumentError) { FilmCartridge.open(path, console: :gba) }
     assert_match(/PlayStation/, error.message)
     assert_match(/console: :ps1/, error.message)
+  end
+
+  # A PlayStation side heard in a film: its tone is on the film frames that show the frames it put
+  # the tone out on, as the reader hears them.
+  def test_a_playstation_side_is_heard_on_the_frames_that_show_its_sound
+    program = VBlank.build("HEARD", console: :ps1, out: StringIO.new, err: StringIO.new, &beeping_game_source(12))
+    film = VBlank::Diagnostics::Film.make(File.join(scratch, "heard.mp4"), sides: { "ours" => -> { FilmCartridge.open(program) } },
+                                                                          parts: [1..30], sound: "ours")
+    reader = Verifier.new(program, frames: 0).step(30)
+    left, = film_sound(film)
+
+    assert_in_delta onset(reader.audio_energy_by_frame), onset(left), 1
+  ensure
+    reader&.close
   end
 
   private def scratch = @scratch ||= Dir.mktmpdir("ps1-film-test")

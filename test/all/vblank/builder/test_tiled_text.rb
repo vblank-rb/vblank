@@ -146,6 +146,31 @@ class TestTiledText < Minitest::Test
     assert_glyph(s, (6 - framework_drawing_lag).to_s, 100, 20, WHITE)
   end
 
+  # An item of a plain Ruby Array is followed as a variable is: each frame shows what the item
+  # holds then, whether its index is written in the program or worked out by the game.
+  def test_a_live_number_follows_an_item_of_an_array
+    prog = plain_ruby_program do
+      screen :tiled
+      shown = Array.new(3, 0)
+      at = 0
+      draw_number shown[1], 100, 20, :white, digits: 1
+      draw_number shown[at], 120, 20, :white, digits: 1
+      game_loop do
+        shown[1] = 7
+        shown[2] = 4
+        at = 2
+      end
+    end
+    s = game_player.run(prog, frames: 3).screen
+    assert_glyph(s, "7", 100, 20, WHITE)
+    assert_glyph(s, "4", 120, 20, WHITE)
+  end
+
+  # A game block written as plain Ruby, rewritten and built as a game is.
+  private def plain_ruby_program(&game)
+    VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false)).program
+  end
+
   # --- text declared under a condition: a blinking prompt ---
   #
   # A tiled glyph is not painted where the call sits — it is a sprite the console
@@ -236,5 +261,7 @@ class TestTiledText < Minitest::Test
       end
     end
     assert_match(/follows a variable/, err.message)
+    assert_match(/The number at test_tiled_text\.rb:\d+ is a working-out/, err.message, "it says where, early")
+    assert_match(/Then draw `shown`\.\z/, err.message, "and ends on the fix")
   end
 end

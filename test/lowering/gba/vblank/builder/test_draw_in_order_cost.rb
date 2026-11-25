@@ -4,7 +4,7 @@ require "test_helper"
 require "draw_order_cost_games"
 require "sprite_count_cost_games"
 
-# WHAT AN ORDER COSTS ON THE ADVANCE, measured in the emulator. The sort is written in the
+# What an order costs on the Advance, measured in the emulator. The sort is written in the
 # cartridge's own code beside the order's numbers, about twenty instructions a thing on a frame
 # where nobody passed anybody, so seven things cost a sliver of the frame and thirty a little more
 # than four times that.
@@ -21,7 +21,7 @@ class TestGBADrawInOrderCost < Minitest::Test
     assert_operator share, :<, 1 / 60.0, "an order of thirty costs #{(share * 100).round(2)}% of the frame"
   end
 
-  # A THING NOT SHOWING is left out of the sort and of the run's copy into the sprite table
+  # A thing not showing is left out of the sort and of the run's copy into the sprite table
   # (ShownSort): it costs the test of whether it shows and one of whether it showed last pass, a
   # handful of instructions each, so forty-four cost under a line and a half of the frame's 228.
   LINES = 228
@@ -41,7 +41,22 @@ class TestGBADrawInOrderCost < Minitest::Test
     assert_operator share * LINES, :<, BOUND_FORTY_FOUR, "forty-four empty places cost #{(share * LINES).round(2)} lines"
   end
 
-  # AND A PLACE THAT CAN HIDE IS WRITTEN SHORT. The sort is a routine that runs every frame, so the
+  # A pool's empty places cost nothing a pass. A game keeps a pool for each kind of thing a room can
+  # hold, sized for its busiest room, and puts them all in one order, so most of its places are empty
+  # most of the time. A console's own games walk a list of what is in play and never see an empty
+  # slot; here a pool's places are asked as one (ShownSort::RankRun), its tests and one read of its
+  # count, and the flags are written only on a pass the count changed. Twelve pools of eight with
+  # four things cost under a line and a quarter; asked a place at a time they cost 2.7.
+  BOUND_TWELVE_POOLS = 1.25
+
+  def test_twelve_pools_of_eight_mostly_empty_in_an_order_cost_under_a_line_and_a_quarter
+    share = SpriteCountCostGames.share_beyond(:gba, SpriteCountCostGames.pools_game(:gba, 12, 8, ordered: true),
+                                              SpriteCountCostGames.pools_game(:gba, 12, 8))
+
+    assert_operator share * LINES, :<, BOUND_TWELVE_POOLS, "the order of twelve pools costs #{(share * LINES).round(2)} lines"
+  end
+
+  # And a place that can hide is written short. The sort is a routine that runs every frame, so the
   # build puts it in the console's quick memory if it fits (GBA::Placement), beside every other
   # routine that wants a place there: bytes it takes are bytes another routine cannot have, and a
   # sort grown by a few kilobytes pushes out something else that runs every frame. A place costs its

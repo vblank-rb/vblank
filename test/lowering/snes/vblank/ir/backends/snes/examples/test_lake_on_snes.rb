@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/lake").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/lake").to_s)
 
 # examples/lake.rb on a Super Nintendo: the water bent row by row over the scene, and the
 # jellyfish half see-through on the console's colour math, drifting on the same swell — held to

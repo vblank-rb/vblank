@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # A ROUTINE TOO BIG FOR A BANK, CUT INTO PARTS THAT EACH FIT ONE. A cartridge bigger than the
+      # A routine too big for a bank, cut into parts that each fit one. A cartridge bigger than the
       # processor can see at once is seen a bank at a time, and a routine has to be in one bank
       # whole: the processor cannot run on from the end of a bank into the next. So a routine whose
       # code comes to more than a bank holds is cut. A run of statements side by side becomes a
@@ -14,7 +14,7 @@ module VBlank
       # How big a bank is, and so how big a routine may come to, is the console's; the lowering sets
       # it. Where to cut is the same on every console, and decided here.
       #
-      # EACH ROUTINE IS MADE ONCE. Nearly every routine fits a bank, so it is made for real straight
+      # Each routine is made once. Nearly every routine fits a bank, so it is made for real straight
       # away and its size read off the finished section. Only one that comes out too big is taken
       # back — the lowering put back as it was before it (its LOWERING_STATE's snapshot) — measured
       # whole by making it and throwing it away (its #bytes_of), cut, and made again as the routine
@@ -126,6 +126,13 @@ module VBlank
             run_bytes = 0
           end
           list.each do |node|
+            # A statement holding a `break` or `next` of a loop around it stays in that loop's
+            # routine, where the loop's labels are (IR::LoopJumps); what it holds is cut instead.
+            if LoopJumps.escapes?(node)
+              flush.call
+              next kept << cut_inside(node, base, parts)
+            end
+
             size = @sizes.fetch(node) { @measure.call([node]) }
             if size <= @most_part_bytes
               flush.call if run_bytes + size > @most_part_bytes

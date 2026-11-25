@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/clock").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/clock").to_s)
 
 # examples/clock.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, with the windowless program's clock started at the same moment as the interpreter's:

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE SOUND CHIP HAS EIGHT VOICES, and a game with no use for the square, wave and noise parts has
+# The sound chip has eight voices, and a game with no use for the square, wave and noise parts has
 # all eight for its recordings. Read on the cartridge's own sound chip: a voice whose envelope is
 # above nothing is sounding.
 class TestSNESEightVoices < Minitest::Test

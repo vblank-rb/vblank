@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SMALL BITMAP GAMES WITH A SPRITE SHOWN OVER THE PICTURE (`sprite ..., over_picture: true`), for
+# Small bitmap games with a sprite shown over the picture (`sprite ..., over_picture: true`), for
 # the verb's tests through `game_player` (test/all/vblank/builder/test_sprite_over_picture.rb) and the
 # Advance cartridge's own (test/lowering/gba/vblank/builder/test_sprite_over_picture_cartridge.rb).
 # Each game paints its whole picture again on every pass, as a game drawing a 3D view does.

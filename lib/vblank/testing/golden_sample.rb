@@ -2,7 +2,7 @@
 
 module VBlank
   module Testing
-    # THE GOLDEN PATH'S RANDOM PART. `rake test:golden` plays the files its list names, which are
+    # The golden path's random part. `rake test:golden` plays the files its list names, which are
     # chosen by hand and the same every day, and a share of the other test files drawn at random,
     # different on every run. So over many days the everyday run touches the whole suite, while
     # any one run stays short.

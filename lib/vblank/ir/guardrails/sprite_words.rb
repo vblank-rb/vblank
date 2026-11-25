@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Guardrails
-      # HOW THE SPRITE CHECKS NAME WHAT THEY FOUND, so every one of them names it the same way.
+      # How the sprite checks name what they found, so every one of them names it the same way.
       #
       # A sprite the game declared is known by the name it was declared under. A pool is a
       # sprite for every instance it can hold, each with a name of the framework's own, and

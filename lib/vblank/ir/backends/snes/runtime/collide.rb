@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # DO TWO SPRITES' DRAWN PIXELS TOUCH? (`a.overlaps?(b)` without a `hitbox:`,
+          # Do two sprites' drawn pixels touch? (`a.overlaps?(b)` without a `hitbox:`,
           # Reference#pixels_overlap?.) Each sprite is showing one of its pictures, picked by a
           # number, at a place; the two pictures' boxes may overlap, and where they do, each
           # pixel is asked whether both pictures draw it. The first one both draw answers yes.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHICH PLAYER EACH GAMEPAD AND KEY IS in the desktop window (runtime/rg_seats.h): a gamepad takes
+# Which player each gamepad and key is in the desktop window (runtime/rg_seats.h): a gamepad takes
 # the lowest player no gamepad has and keeps it while plugged in, and the keyboard's right hand is
 # player 2. That the window hands them to the game is test_native_desktop.rb's.
 class TestNativeSeats < Minitest::Test

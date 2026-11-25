@@ -5,7 +5,7 @@ require "differential"
 require "screen_backdrop_games"
 require "all/vblank/builder/test_pack_backdrops"
 
-# A FADE THAT TAKES A TINT'S PLACE, ON THE ADVANCE'S CARTRIDGE, read in the emulator. A tint on a
+# A fade that takes a tint's place, on the Advance's cartridge, read in the emulator. A tint on a
 # tiled screen walks the table of background colours, and a whole-number fade after it is the
 # display's own blend, so the fade first copies the table back as the cartridge holds it
 # (GBA::PaletteTint#emit_lift_palette_tint). The cartridge holds the colours each tile was drawn
@@ -54,7 +54,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
   # Called back from a game block, where `self` is the builder.
   def halves_of(colors) = halves(colors)
 
-  # A BACKGROUND THAT FOLLOWS ONE LIST THE GAME RECOLOURS: three tiles drawn with :sign, which is
+  # A background that follows one list the game recolours: three tiles drawn with :sign, which is
   # told to hold another set before the tint and another after the fade.
   private def one_followed_list
     game do
@@ -77,7 +77,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
     assert_backends_agree(one_followed_list, frames: EVERY_PASS)
   end
 
-  # A BACKGROUND DRAWN WITH ANOTHER LIST, one nothing recolours, from the second pass.
+  # A background drawn with another list, one nothing recolours, from the second pass.
   private def one_borrowed_list
     game do
       pass = var :pass, 0
@@ -95,7 +95,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
     assert_backends_agree(one_borrowed_list, frames: EVERY_PASS)
   end
 
-  # THE SAME IN A SCENE'S OWN BACKGROUND, whose group is its own only while its scene is up: the
+  # The same in a scene's own background, whose group is its own only while its scene is up: the
   # title is up through the tint and the fade, and the menu, drawn as drawn, from two passes after.
   private def a_scenes_borrowed_list
     game do
@@ -108,10 +108,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
         state = 1 if pass == LIFT_PASS + 2
         tint :red, 50 if pass == TINT_PASS
         fade :black, 25 if pass == LIFT_PASS
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :menu
-        end
+        call({ 0 => :title, 1 => :menu }, number: :state)
       end
     end
   end
@@ -120,7 +117,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
     assert_backends_agree(a_scenes_borrowed_list, frames: EVERY_PASS)
   end
 
-  # A BACKDROP THAT FOLLOWS A LIST, declared black and told to hold blue on the second pass, behind
+  # A backdrop that follows a list, declared black and told to hold blue on the second pass, behind
   # the corner tile, whose left half is see-through.
   private def a_backdrop_following_a_list
     builder = Builder.new
@@ -146,7 +143,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
     assert_backends_agree(a_backdrop_following_a_list, frames: EVERY_PASS)
   end
 
-  # A SCENE'S OWN BACKDROP FROM A DATA PACK SLOT, IN A SCENE THAT SENDS NO COLOURS OF ITS OWN: the
+  # A scene's own backdrop from a data pack slot, in a scene that sends no colours of its own: the
   # one background is every scene's, so the table of colours the fade copies back holds the game's
   # backdrop, black, in its first place. The scene says its backdrop is the second bank's first
   # colour.
@@ -164,7 +161,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
         pass += 1
         tint :red, 50 if pass == TINT_PASS
         fade :black, 25 if pass == LIFT_PASS
-        case_var(:state) { when_val 0, :title }
+        call({ 0 => :title }, number: :state)
       end
     end
     builder.finalize_program
@@ -179,7 +176,7 @@ class TestTintLiftedByFadeCartridge < Minitest::Test
     end
   end
 
-  # THE SAME IN A SCENE THAT SENDS ITS OWN COLOURS, whose table carries the scene's backdrop in its
+  # The same in a scene that sends its own colours, whose table carries the scene's backdrop in its
   # first place, so the copy puts it back by itself. The title's is the second bank's first colour,
   # and the title is up when the fade takes the tint's place.
   private def a_scenes_backdrop_from_the_pack(from)

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# WHICH EXAMPLES THE NATIVE LOWERING CAN WRITE AS C TODAY, and what each of the others is refused
+# Which examples the native lowering can write as C today, and what each of the others is refused
 # for. The native backend trails the other two (see atop IR::Backends), so this list is how far
 # it has got, said by trying each example rather than by anybody keeping a note.
 #

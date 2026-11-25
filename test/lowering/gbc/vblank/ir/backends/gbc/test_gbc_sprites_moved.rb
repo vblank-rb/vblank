@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A SPRITE THAT ONLY MOVED A LITTLE keeps its pieces and has their places rewritten where they are
+# A sprite that only moved a little keeps its pieces and has their places rewritten where they are
 # in the sprite table, which is a tenth of placing it afresh. A screen shaken a pixel a frame moves
 # every sprite on it, and placing them all afresh ran the frame over. Every case here is played
 # against the interpreter, since what this can get wrong is a piece left in the wrong place.

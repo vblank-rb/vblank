@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHAT A SCENE DOES TO THE SCREEN AS IT TAKES OVER.
+    # What a scene does to the screen as it takes over.
     #
     # A scene owns the scenery declared inside it: its backgrounds are on screen while it is
     # the active state and not otherwise. That is what lets scenes take turns with the few
@@ -13,22 +13,22 @@ module VBlank
     #
     #   * The scenery every screen shows (a background declared in no scene) stays up
     #     throughout. Nothing hands it over.
-    #   * A scene's own scenery goes up AS IT TAKES OVER, once, and not where its
+    #   * A scene's own scenery goes up as it takes over, once, and not where its
     #     `background` statement is written. That statement sits in the scene's own
     #     routine, which runs every frame the scene is active, and putting a background up
     #     again puts it back exactly as declared — throwing away the scroll the game had
     #     asked for and every cell it had changed.
-    #   * It goes up AS DECLARED each time: a cell changed with set_tile, or a map chosen
+    #   * It goes up as declared each time: a cell changed with set_tile, or a map chosen
     #     with show_map, is left behind with the visit that changed it, and what records which
     #     map is showing goes back to the first. A game that remembers an opened door opens
     #     it again on the way in.
     #   * A run of tiles the game paints from a list (`tiles ..., from: list`) goes up showing
-    #     what its list holds AT THAT MOMENT, as if the game had written `changed`. There is
+    #     what its list holds at that moment, as if the game had written `changed`. There is
     #     nowhere else it could come from: the scene before has used the same video memory
     #     for its own scenery, and the list is the only place the pixels are kept.
     #   * The scene before's own scenery comes down, or it would show through wherever this
     #     scene's has a hole — whether or not this scene has any scenery of its own.
-    #   * Handing over from one KIND of screen to another replaces the whole display: a
+    #   * Handing over from one kind of screen to another replaces the whole display: a
     #     painted picture, one drawn from tiles and one that turns share the same video
     #     memory in ways that cannot coexist, so the console shows the new one and nothing
     #     of the old. What was up is gone, and comes back only by being put up again —
@@ -43,12 +43,12 @@ module VBlank
       # the same kind share a display; two kinds cannot.
       DISPLAYS = { bitmap: :painted, tiled: :tiles, rotozoom: :turning }.freeze
 
-      # WHAT ONE SCENE PUTS UP AS IT TAKES OVER, as plain data, for a backend to carry out.
+      # What one scene puts up as it takes over, as plain data, for a backend to carry out.
       #
       # +screen+ is the `screen` the scene declares, or nil for one that draws on the screen it
       # was reached on: the display changes first, since changing its kind wipes whatever was
       # put up before it. +mode+ is the screen it draws on either way, as IR::Modes names it.
-      # Whether that CHANGES the kind of screen depends on the scene before, so a backend asks
+      # Whether that changes the kind of screen depends on the scene before, so a backend asks
       # that as the scene arrives (see .crossing?). +scenery+ is its own backgrounds, in the order the stack draws them;
       # +map_choices+ the variables saying which map each shows, put back to the first;
       # +painted_tiles+ the runs of tiles that scenery shows, and +painted_pictures+ the
@@ -81,12 +81,12 @@ module VBlank
         def loads_first? = loads_first
       end
 
-      # WHAT EVERY SCREEN DRAWN FROM TILES SHOWS, to put up again after a screen of another
+      # What every screen drawn from tiles shows, to put up again after a screen of another
       # kind replaced the display: the scenery declared in no scene, the runs of tiles it
       # shows that the game paints from lists, and the painted pictures of the sprites
       # declared in no scene — each copied in from its list as it is now.
       #
-      # The scenery goes up AS DECLARED, the same as a scene's own: the cells the game changed
+      # The scenery goes up as declared, the same as a scene's own: the cells the game changed
       # and the map it chose were in the video memory the other screen has used since, so
       # +map_choices+ go back to the first map.
       AlwaysUp = Data.define(:scenery, :map_choices, :painted_tiles, :painted_pictures)
@@ -116,7 +116,7 @@ module VBlank
         @arrivals = {}
       end
 
-      # THE STATUS BAR SHOWN BEFORE ITS OWN LINE RUNS, or nil.
+      # The status bar shown before its own line runs, or nil.
       #
       # The interpreter builds its picture from the scenery every screen shows, whether or not each line
       # has run yet (Reference#showing_scenery). A background's own picture is stamped as its line runs,
@@ -156,7 +156,7 @@ module VBlank
         end
       end
 
-      # THE COLOUR THE GAME SHOWS WHEREVER NOTHING IS DRAWN, as its own `screen` — the one in no
+      # The colour the game shows wherever nothing is drawn, as its own `screen` — the one in no
       # scene — names it: 0, black, when it names none. A scene that names no backdrop shows this.
       def game_backdrop = (@game_screen.backdrop_or_place_in_file if @game_screen && DISPLAYS.key?(@game_screen.mode)) || 0
 
@@ -164,7 +164,7 @@ module VBlank
       # drawn, as every game did before a screen could name one, and a backend emits nothing for it.
       def backdrops? = @backdrops
 
-      # DOES THE BACKDROP FOLLOW A LIST OF COLOURS the game recolours (Nodes::ColorList#backdrop_place)?
+      # Does the backdrop follow a list of colours the game recolours (Nodes::ColorList#backdrop_place)?
       # Then only the list's writes change it: the game's own `screen` puts up the colour the list
       # starts with, and every other `screen`, and every scene arriving, leaves the backdrop as the
       # list has it. A scene that took the backdrop back to the declared colour on a screen the
@@ -175,7 +175,7 @@ module VBlank
       # (rather than the game's)? A raw display setting is the author's own register write.
       def scene_screen?(node) = DISPLAYS.key?(node.mode) && !scene_of_screen(node).nil?
 
-      # THE BACKDROP A `screen` STATEMENT MEANS where it is written: at the top of a scene, the
+      # The backdrop a `screen` statement means where it is written: at the top of a scene, the
       # scene's (Arrival#backdrop, its own or the game's); anywhere else its own, or the game's
       # where it names none. Black on a painted screen, and on a raw display setting, which names
       # no kind of screen. Nil, the backdrop left as it is, for every `screen` but the game's own
@@ -238,7 +238,7 @@ module VBlank
       # The scenery on screen while +scene+ runs: what every screen shows, and its own.
       def showing(scene) = @scenery.select { |node| node.scene.nil? || node.scene == scene }
 
-      # THE DECLARED BACKGROUND a scroll, a changed cell or a map handed over (+node+) names, in the routine
+      # The declared background a scroll, a changed cell or a map handed over (+node+) names, in the routine
       # of +scene+ (nil outside every scene's): the one by that name, or, where several scenes each declare
       # one by that name, +scene+'s own, or the one every screen shows. Nil where which it is cannot be told
       # while the game is built: a lowering then makes the change to the one of the scene up as it runs. A
@@ -252,7 +252,7 @@ module VBlank
         own || always_up.scenery.find { |bg| bg.name == node.name }
       end
 
-      # DOES THE STACK PUT ONE OF +scene+'S OWN BACKGROUNDS BEHIND ONE EVERY SCREEN SHOWS? A lowering that
+      # Does the stack put one of +scene+'S own backgrounds behind one every screen shows? A lowering that
       # keeps a scene's own scenery in the layers in front of the shared scenery cannot show that. The block
       # picks the backgrounds the lowering stacks in its layers (all of them where none is given).
       def own_scenery_behind_shared?(scene, &stacked)

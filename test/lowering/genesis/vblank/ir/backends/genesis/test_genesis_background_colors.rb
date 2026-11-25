@@ -68,15 +68,12 @@ class TestGenesisBackgroundColors < Minitest::Test
         tick += 1
         state = 1 if tick == 4
         state = 0 if tick == 7
-        case_var(:state) do
-          when_val 0, :hall
-          when_val 1, :cellar
-        end
+        call({ 0 => :hall, 1 => :cellar }, number: :state)
       end
     end
   end
 
-  # FIVE LISTS ON ONE SCREEN, more than the four palettes: the fifth shares a palette with one of the
+  # Five lists on one screen, more than the four palettes: the fifth shares a palette with one of the
   # others, at places of its own past that list's. The wall is red for the first passes, every list told
   # its other colours, then each list's own; the checked run holds every pass to the interpreter.
   def test_more_lists_than_a_genesis_has_palettes_for_share_them

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE GENESIS'S OWN TILE LAYOUT, read by IR::FormatReading, held to what its lowering writes. (Its
+# The Genesis's own tile layout, read by IR::FormatReading, held to what its lowering writes. (Its
 # colours are held to GenesisHardware.color_word in test/all/vblank/ir/test_format_reading.rb.)
 class TestGenesisFormatReading < Minitest::Test
   Reading = VBlank::IR::FormatReading

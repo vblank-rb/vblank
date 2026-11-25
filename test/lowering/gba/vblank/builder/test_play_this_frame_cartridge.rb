@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_play_this_frame"
 
-# A SONG OR AN EFFECT ASKED FOR `this_frame: true` ON THE ADVANCE'S CARTRIDGE, heard in the
+# A song or an effect asked for `this_frame: true` on the Advance's cartridge, heard in the
 # emulator: on its first frame the frame it is asked for, where asked the plain way it is a frame
 # later. The notes every run plays are in test/all/vblank/builder/test_play_this_frame.rb.
 class TestPlayThisFrameCartridge < Minitest::Test
@@ -36,7 +36,7 @@ class TestPlayThisFrameCartridge < Minitest::Test
     end
   end
 
-  # A SONG WHOSE FIRST NOTE IS ON ITS FIRST FRAME, on each of the console's own voices: asked
+  # A song whose first note is on its first frame, on each of the console's own voices: asked
   # this_frame, that note is heard on the frame of the pass that asks, and it goes on sounding;
   # asked the plain way, a frame later.
   def test_the_console_sounds_a_first_note_on_its_own_voices_the_frame_it_is_asked_for
@@ -64,7 +64,7 @@ class TestPlayThisFrameCartridge < Minitest::Test
     end
   end
 
-  # A SONG THAT PLAYS ONCE, asked for this_frame: heard from the pass that asks, and quiet from
+  # A song that plays once, asked for this_frame: heard from the pass that asks, and quiet from
   # the frame after its end — while the game goes on naming it every frame, which is when the
   # player has to keep it silent.
   def test_the_console_silences_a_song_that_ends_asked_for_this_frame

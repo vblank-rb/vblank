@@ -3,20 +3,20 @@
 require "ripper"
 require_relative "../lib/vblank"
 
-# WHAT A BUILD IS ALLOWED TO CALL THE CONSOLE'S QUICK MEMORY, checked over the whole library.
+# What a build is allowed to call the console's quick memory, checked over the whole library.
 #
 # The framework teaches somebody who knows Ruby and does not know this console. So nothing it
 # PRINTS may fall back on the hardware's own vocabulary — not "IWRAM", not "fast RAM". There
 # is one name for it and {Messages::PlainWords::QUICK_MEMORY} holds it.
 #
-# COMMENTS ARE EXEMPT, and deliberately: a comment beside the lowering may name IWRAM outright,
-# because that is where the hardware gets taught. This is about what a PERSON RUNNING A BUILD
+# Comments are exempt, and deliberately: a comment beside the lowering may name IWRAM outright,
+# because that is where the hardware gets taught. This is about what a person running a build
 # reads. Telling those two apart is the whole job, and it is why this reads the source through
 # Ruby's own lexer rather than grepping: a grep cannot tell a comment from a message. It also
 # means a sentence assembled out of two pieces never matches by accident, since what sits
 # between them is not string content.
 #
-# A LINT, NOT A TEST. It asks a question about the source on disk, not about anything the
+# A lint, not a test. It asks a question about the source on disk, not about anything the
 # library does when it runs — so it belongs in `rake plain_words` and the commit hook rather
 # than in a suite whose job is to prove behaviour.
 module PlainWordsScan

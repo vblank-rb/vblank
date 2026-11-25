@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-# A BOT FOR WANDERERS (examples/wanderers.rb): a player with no window and no person. It joins a match as a
+# Chaser bot — a bot for Wanderers (examples/wanderers.rb).
+#
+# It is a player with no window and no person. It joins a match as a
 # player of its own and walks its walker toward the other player's, a person at another computer, or
 # another bot. With more than two players it chases the first (or the second, if it is the first).
 #

@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
+require "digest"
 require "fileutils"
 require "tmpdir"
 
 module VBlank
   module Live
-    # THE CHECK A PORT RUNS ON ITS SHELL, the same for every port (Original::ShellCheckTasks is its
+    # The check a port runs on its shell, the same for every port (Original::ShellCheckTasks is its
     # rake task). It does what a player does, with nobody at the controls, and holds each step to
     # the all-in-one build of the same game:
     #
@@ -14,20 +15,40 @@ module VBlank
     # 2. starts it for the first time and picks LOAD ROM, handing it a copy of the copy this machine
     #    names (Original::Game#copy), which the shell unpacks and keeps as its pack;
     # 3. compares that pack, byte for byte, with the one the all-in-one build makes from the same copy
-    #    (Cartridge::Game#data_pack_file);
+    #    (Cartridge::Game#data_pack_file), and the shell's game with the same game built with the
+    #    copy in reach, declaration by declaration (#refuse_game_built_from_copy!), so a game whose
+    #    code looks at the copy as it is built is named whatever part of the game it changes;
     # 4. takes the copy it handed the shell out of reach and starts the shell again, which must play
     #    from the kept pack without asking for a copy;
-    # 5. plays the tape on both starts and on the all-in-one build, and compares every picture and
-    #    every sample of sound.
+    # 5. plays a short stretch of the game on both starts and on the all-in-one build, and compares
+    #    every picture and every sample of sound.
     #
-    # The shell is played as Ruby (Live::Shell), the way `vblank run --shell` plays it, on a Headless
-    # device asked what the window is asked and opened at the window's size. A machine
+    # The stretch stays short, whatever the tape. What the check holds is the shell's own workings,
+    # and step 3 already holds every byte of the pack, whatever a tape reaches; the play only shows
+    # that the game reads its pack. A port's tape grows with the game, so playing all of it three
+    # times as Ruby would grow towards playing the whole game on every commit. The check plays the
+    # tape's first +passes+ passes (STRETCH_PASSES unless the port names more, to reach past its
+    # title into the game proper), and Original::WholeGameCheck plays the whole tape, as C.
+    #
+    # The all-in-one side plays alongside the shell. Its build, its pack and its play need nothing
+    # from the shell's starts, so where this process can start another (on the main Ractor) they are
+    # made in a child process of their own while the shell is built and started here, and the check
+    # takes as long as the longer of the two. Inside any other Ractor a process cannot be started,
+    # so the all-in-one side is made after the starts, in this one.
+    #
+    # The shell is played as Ruby (Live::Shell) with YJIT (Live.turn_on_yjit), the way `vblank run
+    # --shell` plays it, on a Headless device asked what the window is asked and opened at the
+    # window's size. A machine
     # that names no copy stops at step 2 with Original::NotSet, whose words say how to name one. Any
     # other step that goes wrong raises Failed, saying which step and where it went wrong.
     class ShellCheck
       class Failed < StandardError; end
 
-      PASSES_WITHOUT_TAPE = 300         # Passes played with nothing pressed, when no tape is given
+      # The passes of the game played on each start and on the all-in-one build, when the port names
+      # none: five seconds of the console, long enough for a game to set itself up from its pack and
+      # draw from it, and short enough that the check costs little on every commit.
+      STRETCH_PASSES = 300
+
       MENU_PRESSES = Ractor.make_shareable({ 2 => [:a] }) # A on the menu's second pass: LOAD ROM, the line it starts on
       MOST_UNPACKING_PASSES = 1_000_000 # The menu and the unpacking together, before the check gives up
 
@@ -39,24 +60,58 @@ module VBlank
       # words of each file or pack refused, and how many times it asked for a copy.
       Start = Data.define(:played, :refusals, :times_asked)
 
+      # What the all-in-one build made: its +pack+ file's bytes, and what it +played+; and the
+      # ProgramShape of the shell's game built with the copy in reach (+shell_in_reach+).
+      AllInOne = Data.define(:pack, :played, :shell_in_reach)
+
+      # A program as the shell check compares two builds of it: each declaration at its top that
+      # has a name, as [kind, name, digest of its tree], in the order the program holds them
+      # (+declarations+), and one digest of everything else at its top (+rest+).
+      ProgramShape = Data.define(:declarations, :rest) do
+        def self.of(program)
+          named, rest = program.children.partition { |node| node.attrs[:name] }
+          new(declarations: named.map { |node| [node.kind, node.attrs[:name], ProgramShape.digest_of([node])] },
+              rest: digest_of(rest))
+        end
+
+        def self.digest_of(nodes) = Digest::SHA256.hexdigest(nodes.map { |node| IR::Dump.source(node) }.join("\n"))
+
+        # What differs first between this shape and +other+, in words (a declaration by its kind and
+        # name, or the game's own code), or nil where the two are the same.
+        def difference_from(other)
+          theirs = other.declarations.to_h { |kind, name, digest| [[kind, name], digest] }
+          ours = declarations.to_h { |kind, name, digest| [[kind, name], digest] }
+          differs = declarations.find { |kind, name, digest| theirs[[kind, name]] != digest } ||
+                    other.declarations.find { |kind, name, _| !ours.key?([kind, name]) }
+          return "#{differs[0]} :#{differs[1]}" if differs
+          return "the game's own code" unless rest == other.rest
+
+          nil
+        end
+      end
+
       # +game+ is the port (a Cartridge::Game), checked for each of +consoles+, every console it
-      # names unless set. +tape+ is a Playthroughs::Tape of frames from power-on, or nil for
-      # PASSES_WITHOUT_TAPE passes with nothing pressed. Each step is named to +say+ as it starts.
-      def initialize(game, consoles: game.consoles, tape: nil, say: ->(line) { puts line })
+      # names unless set. +tape+ is a Playthroughs::Tape of frames from power-on, whose first
+      # +passes+ are played; with no tape, +passes+ are played with nothing pressed. Each step is
+      # named to +say+ as it starts.
+      def initialize(game, consoles: game.consoles, tape: nil, passes: STRETCH_PASSES, say: ->(line) { puts line })
         if tape && (tape.recorded_from_save? || tape.recorded_after_lead_in?)
           raise ArgumentError, "The shell check was given a tape that starts from #{tape.starts_from}. The check starts " \
                                "the game from power-on. Give a tape recorded from power-on."
         end
+        raise ArgumentError, "The shell check was given passes: #{passes.inspect}. Give a whole number above 0." unless passes.is_a?(Integer) && passes.positive?
 
         @game = game
         @consoles = consoles
         @tape = tape
+        @passes = tape ? [tape.frames, passes].min : passes
         @say = say
       end
 
       # Runs every step for each console. Raises Failed for a step that went wrong, or
       # Original::NotSet when this machine names no copy.
       def run
+        Live.turn_on_yjit
         @consoles.each { |console| run_for(console) }
         @say.call("The shell of #{@game.title} plays as its all-in-one build does")
       end
@@ -64,13 +119,38 @@ module VBlank
       private
 
       def run_for(console)
-        @say.call("Building #{@game.title} for #{console} as a shell, with no copy in reach")
-        shell = Original::Shell.build(@game, console: console, err: nil)
-        copy = shell.original.copy
-        live = Shell.from(shell)
-        # The size `vblank run --shell` opens its window at, which refuses a picture of any other.
-        @screen = shell.game.described_console.framed_screen_size
-        Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, console, copy, folder) }
+        when_built = Alongside.forkable? ? "alongside the shell" : "after the first start, with the pack comparison"
+        @say.call("Building #{@game.title} for #{console} all-in-one, #{when_built}")
+        all_in_one = Alongside.start { all_in_one_made(console) }
+        begin
+          @say.call("Building #{@game.title} for #{console} as a shell, with no copy in reach")
+          shell = Original::Shell.build(@game, console: console, err: nil)
+          copy = shell.original.copy
+          live = Shell.from(shell)
+          # The size `vblank run --shell` opens its window at, which refuses a picture of any other.
+          @screen = shell.game.described_console.framed_screen_size
+          @shell_shape = ProgramShape.of(shell.game)
+          Dir.mktmpdir("vblank-shell-check") { |folder| compare_starts_with_all_in_one(live, copy, folder, all_in_one) }
+        ensure
+          all_in_one.stop
+        end
+      end
+
+      # The all-in-one build's pack, and its play over the stretch. The game is read once for both.
+      #
+      # Most of this side's time is reading and checking the game, which is the same however often
+      # the check runs. The build plays the port's unpacking routine itself only where the pack
+      # cache the game names (`data_pack cache:`) has no entry, which its key makes happen once
+      # after each change to the routine, the copy or the part of VBlank that unpacks
+      # (Original::PackCache). That miss is the bulk of the side's time for a big port, and the
+      # next check reads the entry.
+      def all_in_one_made(console)
+        parts = @game.all_in_one_parts(err: nil, console: console)
+        pack = parts.data_pack_file or raise Failed, "#{@game.title} has no data_pack, so it has no shell to check."
+        program = parts.program
+        in_reach = ProgramShape.of(@game.shell_parts(err: nil, console: console).program)
+        AllInOne.new(pack: pack, played: record_play(Session.new(program), program.described_console.framed_screen_size),
+                     shell_in_reach: in_reach)
       end
 
       # A copy that is one file is handed as that file. One that is a folder (a release of several
@@ -83,16 +163,22 @@ module VBlank
         copy.files.each { |file| FileUtils.cp(file.path, handed) }
       end
 
-      def compare_starts_with_all_in_one(live, console, copy, folder)
+      # +all_in_one+ is the Alongside making the all-in-one build's AllInOne.
+      def compare_starts_with_all_in_one(live, copy, folder, all_in_one)
         copy_path = copy.path
         handed = File.join(folder, File.basename(copy_path))
         hand_copy(copy, handed)
         kept_in = File.join(folder, "kept")
 
-        @say.call("First start: unpacking #{copy_path}")
+        @say.call("First start: unpacking #{copy_path}, then playing #{@passes} passes")
         first = refuse_start_problems!(play_start(live, kept_in, handed), "The first start", may_ask: true)
+        # Before the second start, which would refuse a wrong pack as a start problem and not name
+        # it as the wrong pack.
         @say.call("Comparing the kept pack with the all-in-one build's")
-        refuse_different_packs!(File.binread(File.join(kept_in, Original::ShellFacts::PACK_FILE)), all_in_one_pack(console))
+        made = all_in_one.value
+        refuse_different_packs!(File.binread(File.join(kept_in, Original::ShellFacts::PACK_FILE)), made.pack)
+        @say.call("Comparing the shell's game with the same game built with the copy in reach")
+        refuse_game_built_from_copy!(made.shell_in_reach)
 
         FileUtils.rm_rf(handed)
         @say.call("Second start, with the copy out of reach")
@@ -100,10 +186,9 @@ module VBlank
         second = Original.without_copies { play_start(live, kept_in, nil) }
         second = refuse_start_problems!(second, "The second start", may_ask: false)
 
-        @say.call("Playing #{passes} passes on the all-in-one build")
-        all_in_one = record_play(Session.new(@game.checked_program(err: nil, console: console)))
-        refuse_different_play!(all_in_one, first, "The first start")
-        refuse_different_play!(all_in_one, second, "The second start")
+        @say.call("Comparing #{@passes} passes of each start with the all-in-one build's")
+        refuse_different_play!(made.played, first, "The first start")
+        refuse_different_play!(made.played, second, "The second start")
       end
 
       # The shell started with +kept_in+ as its folder, LOAD ROM picking +handed+ (nil: no file).
@@ -136,9 +221,19 @@ module VBlank
         raise Failed, "#{which} never played the game. The unpacking did not finish in #{MOST_UNPACKING_PASSES} passes."
       end
 
-      def all_in_one_pack(console)
-        @game.data_pack_file(console: console) or
-          raise Failed, "#{@game.title} has no data_pack, so it has no shell to check."
+      # The shell's game is built with no copy in reach, and the all-in-one build with one. A game
+      # whose code looks at the copy as it is built (what it holds, or whether there is one) is
+      # then another program in the shell, and plays another game, often only once the play
+      # reaches the part that differs, far past any stretch the check plays. So the shell's game
+      # (@shell_shape) is held to the same game built with the copy in reach (+in_reach+, a
+      # ProgramShape), which needs no play at all.
+      def refuse_game_built_from_copy!(in_reach)
+        differs = @shell_shape.difference_from(in_reach) or return
+
+        raise Failed, "The shell's game is not the same program as the game built with the copy of the original in " \
+                      "reach. They differ first at #{differs}. A shell is built with no copy, so the shell plays " \
+                      "another game. The game's code must not use the copy, or whether there is a copy, as the game " \
+                      "is built. Read the data through data_pack."
       end
 
       def refuse_different_packs!(kept, made)
@@ -173,23 +268,116 @@ module VBlank
         end
       end
 
-      # What +session+ showed and sounded over the tape.
-      def record_play(session)
-        device = Headless.new(frames: passes, buttons: buttons_by_pass, screen: @screen)
+      # What +session+ showed and sounded over the stretch, on a device opened at +screen+ (the
+      # window's size, [width, height]).
+      def record_play(session, screen = @screen)
+        device = Headless.new(frames: @passes, buttons: buttons_by_pass, screen: screen)
         session.play(device)
         Played.new(pictures: device.pictures.map(&:pixels), sounds: device.sounds)
       end
 
-      def passes = @tape ? @tape.frames : PASSES_WITHOUT_TAPE
-
-      # The tape's buttons by pass, from 1.
+      # The tape's buttons by pass, from 1, over the stretch.
       def buttons_by_pass
         return {} unless @tape
 
-        @tape.presses_within(1..@tape.frames).each_with_object({}) do |stretch, held|
+        @tape.presses_within(1..@passes).each_with_object({}) do |stretch, held|
           stretch.frames.each { |frame| held[frame] = stretch.buttons } unless stretch.buttons.empty?
         end
       end
+
+      # Work done in a child process while this one goes on (#value gives its answer, or raises the
+      # error it raised), or, where this process cannot start one, done here when its answer is
+      # asked for. Ruby runs one thread at a time within a Ractor, so a thread would not go any
+      # faster; a process has a core of its own.
+      #
+      # The child is a fork, so it starts with everything this process has made, the game among
+      # it, and hands its answer back through a pipe in Ruby's own format (Marshal). It ends with
+      # exit! whatever happens, so nothing set to run as this process ends (a test runner's report)
+      # runs in it too. An error in the child is sent as its class's name and its words, never as
+      # the error itself (one may hold a Proc, which cannot be sent), and raised here as Failed.
+      class Alongside
+        def self.start(&work)
+          forkable? ? Forked.new(work) : InThisProcess.new(work)
+        end
+
+        # A process is started only from the main Ractor: Ruby refuses a fork from any other.
+        def self.forkable? = Process.respond_to?(:fork) && Ractor.current == Ractor.main
+
+        # The work, done when its answer is first asked for.
+        class InThisProcess
+          def initialize(work) = @work = work
+          def value = (@value ||= @work.call)
+          def stop = nil
+        end
+
+        # The work, done in a child process.
+        class Forked
+          def initialize(work)
+            @reader, writer = IO.pipe
+            @reader.binmode
+            @pid = Process.fork do
+              @reader.close
+              writer.binmode
+              writer.write(Forked.answer_bytes(work))
+              writer.close
+            ensure
+              exit!(0)
+            end
+            writer.close
+          end
+
+          # The work's answer, as [:value, answer], or [:error, class name, words] for an error the
+          # work or the sending of its answer raised, in Marshal's bytes.
+          def self.answer_bytes(work)
+            Marshal.dump([:value, work.call])
+          rescue Exception => e # rubocop:disable Lint/RescueException -- every error is the parent's to raise
+            Marshal.dump([:error, e.class.name.to_s, e.message.to_s])
+          end
+
+          def value
+            return @value if defined?(@value)
+
+            bytes = @reader.read
+            status = wait
+            if bytes.empty?
+              raise Failed, "The process making the all-in-one build ended with no answer (#{status&.inspect || 'its end not seen'})."
+            end
+
+            kind, answer, words = Marshal.load(bytes) # rubocop:disable Security/MarshalLoad -- written by this process's own child
+            raise Failed, "Making the all-in-one build stopped with #{answer}: #{words}" if kind == :error
+
+            @value = answer
+          end
+
+          # The child ended, whether or not its answer was asked for: a check that stopped early
+          # leaves no process behind.
+          def stop
+            return unless @pid
+
+            Process.kill(:KILL, @pid)
+            wait
+          rescue Errno::ESRCH
+            wait
+          end
+
+          private
+
+          # The child waited for, and how it ended (a Process::Status), or nil where it was waited
+          # for already.
+          def wait
+            return unless @pid
+
+            _, status = Process.wait2(@pid)
+            status
+          rescue Errno::ECHILD
+            nil
+          ensure
+            @pid = nil
+            @reader.close unless @reader.closed?
+          end
+        end
+      end
+      private_constant :Alongside
     end
   end
 end

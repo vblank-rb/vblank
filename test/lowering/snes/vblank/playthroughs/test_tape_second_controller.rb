@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TAPE WRITES THE SECOND CONTROLLER'S BUTTONS AS :p2_start, and they reach the cartridge's
+# A tape writes the second controller's buttons as :p2_start, and they reach the cartridge's
 # second controller.
 class TestTapeSecondController < Minitest::Test
   Tape = VBlank::Playthroughs::Tape

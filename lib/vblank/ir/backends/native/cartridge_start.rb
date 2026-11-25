@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # THE START OF THE GAME'S CARTRIDGE, written where the desktop build's window reads it:
+        # The start of the game's cartridge, written where the desktop build's window reads it:
         # rg_cartridge_start.h, beside game.c. The console's start-up (runtime/rg_bios_boot.h) is
         # the player's BIOS running, and the BIOS reads the cartridge as it starts: the logo and the
         # check byte in its header, and the few words after. So a desktop build of a console that

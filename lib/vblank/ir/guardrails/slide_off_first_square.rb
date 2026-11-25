@@ -4,6 +4,17 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a slide on a song's second square-wave part:
+        #
+        # > <The part> of <the song> says `slide_up` or `slide_down`, but it is the second
+        # > square part. Only the song's first square part can slide its notes. To fix this,
+        # > put this part before the other square part.
+        #
+        # Of the console's two square-wave voices, only the first can slide a note's pitch. A
+        # song's first square part plays on it, and its second part on the other. A slide on
+        # the second part would not be heard, so the build stops. Swap the two parts in the song.
+        #
+        #--
         # A song's second square part saying its notes slide their pitch.
         #
         # The console has two square-wave voices and only the first has the circuit that slides
@@ -14,6 +25,7 @@ module VBlank
         #
         # Checked here, on the finished program, because a song reaches the IR two ways — a
         # `song` block and a Score — and only the whole song knows which square part comes first.
+        #++
         class SlideOffFirstSquare
           NAME = :slide_off_first_square
           PLAIN_NAME = "a slide on a square part that is not the song's first"

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# MORE THAN A BANK OF RECORDINGS AT POWER-ON. The Super Nintendo's sound chip plays recordings only
+# More than a bank of recordings at power-on. The Super Nintendo's sound chip plays recordings only
 # from its own 64K of memory, and what a game keeps there for all of its life goes across at
 # power-on. A cartridge bank holds 32K, so recordings of more than that come from more than one
 # bank. The checked run holds every pass to the interpreter; the chip's memory (CheckedRun#apu_ram)

@@ -4,7 +4,7 @@
 
 #include <stdint.h>
 
-/* A LIGHT darkens the picture everywhere outside one span of each row, as it is shown
+/* A light darkens the picture everywhere outside one span of each row, as it is shown
  * (Reference#work_out_shade, Framebuffer#shade_outside). In the gap between frames,
  * rg_screen_work_out_shade asks the game where each row's span is, by calling rg_game_shade_span
  * with one row of the screen in mind, and then how dark the rest goes, by calling

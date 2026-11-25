@@ -14,7 +14,7 @@ class TestRowBendCartridge < Minitest::Test
 
   BendForm = VBlank::IR::Backends::GBA::BendForm
 
-  # A BLOCK THAT COUNTS is asked once for every row, once a frame, on the console too: it works
+  # A block that counts is asked once for every row, once a frame, on the console too: it works
   # the rows out in the gap between frames and nowhere else.
   def test_a_block_is_asked_once_for_every_row_each_frame
     rom = assemble_rom(counting_bend_program, name: "BCOUNT")
@@ -26,7 +26,7 @@ class TestRowBendCartridge < Minitest::Test
 
   # --- more than one layer bending ---
 
-  # A BEND BESIDE SAMPLED SOUND, on the console. Recorded sound is fed to the sound hardware
+  # A bend beside sampled sound, on the console. Recorded sound is fed to the sound hardware
   # from a copying engine too, continuously, which is the same standing claim a bend makes —
   # so this is the pair that would fight over one if the engines were handed out carelessly,
   # and the failure would be a silent game or a scrambled picture. Both are checked.
@@ -56,7 +56,7 @@ class TestRowBendCartridge < Minitest::Test
     assert_nil BendForm.kept_interrupt_reason(program)
   end
 
-  # WHAT IS IN THE BLOCK DOES NOT DECIDE THIS. A block that sets a variable or calls a
+  # What is in the block does not decide this. A block that sets a variable or calls a
   # routine is a program, and no copier runs a program — but nothing asks it to, because
   # the block runs in the frame and only its answer is handed over.
   def test_a_block_that_does_more_is_fed_by_the_copier_too
@@ -72,7 +72,7 @@ class TestRowBendCartridge < Minitest::Test
   end
 
   # Three of the console's four copying engines can be lent out — the fourth is the general
-  # copier every fill and upload uses — so a FOURTH bending layer is one more than there is
+  # copier every fill and upload uses — so a fourth bending layer is one more than there is
   # an engine for, and then they all go back on the interrupt. All of them or none: the
   # interrupt costs the whole 228 lines the moment one bend needs it, so feeding the others
   # from tables as well would add work for no saving.
@@ -82,7 +82,7 @@ class TestRowBendCartridge < Minitest::Test
                  BendForm.kept_interrupt_reason(four_bends_program))
   end
 
-  # ...and a game playing SAMPLED SOUND has one engine, because the sound is fed from an
+  # ...and a game playing sampled sound has one engine, because the sound is fed from an
   # engine too and cannot share. That is worth naming in the reason: nothing about a second
   # bending layer suggests the sound took its engine.
   def test_sampled_sound_leaves_room_for_one_bending_layer
@@ -111,7 +111,7 @@ class TestRowBendCartridge < Minitest::Test
 
   private def four_bends_program = many_bends_program(4)
 
-  # The same two fixtures as cartridges that can be RUN, for the measured comparison. Built
+  # The same two fixtures as cartridges that can be run, for the measured comparison. Built
   # through the DSL rather than assembled from a program, because a profile needs the record
   # the build makes — where every routine ended up cannot be recovered from the bytes.
   private def bars_rom(&bend)
@@ -177,7 +177,7 @@ class TestRowBendCartridge < Minitest::Test
 
   # --- a block that calls a routine which is itself waiting ---
 
-  # THE CARTRIDGE KEEPS THE WAITING WALK'S COUNT, as the interpreter does
+  # The cartridge keeps the waiting walk's count, as the interpreter does
   # (test_row_bend.rb's test_a_call_the_block_interrupted_carries_on_where_it_was). The rows are
   # worked out as the game wakes from its wait, which here is inside :walk's own loop, and the
   # block walks again from the start. The game's own walk then finishes its four steps.
@@ -190,7 +190,7 @@ class TestRowBendCartridge < Minitest::Test
     assert_finished_like_interpreter(interrupted_walk_program(again_from: :bend, calls_in_body: true), name: "BWALKM")
   end
 
-  # A `case` READS ITS VARIABLE ONCE, for each call, as the interpreter's does (Reference#exec_case).
+  # A `case` reads its variable once, for each call, as the interpreter's does (Reference#exec_case).
   # The game visits scene 1, whose routine waits, and the block visits scene 2 at that wait. The
   # game's own visit then tests its other clauses against the 1 it read, and does not visit scene 2
   # too. Each visit of scene 2 the game made bends the rows four across.
@@ -209,10 +209,7 @@ class TestRowBendCartridge < Minitest::Test
       scene(:first_place) { wait_vblank if waiting == 1 }
       scene(:second_place) { twos += 1 if waiting == 1 }
       func(:visit) do
-        case_var(:place) do
-          when_val 1, :first_place
-          when_val 2, :second_place
-        end
+        call({ 1 => :first_place, 2 => :second_place }, number: :place)
       end
       water.scroll_each_row do |row|
         if row == 0
@@ -239,7 +236,7 @@ class TestRowBendCartridge < Minitest::Test
 
   # --- the cost is visible ---
 
-  # WHICH WAY A BEND WAS LOWERED is a decision the build makes, and the two are far enough
+  # Which way a bend was lowered is a decision the build makes, and the two are far enough
   # apart in what they cost that it is worth being able to ask. One bend rides a copying
   # engine, which feeds the display with the CPU untouched.
   def test_one_bend_rides_a_copying_engine
@@ -255,7 +252,7 @@ class TestRowBendCartridge < Minitest::Test
     assert_match(/4 bending layers/, BendForm.kept_interrupt_reason(four_bends_program).to_s)
   end
 
-  # THE WHOLE POINT, as a number: the same picture, worked out ahead of the frame, for a
+  # The whole point, as a number: the same picture, worked out ahead of the frame, for a
   # fraction of what being interrupted 228 times costs. MEASURED — the program is built and
   # run, and the instructions it really executes each frame are counted. This used to compare
   # two numbers the estimate made up, which is exactly the claim it was least able to make.

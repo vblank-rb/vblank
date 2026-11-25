@@ -19,7 +19,7 @@ class TestTwoRoomsExampleCartridge < Minitest::Test
   # doorway, standing in it, through it, and turning. The comparison counts the cartridge's passes
   # and plays the interpreter as many.
   #
-  # THE CARTRIDGE TAKES ONE FRAME A PASS OR SEVERAL here, more where more of the screen is filled,
+  # The cartridge takes one frame a pass or several here, more where more of the screen is filled,
   # so each frame is read as assert_backends_agree_by_passes says.
   def test_a_flight_through_the_doorway_agrees_pass_by_pass
     [[%i[a], [40, 120, 135, 150, 162]], [%i[left], [21, 72]]].each do |keys, console_frames|

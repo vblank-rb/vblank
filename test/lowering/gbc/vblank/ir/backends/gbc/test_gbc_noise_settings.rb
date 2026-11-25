@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A DRUM'S OWN NOISE SETTING, as the Color's cartridge tells its noise voice (NR43): the divider in
+# A drum's own noise setting, as the Color's cartridge tells its noise voice (NR43): the divider in
 # the low three bits and how many times it is halved in the top four. Two settings can step at the
 # same rate, and a song converted from another Game Boy game names the one that game wrote. What
 # the drum sounds like on every run is test/all/vblank/audio/test_scores.rb's.

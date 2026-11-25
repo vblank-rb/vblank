@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# TILES TAKING TURNS THROUGH PICTURES HELD IN THE CARTRIDGE: flowers and water over a map that does
+# Tiles taking turns through pictures held in the cartridge: flowers and water over a map that does
 # not change. One word says which picture a whole group shows.
 class TestTilePictures < Minitest::Test
   include Differential
@@ -95,7 +95,7 @@ class TestTilePictures < Minitest::Test
         tick += 1
         instance_exec(water, tick, &step)
       end
-      game_loop { case_var(:where) { when_val 0, :play } }
+      game_loop { call({ 0 => :play }, number: :where) }
     end
     b.finalize_program
     b.program
@@ -160,11 +160,49 @@ class TestTilePictures < Minitest::Test
     assert_equal GREEN, game_player.run(program, frames: 9).screen.pixel(12, 4)
   end
 
+  # Tiles drawn as text art, a character for each pixel, show as the same tiles given as places do:
+  # a see-through character leaves the backdrop, and the others are the list's colours.
+  private def text_art_game(&step)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      colors :pond, %i[transparent red blue green]
+      art = { "r" => :red, "b" => :blue, "g" => :green, "." => :transparent, colors: :pond }
+      image(:wet, art) { "b" * 4 + "r" * 4 + "\n" + (("b" * 4 + "g" * 4 + "\n") * 7) }
+      image(:dry, art) { "." * 8 + "\n" + (("g" * 4 + "r" * 4 + "\n") * 7) }
+      water = tile_pictures :water, colors: :pond, tiles: { left: %i[wet dry] }
+      tiles :field, "l" => water[:left]
+      background :ground, tiles: :field, map: ["l"]
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        instance_exec(water, tick, &step)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
+  def test_tiles_drawn_as_text_art_show_their_pictures
+    program = text_art_game { |water, tick| water.show 1 if tick == 3 }
+    first = game_player.run(program, frames: 2).screen
+    second = game_player.run(program, frames: 6).screen
+
+    assert_equal [BLUE, RED, BLUE, GREEN], [first.pixel(1, 0), first.pixel(5, 0), first.pixel(1, 3), first.pixel(5, 3)]
+    assert_equal [GREEN, RED, GREEN, RED], [second.pixel(1, 1), second.pixel(5, 1), second.pixel(1, 3), second.pixel(5, 3)]
+  end
+
   # The console's picture, frame for frame, against the interpreter's.
   def test_the_console_shows_the_group_as_the_interpreter_does
     program = water_game { |water, tick| water.show((tick / 2) % 3) }
 
     assert_backends_agree(program, frames: 9, name: "PICTURES")
+  end
+
+  def test_the_console_shows_tiles_drawn_as_text_art_as_the_interpreter_does
+    program = text_art_game { |water, tick| water.show(tick % 2) }
+
+    assert_backends_agree(program, frames: 6, name: "PICTURET")
   end
 
   def test_the_console_shows_a_group_declared_in_a_scene_as_the_interpreter_does

@@ -4,7 +4,7 @@ require "test_helper"
 require "digest"
 require "tmpdir"
 
-# A FONT MADE OF THE GAME'S OWN PICTURES (`font :name, pictures: { "0" => :zero, ... }`): draw_text
+# A font made of the game's own pictures (`font :name, pictures: { "0" => :zero, ... }`): draw_text
 # and draw_number draw each character as its picture, in all the picture's colours, on a bitmap
 # screen and a tiled one, with everything draw_number does in any font — a field of digits:,
 # leading noughts dropped or written out, :left / :center / :right. A font can also be cut from one

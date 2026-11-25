@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/fonts").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/fonts").to_s)
 
 # examples/fonts.rb on a Super Nintendo: words and a number in the default font and the tiny one,
 # painted once, held to the interpreter — every pixel — after every pass.

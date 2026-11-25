@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # WHETHER TWO SPRITES' DRAWN PIXELS TOUCH (`pixels_overlap`), lowered for a PlayStation: a call into
+          # Whether two sprites' drawn pixels touch (`pixels_overlap`), lowered for a PlayStation: a call into
           # Runtime::Collide, and each picture a sprite can show made into a mask of where it draws while the
           # program is built, as the Genesis's lowering makes them (Genesis::Lowering::Collision), a byte a
           # pixel here, since a byte is one load on the R3000 and a bit is three more instructions. Mixed into

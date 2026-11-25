@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHEN THE WINDOW WRITES ITS SAVE FILE (runtime/rg_save.c, rg_save_file_is_due). A game saves a
+# When the window writes its save file (runtime/rg_save.c, rg_save_file_is_due). A game saves a
 # piece each frame over several frames, and a file written after every piece would be written
 # several times for one save — and sixty times a second for a game that keeps a clock in a
 # `save_var`. So the window asks at the end of every frame whether the file is due, and it is due

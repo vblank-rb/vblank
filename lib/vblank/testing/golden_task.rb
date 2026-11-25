@@ -8,7 +8,7 @@ require_relative "test_task"
 
 module VBlank
   module Testing
-    # `rake test:golden` FOR A GAME THAT KEEPS ITS OWN TEST TASKS rather than RakeTasks (which makes
+    # `rake test:golden` for a game that keeps its own test tasks rather than RakeTasks (which makes
     # one of its own from t.golden_list). The golden path is the short run before a commit: the test
     # files a list names, and a share of the game's other test files drawn at random (GoldenSample).
     # In the game's Rakefile:

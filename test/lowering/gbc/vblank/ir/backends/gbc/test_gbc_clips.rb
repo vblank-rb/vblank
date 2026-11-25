@@ -3,7 +3,7 @@
 require "test_helper"
 require "sound_comparison"
 
-# THE COLOR CARTRIDGE'S OWN SOUND FOR A RECORDING: a sample at a time, a bit each, on the wave voice
+# The color cartridge's own sound for a recording: a sample at a time, a bit each, on the wave voice
 # (Runtime::Clips). The run's log says the game started and stopped it; this hears that the voice
 # was told. A recording of a square wave, sixteen samples up and sixteen down at 8192 a second, is a
 # note of 256Hz however the clip is played, and the voice falls quiet when the clip is over or the
@@ -74,7 +74,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 1.0, most.height(15) / full.height(15), 0.1
   end
 
-  # A LOOPING RECORDING goes round again at its end, at its own pitch, until the game stops it.
+  # A looping recording goes round again at its end, at its own pitch, until the game stops it.
   def test_a_looping_recording_sounds_on_past_its_end
     heard = console_voice(clip_game(waves: 100, loop: true), :wave, frames: 70)
 
@@ -90,7 +90,7 @@ class TestGBCClips < Minitest::Test
     assert_operator heard.loudness(45), :<, SoundComparison::HEARD
   end
 
-  # A RECORDING AT ANOTHER NOTE: an octave up is read twice as fast, so it sounds an octave up and
+  # A recording at another note: an octave up is read twice as fast, so it sounds an octave up and
   # is over in half the time — 100 waves a little under 12 frames. A square of 128Hz is heard at
   # 256: a bit a sample, a higher note's waves are a sample longer or shorter by turns, and the
   # listener reads no one note in them.
@@ -118,7 +118,7 @@ class TestGBCClips < Minitest::Test
     assert_operator heard.loudness(20), :<, SoundComparison::HEARD
   end
 
-  # A SONG WITH A PART ON THE WAVE VOICE, AND A RECORDING OVER IT: the recording has the voice while
+  # A song with a part on the wave voice, and a recording over it: the recording has the voice while
   # it plays, and the part has it back for its next note. A440 a quarter note at a time, so a note
   # starts every half second, inside the recording and after it.
   private def clip_over_a_wave_part
@@ -143,14 +143,15 @@ class TestGBCClips < Minitest::Test
     b.program
   end
 
+  # Read on every frame, not as the note most of them hold.
   def test_a_recording_over_a_wave_part_keeps_its_own_pitch
     heard = console_voice(clip_over_a_wave_part, :wave, frames: 80)
 
-    assert_in_delta 256, pitch_held_through(heard, 34..46), 4, "the recording, through the part's next note"
-    assert_in_delta 440, pitch_held_through(heard, 62..76), 6, "the part's own note once the recording is over"
+    (34..46).each { |frame| assert_in_delta 256, heard.held_note(frame)&.pitch.to_f, 4, "the recording on frame #{frame}" }
+    (62..76).each { |frame| assert_in_delta 440, heard.held_note(frame)&.pitch.to_f, 6, "the part's own note on frame #{frame}" }
   end
 
-  # A WAVE NOTE HELD ACROSS A RECORDING: one A440 held four seconds, and a recording of a little under
+  # A wave note held across a recording: one A440 held four seconds, and a recording of a little under
   # 24 frames over its start, ended by itself or stopped by the game on pass +stop_at+. The note has
   # the voice back as soon as the recording is over, not at the part's next note, which never comes.
   private def clip_over_a_held_wave_note(stop_at: nil)
@@ -191,7 +192,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 440, pitch_held_through(heard, 18..26), 6
   end
 
-  # THE GAME'S OWN WAVE beside a recording of a little under 24 frames played on pass +play_at+: said
+  # The game's own wave beside a recording of a little under 24 frames played on pass +play_at+: said
   # on pass +wave_at+, a 440 triangle; the recording has the voice while it plays, and the wave has it
   # after.
   private def game_wave_beside_a_recording(wave_at:, play_at: 3)
@@ -227,7 +228,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 440, pitch_held_through(heard, 42..52), 6, "the wave again"
   end
 
-  # A SOUND EFFECT WITH A WAVE PART, started with a recording: A4 at once and A5 thirty frames on (at
+  # A sound effect with a wave part, started with a recording: A4 at once and A5 thirty frames on (at
   # 150 beats a minute a tick is a frame). The recording has the voice while it plays; the effect's
   # note after it is heard.
   private def effect_beside_a_recording
@@ -261,7 +262,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 880, pitch_held_through(heard, 38..46), 10, "the effect's next note, once the recording is over"
   end
 
-  # A RECORDING KEEPS ITS LENGTH WHILE THE GAME STARTS ITS TUNE WHERE IT NAMES IT, every pass: the
+  # A recording keeps its length while the game starts its tune where it names it, every pass: the
   # tune's first frame played then lets the timer in, rather than holding it off longer than a
   # sample, which loses samples and draws the recording out. 250 waves are 8000 samples, a little
   # over 60 frames.
@@ -287,7 +288,7 @@ class TestGBCClips < Minitest::Test
     b.program
   end
 
-  # EVERY NOTE IS LOGGED ONCE, however the recording's samples fall. The timer's interrupt is let in
+  # Every note is logged once, however the recording's samples fall. The timer's interrupt is let in
   # while the music plays, so it can land just as the player reaches a note, and the run's sound log
   # is checked against the interpreter's on every pass.
   def test_a_busy_song_beside_a_long_recording_logs_each_note_once
@@ -324,7 +325,7 @@ class TestGBCClips < Minitest::Test
                  quiet_from(clip_beside_a_tune_started_each_pass(true))
   end
 
-  # A BENT SCREEN KEEPS ITS ROWS WHILE A RECORDING PLAYS. Each row's offset is written as the line
+  # A bent screen keeps its rows while a recording plays. Each row's offset is written as the line
   # before it ends (the line interrupt), and the timer's interrupt for a sample, which reads the
   # clip's next byte every eighth sample, comes between any two lines: the line's must still land in
   # its blank. Bars of red, every row moved by its own amount, under a recording looping the whole
@@ -348,7 +349,7 @@ class TestGBCClips < Minitest::Test
     assert_equal Color.resolve(:red), i.screen.pixel(3, 2), "row 2 moved 2 to the right"
   end
 
-  # A RECORDING IN A GAME WHOSE OWN CODE IS IN THE CARTRIDGE'S BANKS: a routine of 2000 additions is
+  # A recording in a game whose own code is in the cartridge's banks: a routine of 2000 additions is
   # more than a bank, so its parts are in banks of their own, and the timer's interrupt comes while
   # one of them is in view. It reads the clip from the clip's bank and puts the game's back, so the
   # game runs on as the interpreter does — the checked run holds every variable to it — and the
@@ -374,7 +375,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 256, pitch_held_through(console_voice(b.program, :wave, frames: 30), 12..20), 4
   end
 
-  # A SPEECH-LIKE RECORDING: quiet stretches between loud ones, which a sample's sign alone would
+  # A speech-like recording: quiet stretches between loud ones, which a sample's sign alone would
   # turn into full on and off bits — a hiss as loud as the words. A sample near the middle plays as
   # the one before it did, so a quiet stretch is still. A little noise either side of nought, then
   # a loud square wave.
@@ -398,7 +399,7 @@ class TestGBCClips < Minitest::Test
     assert_in_delta 256, pitch_held_through(heard, 38..46), 4, "the words after it"
   end
 
-  # A CLIP ENDS ON ITS LAST SAMPLE, as the interpreter's voice does, not at the end of its last
+  # A clip ends on its last sample, as the interpreter's voice does, not at the end of its last
   # byte: a last byte part full holds a 1 just past its samples and noughts after, which the timer
   # reads as the clip's end. A last byte that is full needs none.
   def test_a_clip_part_way_through_its_last_byte_marks_its_end_there

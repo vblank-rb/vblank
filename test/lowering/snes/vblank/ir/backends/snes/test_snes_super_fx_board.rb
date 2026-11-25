@@ -2,9 +2,9 @@
 
 require "digest"
 require "test_helper"
-require VBlank.root.join("examples/sparks").to_s
-require VBlank.root.join("examples/tiles").to_s
-require VBlank.root.join("examples/buffered_bounce").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/sparks").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/tiles").to_s)
+ShareableConstants.require_file(VBlank.root.join("examples/buffered_bounce").to_s)
 
 # A Super Nintendo cartridge with a Super FX 2 (`variants: { snes: :superfx }`): its header says
 # so, bsnes takes it as that board (the chip's RAM is there, at $70:0000, as the board table
@@ -20,9 +20,9 @@ class TestSNESSuperFXBoard < Minitest::Test
   # because another board exists; a change to the SNES lowering that is meant to change plain
   # cartridges records new digests here, in the same commit.
   PLAIN_DIGESTS = {
-    Tiles => "47fce453e8708fa02ece9ce62d9f650ab9497328083cd6b8da31cd5eb97c697f",
-    BufferedBounce => "869c49d15416256da6df7d4d2915924f5ec5979a761f26b15dad2e10950c9f24",
-    Sparks => "76b1afd07c2750573ba420c948d2b28a9e4ebf7907c8aa996e10358925606509"
+    Tiles => "705b348a25f3d86a0d98a1fcbbaa5bd6ee42f3102afcd96ce1904340ec5f4bcf",
+    BufferedBounce => "a2e34ca2edb245e69acb53880f3f1f6acc142d753ab713f06a553f8490c7c817",
+    Sparks => "07cf29027671940ea38d3877ccffc78761dceb1cc377e73163183c7eebb1a4c8"
   }.freeze
 
   def test_a_plain_cartridge_is_byte_for_byte_what_it_was
@@ -52,7 +52,7 @@ class TestSNESSuperFXBoard < Minitest::Test
   def test_a_game_plays_on_the_super_fx_board_as_on_the_interpreter
     run = game_player.run(Sparks::GAME.program(console: :snes, variant: :superfx), frames: 60)
 
-    refute_empty run.pool(:spark, :y), "sparks are falling"
+    refute_empty run.pool(:sparks, :y), "sparks are falling"
   end
 
   # What the console sees in the chip's RAM after a tiny cartridge stores +byte+ at $70:0000, read

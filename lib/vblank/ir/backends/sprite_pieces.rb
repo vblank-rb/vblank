@@ -3,14 +3,14 @@
 module VBlank
   module IR
     module Backends
-      # A SPRITE PICTURE CUT INTO SQUARES OF 8×8. The Color and the Super Nintendo both show a sprite
+      # A sprite picture cut into squares of 8×8. The Color and the Super Nintendo both show a sprite
       # as pieces of eight pixels square, each one entry of the console's sprite table drawn from a
       # tile of its own, so a picture bigger than one square is shown as several placed side by side.
       # A square with nothing drawn in it is left out: it would take an entry of the table and show
       # nothing. What each pixel's number is — its place in a list of colours — is the console's;
       # where the squares fall, and which are left out, is the same on both.
       #
-      # A console whose table entry can draw a RECTANGLE OF SQUARES, the Genesis's up to four across and
+      # A console whose table entry can draw a rectangle of squares, the Genesis's up to four across and
       # four down, covers the picture instead (#cover): few such pieces that take in every square with
       # something drawn in it. The squares are found the same way; only how they are grouped differs. A Genesis shows 80 entries at once and 20 on a row of the screen, so a
       # picture of 112×72 cut into 8×8 squares takes most of the table on its own, and the same picture
@@ -40,7 +40,7 @@ module VBlank
           end
         end
 
-        # A PICTURE THE GAME MADE OF 8×8 PIECES, as a console drawing pieces +piece_height+ tall
+        # A picture the game made of 8×8 PIECES, as a console drawing pieces +piece_height+ tall
         # draws them: [across, down, numbers] each, as they are where pieces are 8×8. Where they are
         # 8×16, a piece with the one the game put right under it (or over it) is one tall piece, in
         # the place of the earlier of the two in the order, and a piece with none has a see-through
@@ -64,7 +64,7 @@ module VBlank
           drawn
         end
 
-        # A POSE DRAWN FROM A SET OF SPRITE TILES ([across, down, tile] each), as a console drawing
+        # A pose drawn from a set of sprite tiles ([across, down, tile] each), as a console drawing
         # pieces 8×16 draws it: a tile with the next tile of the set right under it (or the one before
         # over it) is one tall piece, [across, down, the upper tile]. A tile with no such partner is
         # handed to the block, whose answer stands in for it; with no block it stays a piece alone.
@@ -87,7 +87,7 @@ module VBlank
           paired
         end
 
-        # THE PICTURE COVERED BY RECTANGLES OF SQUARES, each up to +most+ squares across and +most+ down,
+        # The picture covered by rectangles of squares, each up to +most+ squares across and +most+ down,
         # as Blocks. Every square with something drawn in it is in one; a rectangle may take in blank
         # squares too, which cost the console a tile of memory each but no entry of its table. The block
         # gives the number at x, y, as #cut's does.
@@ -99,7 +99,7 @@ module VBlank
         # screen crosses as few pieces as the picture is wide in 32s, and never more pieces than #cut
         # makes, since each piece takes in at least one of #cut's squares.
         #
-        # NO TWO PIECES OVERLAP. A Genesis draws at most 320 pixels of sprites on a row of the screen,
+        # No two pieces overlap. A Genesis draws at most 320 pixels of sprites on a row of the screen,
         # blank ones included, and leaves the rest of the row's sprites out; a square drawn by two
         # pieces would spend its eight pixels twice.
         #
@@ -124,7 +124,7 @@ module VBlank
           end
         end
 
-        # SQUARES OF 16×16 FROM SQUARES OF 8×8, for a console whose table entry can draw four of them
+        # Squares of 16×16 from squares of 8×8, for a console whose table entry can draw four of them
         # as one (the Super Nintendo's): each square of the picture's grid of 16 that has +least+ or
         # more of its four quarters among +drawn+ ([across, down] of the 8×8 squares with something
         # drawn), as [across, down], the top row first. A square with one quarter drawn saves no entry.
@@ -168,7 +168,7 @@ module VBlank
           [left, top, columns, rows, (0...columns).flat_map { |column| (0...rows).map { |row| placed.fetch([column, row]) } }]
         end
 
-        # A PICTURE MADE OF A CONSOLE'S OWN PIECES IN GROUPS (Assets::Image#piece_groups), as rectangles
+        # A picture made of a console's own pieces in groups (Assets::Image#piece_groups), as rectangles
         # of up to +most+ squares each way: each group one rectangle where its pieces make a whole one,
         # and a rectangle for each piece of it where they do not, in the picture's order, the first in
         # front. A rectangle that draws nothing is left out.

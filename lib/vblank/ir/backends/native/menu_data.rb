@@ -6,7 +6,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # THE WINDOW MENU AS C DATA, for the desktop build's copy of it (runtime/rg_window_menu.c):
+        # The window menu as C data, for the desktop build's copy of it (runtime/rg_window_menu.c):
         # what it holds, its sizes and its colours, from Live::WindowMenu, and the letters it is
         # written in, from Graphics::MenuFont. The menu is written down once, in the library, so a
         # line added there is a line in the desktop build's menu with nothing written in C.
@@ -71,8 +71,11 @@ module VBlank
           def sizes_and_colors
             sizes = Live::WindowMenu::SIZES.map { |name, points| ".#{name} = #{points}" }
             colors = Live::WindowMenu::COLORS.map { |name, parts| ".#{name} = {#{parts.join(', ')}}" }
+            menu = Live::WindowMenu
             "const rg_menu_sizes rg_menu_size = {#{sizes.join(', ')}};\n" \
-              "const rg_menu_colors rg_menu_color = {#{colors.join(', ')}};\n"
+              "const rg_menu_colors rg_menu_color = {#{colors.join(', ')}};\n" \
+              "const int rg_menu_variable_rows = #{menu::VARIABLE_ROWS}, rg_menu_filter_most = #{menu::FILTER_MOST};\n" \
+              "const char rg_menu_widest_value[] = #{c_string(menu::WIDEST_VALUE)};\n"
           end
 
           # One density's picture and measures, as arrays named for the density.

@@ -2,6 +2,7 @@
 
 module VBlank
   class Builder
+    #--
     # `save_var` ON FLASH: the game's saved variables kept as one record of their own, which
     # saves itself.
     #
@@ -23,32 +24,36 @@ module VBlank
     # save is also asked for only while no other save is in hand, so it never queues behind a
     # game's own save and pushes a third into finishing on the spot.
     #
-    # AN UPDATE THAT ADDS A save_var KEEPS THE ONES SAVED. A record whose shape changes reads
+    # An update that adds a save_var keeps the ones saved. A record whose shape changes reads
     # its old saves as empty, and a shape made from the save_vars would change with every one
     # added. So this record's shape is a fixed run of words: how many save_vars the save was
     # made with, then each number in its slot (the order they were declared, as on the 32K
     # memory). One added later starts at its default, since the save records it had no slot then.
     # The run is SLOTS words, or room for every save_var a game can have once it outgrows that.
     #
-    # The 8K EEPROM keeps its save_vars this way too. It needs no wipe, but it is written eight
+    # The EEPROMs keep their save_vars this way too (the 512-byte one with a shorter run, since it holds so little). It needs no wipe, but it is written eight
     # bytes at a time and wears out a little with each write, so a number written in place every
     # frame would cost a block written every frame — most of half a frame each time.
     #
     # Nothing in the game sets any of this. On the 32K memory there is no record, and a
     # save_var writes through as it always did.
+    #++
     module SaveVarRecord
       # The record's name. One underscore in front, which no `save_data` name can have.
-      SAVE_VAR_RECORD = IR::SaveLayout::SAVE_VAR_RECORD
+      SAVE_VAR_RECORD = IR::SaveLayout::SAVE_VAR_RECORD  # :nodoc:
 
       # How many passes go between two saves the saved variables ask for: five seconds, for a
       # game running at full speed.
-      PASSES_BETWEEN_SAVES = 300
+      PASSES_BETWEEN_SAVES = 300  # :nodoc:
 
       # How many words the record holds, the count included, for a game with fewer save_vars.
-      SLOTS = 64
+      SLOTS = 64  # :nodoc:
+
+      # ...and on the 512-byte EEPROM, which has room for far fewer: the count and fifteen save_vars.
+      SMALL_EEPROM_SLOTS = 16  # :nodoc:
 
       # What an error calls the record, which the game never named.
-      SAVE_VAR_RECORD_WORDS = "the record that keeps the save_var numbers"
+      SAVE_VAR_RECORD_WORDS = "the record that keeps the save_var numbers"  # :nodoc:
 
       # The statement that notes a saved variable changed, put where the game changed it.
       def save_var_changed_node = Build.set(@save_data.fetch(SAVE_VAR_RECORD).scratch(:changed), sd_int(1))
@@ -70,7 +75,8 @@ module VBlank
         %i[changed spacing count].each { |what| ensure_var(layout.scratch(what)) }
         word = ->(name) { SaveRecords::Kept.new(kind: :var, name: name, at: 0, width: :word, count: 1) }
         @save_data_keeping[SAVE_VAR_RECORD] = [word.call(layout.scratch(:count)), *saved_vars.map { |var| word.call(var.name) }]
-        words = saved_vars.size < SLOTS ? SLOTS : IR::SaveLayout::SAVE_VARS + 1
+        slots = memory.small_eeprom? ? SMALL_EEPROM_SLOTS : SLOTS
+        words = saved_vars.size < slots ? slots : IR::SaveLayout::SAVE_VARS + 1
         body = words * SaveRecords::WORD
         @save_data[SAVE_VAR_RECORD] = layout_with_kept(layout).with(
           body: body, half: IR::SaveLayout.half_bytes(body),

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# THE COLOR'S EIGHT SPRITE PALETTES, SHARED BETWEEN PICTURES (GBC::SpriteSlots). A sprite palette
+# The color's eight sprite palettes, shared between pictures (GBC::SpriteSlots). A sprite palette
 # holds three colours and see-through, and a sprite's pixels name a slot in it. Two pictures drawn
 # from the same colours in different pixel orders share one palette where that costs no tile, and,
 # where the game's sprites need more than the eight palettes, where it costs a few. A game with

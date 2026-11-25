@@ -193,7 +193,7 @@ class TestPS1Sound < Minitest::Test
     assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 2
   end
 
-  # HOW LOUD A RECORDED NOTE PLAYS is the interpreter's, voice by voice (Reference#loudness_by_voice): two
+  # How loud a recorded note plays is the interpreter's, voice by voice (Reference#loudness_by_voice): two
   # parts at volumes of their own, and the music volume moved twice while both sound.
   def test_recorded_notes_play_as_loud_as_the_interpreters_voices
     program = held_parts_game do |pass|
@@ -205,7 +205,7 @@ class TestPS1Sound < Minitest::Test
     assert_equal Reference.new.run(program, frames: 14).loudness_by_voice, run.loudness_by_voice
   end
 
-  # A NOTE THAT GLIDES strikes nothing, so the part's note goes on at the loudness it was struck at
+  # A note that glides strikes nothing, so the part's note goes on at the loudness it was struck at
   # (Reference::Mixer#glide_music_note), though the glide is the part's volume and the note its own; the
   # music volume moving after it is what brings the part's in (Reference::Player#apply_music_volume).
   def test_a_gliding_note_keeps_the_loudness_its_note_was_struck_at

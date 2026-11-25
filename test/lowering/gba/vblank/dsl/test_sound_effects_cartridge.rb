@@ -76,7 +76,7 @@ class TestSoundEffectsCartridge < Minitest::Test
     assert_backends_share_the_voice(too_quiet_for_the_wave_voice, WAVE_TONES, channel: 3)
   end
 
-  # THE TWO BACKENDS AGREE ABOUT WHO SOUNDED ON A SHARED VOICE, and when, one way round and the
+  # The two backends agree about who sounded on a shared voice, and when, one way round and the
   # other: the effect taking the first square voice and the song coming back after it, and the
   # song keeping it against an effect it outranks.
   def test_the_console_shares_a_square_voice_the_way_the_interpreter_does
@@ -105,7 +105,7 @@ class TestSoundEffectsCartridge < Minitest::Test
     assert_backends_share_the_voice(program, WAVE_TONES, channel: 3)
   end
 
-  # THE WAVEFORM ON THE CONSOLE. The wave voice loops whatever waveform is in wave RAM, and there
+  # The waveform on the console. The wave voice loops whatever waveform is in wave RAM, and there
   # is room there for one, so an effect's note has to put its own there — and the song's note after
   # it has to put the song's back. (See #two_tunes_on_the_wave_voice_under_an_effect for the game.)
   def test_the_console_loads_the_waveform_of_each_note
@@ -114,7 +114,7 @@ class TestSoundEffectsCartridge < Minitest::Test
                    .take_while { |frame, _| frame <= 36 }
   end
 
-  # THE HIT'S SHAPE: an effect on a square voice and the noise voice at once, over a song on both.
+  # The hit's shape: an effect on a square voice and the noise voice at once, over a song on both.
   def test_the_console_shares_a_square_voice_and_the_noise_voice_at_once
     notes = [Note.new(at: 0, key: :C4), Note.new(at: 20, key: :E4), Note.new(at: 40, key: :G4)]
     tune = Score.new(tempo: 150, parts: [Part.new(notes: notes), Part.new(plays: :noise, notes: notes)])
@@ -127,7 +127,7 @@ class TestSoundEffectsCartridge < Minitest::Test
     assert_backends_share_the_voice(program, NOISE_TONES, channel: 4)
   end
 
-  # A SONG RANKED BETWEEN TWO EFFECTS, so the player walks the effects above it before the song's
+  # A song ranked between two effects, so the player walks the effects above it before the song's
   # parts and the one below it after them. The higher one takes the first square voice from the
   # song; the lower one, asked for while that is sounding, is silent there and heard on the second
   # square voice, which nobody else wants.
@@ -179,7 +179,7 @@ class TestSoundEffectsCartridge < Minitest::Test
     assert_backends_share_the_voice(program, WAVE_TONES, channel: 3)
   end
 
-  # A GROUP ON THE CONSOLE: the square voice the cry plays and the noise voice the hurt plays are
+  # A group on the console: the square voice the cry plays and the noise voice the hurt plays are
   # set the same way the interpreter sets them.
   private def assert_backends_share_both_voices(program)
     assert_backends_share_the_voice(program, GROUP_TONES)
@@ -238,7 +238,7 @@ class TestSoundEffectsCartridge < Minitest::Test
 
   # --- what it costs ---
 
-  # THE PROFILE COUNTS IT, inside the routine that answers the display, which is where the player
+  # The profile counts it, inside the routine that answers the display, which is where the player
   # runs: a game whose effects are sounding spends more there than the same game with them silent.
   def test_the_profile_counts_what_the_sound_effects_cost
     interrupt_samples = lambda do |playing|

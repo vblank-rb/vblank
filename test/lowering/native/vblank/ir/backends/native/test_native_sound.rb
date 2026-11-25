@@ -5,7 +5,7 @@ require "native_comparison"
 
 # What the game as C says it played — the sound log a test reads with `audio` — matches what the
 # interpreter says, entry for entry. Nothing comes out of a speaker in these runs; the log is
-# what the player DID, which is what the tests of the music check.
+# what the player did, which is what the tests of the music check.
 class TestNativeSound < Minitest::Test
   include NativeComparison
 

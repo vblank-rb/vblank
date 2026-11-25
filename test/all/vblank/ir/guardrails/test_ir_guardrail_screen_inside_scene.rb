@@ -25,7 +25,7 @@ class TestIRGuardrailScreenInsideScene < Minitest::Test
       tick = var :tick, 0
       scene(:title) { screen :bitmap if tick > 3 }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end)
 
     assert_equal 1, findings.length
@@ -39,7 +39,7 @@ class TestIRGuardrailScreenInsideScene < Minitest::Test
       func(:switch) { screen :bitmap }
       scene(:title) { call :switch }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end)
 
     assert_equal 1, findings.length
@@ -52,7 +52,7 @@ class TestIRGuardrailScreenInsideScene < Minitest::Test
       scene(:title) { screen :bitmap }
       scene(:play) { nil }
       var :state, 0
-      game_loop { case_var(:state) { when_val 0, :title; when_val 1, :play } }
+      game_loop { call({ 0 => :title, 1 => :play }, number: :state) }
     end)
 
     assert_empty findings
@@ -66,7 +66,7 @@ class TestIRGuardrailScreenInsideScene < Minitest::Test
         tick = var :tick, 0
         scene(:title) { screen :bitmap if tick > 3 }
         var :state, 0
-        game_loop { case_var(:state) { when_val 0, :title } }
+        game_loop { call({ 0 => :title }, number: :state) }
       end
     end
 

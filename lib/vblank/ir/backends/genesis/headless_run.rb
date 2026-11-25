@@ -9,7 +9,7 @@ module VBlank
         # What is the Genesis's own: its work RAM read by address, high byte first, and a run of no
         # frames ending before the screen is on.
         #
-        # THE EMULATOR'S FRAME STARTS AT THE VERTICAL BLANK, where the cartridge copies a pass's changes
+        # The emulator's frame starts at the vertical blank, where the cartridge copies a pass's changes
         # to the console, and goes on through the lines of the picture, which are drawn after the copy. So
         # a pass's picture is on the frame that shows it, as it is on the Super Nintendo's emulator, and the
         # base run reads it there.
@@ -43,7 +43,7 @@ module VBlank
           # Empty for a game that makes no sound.
           attr_reader :chip_reads
           
-          # WHAT WAS HEARD: the loudest sample in each screen frame from power-on, left or right, as a number
+          # What was heard: the loudest sample in each screen frame from power-on, left or right, as a number
           # from 0 to 32768. A frame is the finest it sees.
           attr_reader :loudest_each_frame
           
@@ -96,13 +96,22 @@ module VBlank
 
           def big_endian? = true
 
-          def power_on = set_buttons(@held)
+          # A game that reads the third or fourth player is played with a Team Player in the second
+          # port, as a person playing it with four would have.
+          def power_on
+            @core.plug_in_team_player if Runtime::Frame.reads_team_player?(@rom.built.source_program)
+            set_buttons(@held)
+          end
 
-          # The buttons a game names, on the pad's: the same names. A button a Genesis pad lacks is
-          # one no cartridge for it can read, so it is not pressed.
-          def set_buttons(buttons) = @core.set_buttons(buttons.map(&:to_sym) & PAD_BUTTONS)
+          # The buttons a game names, on the pads': the same names, the second player's on the second
+          # pad, and through a Team Player the third's and fourth's on its next plugs. A button a Genesis
+          # pad lacks is one no cartridge for it can read, so it is not pressed.
+          def set_buttons(buttons)
+            Buttons.by_controller(Buttons.held_names(buttons).map(&:to_sym), controllers: Console::GENESIS.controllers)
+                   .each_with_index { |held, port| @core.set_buttons(held & PAD_BUTTONS, port: port) }
+          end
 
-          # A RUN OF NO FRAMES ends as the first pass does, before anything is shown
+          # A run of no frames ends as the first pass does, before anything is shown
           # (CartridgeHeadlessRun#end_before_first_picture): the runtime turns the screen on as the
           # first pass is shown.
           def ends_before_first_picture?(frames) = frames.zero?
@@ -126,8 +135,44 @@ module VBlank
           
             logged = half(runtime_place(Runtime::Sound::LOGGED))
             read_sound_entries(logged)
-            @chip_reads << [logged, [@core.psg_registers, @core.fm_registers]]
+            @chip_reads << [logged, chip_registers_after_strikes]
             logged
+          end
+
+          # The chips' registers as they will be once Runtime::Strikes has made what its list holds, in a game
+          # whose sound effects are struck inside the frame: writes the log already counts can still be waiting
+          # there for their line, so each listed write is laid over the registers read now, oldest first.
+          def chip_registers_after_strikes
+            psg = @core.psg_registers
+            fm = @core.fm_registers.dup
+            strikes = Runtime::Strikes
+            return [psg, fm] unless @places.runtime.key?(strikes::LIST)
+
+            at = half(runtime_place(strikes::HEAD))
+            tail = half(runtime_place(strikes::TAIL))
+            until at == tail
+              what, first, second = (0..2).map { |word| half(runtime_place(strikes::LIST) + at + (word * 2)) }
+              if what.anybits?(strikes::PSG)
+                lay_psg_write(psg, first, second)
+              elsif what != strikes::DROPPED # dropped for the game's own sound, it strikes nothing
+                fm.setbyte(first, second & 0xFF)
+              end
+              at = (at + strikes::ENTRY_BYTES) & strikes::LIST_MASK
+            end
+            [psg, fm]
+          end
+
+          # A PSG command byte +first+ (and +second+, the rest of a voice's length of wave) laid over +psg+, as
+          # the emulator reads its registers back.
+          def lay_psg_write(psg, first, second)
+            voice = (first >> 5) & 3
+            if first.anybits?(0x10)
+              psg[ChipWrites.psg_volume_register(voice)] = first & 0x0F
+            elsif voice == ChipWrites::NOISE_VOICE
+              psg[ChipWrites::PSG_NOISE_SETTING_REGISTER] = first & 0x07
+            else
+              psg[ChipWrites.psg_tone_register(voice)] = (first & 0x0F) | ((second & 0x3F) << 4)
+            end
           end
           
           def sound? = @places.runtime.key?(Runtime::Sound::LOGGED)
@@ -176,7 +221,7 @@ module VBlank
             number.zero? ? [] : [@places.recording_names.fetch(number - 1)]
           end
           
-          # THE BUTTONS ARE THE ONES HELD FROM POWER-ON for the first emulated frame, which is where the
+          # The buttons are the ones held from power-on for the first emulated frame, which is where the
           # cartridge reads them (Runtime::Boot), and from the second on each frame's own, decided before
           # the frame is played. The frames the runtime counts (Frame::FRAMES) start as the screen comes
           # on, a few emulated frames in, with the frame whose interrupt switches it on as the first: every
@@ -204,8 +249,8 @@ module VBlank
           end
 
           # The moment of +frame+ — a pass's number, or :end for the moment the run ended on. +sounds+ is how
-          # many entries the sound log held as the game was found waiting (#read_sounds). A PASS'S SOUNDS
-          # INCLUDE ITS FRAME BOUNDARY'S MUSIC, which the cartridge plays where the wait ends, after the game
+          # many entries the sound log held as the game was found waiting (#read_sounds). A pass's sounds
+          # include its frame boundary's music, which the cartridge plays where the wait ends, after the game
           # was found waiting, so a pass's moment takes the count the cartridge kept as that wait ended
           # (Runtime::Sound::LOGGED_BY_PASS). The moment the run ended on has no boundary after it.
           def record_moment(frame, variables, lists, picture, sounds)

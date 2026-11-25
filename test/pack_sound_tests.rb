@@ -4,7 +4,7 @@ require "made_up_original"
 require "pack_at_start_tests"
 require "brr_recordings"
 
-# RECORDED SOUND FROM THE DATA PACK. A recording (`sample`, `instrument`) can take its samples from a
+# Recorded sound from the data pack. A recording (`sample`, `instrument`) can take its samples from a
 # slot of samples of the pack (`slots.samples`), where `pcm: pack[:bang]` is the whole slot and
 # `pcm: pack[:bang].samples(first, count)` a stretch of it. Built all-in-one, the recording holds
 # what the slot holds. With the pack left out, the program holds zeros of the recording's length and
@@ -140,7 +140,7 @@ module PackSoundTests
     end
   end
 
-  # AN INSTRUMENT'S SETTINGS READ AS THE GAME STARTS. With the pack left out the build knows where
+  # An instrument's settings read as the game starts. With the pack left out the build knows where
   # each number is in the pack and not the number, so the step a voice reads the recording at, how
   # far back a held note reads and the shape's four numbers are written from the file at power-on.
   # Four bytes of the copy's filler are the envelope: a full attack, then a decay, a sustain and a
@@ -287,7 +287,7 @@ module PackSoundTests
     assert_raises(VBlank::IR::Guardrails::ValidationError) { player.run(program, frames: 1) }
   end
 
-  # A RECORDING'S LENGTH READ AS THE GAME STARTS: the slot holds the most a recording can be, and
+  # A recording's length read as the game starts: the slot holds the most a recording can be, and
   # the recording plays its own 24 samples, so one that loops reads back from its own end.
   def test_a_recordings_length_read_as_the_game_starts_sounds_as_the_same_length_given
     Dir.mktmpdir do |folder|
@@ -305,7 +305,7 @@ module PackSoundTests
     end
   end
 
-  # A LENGTH IN THE PACK OUTSIDE THE SLOT is the player's, so it does not stop the build: one of
+  # A length in the pack outside the slot is the player's, so it does not stop the build: one of
   # nought plays as 1 (the hold the game wrote is put at that one sample), and one past the slot
   # plays all of it. Built all-in-one and with the pack left out, the recording sounds alike.
   def test_a_length_of_nought_or_past_the_slot_in_the_pack_sounds_as_the_length_it_comes_to
@@ -352,7 +352,7 @@ module PackSoundTests
     end
   end
 
-  # A HOLD IN THE PACK OUTSIDE THE RECORDING is the player's, so it does not stop the build: a held
+  # A hold in the pack outside the recording is the player's, so it does not stop the build: a held
   # note past the end reads back to the recording's last sample, beside no length (the slot's last)
   # or a length the game wrote (that length's last), and one below nought to its first. Built
   # all-in-one and with the pack left out, it sounds alike.
@@ -376,7 +376,7 @@ module PackSoundTests
     end
   end
 
-  # A RATE IN THE PACK BELOW 1 is the player's too: it plays as 1, so the recording all but stands
+  # A rate in the pack below 1 is the player's too: it plays as 1, so the recording all but stands
   # still. The game names its mix rate, which a build that reads a rate as it starts needs.
   def test_a_rate_of_nought_in_the_pack_sounds_as_a_rate_of_one
     Dir.mktmpdir do |folder|
@@ -397,7 +397,7 @@ module PackSoundTests
     end
   end
 
-  # A RECORDING THAT DOES NOT LOOP, SAID BY THE PACK: a hold of every bit set (255 in a byte) is
+  # A recording that does not loop, said by the pack: a hold of every bit set (255 in a byte) is
   # none, so the recording sounds as one written without `holds_from:`, all-in-one and with the
   # pack left out: a note plays once, and a play that goes round reads all of it again.
   def test_a_hold_of_every_bit_set_in_the_pack_sounds_as_no_hold_given
@@ -460,7 +460,7 @@ module PackSoundTests
     end)
   end
 
-  # WHAT THE SPEAKERS PLAY, a recording read from the pack as the game starts: the same as built
+  # What the speakers play, a recording read from the pack as the game starts: the same as built
   # all-in-one, on a run whose player keeps them. The PlayStation's voices play a recording from
   # its sound memory, so a build that left the stand-in there plays silence, or the hold the game
   # was built with, where the all-in-one build plays the pack's samples.
@@ -558,7 +558,7 @@ module PackSoundTests
     end
   end
 
-  # A RECORDING OF SIXTEEN BITS BESIDE ONE FROM THE PACK: the game is mixed at sixteen bits, and the
+  # A recording of sixteen bits beside one from the pack: the game is mixed at sixteen bits, and the
   # pack's recording, filled from the start file as eight, is heard as its bytes shifted up, as it
   # is built all-in-one.
   private def full_depth_beside_pack_game(folder, options: VBlank::Cartridge::Options.new)
@@ -724,7 +724,7 @@ module PackSoundTests
     end
   end
 
-  # A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S FORMAT FROM THE PACK (`brr: pack[:clip]`): with
+  # A recording in the Super Nintendo sound chip's format from the pack (`brr: pack[:clip]`): with
   # the pack left out the runtime decodes it as the game starts, with a decoder of its own, so each
   # is held here to the answer key (BRRRecordings, fullsnes's arithmetic) through a game given the
   # answer's samples by hand, and the all-in-one build with them. +by_hand+ is [samples, the

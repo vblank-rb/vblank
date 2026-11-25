@@ -30,10 +30,10 @@ module FloatingDigits
   H = VBlank::Graphics::Fonts.default.height # 7px tall glyph
 
   # One solid color per digit (5-bit R,G,B channels, 0..31), all clearly distinct.
-  COLORS = Ractor.make_shareable([
+  COLORS = [
     [31,  0,  0], [0, 31,  0], [8, 12, 31], [31, 31,  0], [0, 31, 31],
     [31,  0, 31], [31, 31, 31], [31, 18,  0], [18, 31,  0], [0, 18, 31],
-  ])
+  ]
 
   # The glyph for digit +d+ as ASCII art ('#' = a lit pixel, '.' = transparent),
   # read straight from the built-in bitmap font — so we don't hand-draw ten digits.

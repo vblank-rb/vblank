@@ -22,7 +22,7 @@
 # view would show the backdrop rather than the meadow coming round again. The view here
 # stops at the edges, which is what a room wants anyway.
 #
-# GOING THROUGH THE DOOR is not a cut. Handing a background another map happens on one
+# Going through the door is not a cut. Handing a background another map happens on one
 # frame, and one frame of a whole screen changing reads as a glitch, so the door hides
 # it: the picture breaks up into bigger and bigger blocks (`pixelate_out`), the room is
 # swapped while the blocks are at their biggest and nobody can read the screen, and the
@@ -48,7 +48,7 @@
 # in blocks is a switch the console keeps on each background and each sprite, and the
 # name's is simply left off.
 #
-# EACH ROOM HAS ITS OWN COMPANY, a cat in the cabin and a butterfly out in the meadow, and
+# Each room has its own company, a cat in the cabin and a butterfly out in the meadow, and
 # `picture_groups` says which picture belongs to which room. The console keeps the pictures of
 # sprites in a small memory of its own, and a game of many rooms needs far more of them than fit.
 # Pictures in a group are only kept there while `show` says the group's room is up, so it is one
@@ -72,7 +72,7 @@ module Meadow
 
   # THE CABIN: one screen, 30x20 cells. Walls round the edge, a rug in the middle, and the
   # door in the bottom wall at columns 14 and 15.
-  CABIN = Ractor.make_shareable((0...20).map do |r|
+  CABIN = (0...20).map do |r|
     (0...30).map do |c|
       if r == 19 && [14, 15].include?(c) then "D"
       elsif r.zero? || r == 19 || c.zero? || c == 29 then "#"
@@ -80,7 +80,7 @@ module Meadow
       else "."
       end
     end.join
-  end)
+  end
 
   # THE MEADOW: 120x100 cells. A ring of trees round the edge, trees and flowers scattered
   # through the grass, a pond in the north-east, a path crossing it, and the cabin seen
@@ -106,7 +106,7 @@ module Meadow
     end
   end
 
-  MEADOW = Ractor.make_shareable((0...ROWS).map { |r| (0...COLS).map { |c| meadow_cell(r, c) }.join })
+  MEADOW = (0...ROWS).map { |r| (0...COLS).map { |c| meadow_cell(r, c) }.join }
 
   # Where the hero stands on walking through each door, in the room's own pixels.
   INSIDE_DOOR = [(14 * 8), (19 * 8) - HERO - 12].freeze
@@ -336,8 +336,8 @@ module Meadow
 
         # Down into the cabin door, or up into the cabin's door in the meadow: he stops
         # there and the picture starts to break up. The room is not swapped yet.
-        way_out = room == 0 && y >= deepest - 8 && (x >= (14 * 8) - 8) && x <= 15 * 8
-        way_in = room == 1 && (y <= (46 * 8) - 4) && (x >= (53 * 8) - 8) && x <= 54 * 8
+        way_out = room == 0 && y >= deepest - 8 && x.between?((14 * 8) - 8, 15 * 8)
+        way_in = room == 1 && (y <= (46 * 8) - 4) && x.between?((53 * 8) - 8, 54 * 8)
         if way_out || way_in
           in_door = true
           pixelate_out frames: DOOR_FRAMES, under: :words

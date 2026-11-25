@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SCENE'S PICTURES IN GROUPS, ON THE CONSOLE: only the groups up are in sprite memory.
+# A scene's pictures in groups, on the console: only the groups up are in sprite memory.
 #
 # Each grouped picture has one place there, shared with pictures whose groups are never up with
 # its own, and it is copied in between frames as one of its groups comes up. So the pictures have
@@ -37,7 +37,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     b.program
   end
 
-  # FOUR ROOMS IN A ROW, a picture each, walked through a room every four passes, with the next
+  # Four rooms in a row, a picture each, walked through a room every four passes, with the next
   # one up beside it for the two passes before the screen gets there. One sprite shows the room
   # the game is in and the other the room beside, and the hero shows in every room.
   private def walk_through_four_rooms
@@ -74,7 +74,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
     (2..15).each { |frames| assert_backends_agree(prog, frames: frames, name: "ROOMS") }
   end
 
-  # FORTY ROOMS, a 64x64 picture each: two kilobytes a room, eighty for all forty, which is more
+  # Forty rooms, a 64x64 picture each: two kilobytes a room, eighty for all forty, which is more
   # than the console's sprite memory holds. A pool of twenty things can show any room's picture,
   # so keeping each thing to one frame at a time would not fit either: forty kilobytes. One room
   # is up at a time, so the scene needs one room's room. The game opens on another scene, whose
@@ -108,12 +108,12 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         state = 0 if tick == 3
         state = 1 if tick == 8
         state = 0 if tick == 10
-        case_var(:state) { when_val 0, :maze; when_val 1, :away }
+        call({ 0 => :maze, 1 => :away }, number: :state)
       end
     end
   end
 
-  # GROUPS OF EVERY SCREEN, KEPT ACROSS A CHANGE OF SCENE. The game says which room is up from
+  # Groups of every screen, kept across a change of scene. The game says which room is up from
   # its own loop, outside any scene, so the groups are the game's and stay up while another
   # scene's pictures fill the memory above them; coming back, nothing has to be copied again. The
   # walker shows its room's picture both ways round, the turned one drawn from the same tiles.
@@ -143,12 +143,12 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         up.show here
         state = 1 if tick == 3
         state = 0 if tick == 5
-        case_var(:state) { when_val 0, :walking; when_val 1, :away }
+        call({ 0 => :walking, 1 => :away }, number: :state)
       end
     end
   end
 
-  # A SCENE THAT LOADS FIRST, GIVEN THE SCREEN BACK. Its room is up as it leaves, and the scene
+  # A scene that loads first, given the screen back. Its room is up as it leaves, and the scene
   # away fills sprite memory with pictures of its own. Back again, none of the harbor's code runs
   # on the pass it takes over on, and its things are drawn after that pass showing the room they
   # showed as it was left: its pictures have to be back in their places by then.
@@ -176,7 +176,7 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
         tick += 1
         state = 1 if tick == 3
         state = 0 if tick == 6
-        case_var(:state) { when_val 0, :harbor; when_val 1, :away }
+        call({ 0 => :harbor, 1 => :away }, number: :state)
       end
     end
   end
@@ -197,5 +197,61 @@ class TestPictureGroupsOnTheConsole < Minitest::Test
   def test_a_scene_whose_rooms_would_not_all_fit_builds_and_plays
     prog = maze_of_forty_rooms
     [5, 7, 12, 13].each { |frames| assert_backends_agree(prog, frames: frames, name: "MAZE") }
+  end
+
+  # The sprite table goes in before a group's pictures. The table must be written while nothing is
+  # drawn (GBATEK, OAM: the display reads it as it draws each row), and a group's pictures are a big
+  # copy. Copied first, they push the table's writes down the gap, and a copy longer than what is
+  # left of the gap pushes them into the picture, where a row of sprites tears. So the table lands
+  # on the same rows of the gap on a frame a group comes up as on a frame nothing is copied.
+  ROOM_PICTURES = 8 # 64x64 pictures a room: sixteen kilobytes, a good part of the gap to copy
+
+  private def two_big_rooms
+    program do |t|
+      screen :tiled
+      pictures = (0...(ROOM_PICTURES * 2)).map { |n| :"wall_#{n}" }
+      pictures.each_with_index { |name, n| image name, width: 64, height: 64, data: t.big_art(n) }
+      image(:dot, "#" => :yellow) { (["#" * 8] * 8).join("\n") }
+      rooms = picture_groups :walls, { 0 => pictures.first(ROOM_PICTURES), 1 => pictures.last(ROOM_PICTURES) }
+      wall = sprite :wall, facing: pictures.to_h { |name| [name, name] }, at: [8, 90]
+      runner = sprite :runner, at: [0, 0], facing: { still: :dot }
+      passes = 0
+      room = 0
+      rooms.show 0
+      wall.face pictures, showing: 0
+      game_loop do
+        passes += 1
+        room = (passes / 4) % 2
+        rooms.show room
+        wall.face pictures, showing: room * ROOM_PICTURES
+        runner.move_to passes, 0
+      end
+    end
+  end
+
+  def test_the_sprite_table_is_written_before_a_group_is_copied_in
+    # From the third frame on, a room comes up every fourth one and the runner moves on every one.
+    last_rows = sprite_table_rows_by_frame(two_big_rooms, frames: 16).map(&:max)
+
+    assert_equal [last_rows[3]], last_rows[3..].uniq, "the last row a write to the sprite table landed on, by frame: #{last_rows}"
+  end
+
+  # The rows each frame's writes to the sprite table landed on, a list a frame from power-on.
+  private def sprite_table_rows_by_frame(game, frames:)
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, "rooms.gba")
+      assemble_rom(game, name: "ROOMS").write(path)
+      probe = VBlank::Diagnostics::Emulator.probe(path)
+      begin
+        probe.watch_display
+        Array.new(frames) do
+          probe.display_writes.clear
+          probe.step(1)
+          probe.display_writes.select { |write| write.kind == :sprite }.map(&:row)
+        end
+      ensure
+        probe.close
+      end
+    end
   end
 end

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH OF THE THREE SHAPES A LOOP GOT, which decides what a pass of it costs.
+        # Which of the three shapes a loop got, which decides what a pass of it costs.
         #
         # +shape+ is :registers (the count stays in two registers the whole way), :spilled (it
         # stays there, and the pair is saved around the few statements that would land in
@@ -12,7 +12,7 @@ module VBlank
         # pass). +spills+ is how many statements a spilled loop brackets. +blocked_by+ is what
         # in the body made it more than the plain fast shape, in words a person can read.
         #
-        # Whether the count is in registers is DERIVED: a spilled loop keeps it there too, and
+        # Whether the count is in registers is derived: a spilled loop keeps it there too, and
         # storing that separately is how the two answers drift apart.
         #
         # It lives here because this is where it is decided — which registers are free is a
@@ -29,7 +29,8 @@ module VBlank
         class Statements
           # The statements this part writes (Lowering#statements_written_by), each by its own method.
           STATEMENT_KINDS = %i[
-            set add sub copy negate abs negate_abs clamp if loop repeat inside every after call raw
+            set add sub copy negate abs negate_abs clamp if loop repeat break_repeat next_repeat inside every after
+            call raw
           ].freeze
 
           def emit_statement(node)
@@ -45,6 +46,8 @@ module VBlank
             when :if then emit_if(node)
             when :loop then emit_loop(node)
             when :repeat then emit_repeat(node)
+            when :break_repeat then emit_break_repeat(node)
+            when :next_repeat then emit_next_repeat(node)
             when :inside then emit_inside(node)
             when :every then emit_every(node)
             when :after then emit_after(node)
@@ -65,6 +68,7 @@ module VBlank
             @functions = functions
             @loop_shapes = {}
             @unread_indexes = Set.new
+            @loop_jumps = []
           end
 
           # Which shape each loop got (register/spilled/memory), keyed by its index —
@@ -78,7 +82,7 @@ module VBlank
 
           # The lists (Lists), which a stepped walk holds a register on a thing of
           # (#emit_stepped_walk), and the program, whose walks it asks the shared plan about.
-          attr_writer :lists, :program
+          attr_writer :lists, :program, :fault_stops
 
           # Where a loop counting up in the quick memory keeps how many passes it makes, by its index.
           def self.limit_var(index) = DerivedNames.join(index, "__limit")
@@ -140,8 +144,16 @@ module VBlank
           # if: run the then-body when the condition is non-zero. With no else, a
           # false condition jumps past the body. With an else, a false condition
           # jumps to the else-body, and the then-body jumps over it to the end.
+          #
+          # An else that only stops the game (a full pool's stop) is written out of line, after
+          # the routine (FaultStops#later): a spawn that fits then costs one branch not taken, as
+          # an `if` with no else does, where an else inline would cost a jump over it each time.
           def emit_if(node)
             else_node = node.else
+            if else_node && only_stops?(else_node)
+              stop = @fault_stops.later { else_node.children.each { |stmt| @lowering.statement(stmt) } }
+              return emit_then_only(node, skip: stop)
+            end
 
             if else_node
               else_label = @emitter.gensym
@@ -154,12 +166,36 @@ module VBlank
               @emitter.place_label(end_label)
             else
               skip = @emitter.gensym
-              @expressions.emit_branch_when(node.cond, holds: false, to: skip)
-              # A block of the game loop that runs for one scene alone is that scene's routine
-              # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
-              routine = @placement.scene_loop_routine_for(node)
-              routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
+              emit_then_only(node, skip: skip)
               @emitter.place_label(skip)
+            end
+          end
+
+          # +node+'s then-body, after a jump to +skip+ when its test fails.
+          def emit_then_only(node, skip:)
+            @expressions.emit_branch_when(node.cond, holds: false, to: skip)
+            # A block of the game loop that runs for one scene alone is that scene's routine
+            # (see SceneQuickMemory#prepare_scene_loop_work), and only called from here.
+            routine = @placement.scene_loop_routine_for(node)
+            routine ? @placement.emit_call_func(routine) : node.children.each { |stmt| @lowering.statement(stmt) }
+          end
+
+          # Whether +node+ holds statements and every one is a full pool's stop, or a test choosing
+          # between stops on both its sides.
+          #
+          # Nothing jumps back from code written after the routine, so it must stop on every path:
+          # an empty block, or a test with no else, finishes when it is not taken, and the processor
+          # would run on into whatever follows the routine (its table of numbers, in a routine kept
+          # in the quick memory). An `elsif` with nothing in it builds both.
+          def only_stops?(node)
+            return false if node.children.empty?
+
+            node.children.all? do |child|
+              case child.kind
+              when :stop_full then true
+              when :if then child.else && only_stops?(child) && only_stops?(child.else)
+              else false
+              end
             end
           end
 
@@ -170,7 +206,7 @@ module VBlank
           # thing worth keeping in the console's quick memory. When it has been chosen for
           # that (see {Placement}) the loop becomes a call into it and the body is emitted
           # with the other moved routines; otherwise it stays inline, exactly as it was.
-          # EVERYTHING INSIDE STAYS INSIDE THESE EDGES. There is nothing to emit for the area
+          # Everything inside stays inside these edges. There is nothing to emit for the area
           # itself: it is not a thing the console knows about, it is the edges every shape below
           # is cut against — so it is remembered while the children are emitted and each of them
           # works its own clipping out against these instead of against the whole screen.
@@ -185,18 +221,36 @@ module VBlank
           end
 
           def emit_loop(node)
+            return emit_loop_in_routine(node) unless @placement.frame_loop?(node)
+
             @placement.emit_start_counting_frames # the setting up before this is not play
             top = @emitter.gensym
             @emitter.place_label(top)
             if @placement.fast_funcs.include?(Placement::FRAME_ROUTINE)
               @placement.emit_call_func(Placement::FRAME_ROUTINE)
-            else
-              start = @emitter.pos
-              node.children.each { |stmt| @lowering.statement(stmt) }
-              # Remember how big it came out: the measuring pass reads this to decide
-              # whether moving it would fit.
-              @functions.func_ranges[Placement::FRAME_ROUTINE] = (start...@emitter.pos)
+              return @emitter.emit_branch(:b, top)
             end
+
+            start = @emitter.pos
+            node.children.each { |stmt| @lowering.statement(stmt) }
+            # Remember how big it came out: the measuring pass reads this to decide
+            # whether moving it would fit.
+            @functions.func_ranges[Placement::FRAME_ROUTINE] = (start...@emitter.pos)
+            @emitter.emit_branch(:b, top)
+            # Its stops follow the jump back (FaultStops), and are counted in its size, as they
+            # are inside it moved into a routine of its own.
+            stops = @emitter.pos
+            @fault_stops.emit_pending
+            @functions.stop_bytes[Placement::FRAME_ROUTINE] = @emitter.pos - stops
+          end
+
+          # A game loop written inside a routine: its body where it is, and a jump back to its top.
+          # Only the program's first loop is the frame routine the quick memory may hold, so this
+          # one is never a call to that routine, whose body is another loop's.
+          def emit_loop_in_routine(node)
+            top = @emitter.gensym
+            @emitter.place_label(top)
+            node.children.each { |stmt| @lowering.statement(stmt) }
             @emitter.emit_branch(:b, top)
           end
 
@@ -207,13 +261,15 @@ module VBlank
           # Where those two numbers are kept is the whole difference between the two shapes
           # below, and it is decided by the body and nothing else — see LoopForm.
           #
-          # The answer is REMEMBERED as it is made, so the build record holds which shape really
+          # The answer is remembered as it is made, so the build record holds which shape really
           # runs without anyone working it out again: which registers are free is this file's
           # business. #loop_shapes hands it over the way #var_addresses hands over where a
           # variable landed.
           def emit_repeat(node)
+            # Not `counted&.step.equal?(...)`: a loop with an empty body has no last statement, and
+            # nil is nil.
             counted = walk_plan.loop_form.counted_while(node)
-            if counted&.step.equal?(node.children.last)
+            if counted && counted.step.equal?(node.children.last)
               shape = counted_while_in_registers?(node, counted) ? :registers : :memory
               return record_loop_shape(node, shape) { emit_counted_while(node, counted, shape) }
             end
@@ -224,7 +280,7 @@ module VBlank
             record_loop_shape(node, :memory) { emit_repeat_in_memory(node) }
           end
 
-          # A COUNTED WHILE (Backends::LoopForm#counted_while): a game's `while i < n` ending `i += 1`,
+          # A counted while (Backends::LoopForm#counted_while): a game's `while i < n` ending `i += 1`,
           # where nothing else in the loop writes `i` or `n`. Written as it reads, a turn counts the
           # loop's hidden index in memory, loads `i` and compares it to ask whether to stop, and loads,
           # adds to and stores `i` again at the end. Here `i` is the loop's count: held in the fast
@@ -250,7 +306,7 @@ module VBlank
             if shape == :registers
               emit_counted_while_in_registers(node, counted, sure, top, done)
             else
-              emit_counted_while_in_memory(node, counted, sure, top, done)
+              with_loop_jumps(node, done) { emit_counted_while_in_memory(node, counted, sure, top, done) }
             end
             @emitter.place_label(done)
             turns = start ? Build.binop(:-, Build.var_ref(variable), Build.int(start)) : Build.binop(:+, Build.var_ref(node.index), Build.var_ref(variable))
@@ -259,8 +315,28 @@ module VBlank
 
           # Whether nothing in a counted while's body but its one more needs the fast shape's two
           # registers (LoopForm.needs_loop_registers?).
+          #
+          # Nor where a timer's handler names the loop's variable or its limit. The handler runs from
+          # the interrupt, which can land between any two instructions of the loop: with the count in
+          # a register it would read a number the loop has not stored, and what it wrote would be
+          # overwritten when the loop stores the count at its end.
           def counted_while_in_registers?(node, counted)
-            node.children[0...-1].none? { |child| LoopForm.first_blocker_in_statement(child, counted.variable) }
+            node.children[0...-1].none? { |child| LoopForm.first_blocker_in_statement(child, counted.variable) } &&
+              !timer_handlers_name?([counted.variable, (counted.limit.name if counted.limit.kind == :var_ref)].compact)
+          end
+
+          # Whether a timer's handler, or a routine it calls however deep, reads or writes any of +names+.
+          def timer_handlers_name?(names)
+            @handler_names ||= {}
+            @handler_names[@program.object_id] ||= begin
+              handlers = Nodes::OnTimer.of(@program).values
+              called = Reach.routines_called_from(@program, handlers)
+              routines = @program.walk.select { |each| each.kind == :func && called.include?(each.name) }
+              Reach.statements_from(*handlers, *routines).flat_map do |each|
+                [*(each.name if each.kind == :var_ref), *Reach::VARIABLES_OF[each.kind]&.call(each)]
+              end.to_set
+            end
+            @handler_names[@program.object_id].intersect?(names)
           end
 
           def emit_counted_while_in_registers(node, counted, sure, top, done)
@@ -276,12 +352,17 @@ module VBlank
               @emitter.emit_branch(:bcond, done, cond: :ge)
             end
             @emitter.place_label(top)
-            @primitives.with_var_in_register(variable, LoopForm::COUNTER) do
-              node.children[0...-1].each { |stmt| @lowering.statement(stmt) }
+            # A `break` comes to +left+, where the variable is written back as the loop ends.
+            left = @emitter.gensym
+            with_loop_jumps(node, left) do
+              @primitives.with_var_in_register(variable, LoopForm::COUNTER) do
+                node.children[0...-1].each { |stmt| @lowering.statement(stmt) }
+              end
             end
             @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
             @emitter.emit_branch(:bcond, top, cond: :lt)
+            @emitter.place_label(left)
             # A loop that made no turn goes past this: its variable is still the one in memory.
             @primitives.store_var(LoopForm::COUNTER, variable)
           end
@@ -294,7 +375,7 @@ module VBlank
             @expressions.emit_branch_when(below, holds: true, to: top)
           end
 
-          # A WALK OF A POOL STEPPED AS AN ARM GAME STEPS ONE. The tree's walk keeps the thing it goes
+          # A walk of a pool stepped as an ARM game steps one. The tree's walk keeps the thing it goes
           # to next and the last it visits in variables, tests and copies them each turn, and reads
           # the link out of a list at an index bounded and scaled each time; and every field the body
           # reads or writes bounds and scales the index again. The ARM's way to reach the fields of
@@ -404,7 +485,7 @@ module VBlank
             yield
           end
 
-          # THE SAFE SHAPE: the counter and the limit live in the console's quick memory, so
+          # The safe shape: the counter and the limit live in the console's quick memory, so
           # anything at all may happen in the body — a call, a nested loop, a divide that
           # reaches the console's own routine — and the loop still counts right.
           #
@@ -431,7 +512,7 @@ module VBlank
             @emitter.place_label(top)
             emit_stop_test(node, done)
 
-            node.children.each { |stmt| @lowering.statement(stmt) }
+            with_loop_jumps(node, done) { node.children.each { |stmt| @lowering.statement(stmt) } }
 
             @primitives.load_var(ACC, index)
             @emitter.emit(ASM.add_imm(ACC, ACC, 1))      # counter += 1
@@ -471,7 +552,7 @@ module VBlank
             @emitter.place_label(top)
             emit_stop_test(node, done)
 
-            node.children.each { |stmt| @lowering.statement(stmt) }
+            with_loop_jumps(node, done) { node.children.each { |stmt| @lowering.statement(stmt) } }
 
             @primitives.load_var(ACC, index)
             @emitter.emit(ASM.subs_imm(ACC, ACC, 1))
@@ -482,7 +563,7 @@ module VBlank
 
           def counts_down?(node) = @unread_indexes.include?(node.index)
 
-          # THE FAST SHAPE: the counter and the limit stay in two registers for the whole loop,
+          # The fast shape: the counter and the limit stay in two registers for the whole loop,
           # so a pass ends in an add, a compare and a branch back — where the safe shape loads
           # and stores its two numbers besides.
           #
@@ -492,19 +573,106 @@ module VBlank
           # written back to its memory once on the way out, so anything after the loop sees
           # the value it would have seen anyway.
           def emit_repeat_in_registers(node)
-            emit_repeat_loop(node) do
-              node.children.each { |stmt| @lowering.statement(stmt) }
+            copies = counts_down?(node) ? 1 : LoopForm.unrolled_copies(node)
+            bodies = copies > 1 ? (0...copies).map { |offset| LoopForm.copy_of_body(node, offset) } : [node.children]
+            bodies = [node.children] if bodies.any?(&:nil?)
+            steps = held_steps(node, bodies.flatten)
+            return emit_repeat_loop(node) { node.children.each { |stmt| @lowering.statement(stmt) } } if steps.empty?
+
+            @emitter.emit(ASM.push(*steps.values))
+            @primitives.with_products_in_registers(node.index, steps) do
+              if bodies.size > 1
+                emit_unrolled_loop(node, bodies, steps)
+              else
+                emit_repeat_loop(node, steps: steps) { node.children.each { |stmt| @lowering.statement(stmt) } }
+              end
+            end
+            @emitter.emit(ASM.pop(*steps.values))
+          end
+
+          # A held loop whose turn runs +bodies+, copies of its body each reading the count a round
+          # further on (LoopForm.unrolled_copies, LoopForm.copy_of_body), the count stepped by as
+          # many each turn and each held number by its factor times as many. The count is written
+          # in the program, so the turns are known while building: the limit is the last whole
+          # turn's end, and the rounds left past it are copies after the loop, which read the count
+          # and the held numbers where the last turn left them.
+          def emit_unrolled_loop(node, bodies, steps)
+            copies = bodies.size
+            rounds = node.count.value
+            left = rounds % copies
+            top = @emitter.gensym
+
+            @emitter.emit_number(LoopForm::COUNTER, 0)
+            @emitter.emit_number(LoopForm::LIMIT, rounds - left)
+            steps.each_value { |reg| @emitter.emit_number(reg, 0) }
+            @primitives.with_var_in_register(node.index, LoopForm::COUNTER) do
+              @emitter.place_label(top)
+              bodies.each { |body| body.each { |stmt| @lowering.statement(stmt) } }
+              emit_steps_on(steps, times: copies)
+              @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, copies))
+              @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
+              @emitter.emit_branch(:bcond, top, cond: :lt)
+              (0...left).each { |offset| LoopForm.copy_of_body(node, offset).each { |stmt| @lowering.statement(stmt) } }
+            end
+            @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, left)) if left.positive?
+            @primitives.store_var(LoopForm::COUNTER, node.index)
+          end
+
+          # The numbers a held loop keeps stepped, each factor with its register
+          # (LoopForm::STEP_REGISTERS), or none.
+          #
+          # A body that works a number out as the count times a number written in the program,
+          # `k * 12 + 4`, multiplies every turn, where the console's own loops add: the number
+          # is held in a register that starts at nought and has the factor added as each turn
+          # ends, beside the count's own add, and each read of it is that register, read straight
+          # into the instruction that uses it (Expressions#emit_operand). What a Ruby `times` the
+          # build folds into one loop works its stepping numbers out as
+          # (PlainRuby::Counts::KnownRounds).
+          #
+          # A factor is held where that pays: read more than once a turn, or one whose multiply is
+          # more than one instruction (Expressions.one_instruction_factor?). One read of a cheap
+          # factor costs the same either way, one instruction a turn, and holding it adds the
+          # registers' saving and restoring around the loop. The registers are saved and restored
+          # because code around the loop may keep something of its own in them. Only where every
+          # kind in the body leaves them alone (LoopForm.keeps_step_registers?), and at most as
+          # many factors as there are registers, the first read first.
+          def held_steps(node, statements)
+            return {} if counts_down?(node) || !LoopForm.keeps_step_registers?(node)
+
+            reads = statements.flat_map { |stmt| stmt.walk.filter_map { |inner| stepped_factor(inner, node.index) } }.tally
+            held = reads.select { |factor, count| count > 1 || !Expressions.one_instruction_factor?(factor) }.keys
+            held.first(LoopForm::STEP_REGISTERS.size).zip(LoopForm::STEP_REGISTERS).to_h
+          end
+
+          # The factor +node+ multiplies the loop's count +index+ by, or nil.
+          def stepped_factor(node, index)
+            return nil unless node.kind == :binop && node.op == :* && node.lhs.kind == :var_ref && node.lhs.name == index
+            return nil unless node.rhs.kind == :int && ![0, 1].include?(node.rhs.value)
+
+            node.rhs.value
+          end
+
+          # Each held number's register stepped on by its factor, +times+ over, as a turn ends.
+          def emit_steps_on(steps, times: 1)
+            steps.each do |factor, reg|
+              step = IR::Int32.wrap(factor * times)
+              if ASM.encode_rotated_immediate(step) then @emitter.emit(ASM.add_imm(reg, reg, step))
+              elsif ASM.encode_rotated_immediate(-step) then @emitter.emit(ASM.sub_imm(reg, reg, -step))
+              else
+                @emitter.emit_number(TMP, step)
+                @emitter.emit(ASM.add_reg(reg, reg, TMP))
+              end
             end
           end
 
-          # THE THIRD SHAPE: the counter and the limit stay in registers, and the few statements
+          # The third shape: the counter and the limit stay in registers, and the few statements
           # that would land in those registers are bracketed — the pair saved before and put
           # back after.
           #
           # This is what lets a loop keep the fast shape while its body does the thing the
           # framework asks for: behaviour in a func, called once per instance. A routine may
           # use any register it likes, which is why a call gives up the registers for the whole
-          # body otherwise — but it can only do that WHILE IT RUNS, so saving the pair across
+          # body otherwise — but it can only do that while it runs, so saving the pair across
           # it is enough.
           #
           # A bracket is the count written out to its variable, so a body that reads the loop's
@@ -540,7 +708,9 @@ module VBlank
 
           def emit_preserving(*registers)
             @emitter.emit(ASM.push(*registers))
+            @loop_jumps.last&.pushed&.push(registers)
             yield
+            @loop_jumps.last&.pushed&.pop
             @emitter.emit(ASM.pop(*registers))
           end
 
@@ -551,7 +721,10 @@ module VBlank
           # no branch out of the loop on the passes that go round. Moving the count into its
           # register sets the flags on the way, so that same instruction shows whether there is a
           # first pass to make at all.
-          def emit_repeat_loop(node, &body)
+          #
+          # +steps+ is the numbers the loop keeps stepped (#held_steps): each register set to
+          # nought before the first turn and stepped on as each turn ends.
+          def emit_repeat_loop(node, steps: {}, &body)
             return emit_countdown_loop(node, &body) if counts_down?(node)
 
             top = @emitter.gensym
@@ -561,9 +734,11 @@ module VBlank
             @emitter.emit_number(LoopForm::COUNTER, 0)
             @emitter.emit(ASM.subs_imm(LoopForm::LIMIT, ACC, 0))
             @emitter.emit_branch(:bcond, done, cond: :le)
+            steps.each_value { |reg| @emitter.emit_number(reg, 0) }
 
             @emitter.place_label(top)
-            @primitives.with_var_in_register(node.index, LoopForm::COUNTER) { yield }
+            with_loop_jumps(node, done) { @primitives.with_var_in_register(node.index, LoopForm::COUNTER) { yield } }
+            emit_steps_on(steps)
             @emitter.emit(ASM.add_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit(ASM.cmp_reg(LoopForm::COUNTER, LoopForm::LIMIT))
             @emitter.emit_branch(:bcond, top, cond: :lt)
@@ -582,10 +757,37 @@ module VBlank
             @emitter.emit_branch(:bcond, done, cond: :le)
 
             @emitter.place_label(top)
-            yield
+            with_loop_jumps(node, done) { yield }
             @emitter.emit(ASM.subs_imm(LoopForm::COUNTER, LoopForm::COUNTER, 1))
             @emitter.emit_branch(:bcond, top, cond: :ne)
             @emitter.place_label(done)
+          end
+
+          # Where a `break` and a `next` in the loop being written go (IR::LoopJumps): +leave+, past
+          # the loop's end, and the turn's end, placed by the block's end just before the count
+          # steps on, for a body with a `next`. +pushed+ is the registers a bracket (#emit_preserving)
+          # has on the stack at the jump, which it takes off first.
+          LoopExits = Data.define(:leave, :turn_end, :pushed)
+
+          def with_loop_jumps(node, leave)
+            turn_end = @emitter.gensym if IR::LoopJumps.next_in?(node)
+            @loop_jumps.push(LoopExits.new(leave:, turn_end:, pushed: []))
+            begin
+              yield
+            ensure
+              @loop_jumps.pop
+            end
+            @emitter.place_label(turn_end) if turn_end
+          end
+
+          def emit_break_repeat(_node) = emit_loop_jump(@loop_jumps.last.leave)
+          def emit_next_repeat(_node) = emit_loop_jump(@loop_jumps.last.turn_end)
+
+          # A branch out of the brackets open in the loop's body, each taken off the stack first, the
+          # innermost first.
+          def emit_loop_jump(label)
+            @loop_jumps.last.pushed.reverse_each { |registers| @emitter.emit(ASM.pop(*registers)) }
+            @emitter.emit_branch(:b, label)
           end
 
           # A beat (`every`, `after`) is the plain statements IR::Frames turns it into, emitted

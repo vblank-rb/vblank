@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CELL CHANGES OF A HELD BACKGROUND, kept in work memory and written in the gap between
+        # The cell changes of a held background, kept in work memory and written in the gap between
         # frames (see Nodes::ShowHeldTiles).
         #
         # The display reads a background's map while it draws, top to bottom. A cell written while
@@ -29,7 +29,7 @@ module VBlank
         # the frame being drawn, written while the display may be drawing those rows, and only
         # what is left of the pass waits for the gap. Every backend does the same.
         #
-        # WHAT IT COSTS: a held `set_tile` is the plain one's address arithmetic, a compare and a
+        # What it costs: a held `set_tile` is the plain one's address arithmetic, a compare and a
         # store into the queue. The gap pays six instructions a change, in a routine kept in the
         # cartridge, and a load and a compare when nothing changed.
         module HeldTiles
@@ -87,11 +87,11 @@ module VBlank
             return unless @holds_tiles
 
             @held_names = HeldTiles.held_names(program)
-            emit_number(ACC, 0)
-            store_var(ACC, HELD_COUNT)
+            @emitter.emit_number(ACC, 0)
+            @primitives.store_var(ACC, HELD_COUNT)
           end
 
-          # A BACKGROUND PUT UP FORGETS THE CHANGES WAITING FOR ITS OWN CELLS: they were made to
+          # A background put up forgets the changes waiting for its own cells: they were made to
           # cells it puts back as declared (Reference#put_up_background). The changes waiting for
           # every other background are kept, so a box every screen shows, changed earlier in the
           # pass a scene takes over in, still shows the change on the next frame.
@@ -114,7 +114,7 @@ module VBlank
             end
           end
 
-          # A PAINTED SCREEN TAKING OVER FORGETS EVERY WAITING CHANGE. Its picture is kept in the
+          # A painted screen taking over forgets every waiting change. Its picture is kept in the
           # same video memory the maps were in, so a change written there in the gap would be a
           # stray pixel in the picture. None of them is owed later either: coming back, the tiled
           # screen puts every background up again as declared (Reference#put_up_always_up), and
@@ -158,20 +158,20 @@ module VBlank
           # it empties the queue, one store; any less is a call to HELD_DROP_ROUTINE.
           def emit_drop_held_tiles(start, finish)
             if start.zero? && finish >= HELD_PLACES
-              emit_number(ACC, 0)
-              return store_var(ACC, HELD_COUNT)
+              @emitter.emit_number(ACC, 0)
+              return @primitives.store_var(ACC, HELD_COUNT)
             end
 
             @held_drop_used = true
-            emit_number(HELD_DROP_FROM, start << HELD_PLACE_SHIFT)
-            emit_number(HELD_DROP_SPAN, (finish - start) << HELD_PLACE_SHIFT)
-            emit_call_cold_routine(HELD_DROP_ROUTINE)
+            @emitter.emit_number(HELD_DROP_FROM, start << HELD_PLACE_SHIFT)
+            @emitter.emit_number(HELD_DROP_SPAN, (finish - start) << HELD_PLACE_SHIFT)
+            @placement.emit_call_cold_routine(HELD_DROP_ROUTINE)
           end
 
           # Reference#exec_show_held_tiles.
           def emit_show_held_tiles(_node)
             @held_routine_used = true
-            emit_call_cold_routine(HELD_ROUTINE)
+            @placement.emit_call_cold_routine(HELD_ROUTINE)
           end
 
           # A held change to a cell settled while the program was written: its word is a number.
@@ -179,7 +179,7 @@ module VBlank
             return unless grid.holds?(col, row)
 
             place = map_cell_address(bg, grid, col, row) - VRAM_START
-            emit_number(ACC, (place << HELD_PLACE_SHIFT) | entry)
+            @emitter.emit_number(ACC, (place << HELD_PLACE_SHIFT) | entry)
             emit_hold_word
           end
 
@@ -187,97 +187,97 @@ module VBlank
           # (BackgroundDrawing#emit_cell_index), and its word is built around it.
           def emit_computed_tile_held(bg, entry)
             cell = BackgroundDrawing::TILE_ADDR
-            emit(ASM.lsl_imm(cell, cell, 1)) # two bytes a cell
-            emit_number(TMP, bg.screen_block * SCREENBLOCK_BYTES)
-            emit(ASM.add_reg(cell, TMP, cell))
-            emit_number(ACC, entry)
-            emit(ASM.orr_reg_lsl(ACC, ACC, cell, HELD_PLACE_SHIFT))
+            @emitter.emit(ASM.lsl_imm(cell, cell, 1)) # two bytes a cell
+            @emitter.emit_number(TMP, bg.screen_block * SCREENBLOCK_BYTES)
+            @emitter.emit(ASM.add_reg(cell, TMP, cell))
+            @emitter.emit_number(ACC, entry)
+            @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, cell, HELD_PLACE_SHIFT))
             emit_hold_word
           end
 
           # Add the word in ACC to the queue, writing what waits first if it is full.
           def emit_hold_word
             @held_routine_used = true
-            room = gensym
-            load_var(HELD_LEFT, HELD_COUNT)
-            emit(ASM.cmp_imm(HELD_LEFT, Nodes::ShowHeldTiles::MOST_CELLS))
-            emit_branch(:bcond, room, cond: :lo)
-            emit(ASM.mov_reg(HELD_KEPT, ACC))
-            emit_call_cold_routine(HELD_ROUTINE)
-            emit(ASM.mov_reg(ACC, HELD_KEPT))
-            emit_number(HELD_LEFT, 0)
-            place_label(room)
-            emit_number(HELD_AT, held_queue_address)
-            emit(ASM.lsl_imm(HELD_VIDEO, HELD_LEFT, 2)) # a word a change
-            emit(ASM.add_reg(HELD_AT, HELD_AT, HELD_VIDEO))
-            emit(ASM.str(ACC, HELD_AT))
-            emit(ASM.add_imm(HELD_LEFT, HELD_LEFT, 1))
-            store_var(HELD_LEFT, HELD_COUNT)
+            room = @emitter.gensym
+            @primitives.load_var(HELD_LEFT, HELD_COUNT)
+            @emitter.emit(ASM.cmp_imm(HELD_LEFT, Nodes::ShowHeldTiles::MOST_CELLS))
+            @emitter.emit_branch(:bcond, room, cond: :lo)
+            @emitter.emit(ASM.mov_reg(HELD_KEPT, ACC))
+            @placement.emit_call_cold_routine(HELD_ROUTINE)
+            @emitter.emit(ASM.mov_reg(ACC, HELD_KEPT))
+            @emitter.emit_number(HELD_LEFT, 0)
+            @emitter.place_label(room)
+            @emitter.emit_number(HELD_AT, held_queue_address)
+            @emitter.emit(ASM.lsl_imm(HELD_VIDEO, HELD_LEFT, 2)) # a word a change
+            @emitter.emit(ASM.add_reg(HELD_AT, HELD_AT, HELD_VIDEO))
+            @emitter.emit(ASM.str(ACC, HELD_AT))
+            @emitter.emit(ASM.add_imm(HELD_LEFT, HELD_LEFT, 1))
+            @primitives.store_var(HELD_LEFT, HELD_COUNT)
           end
 
-          # THE ROUTINE THAT WRITES EVERY WAITING CHANGE, in the order they were made, and empties
+          # The routine that writes every waiting change, in the order they were made, and empties
           # the queue. Emitted once, after the program's own code, if anything calls it.
           def emit_held_tiles_routine
             emit_drop_held_tiles_routine if @held_drop_used
             return unless @held_routine_used
 
-            done = gensym
-            each = gensym
-            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-            place_label(HELD_ROUTINE)
-            load_var(HELD_LEFT, HELD_COUNT)
-            emit(ASM.cmp_imm(HELD_LEFT, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            emit_number(HELD_AT, held_queue_address)
-            emit_number(HELD_VIDEO, VRAM_START)
-            place_label(each)
-            emit(ASM.ldr(HELD_WORD, HELD_AT))
-            emit(ASM.add_imm(HELD_AT, HELD_AT, 4))
-            emit(ASM.add_reg_lsr(HELD_CELL, HELD_VIDEO, HELD_WORD, HELD_PLACE_SHIFT))
-            emit(ASM.store_halfword(HELD_WORD, HELD_CELL))
-            emit(ASM.subs_imm(HELD_LEFT, HELD_LEFT, 1))
-            emit_branch(:bcond, each, cond: :ne)
-            emit_number(HELD_LEFT, 0)
-            store_var(HELD_LEFT, HELD_COUNT)
-            place_label(done)
-            emit(ASM.return)
+            done = @emitter.gensym
+            each = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            @emitter.place_label(HELD_ROUTINE)
+            @primitives.load_var(HELD_LEFT, HELD_COUNT)
+            @emitter.emit(ASM.cmp_imm(HELD_LEFT, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit_number(HELD_AT, held_queue_address)
+            @emitter.emit_number(HELD_VIDEO, VRAM_START)
+            @emitter.place_label(each)
+            @emitter.emit(ASM.ldr(HELD_WORD, HELD_AT))
+            @emitter.emit(ASM.add_imm(HELD_AT, HELD_AT, 4))
+            @emitter.emit(ASM.add_reg_lsr(HELD_CELL, HELD_VIDEO, HELD_WORD, HELD_PLACE_SHIFT))
+            @emitter.emit(ASM.store_halfword(HELD_WORD, HELD_CELL))
+            @emitter.emit(ASM.subs_imm(HELD_LEFT, HELD_LEFT, 1))
+            @emitter.emit_branch(:bcond, each, cond: :ne)
+            @emitter.emit_number(HELD_LEFT, 0)
+            @primitives.store_var(HELD_LEFT, HELD_COUNT)
+            @emitter.place_label(done)
+            @emitter.emit(ASM.return)
             # Where it ends, so a profile of the finished game can name it (see
             # GBA#lowered_routine_addresses).
-            place_label(DerivedNames.routine_end(HELD_ROUTINE))
+            @emitter.place_label(DerivedNames.routine_end(HELD_ROUTINE))
           end
 
-          # THE ROUTINE THAT FORGETS THE WAITING CHANGES TO ONE STRETCH OF VIDEO MEMORY (see
+          # The routine that forgets the waiting changes to one stretch of video memory (see
           # HELD_DROP_ROUTINE), walking the queue once and moving each change it keeps down over
           # the ones it forgets, so the kept ones stay in the order made.
           def emit_drop_held_tiles_routine
-            done = gensym
-            each = gensym
-            forget = gensym
-            emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
-            place_label(HELD_DROP_ROUTINE)
-            load_var(HELD_LEFT, HELD_COUNT)
-            emit(ASM.cmp_imm(HELD_LEFT, 0))
-            emit_branch(:bcond, done, cond: :eq)
-            emit(ASM.push(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
-            emit_number(HELD_CELL, held_queue_address)
-            emit(ASM.mov_reg(HELD_DROP_TO, HELD_CELL))
-            emit_number(HELD_DROP_KEPT, 0)
-            place_label(each)
-            emit(ASM.ldr(HELD_WORD, HELD_CELL))
-            emit(ASM.add_imm(HELD_CELL, HELD_CELL, 4))
-            emit(ASM.sub_reg(HELD_DROP_OFFSET, HELD_WORD, HELD_DROP_FROM))
-            emit(ASM.cmp_reg(HELD_DROP_OFFSET, HELD_DROP_SPAN))
-            emit_branch(:bcond, forget, cond: :lo)
-            emit(ASM.str_post(HELD_WORD, HELD_DROP_TO, 4))
-            emit(ASM.add_imm(HELD_DROP_KEPT, HELD_DROP_KEPT, 1))
-            place_label(forget)
-            emit(ASM.subs_imm(HELD_LEFT, HELD_LEFT, 1))
-            emit_branch(:bcond, each, cond: :ne)
-            store_var(HELD_DROP_KEPT, HELD_COUNT)
-            emit(ASM.pop(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
-            place_label(done)
-            emit(ASM.return)
-            place_label(DerivedNames.routine_end(HELD_DROP_ROUTINE))
+            done = @emitter.gensym
+            each = @emitter.gensym
+            forget = @emitter.gensym
+            @emitter.emit(ASM.loop_forever) # fall-through guard: only ever entered by the call
+            @emitter.place_label(HELD_DROP_ROUTINE)
+            @primitives.load_var(HELD_LEFT, HELD_COUNT)
+            @emitter.emit(ASM.cmp_imm(HELD_LEFT, 0))
+            @emitter.emit_branch(:bcond, done, cond: :eq)
+            @emitter.emit(ASM.push(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
+            @emitter.emit_number(HELD_CELL, held_queue_address)
+            @emitter.emit(ASM.mov_reg(HELD_DROP_TO, HELD_CELL))
+            @emitter.emit_number(HELD_DROP_KEPT, 0)
+            @emitter.place_label(each)
+            @emitter.emit(ASM.ldr(HELD_WORD, HELD_CELL))
+            @emitter.emit(ASM.add_imm(HELD_CELL, HELD_CELL, 4))
+            @emitter.emit(ASM.sub_reg(HELD_DROP_OFFSET, HELD_WORD, HELD_DROP_FROM))
+            @emitter.emit(ASM.cmp_reg(HELD_DROP_OFFSET, HELD_DROP_SPAN))
+            @emitter.emit_branch(:bcond, forget, cond: :lo)
+            @emitter.emit(ASM.str_post(HELD_WORD, HELD_DROP_TO, 4))
+            @emitter.emit(ASM.add_imm(HELD_DROP_KEPT, HELD_DROP_KEPT, 1))
+            @emitter.place_label(forget)
+            @emitter.emit(ASM.subs_imm(HELD_LEFT, HELD_LEFT, 1))
+            @emitter.emit_branch(:bcond, each, cond: :ne)
+            @primitives.store_var(HELD_DROP_KEPT, HELD_COUNT)
+            @emitter.emit(ASM.pop(HELD_DROP_TO, HELD_DROP_KEPT, HELD_DROP_OFFSET))
+            @emitter.place_label(done)
+            @emitter.emit(ASM.return)
+            @emitter.place_label(DerivedNames.routine_end(HELD_DROP_ROUTINE))
           end
 
           # The queue, in the console's big work memory: a word for each change it can hold.

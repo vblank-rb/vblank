@@ -4,6 +4,20 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a test such as `x > 5` that the game makes and never uses:
+        #
+        # > You made a test like `x > 5`, but the game does not use it. This line is in code that
+        # > VBlank does not read as a game, so Ruby takes the test as always true. To fix this, move
+        # > the line into your `VBlank.game` block. If the line is in a file of its own, load that
+        # > file with `VBlank.require_game_file`, not `require_relative`.
+        #
+        # A test on the game's numbers is not true or false while the game is built: it is a
+        # question the game asks each time it runs. Inside the `VBlank.game` block, a plain Ruby
+        # `if x > 5` is turned into that question. Outside it, Ruby sees only an object, takes it
+        # as true, and the branch always runs with the test ignored. Move the line into the game's
+        # block, or load the file it is in with `VBlank.require_game_file`.
+        #
+        #--
         # The native-`if` slip. A comparison in this DSL is a Condition object, and
         # Ruby treats any object as true, so `if x > 5` runs its body every time
         # with the comparison silently ignored — no error, just a ROM that always
@@ -22,6 +36,7 @@ module VBlank
         # It reports errors, not warnings: a Condition built and never branched on
         # did nothing at all, and the only way that happens is the native-`if` slip
         # — there's no legitimate cause to weigh against.
+        #++
         class OrphanedCondition
           NAME = :orphaned_condition
           PLAIN_NAME = "a test nothing branched on"

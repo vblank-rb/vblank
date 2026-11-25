@@ -23,7 +23,7 @@ class TestImageImportCartridge < Minitest::Test
     assert v.white?(11, 21), "bottom-right white"
   end
 
-  # ---- the whole path for a CUTOUT: the background shows through -------------
+  # ---- the whole path for a cutout: the background shows through -------------
 
   # The opaque top row draws; the transparent bottom row must let the blue field show
   # through — proving it's a see-through cutout, not a rectangle.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# PICTURES GROUPED BY ROOM. A scene made of many rooms shows only one room's things at a time
+# Pictures grouped by room. A scene made of many rooms shows only one room's things at a time
 # (two while the screen slides from one to the next), and the console keeps the pictures it
 # draws sprites from in a memory small enough that a whole game's things do not fit in it at
 # once. So a game says which of its pictures belong to which room, and which rooms are up; the
@@ -204,7 +204,7 @@ class TestPictureGroups < Minitest::Test
       end
       game_loop do
         passes += 1
-        case_var(:state) { when_val 0, :sea }
+        call({ 0 => :sea }, number: :state)
       end
     end
     b.finalize_program
@@ -249,7 +249,7 @@ class TestPictureGroups < Minitest::Test
         passes += 1
         state = 1 if passes == 3
         state = 0 if passes == 5
-        case_var(:state) { when_val 0, :sea; when_val 1, :port }
+        call({ 0 => :sea, 1 => :port }, number: :state)
       end
     end
     b.finalize_program

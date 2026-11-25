@@ -4,7 +4,7 @@ require "tmpdir" # here and not where it is used: see the note at the top of the
 
 module VBlank
   module Playthroughs
-    # A GAME DRIVEN WITH NOBODY AT THE CONTROLS, from a script that sets out what to press.
+    # A game driven with nobody at the controls, from a script that sets out what to press.
     #
     #   walk = VBlank.playthrough "walk to the signpost" do
     #     wait frames: 10
@@ -17,24 +17,24 @@ module VBlank
     #   played.frames    # how many frames went by
     #   played.moments   # { at_the_signpost: 52 }
     #
-    # WHAT IT IS FOR. A game can otherwise only be played by a person, or poked for a few
+    # What it is for. A game can otherwise only be played by a person, or poked for a few
     # frames by a test that writes out which buttons are down on which frame. This is the
     # whole idea those pieces were missing: say what to do the way a person would say it, and
     # get the same five minutes of play every time.
     #
-    # A SCRIPT COUNTS FRAMES. A frame is one picture the console shows, a sixtieth of a second,
+    # A script counts frames. A frame is one picture the console shows, a sixtieth of a second,
     # and the console looks at its buttons on every one — so "down for forty frames" is an
     # exact thing to say, and the same on every machine.
     #
-    # What a frame is NOT is a trip round the game's own loop. A game that fits its work into a
+    # What a frame is not is a trip round the game's own loop. A game that fits its work into a
     # frame goes round once for each, and then a button down for forty frames is seen forty
     # times. One that does not fit takes two frames a trip, or three, and sees it fewer.
     #
-    # ...OR IT WATCHES THE GAME. Counting is exact and brittle: the day a screen takes a frame
+    # ...OR it watches the game. Counting is exact and brittle: the day a screen takes a frame
     # longer to come up, every step after it is a frame out. So a step can instead wait until
     # something is true of the game, and the script carries on from the frame it first is.
     #
-    # FRAMES ARE COUNTED FROM 1. Frame 1 is the first one the playthrough plays, and a moment
+    # Frames are counted from 1. Frame 1 is the first one the playthrough plays, and a moment
     # is the frame that had just been played when the script named it.
     #
     # It plays in the emulator, on a cartridge the build made or on a cartridge file — which
@@ -57,7 +57,7 @@ module VBlank
       # +script+ is the block of steps. It is read here, once, so a mistake in it is reported
       # where the playthrough is declared and not part way through playing it.
       #
-      # EACH PLAYING READS IT AGAIN (#steps_for_playing). A steer or a wait is a block, and a
+      # Each playing reads it again (#steps_for_playing). A steer or a wait is a block, and a
       # script can keep a count beside it (`walked = 0; steer("walk") { walked += 1; ... }`):
       # steps read once would share that count between playings, and a playthrough played a
       # second time (a comparison plays its first lead-in twice, once to learn the presses and
@@ -96,10 +96,60 @@ module VBlank
       #
       # +progress+ (a Messages::Progress) is told how far the playing has got as it goes: a phase
       # from the start and one on from each moment, and the frame each has reached.
+      #
+      # +cartridge+ can also be the game itself (what `VBlank.game` gives back), for a way that runs
+      # the game itself: it is checked as a build checks it and played, and no cartridge is made (see
+      # UnbuiltGame.of, which checks it once for many playings).
+      #
+      # +seed+ is added to the game's random numbers once the game has set itself up (see SEEDED_WAYS),
+      # so one build plays as many runs of the random numbers as there are seeds. Nil adds nothing.
       def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-               count_passes: false, progress: Messages::Progress.silent, &at_each_moment)
+               count_passes: false, seed: nil, progress: Messages::Progress.silent, &at_each_moment)
         Playing.play(@name, steps_for_playing, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on, window: window,
-                                               in_passes: in_passes, count_passes: count_passes, progress: progress, &at_each_moment)
+                                               in_passes: in_passes, count_passes: count_passes, seed: seed, progress: progress,
+                     &at_each_moment)
+      end
+
+      # The ways a playing can be given a seed of its own: the interpreter, and the game as C, with its
+      # picture or its rules alone. Each adds the seed to the game's random numbers at the end of the
+      # game's first pass, the one it sets itself up in, as every machine of a match adds the match's
+      # seed (Reference#play_as_match), so a game that chose `seed 7` keeps its choice and each seed is
+      # another run from there. A cartridge's random numbers start where its build put them: a seed of
+      # the playing's own would have to change its bytes, or every cartridge would be built for it.
+      # The game as JavaScript or as Ruby is not handed one yet.
+      SEEDED_WAYS = %w[interpreter native logic].freeze
+
+      # A seed is a whole number the console's numbers hold, given to a way that takes one.
+      def self.refuse_unusable_seed!(seed, on, match: nil)
+        return if seed.nil?
+
+        unless seed.is_a?(Integer) && seed.between?(IR::Int32::MIN, IR::Int32::MAX)
+          raise ArgumentError, "`seed:` was #{seed.inspect}. It must be a whole number that fits in 32 bits, " \
+                               "like `seed: 4`."
+        end
+        if match
+          raise ArgumentError, "This tape is of a match, which has a seed of its own. To fix this, leave out `seed:`."
+        end
+        return if SEEDED_WAYS.include?(on)
+
+        raise ArgumentError, "This playing starts the random numbers at seed #{seed}. #{on ? "The #{on} way" : 'The emulator'} " \
+                             "cannot add a seed to the game's random numbers. The ways that can are " \
+                             "#{SEEDED_WAYS.join(', ')}: play there, with `on: \"logic\"` or `--on logic`. To play " \
+                             "the seed on a cartridge, build the cartridge with that seed."
+      end
+
+      # The game itself handed over in place of a cartridge (a Cartridge::Game), for a way that runs the
+      # game itself: checked and not built (UnbuiltGame.of). Anything else is passed on as it is. The
+      # emulator plays a cartridge's bytes, so a game is built for it first, by its author.
+      def self.unbuilt_if_game(given, on, progress)
+        return given unless given.is_a?(Cartridge::Game)
+
+        if on.nil? || on == LoweredGame::EMULATOR
+          raise ArgumentError, "This is a game, not a cartridge, and the emulator plays a cartridge. To fix this, " \
+                               "build the cartridge (`game.build_rom`) and play that, or play the game another way " \
+                               "(`on: \"logic\"`)."
+        end
+        UnbuiltGame.of(given, progress: progress)
       end
 
       # Play this script on +game+, a console that is already running, as the lead-in to
@@ -129,7 +179,7 @@ module VBlank
       # compare them at each named moment.
       def compare(first, second, **settings) = Comparison.new(first, second, moment_names, **settings).run_playthrough(self)
 
-      # WRITE ONE PICTURE OF ONE FRAME ON TWO CARTRIDGES at +path+: their two screens on
+      # Write one picture of one frame on two cartridges at +path+: their two screens on
       # that frame side by side, with the difference between them. The script is played on
       # +first+ to learn its presses, as it is for a comparison, and both are then played on
       # those as far as the frame (see Comparison::PictureRequest). +at+ is the frame, by
@@ -147,7 +197,7 @@ module VBlank
       # Whether the script has a step that steers.
       def steers? = @steps.any?(Steer)
 
-      # WHETHER A PLAYING ON THE ADVANCE'S CARTRIDGE COUNTS ITS PASSES, for `game.passes`: where the
+      # Whether a playing on the Advance's cartridge counts its passes, for `game.passes`: where the
       # playing is counted in them (+in_passes+ true), where it steers (+steps+, or +lead_in+'s), since
       # a steering block is how a bot decides once a pass, and where it was asked to (+asked+).
       #
@@ -174,10 +224,10 @@ module VBlank
                                              count_passes: count_passes && !cartridge.built.nil?)
       end
 
-      # A CONSOLE SWITCHED ON AND BROUGHT TO WHERE PLAYING SHOULD BEGIN: holding +save+, and
+      # A console switched on and brought to where playing should begin: holding +save+, and
       # with +lead_in+ played on it, a playthrough of its own.
       #
-      # WHAT A LEAD-IN IS FOR. A cartridge somebody else made shows its logos and an
+      # What a lead-in is for. A cartridge somebody else made shows its logos and an
       # introduction before its first screen, and another does not, so two cartridges that
       # are the same game are out of step from power-on before a button is pressed. A
       # lead-in for each gets each to the same place by its own road — usually a wait that
@@ -189,10 +239,10 @@ module VBlank
       # +match+ is the match a tape replays (a Tape::Match), which only the interpreter takes (Tape#play
       # refuses it anywhere else). What comes back is a Started: the game, to ask, and what steps it.
       def self.power_on_and_lead_in(cartridge, save: nil, lead_in: nil, on: nil, window: nil, count_passes: false,
-                                    match: nil)
+                                    match: nil, seed: nil)
         refuse_unbuilt_game_on_emulator!(cartridge, on)
         game = if on && on != LoweredGame::EMULATOR
-                 lowered_game(cartridge, on, save, speaker: !window.nil?, match: match)
+                 lowered_game(cartridge, on, save, speaker: !window.nil?, match: match, seed: seed)
                else
                  power_on(cartridge, save: save, count_passes: count_passes || !window.nil?)
                end
@@ -201,7 +251,47 @@ module VBlank
         Started.new(game: game, stepper: stepper, lead_in_keys: lead_in_keys)
       end
 
-      # A GAME SWITCHED ON AND READY TO PLAY: +game+, the running game a playing asks, and +stepper+,
+      # Where a playing of a tape starts when it starts after a frame of it (Tape#play's
+      # +starting_after+): the frame, the presses up to it (SnapshotCache::Presses), and the
+      # SnapshotCache the console is put there from, or nil to play there from power-on.
+      StartAfter = Data.define(:frame, :presses, :snapshots)
+
+      # A console switched on with +cartridge+ in it and brought to the frame after +presses+ (a list
+      # of SnapshotCache::Presses) without being looked at: put back from a snapshot in +snapshots+
+      # where one is given, else played there. +save+ is what the save memory held at power-on.
+      def self.power_on_after(cartridge, presses, save: nil, snapshots: nil)
+        cartridge = cartridge_from(cartridge)
+        open = -> { power_on(cartridge, save: save) }
+        return open.call.tap { |game| presses.each { |held| game.step(held.frames, keys: held.keys) } } unless snapshots
+
+        refuse_snapshot_without_save_memory!(cartridge)
+        snapshots.console_after(presses, cartridge, save: save, &open)
+      end
+
+      # What a start after a frame cannot be given: +snapshots+ that are not a SnapshotCache, or with
+      # no start, and a start that is not a frame or a moment's name. +what+ names what was given
+      # them, at the start of a sentence ("The comparison").
+      def self.refuse_unusable_start!(starting_after, snapshots, what:)
+        SnapshotCache.refuse_not_cache!(snapshots)
+        Tape.refuse_unusable_start!(starting_after)
+        return unless starting_after.nil? && snapshots
+
+        raise ArgumentError, "#{what} was given `snapshots:` and no `starting_after:`. A snapshot is used only " \
+                             "to start after a frame. Give `starting_after:` the frame, or remove `snapshots:`."
+      end
+
+      # A console whose snapshot leaves out the save memory its cartridge keeps would be put back
+      # holding the save it was switched on with (Console::Kit#snapshot_leaves_out_save_memory?).
+      def self.refuse_snapshot_without_save_memory!(cartridge)
+        kit = Console.for(cartridge.console)
+        return unless kit.snapshot_leaves_out_save_memory?(cartridge)
+
+        raise ArgumentError, "The cartridge keeps a save, and a snapshot of a #{kit.title} does not hold what it saved. " \
+                             "A start from a snapshot would play with the save it had at power-on. To fix this, " \
+                             "remove `snapshots:`, and the cartridge is played to the start."
+      end
+
+      # A game switched on and ready to play: +game+, the running game a playing asks, and +stepper+,
       # what plays its frames — the game itself, or a WindowStepper showing it in a window.
       # +lead_in_keys+ is the buttons the lead-in held on each of its frames, as the console reads
       # them: empty for none.
@@ -226,9 +316,9 @@ module VBlank
 
       # The game inside +cartridge+ run the way +on+ names. That takes the game, so a cartridge
       # somebody else made, which is only its bytes, plays on the emulator alone.
-      def self.lowered_game(cartridge, on, save, speaker: false, match: nil)
+      def self.lowered_game(cartridge, on, save, speaker: false, match: nil, seed: nil)
         cartridge = cartridge_from(cartridge)
-        unless LoweredGame::RUNS.key?(on)
+        unless LoweredGame::RUNS.include?(on)
           raise ArgumentError, "There is no way to run a game called #{on.inspect}. The ways are " \
                                "#{LoweredGame.ways.join(', ')}."
         end
@@ -236,10 +326,10 @@ module VBlank
           raise ArgumentError, "A cartridge file plays on the emulator alone. To play on #{on}, give the game file."
         raise ArgumentError, "A save plays on the emulator alone. To play on #{on}, leave the save out." if save
 
-        LoweredGame.new(program, on, speaker: speaker, match: match)
+        LoweredGame.new(program, on, speaker: speaker, match: match, seed: seed)
       end
 
-      # WHAT A PLAYING CAN COUNT IN PASSES. The same buttons on the same pass give the same game only
+      # What a playing can count in passes. The same buttons on the same pass give the same game only
       # for a game that moves by its passes. A game cannot be seen to, but one that reads the frame
       # clock moves by frames, and one that waits for the screen in places of its own has more waits
       # than passes. For both, a variable the game counts is the way to name what counts, and that
@@ -285,7 +375,7 @@ module VBlank
                              "frames that count: `VBlank.playthrough(\"past the logos\") { wait_until(...) { ... } }`."
       end
 
-      # THE CARTRIDGE THAT WAS HANDED OVER, which is one the build made or the path of a
+      # The cartridge that was handed over, which is one the build made or the path of a
       # cartridge file — a cartridge somebody else made, or one of this framework's written
       # to disk. A path is read into a CartridgeFile, which can be run and looked at like
       # any other and has no names for anything in it. A cartridge passes straight through,
@@ -304,7 +394,7 @@ module VBlank
         Diagnostics::CartridgeFile.new(given)
       end
 
-      # THE SAVE THAT WAS HANDED OVER, as save memory: the save another playing handed back,
+      # The save that was handed over, as save memory: the save another playing handed back,
       # or the path of a save file, read as a SaveFile until the cartridge gives where its save
       # memory is in it. Nothing handed over is no save, and a cartridge nobody has played.
       #
@@ -327,7 +417,7 @@ module VBlank
         SaveFile.new(bytes: File.binread(given), from: "The save file at #{given}")
       end
 
-      # A SAVE FILE READ FROM A PATH, which can be the emulator's own file and not the save memory
+      # A save file read from a path, which can be the emulator's own file and not the save memory
       # alone: a Super FX board's file has the chip's working RAM before the save, and a clock's
       # file the clock's bytes after it. Where the save memory is in it is the cartridge's to give
       # (Console::Kit#save_file_of), so it becomes a save once the cartridge is known. The clock's
@@ -343,7 +433,7 @@ module VBlank
         Diagnostics::SaveBytes.save_holding(layout.memory_in(bytes), from: from, clock_state: layout.clock_in(bytes))
       end
 
-      # +save+ MADE TO FIT +cartridge+, or refused. A cartridge this framework built records how
+      # +save+ made to fit +cartridge+, or refused. A cartridge this framework built records how
       # much save memory it has, and a chip cannot change size: a save of another size came
       # from another game, or is not a save at all. A cartridge it did not build records
       # nothing, so its save is taken as it comes.
@@ -383,7 +473,7 @@ module VBlank
       end
       private_class_method :path?, :bytes_given_as_path?, :described
 
-      # ONE PLAYING, as it goes: the cartridge running, and a tape of every press made on it so
+      # One playing, as it goes: the cartridge running, and a tape of every press made on it so
       # far. Each step plays itself on this. +title+ is the name of what is being played, for
       # an error to say whose playing it was.
       class Playing
@@ -396,9 +486,15 @@ module VBlank
         #
         # The lead-in is played once the console is on and before the playing begins, so
         # none of it is on the tape.
+        #
+        # +start+ (a StartAfter, from Tape#play) brings the console to a frame of +steps+ without
+        # looking at it, and the playing goes on from the frame after (#play_after_start).
         def self.play(title, steps, cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, in_passes: nil,
-                      count_passes: false, match: nil, progress: Messages::Progress.silent, &at_each_moment)
+                      count_passes: false, match: nil, seed: nil, start: nil, progress: Messages::Progress.silent,
+                      &at_each_moment)
           Playthrough.refuse_lead_in_not_playthrough!(lead_in)
+          Playthrough.refuse_unusable_seed!(seed, on, match: match)
+          cartridge = Playthrough.unbuilt_if_game(cartridge, on, progress)
           save = Playthrough.save_from(save)
           save = Playthrough.save_fitted_to(cartridge = Playthrough.cartridge_from(cartridge), save) if save
           folder = PictureFolder.at(pictures_in, steps.flat_map(&:names))
@@ -408,15 +504,25 @@ module VBlank
           # Making the game the way +on+ names (a big game written as Ruby, or built as C) takes a
           # while before its first frame, so it is a phase of its own.
           progress.step("Starting game")
-          started = Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
-                                                                count_passes: counting, match: match)
+          started = if start
+                      after = Playthrough.power_on_after(cartridge, start.presses, save: save, snapshots: start.snapshots)
+                      Started.new(game: after, stepper: after, lead_in_keys: [])
+                    else
+                      Playthrough.power_on_and_lead_in(cartridge, save: save, lead_in: lead_in, on: on, window: window,
+                                                                  count_passes: counting, match: match, seed: seed)
+                    end
           game = started.game
           stepper = in_passes ? PassStepper.new(game, in_passes, stepper: started.stepper) : started.stepper
-          playing = new(title, cartridge, game, at_each_moment, stepper: stepper,
+          playing = new(title, cartridge, game, at_each_moment, stepper: stepper, frame_stepper: started.stepper,
                         save: save, folder: folder, led_in: !lead_in.nil?, in_passes: in_passes, match: match,
-                        progress: progress)
-          progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
-          steps.each { |step| step.play(playing) }
+                        seed: seed, progress: progress)
+          if start
+            progress.step("playing from frame #{start.frame + 1}")
+            playing.play_after_start(steps, start.frame)
+          else
+            progress.step(lead_in ? "playing from after the lead-in" : "playing from power-on")
+            steps.each { |step| step.play(playing) }
+          end
           playing.played
         ensure
           progress.done
@@ -431,14 +537,20 @@ module VBlank
         # +in_passes+ names what the counts are counted in, for the tape to record (see Tape), and
         # +progress+ is told the frame reached as each hold ends and a phase at each moment. +stepper+
         # plays the frames each hold asks for: the game itself, or a WindowStepper or PassStepper over it.
-        # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil.
-        def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, led_in: false, in_passes: nil,
-                       match: nil, progress: Messages::Progress.silent)
+        # +frame_stepper+ plays a frame at a time whatever the counts are in, for a step that waits on the
+        # game (Until): the game itself, or a WindowStepper.
+        # +match+ is the match a tape replays (a Tape::Match), for the tape this playing makes, or nil;
+        # +seed+ the seed this playing added to the game's random numbers, for the tape too, or nil.
+        def initialize(title, cartridge, game, at_each_moment, save:, folder:, stepper: game, frame_stepper: stepper,
+                       led_in: false, in_passes: nil, match: nil, seed: nil, progress: Messages::Progress.silent)
           @title = title
+          @seed = seed
           @progress = progress
           @cartridge = cartridge
           @game = game
           @stepper = stepper
+          @frame_stepper = frame_stepper
+          @frames_waited_on_game = 0
           @save = save
           @led_in = led_in
           @in_passes = in_passes
@@ -470,6 +582,23 @@ module VBlank
           raise GaveUp.new(title: @title, words: words, waited: within, frame: @taping.frames,
                            picture: write_picture_of_frame)
         end
+
+        # Play +step+'s pattern a frame at a time until the game reads its value (see Until). A playing
+        # counted in passes puts the step on its tape as itself, since its frames are another number on
+        # another build; one counted in frames puts the frames, as a watching step does.
+        def repeat_until(step)
+          held = step.play_pattern(@game, @frame_stepper) do |buttons|
+            @in_passes ? @frames_waited_on_game += 1 : @taping.hold(buttons, 1)
+            @progress.show_detail("frame #{frames_played}")
+          end
+          raise step.gave_up(title: @title, frame: frames_played, game: @game) unless held
+
+          @taping.add_until(step) if @in_passes
+        end
+
+        # How many frames have been played: the tape's count, or for a playing counted in passes the
+        # frames its passes took and those its steps that wait on the game took.
+        private def frames_played = @in_passes ? @stepper.frames_played + @frames_waited_on_game : @taping.frames
 
         # Ask the block what to press, a frame at a time, until it answers that it is done. The block is
         # asked before each frame, so what it sees is the frame just played, and what it answers
@@ -542,6 +671,30 @@ module VBlank
           @at_each_moment&.call(name, @game)
         end
 
+        # Play +steps+ on a console already on frame +start+ of them: what they hold up to that
+        # frame goes on the tape without a frame being played, a hold the start falls inside is cut
+        # there, and the rest is played. A moment at or before the start is on the tape, with no
+        # picture, and its block is not handed the game. Before the start the game was never on that
+        # frame here. On the start's own frame it is, but a console put back from a snapshot has
+        # played no frame yet, so its screen holds no picture until the next one (the emulator draws
+        # a frame as it plays it): the moment would be handed a blank screen where a playing from
+        # power-on shows the frame. So it is not handed the game at all, warm or cold alike.
+        def play_after_start(steps, start)
+          played = 0
+          steps.each do |step|
+            if step.is_a?(Moment) && played <= start
+              @taping.moment(step.name)
+            elsif played >= start
+              step.play(self)
+            else
+              passed_over = [start - played, step.frames].min
+              @taping.hold(step.buttons, passed_over)
+              hold(step.buttons, step.frames - passed_over) if step.frames > passed_over
+            end
+            played += step.frames
+          end
+        end
+
         # The buttons held on each frame played so far, one key mask a frame.
         def keys_by_frame = @taping.keys_by_frame
 
@@ -549,7 +702,7 @@ module VBlank
         # two can never disagree.
         def played
           tape = Tape.recorded_on(@cartridge, @taping.steps, save: @save, led_in: @led_in, in_passes: @in_passes,
-                                                             match: @match)
+                                                             match: @match, seed: @seed)
           Played.new(frames: tape.frames, moments: tape.moments, game: @game, tape: tape,
                      pictures: @pictures, picture_files: @picture_files, save: save_left)
         end
@@ -622,6 +775,85 @@ module VBlank
         DONE = :done
       end
 
+      # A pattern of presses repeated until a variable of the game reads a number: +var+ is its name,
+      # +value+ the number, +pattern+ the Holds to repeat, in frames (none, for nothing pressed), and
+      # +within+ how many frames it can take.
+      #
+      # It is for the stretches a tape of passes cannot count: a title waiting for a press, a fade, a
+      # tally, a death, a win screen. A tape counted in a variable of the game (`in_passes: :steps`)
+      # moves on as that variable rises, and on such a stretch it stands still; counted in passes of
+      # the game loop, the stretch is a different number of passes on a build whose fade is longer.
+      # This step waits on the game instead, so it is the same step on every build and every way of
+      # running one, and it goes on a tape of passes as itself, a line of its own.
+      #
+      # The pattern is in frames, not passes, since the count stands still here. Where it lands does
+      # not matter, because the console notes a press on every frame and hands it to the game the
+      # next time the game looks (the interpreter's `@pressed`, gathered frame by frame in
+      # Reference#advance_frame): a `pressed` read once a pass, or inside `once_a_frame`, sees a tap
+      # whichever frame of the pass it fell on. So a tap repeated until the game moves needs no
+      # frame of its own. What a slow pass can do is fold two taps into one, which a repeat
+      # answers with the next tap.
+      #
+      # The variable is read by name, as a count of passes reads it (PassStepper), before each frame:
+      # a step that already holds plays nothing. After +within+ frames it gives up (#gave_up).
+      Until = Data.define(:var, :value, :pattern, :within) do
+        def play(playing) = playing.repeat_until(self)
+        def frames = 0
+        def names = []
+        def extended_by(_held, _more) = nil
+
+        def tape_line
+          line = "#{Tape::UNTIL_WORD} #{var} is #{value}"
+          line += " within #{within}" unless within == Until::LONGEST
+          pattern.empty? ? line : "#{line}: #{pattern.map(&:tape_line).join(', ')}"
+        end
+
+        # Play frames on +stepper+ with the pattern's buttons down, until +game+ reads the value, each
+        # frame's buttons handed to the block once it is played. Whether the value was read in time.
+        def play_pattern(game, stepper)
+          within.times do |played|
+            return true if held?(game)
+
+            buttons = buttons_on(played)
+            stepper.step(1, keys: Playthrough.key_mask(buttons))
+            yield buttons
+          end
+          held?(game)
+        end
+
+        # What a step that never held raises: the step as a tape writes it, and what the variable read
+        # when it gave up, with the picture of the screen then. +title+ and +frame+ are as for GaveUp.
+        def gave_up(title:, frame:, game:)
+          folder = PictureFolder.new(Dir.mktmpdir("playthrough"), [])
+          picture = folder.write("frame-#{frame}", game.frame_gba, width: game.screen_width, height: game.screen_height)
+          GaveUp.new(title: title, words: tape_line, waited: within, frame: frame, picture: picture,
+                     tried: "repeated `#{tape_line}`, and #{var} still read #{game.var(var)}",
+                     longer: "give the step a bigger `within:`, or a tape line `within 7200`")
+        end
+
+        private
+
+        def held?(game) = game.var(var) == value
+
+        # The pattern's buttons on the frame +played+ frames into the step, the pattern repeated.
+        def buttons_on(played)
+          return [] if pattern.empty?
+
+          into = played % pattern.sum(&:frames)
+          pattern.each do |hold|
+            return hold.buttons if into < hold.frames
+
+            into -= hold.frames
+          end
+        end
+      end
+
+      class Until
+        # How many frames a step goes on, unless it sets its own: a minute, as long as a count of
+        # passes waits for its count to move (PassStepper::MOST_FRAMES_STILL).
+        LONGEST = 3600
+      end
+
       # A name for the frame that has just been played. As a line of a tape it plays no frames,
       # names one moment, and is never made longer.
       Moment = Data.define(:name) do
@@ -637,7 +869,7 @@ module VBlank
         # writes the name down as a word and reads it back as one, so a name has to be one.
         NAME = /\A[A-Za-z][A-Za-z0-9_]*\z/
 
-        # WHY A MOMENT CANNOT BE NAMED +name+ HERE, as one word a caller turns into its own
+        # Why a moment cannot be named +name+ HERE, as one word a caller turns into its own
         # sentence — a script and a tape say it differently — or nil when it can. +named+ are
         # the moments there are already, and +any_frames+ whether a frame has been played.
         def self.problem_with(name, named:, any_frames:)
@@ -649,7 +881,7 @@ module VBlank
         end
       end
 
-      # THE STEPS OF A SCRIPT, as the block writes them. Each word here is one a script can
+      # The steps of a script, as the block writes them. Each word here is one a script can
       # use; what they add up to is a plain list, in order: buttons held for a count of frames,
       # buttons held until something is true of the game, and moments named along the way.
       #
@@ -713,7 +945,7 @@ module VBlank
           add_watch_step(:hold_until, Watch.new(buttons: buttons, words: words, within: within, condition: condition))
         end
 
-        # CHOOSE EACH FRAME'S BUTTONS FROM WHAT THE GAME IS DOING, for a game whose enemies, ball or
+        # Choose each frame's buttons from what the game is doing, for a game whose enemies, ball or
         # opponent move for themselves, which no list of presses written beforehand can answer. The
         # block is handed the running cartridge before each frame and answers the buttons to hold
         # for that frame (`[:up, :b]`, or `[]` for none), or `:done` to end the step. Nothing here
@@ -737,6 +969,24 @@ module VBlank
           self
         end
 
+        # Repeat the presses in the block until a variable of the game reads +is+, or let frames go by
+        # with nothing pressed when there is no block. The block is a script of its own, of `press`,
+        # `hold` and `wait`, counted in frames and played over and over:
+        #
+        #   repeat_until(:screen, is: PLAYING) { press :start }
+        #   repeat_until :_tally_showing, is: 0
+        #
+        # The variable is read before each frame, so the step ends on the first frame it reads the
+        # number, part way through the presses or before any. In a playing counted in passes the step
+        # goes on the tape as itself (see Until), which is how a tape gets past a stretch the count
+        # does not move on. +within+ is how many frames it can take, a minute unless it sets its own.
+        def repeat_until(var, is:, within: Until::LONGEST, &presses)
+          refuse_unusable_until!(var, is)
+          refuse_invalid_frame_count!(:repeat_until, within, keyword: "within:")
+          @steps << Until.new(var: var, value: is, pattern: pattern_from(var, presses), within: within)
+          self
+        end
+
         # Name the frame that has just been played, so it can be asked for afterwards.
         def moment(name)
           refuse_unusable_moment!(name)
@@ -746,6 +996,35 @@ module VBlank
         end
 
         private
+
+        def refuse_unusable_until!(var, value)
+          unless var.is_a?(Symbol) && Tape::VARIABLE_NAME.match?(var)
+            raise ArgumentError,
+                  "`repeat_until` in playthrough #{@title.inspect} was given #{var.inspect}. It must start with the " \
+                  "name of a variable of the game, as a symbol, like `repeat_until :screen, is: 3`."
+          end
+          return if value.is_a?(Integer)
+
+          raise ArgumentError,
+                "`repeat_until #{var.inspect}` in playthrough #{@title.inspect} was given is: #{value.inspect}. " \
+                "is: must be a whole number, the number the variable reads when the step is over."
+        end
+
+        # The presses of +block+, read as a script of their own, or none for no block. A step there
+        # that does not press, hold or wait for a count of frames is refused: the pattern is played
+        # over and over, so it has to be the same frames each time.
+        def pattern_from(var, block)
+          return [] unless block
+
+          steps = Script.new(@title).tap { |script| script.instance_eval(&block) }.steps
+          if steps.empty? || !steps.all?(Hold)
+            raise ArgumentError,
+                  "The block of `repeat_until #{var.inspect}` in playthrough #{@title.inspect} must hold only " \
+                  "`press`, `hold` and `wait` steps. These are repeated until the step is over. To let frames go " \
+                  "by with nothing pressed, leave out the block."
+          end
+          steps.map { |hold| hold.with(buttons: Playthrough.in_console_order(hold.buttons)) }
+        end
 
         # +step_name+ is the step as the script wrote it, for the errors to quote.
         def add_watch_step(step_name, watch)
@@ -821,7 +1100,7 @@ module VBlank
       end
     end
 
-    # A WAIT THAT NEVER ENDED. The script waited for something to be true of the game, and
+    # A wait that never ended. The script waited for something to be true of the game, and
     # after as many frames as it was willing to wait it still was not. A playthrough that
     # hung there would say nothing at all, so it stops and says which wait it was, the frame
     # it gave up on, and where it left a picture of the screen at that frame — which is
@@ -830,13 +1109,14 @@ module VBlank
       attr_reader :words, :frame, :picture
 
       # The picture's path gets a line of its own, so it can be copied whole.
-      def initialize(title:, words:, waited:, frame:, picture:, tried: "waited until #{words}")
+      def initialize(title:, words:, waited:, frame:, picture:, tried: "waited until #{words}",
+                     longer: "give the step a bigger `within:`")
         @words = words
         @frame = frame
         @picture = picture
         super("Playthrough #{title.inspect} #{tried}. That did not happen in #{waited} frames. " \
               "It stopped on frame #{frame}. Look at the screen on that frame first:\n#{picture}\n" \
-              "If the game is where you expect and needs longer, give the step a bigger `within:`.")
+              "If the game is where you expect and needs longer, #{longer}.")
       end
     end
   end

@@ -2,24 +2,24 @@
 
 module VBlank
   module Messages
-    # WHAT A BUILD SAYS IT IS DOING WHILE IT DOES IT.
+    # What a build says it is doing while it does it.
     #
     # A big game takes a while to build, and a build that says nothing is indistinguishable from
-    # one that has hung. This is what a build talks to. It is deliberately a THING rather than a
+    # one that has hung. This is what a build talks to. It is deliberately a thing rather than a
     # stream and a flag, because "how much to show" then belongs to the sink at the end rather
     # than to the forty places along the way that have something to say.
     #
-    # THREE METHODS, because a build has three kinds of thing to say:
+    # Three methods, because a build has three kinds of thing to say:
     #
     #   progress.step "Checking for mistakes"      a named phase begins
     #   progress.report_count 14, 27, "draw budget"   ...and where it has got to, when that can be counted
     #   progress.tick                       ...or only that it is still going, when it cannot
     #
-    # A tick may carry a label — `tick { "#{bytes} bytes" }` — and it is a BLOCK because a tick
+    # A tick may carry a label — `tick { "#{bytes} bytes" }` — and it is a block because a tick
     # happens tens of thousands of times and a line is drawn a few times a second. The block runs
     # only when a line is actually due, so building the label costs nothing the rest of the time.
     #
-    # THIS CLASS IS THE ONE THAT SAYS NOTHING, and it is the default everywhere. Every method is
+    # This class is the one that says nothing, and it is the default everywhere. Every method is
     # here and every one does nothing, so no caller ever has to ask whether anybody is listening —
     # a `&.` at forty call sites would read as uncertainty about something that is never actually
     # uncertain, and a nil check at forty call sites is forty chances to forget one.
@@ -27,7 +27,7 @@ module VBlank
     #   VBlank.build(...)                                   # says nothing, costs nothing
     #   VBlank.build(..., progress: Progress.to($stderr))   # says what it is doing
     #
-    # NO PERCENTAGE, ANYWHERE. Two of a build's phases have no bound — there is no way to know
+    # No percentage, anywhere. Two of a build's phases have no bound — there is no way to know
     # how many instructions are coming — so a denominator would have to be invented, and an
     # invented one is a lie that gets believed. Elapsed time per phase instead: truthful, and it
     # is also the number that tells you when something got slower.
@@ -39,7 +39,7 @@ module VBlank
       # The last phase is over. Anything holding a line open closes it here.
       def done = nil
 
-      # A PHASE MADE OF PHASES: begin the phase +name+, and hand back a progress for the work
+      # A phase made of phases: begin the phase +name+, and hand back a progress for the work
       # inside it, whose own phases are only ever this one's detail — what it is doing now —
       # rather than lines of their own. A build that builds the game once to measure it is one
       # step of the real build, not a second list of everything. The one that says nothing has
@@ -65,16 +65,16 @@ module VBlank
 
       # A progress that writes what it is told.
       #
-      # HOW MUCH IT SHOWS DEPENDS ON WHERE IT IS WRITING, which is the whole reason the sink is
-      # a thing of its own. Writing to a terminal, it keeps ONE line and rewrites it in place, so
+      # How much it shows depends on where it is writing, which is the whole reason the sink is
+      # a thing of its own. Writing to a terminal, it keeps one line and rewrites it in place, so
       # a phase that reports ten times a second reads as a phase getting on with it. Writing
       # anywhere else — a file, a pipe, a test's StringIO — it writes one line per phase when
       # that phase finishes, because a log wants to be read afterwards and a carriage return in a
       # log is noise.
       #
-      # SO A TEST SEES ONE TIDY LINE PER PHASE, which is what makes this checkable at all.
+      # So a test sees one tidy line per phase, which is what makes this checkable at all.
       class Printed < Progress
-        # HOW OFTEN THE LINE IS REDRAWN, in seconds — one rate for both of the reasons a line is
+        # How often the line is redrawn, in seconds — one rate for both of the reasons a line is
         # redrawn, because from the reader's side they are the same thing. The build had
         # something to say, or the build has said nothing for a while and the elapsed time needs
         # to move: either way what the reader sees is a line that is alive. A tenth of a second
@@ -170,8 +170,8 @@ module VBlank
 
         def now = @clock.clock_gettime(Process::CLOCK_MONOTONIC)
 
-        # THE LINE REDRAWS ITSELF WHILE A PHASE IS OPEN, and this is the half that cannot be done
-        # by the build talking. A phase can spend fifteen seconds inside ONE call — one cost
+        # The line redraws itself while a phase is open, and this is the half that cannot be done
+        # by the build talking. A phase can spend fifteen seconds inside one call — one cost
         # estimate for one routine, one guardrail walking a big tree — and a line that is only
         # redrawn when it is told sits at 0.0s for all fifteen and reads as a hang. Nothing the
         # build says can fix that, because the build is not saying anything: it is inside the
@@ -179,7 +179,7 @@ module VBlank
         #
         # It exists only for a terminal — a log has one line per phase and nothing to animate —
         # and it draws through the same "is a line due?" test everything else does, so a phase
-        # that IS talking never draws twice for one moment. It waits on a condition variable
+        # that is talking never draws twice for one moment. It waits on a condition variable
         # rather than sleeping, so closing a phase ends it at once instead of up to a refresh
         # later.
         def start_refresher
@@ -233,9 +233,9 @@ module VBlank
         # "  Checking for mistakes      4.5s   27/27" — the phase, how long it took, and
         # where it has got to.
         #
-        # THE TIME SITS NEXT TO THE NAME, in a column of its own, because the question a run of
+        # The time sits next to the name, in a column of its own, because the question a run of
         # these answers is "which phase is the slow one" and the two halves of that answer should
-        # be side by side. Where it got to trails LAST, where it can be as long or short as it
+        # be side by side. Where it got to trails last, where it can be as long or short as it
         # likes without pushing anything else about — which it otherwise does, since it is the
         # one part whose length nobody controls.
         def line
@@ -250,7 +250,7 @@ module VBlank
         def column(text, width) = text.to_s.ljust(width - 2) + "  "
       end
 
-      # THE WORK INSIDE A PHASE MADE OF PHASES (see #as_one_line). Each of its phases, and where
+      # The work inside a phase made of phases (see #as_one_line). Each of its phases, and where
       # each has got to, becomes the open phase's detail; its `done` leaves that phase open, since
       # it is the phase around it that decides when it is over.
       class Folded < Progress

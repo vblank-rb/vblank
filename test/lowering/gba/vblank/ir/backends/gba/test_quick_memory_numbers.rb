@@ -6,7 +6,7 @@ require "test_helper"
 # end, where a routine in the cartridge builds each one an instruction at a time. The table
 # is the cheaper of the two there, and the room it gives back is room for another routine.
 #
-# The thing to be sure of is that A READ GETS THE NUMBER IT WAS WRITTEN FOR. A read says how
+# The thing to be sure of is that a read gets the number it was written for. A read says how
 # far ahead its word is, and the routine is copied from the cartridge to the quick memory
 # before it runs — so a word of the wrong kind, a distance one word out, or a table left
 # behind by the copy would each hand a routine a number that is plausible and wrong.
@@ -42,7 +42,7 @@ class TestQuickMemoryNumbers < Minitest::Test
   # One routine that needs all three kinds of number: a plain one, the address of a list
   # (which is in the quick memory), and the address of a table (which is in the cartridge).
   #
-  # The list is filled BEFORE the game loop, by code that stays in the cartridge and builds
+  # The list is filled before the game loop, by code that stays in the cartridge and builds
   # the list's address, and the routine only reads it. Were the routine to write the item
   # and read it back, both would go through the same word of its table, and any address
   # that can be written to would hand back what was put there.
@@ -101,7 +101,7 @@ class TestQuickMemoryNumbers < Minitest::Test
     assert_equal 0, reads_in(backend, :work)
   end
 
-  # A READ REACHES 4K AND NO FURTHER, and the table is at the routine's end. So in a long
+  # A read reaches 4K and no further, and the table is at the routine's end. So in a long
   # routine a number near the top is built and the same number near the bottom is read —
   # and both have to be the number.
   private def long_program
@@ -112,7 +112,7 @@ class TestQuickMemoryNumbers < Minitest::Test
       filler = var :filler, 0
       func(:work, fast: true) do
         first = PLAIN
-        600.times { filler += 1 }
+        600.times { |n| filler += ADDS_BY_ROUND[n] }
         last = PLAIN
       end
       game_loop { call :work }
@@ -136,8 +136,8 @@ class TestQuickMemoryNumbers < Minitest::Test
     assert_equal [PLAIN, PLAIN], [console.var(:first), console.var(:last)]
   end
 
-  # A ROUTINE THAT ONLY LOOKS TOO LONG. Built an instruction at a time this one is well past
-  # what a read reaches, so its first number used to be built. But a routine SHRINKS as its
+  # A routine that only looks too long. Built an instruction at a time this one is well past
+  # what a read reaches, so its first number used to be built. But a routine shrinks as its
   # numbers become reads, and this one is nearly all numbers: read, it is about half the
   # length, and its first number is in reach of its end after all. The build counts the
   # shrinking it is sure of before it asks whether a load reaches.
@@ -148,13 +148,19 @@ class TestQuickMemoryNumbers < Minitest::Test
       rest = var :rest, 0
       func(:work, fast: fast) do
         first = PLAIN
-        SHRINKING.times { |n| rest = PLAIN + 1 + n }
+        SHRINKING.times { |n| rest = SHRINKING_NUMBERS[n] }
       end
       game_loop { call :work }
     end
   end
 
   SHRINKING = 260
+
+  # The numbers the rounds of the two long routines use, read from a Ruby Array at the round so
+  # each round is written out: rounds alike but for a number counting up are made one loop, which
+  # would leave nothing long (PlainRuby::Counts::KnownRounds).
+  ADDS_BY_ROUND = Array.new(600) { |n| 1 + (n % 2) }
+  SHRINKING_NUMBERS = Array.new(SHRINKING) { |n| PLAIN + 1 + n + ((n % 2) << 16) }
 
   def test_a_routine_that_shrinks_into_reach_reads_every_number
     built = GBA.new
@@ -165,7 +171,7 @@ class TestQuickMemoryNumbers < Minitest::Test
     assert_operator built.func_ranges.fetch(:work).size, :>, 4096, "with every number built it is too long"
     read = words_read_by(backend, :work)
     assert_equal SHRINKING + 1, read.size, "every number is read"
-    assert_equal [PLAIN, PLAIN + SHRINKING], [read.first, read.last]
+    assert_equal [PLAIN, SHRINKING_NUMBERS.last], [read.first, read.last]
     charged, emitted = backend.charged_and_emitted_sizes.fetch(:work)
     assert_equal emitted, charged, "and it is charged for the size it shrank to"
   end
@@ -173,10 +179,10 @@ class TestQuickMemoryNumbers < Minitest::Test
   def test_the_numbers_of_a_routine_that_shrank_are_right_on_the_console
     console = console_after(shrinking_program, frames: 6)
 
-    assert_equal [PLAIN, PLAIN + SHRINKING], [console.var(:first), console.var(:rest)]
+    assert_equal [PLAIN, SHRINKING_NUMBERS.last], [console.var(:first), console.var(:rest)]
   end
 
-  # A READ THAT CANNOT REACH ITS WORD STOPS THE BUILD. Whether a load reaches is settled from
+  # A read that cannot reach its word stops the build. Whether a load reaches is settled from
   # the most its routine was said it could come to, so the one way to a read that does not
   # reach is that promise being too small — a fault in the build, and one that would
   # otherwise hand the routine whatever word sits 4K past the read. Here the promise is made
@@ -193,7 +199,7 @@ class TestQuickMemoryNumbers < Minitest::Test
     assert_match(/furthest a read can reach/, error.message)
   end
 
-  # WHAT A ROUTINE IS CHARGED STILL HAS TO COVER WHAT IT COMES OUT AT. The chooser takes the
+  # What a routine is charged still has to cover what it comes out at. The chooser takes the
   # table's saving off before the table exists, and a saving taken that the real pass did not
   # make is a build that stops at the very end, on a game that fits (see
   # TestFastCodePlacement#test_a_routine_is_charged_at_least_what_it_comes_out_at). Here the

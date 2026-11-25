@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 
 # `draw_rect_at` is the one bitmap-drawing verb whose whole purpose is a position the
-# game WORKS OUT as it runs — which is the one kind of position that can land off an
+# game works out as it runs — which is the one kind of position that can land off an
 # edge. Its neighbors (`blit`, `draw_column_at`) clip themselves at run time; this one
 # didn't, so a rect that ran past the right edge of the screen — or of an `inside` area
 # — wrapped onto the row below instead of stopping, both in plain bitmap mode and on

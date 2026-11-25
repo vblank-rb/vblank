@@ -4,11 +4,11 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH SHAPE A `repeat` IS LOWERED TO, decided from the loop's body alone.
+        # Which shape a `repeat` is lowered to, decided from the loop's body alone.
         #
         # A loop has to keep two numbers: how many passes it has made, and how many it is going
-        # to make. Kept in MEMORY, every pass loads the counter, adds one, stores it back, loads
-        # the limit, compares and branches. Kept in REGISTERS it is an add, a compare and a
+        # to make. Kept in memory, every pass loads the counter, adds one, stores it back, loads
+        # the limit, compares and branches. Kept in registers it is an add, a compare and a
         # branch. (A loop whose index nothing reads counts down instead and is cheaper again
         # either way — see #unread_indexes.)
         #
@@ -22,7 +22,7 @@ module VBlank
         # it needs. That is decidable by looking, which is the point: the author writes
         # `repeat` and the build works out which shape it can have.
         #
-        # THIS ANSWER IS ASKED FOR IN TWO PLACES — here, where the loop is emitted, and in the
+        # This answer is asked for in two places — here, where the loop is emitted, and in the
         # cost estimate, which has to charge for the shape that will really run. It lives in
         # one place so those two cannot drift apart, which is a thing that has happened to
         # every other pair of that kind in this project.
@@ -30,7 +30,7 @@ module VBlank
           module_function
 
           # The registers the fast shape keeps its counter and limit in. Nothing else in the
-          # lowering writes either of them EXCEPT the blit clipper and the sound mixer, and
+          # lowering writes either of them except the blit clipper and the sound mixer, and
           # both of those are named below as blockers — see the test that proves the rest of
           # the statement kinds leave them alone.
           COUNTER = 10
@@ -61,7 +61,106 @@ module VBlank
           # call away, not laid out inline (see Drawing#emit_digit_routines).
           CALLS_A_ROUTINE = %i[div_fix pixels_overlap draw_column_at draw_digit].freeze
 
-          # HOW MANY STATEMENTS ARE WORTH BRACKETING before giving up the registers is cheaper.
+          # The registers a fast-shape loop may keep its stepped numbers in (see
+          # Statements#emit_repeat_in_registers): a number the body works out as the count times a
+          # number written in the program steps by that number each turn, held in one of these
+          # rather than multiplied out from the count every time it is read.
+          STEP_REGISTERS = [4, 5, 6, 7, 8].freeze
+
+          # The kinds of node a body may hold for the loop to keep its stepped numbers in
+          # STEP_REGISTERS. A list of what is known to leave them alone, not of what is known to
+          # touch them, because much of the lowering works in them: a rectangle drawn at a place
+          # the game works out keeps its corners there, a sort its place in the list, a sound its
+          # channel's numbers. These are the plain kinds a counted Ruby loop's body is made of,
+          # numbers and lists and tests, which the lowering works out in r0 to r3 alone (a divide
+          # the game works out reaches the console's routine, and already keeps a loop from the
+          # fast shape). The test that sweeps each kind reads its code to prove it.
+          KEEPS_STEP_REGISTERS = %i[set add sub copy negate abs clamp if else int var_ref neg bit_not
+                                    binop list_get list_set table_get next_repeat break_repeat].freeze
+
+          # Whether everything in this loop's body leaves STEP_REGISTERS alone (KEEPS_STEP_REGISTERS).
+          def keeps_step_registers?(node)
+            node.children.all? { |statement| statement.walk.all? { |inner| KEEPS_STEP_REGISTERS.include?(inner.kind) } }
+          end
+
+          # How many copies of its body a turn of a held loop may run, the most first
+          # (#unrolled_copies).
+          UNROLLED_COPIES = [4, 2].freeze
+
+          # The most IR nodes a held loop's copies of its body, and the rounds left over after its
+          # last whole turn, may hold together: four copies of a body of four sums worked out
+          # from the count, a statement each. The copies and the rounds left over are always fewer
+          # than the rounds, since a loop is copied only when it has twice the copies or more, so
+          # the loop stays smaller than its rounds written out.
+          UNROLLED_NODES_MOST = 128
+
+          # How many copies of its body each turn of this held loop runs: 4 or 2 where that much
+          # fits, else 1.
+          #
+          # A turn's add, compare and branch back cost the same however many rounds it does, and
+          # so does stepping each number held in a register (Statements#held_steps), so a turn of
+          # several rounds takes that cost off all but one of them, as the console's own games
+          # lay out a hot loop. Copy j reads the count as count + j, folded into the numbers the
+          # body adds (#copy_of_body), so `k * 12 + 4` in the third copy is the held register
+          # plus 28, the one instruction it was in the first. The rounds left past the last whole
+          # turn are copies after the loop.
+          #
+          # Only for a count written in the program, twice the copies or more, and a body with no
+          # `break` or `next` (a `next` in one copy would skip the copies after it) that leaves
+          # the step registers alone (#keeps_step_registers?).
+          def unrolled_copies(node)
+            return 1 unless node.count.kind == :int && !IR::LoopJumps.jumps_in?(node) && keeps_step_registers?(node)
+
+            rounds = node.count.value
+            size = node.children.sum { |statement| statement.walk.count }
+            UNROLLED_COPIES.find { |copies| rounds >= 2 * copies && (copies + (rounds % copies)) * size <= UNROLLED_NODES_MOST } || 1
+          end
+
+          # The loop's body as copy +offset+ runs it, the count read as count + offset, each number
+          # worked out from the count with the offset folded into the number it adds (#fold_offset):
+          # `k * m + c` becomes `k * m + (c + m * offset)`, `c - k` becomes `(c - offset) - k`.
+          # New statements, so each copy is its own place in the program. nil where the count is
+          # read somewhere a copy cannot change.
+          def copy_of_body(node, offset)
+            node.children.map do |statement|
+              copy = statement.copy
+              next copy if offset.zero?
+
+              reads = copy.walk.select { |inner| inner.kind == :var_ref && inner.name == node.index }
+              return nil unless reads.all? { |read| read.parent&.replace_operand(read, Build.binop(:+, Build.var_ref(node.index), Build.int(offset))) }
+
+              copy.walk.select { |inner| inner.kind == :binop }.reverse_each do |sum|
+                folded = fold_offset(sum)
+                sum.parent.replace_operand(sum, folded) unless folded.equal?(sum)
+              end
+              copy
+            end
+          end
+
+          # +sum+ with a number added to one of its sides moved outward, where the number it
+          # meets is added to it while building: (x + a) * m is x * m + a * m, (x + a) + c is
+          # x + (a + c), (x + a) - c is x + (a - c), c - (x + a) is (c - a) - x. Each holds in
+          # 32-bit wrapping arithmetic (IR::Int32). Any other sum is itself.
+          def fold_offset(sum)
+            inner = sum.lhs
+            if sum.rhs.kind == :int && inner.kind == :binop && inner.op == :+ && inner.rhs.kind == :int
+              a = inner.rhs.value
+              c = sum.rhs.value
+              case sum.op
+              when :* then return Build.binop(:+, Build.binop(:*, inner.lhs, Build.int(c)), Build.int(IR::Int32.wrap(a * c)))
+              when :+ then return Build.binop(:+, inner.lhs, Build.int(IR::Int32.wrap(a + c)))
+              when :- then return Build.binop(:+, inner.lhs, Build.int(IR::Int32.wrap(a - c)))
+              end
+            end
+            right = sum.rhs
+            if sum.op == :- && inner.kind == :int && right.kind == :binop && right.op == :+ && right.rhs.kind == :int
+              return Build.binop(:-, Build.int(IR::Int32.wrap(inner.value - right.rhs.value)), right.lhs)
+            end
+
+            sum
+          end
+
+          # How many statements are worth bracketing before giving up the registers is cheaper.
           # A bracket is the count written out to its variable, then the registers saved and
           # restored around the statement — three instructions, or two for a loop counting down,
           # which has no index to write out. A pass through memory costs one more than a pass in
@@ -77,11 +176,11 @@ module VBlank
             node.kind == :raw || writes?(node, index)
           end
 
-          # THE LOOPS THAT CAN COUNT DOWN: the ones whose index nothing in the program reads.
+          # The loops that can count down: the ones whose index nothing in the program reads.
           #
           # Counting down is cheaper because of how the processor reports a result. Every
           # subtract that sets the flags also shows whether the answer was nought, so a count
-          # taken down by one IS the test for the last pass, and the branch reads it straight
+          # taken down by one is the test for the last pass, and the branch reads it straight
           # off. Counting up has to compare against the limit as an instruction of its own —
           # and, in memory, load that limit first.
           #
@@ -143,7 +242,7 @@ module VBlank
           # The loop's own statements that hold something needing the registers — the ones a
           # spilling loop brackets.
           #
-          # ITS COUNT IS NOT AMONG THEM, and that is why this asks the children rather than
+          # Its count is not among them, and that is why this asks the children rather than
           # walking everything under the node: the count is worked out before either register
           # is loaded (see Statements#emit_repeat_in_registers), so whatever it takes, it takes while
           # there is nothing yet to lose.
@@ -164,7 +263,7 @@ module VBlank
             statement.walk.any? { |inner| unbracketable?(inner, index) }
           end
 
-          # WHAT STOPPED IT, in the words an author would use, for the one report that says so.
+          # What stopped it, in the words an author would use, for the one report that says so.
           # The first thing found rather than all of them: an author fixes one at a time, and
           # the next build says what is next.
           def register_blocker_phrase(node)

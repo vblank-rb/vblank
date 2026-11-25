@@ -2,9 +2,9 @@
 
 module VBlank
   module Diagnostics
-    # DID THE PICTURE TEAR? Measured, on a real run, rather than estimated.
+    # Did the picture tear? Measured, on a real run, rather than estimated.
     #
-    # THE FOOTGUN THIS IS ABOUT. The display draws the screen one row at a time, top to
+    # The footgun this is about. The display draws the screen one row at a time, top to
     # bottom, and it does not wait for the game. There is a brief gap between frames — the
     # vertical blank, about 68 rows' worth of time — where the game can change the picture
     # unseen. Draw for longer than that and the display starts showing the picture while the
@@ -12,14 +12,14 @@ module VBlank
     # still the old one, with a seam between them that jumps about. That is a tear, and on a
     # single-buffered bitmap screen it is the classic way a first game goes wrong.
     #
-    # HOW IT IS MEASURED, and the trick is that nothing had to be added to see it. The
+    # How it is measured, and the trick is that nothing had to be added to see it. The
     # emulator draws each row out of video memory as it reaches it, exactly as the console
     # does — so the picture it hands back is what the screen really showed, seam and all.
-    # Video memory read AFTERWARDS, at the frame boundary where the game has finished its
+    # Video memory read afterwards, at the frame boundary where the game has finished its
     # work, is the picture the game meant to show. Compare the two: a row that differs is a
     # row the display put on screen before the game had finished with it.
     #
-    # WHY IT CAN DISAGREE WITH THE ESTIMATE, and when it does it is the one that is right.
+    # Why it can disagree with the estimate, and when it does it is the one that is right.
     # The estimate asks whether the drawing fits in the gap, which is a total. Whether it
     # TEARS depends on the race between two things travelling down the screen: the display's
     # row, and the game's. A fill that starts at the top when the gap starts can overrun the
@@ -27,20 +27,20 @@ module VBlank
     # measured at 92 rows' worth of drawing against a 68-row gap. So the estimate is
     # deliberately the cautious one, and this shows what really happened.
     #
-    # WHAT IT CANNOT ANSWER. It reads a framebuffer, so it needs a screen that has one and
+    # What it cannot answer. It reads a framebuffer, so it needs a screen that has one and
     # only one: a direct-color bitmap screen. A tear-free screen keeps two pages and shows
     # the finished one, so it cannot tear and there is nothing to measure. A tiled screen
     # has no framebuffer at all — the console builds the picture from tiles as it draws.
     # Both answer {Reading.none}, which means "not measured here" rather than "no tear".
     #
-    # AND A CLEAN PIXEL TEST IS NOT PROOF OF NO TEAR, which is worth knowing before hunting
+    # And a clean pixel test is not proof of no tear, which is worth knowing before hunting
     # one. A differential test compares the picture at rest, so a program whose drawing
     # FINISHES before the display reaches those rows comes back identical on both backends
     # while a heavier version of the same program tears. Days went into treating one of those
     # as a lowering bug, on the belief that a tear could not reach the emulator at all. This
     # is the thing to ask instead.
     #
-    # AN ADVANCE CARTRIDGE'S ALONE. It reads what the Advance's build and hardware keep, and only
+    # An Advance cartridge's alone. It reads what the Advance's build and hardware keep, and only
     # Cartridge::ROM and the Advance's Profiler reach it; a Color cartridge's profile is GBCProfiler's.
     module Tearing
       # Where the picture lives on a direct-color bitmap screen, and how big it is. Each
@@ -49,7 +49,7 @@ module VBlank
       WIDTH = Console::ADVANCE.screen_width
       HEIGHT = Console::ADVANCE.screen_height
 
-      # WHAT A RUN SAW. +rows+ is how many of the visible rows the display showed before the
+      # What a run saw. +rows+ is how many of the visible rows the display showed before the
       # game had finished them — 0 for a picture that held together. +first+ and +last+ are
       # where the seam ran, which is what a person wants to look at. A reading that does not
       # apply to this screen shows it with #measured? false, so "we did not look" can never be

@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A RECTANGLE IN ONE COLOUR, PAINTED BY THE SUPER FX: rt_paint_fill on a cartridge with that
+          # A rectangle in one colour, painted by the super FX: rt_paint_fill on a cartridge with that
           # chip. Paint's own rt_paint_fill paints the same rectangle with the console's processor,
           # and on that processor it is slow: every row of every tile it covers is eight bytes read,
           # masked and written, and every tile not yet painted this generation is first filled with
@@ -13,7 +13,7 @@ module VBlank
           # third of a frame. The chip runs at 21 MHz, eight times the console's processor, with a
           # cycle for most instructions, and its stores go on while the next instructions run.
           #
-          # THE CONSOLE HANDS IT A BLOCK (ChipPaint::FILL, in the chip's RAM): the
+          # The console hands it a block (ChipPaint::FILL, in the chip's RAM): the
           # rectangle's x, y, width and height as the game gave them (32 bits each), the colour's
           # place, the area painting is held to, the screen's generation and the clear colour's
           # four words of planes. Those last three live in work RAM, which the chip cannot see, so
@@ -22,21 +22,21 @@ module VBlank
           # edge tile it covers, the colour's planes — and leaves the rectangle's edges in the block
           # for the console (an empty rectangle has its top at or below its bottom).
           #
-          # THE CHIP MAKES EACH TILE READY AS IT REACHES IT, as Paint's rt_paint_ready does: a tile of
+          # The chip makes each tile ready as it reaches it, as Paint's rt_paint_ready does: a tile of
           # an older generation is put in this one and filled with the clear colour first, unless
           # the rectangle paints every pixel of it, and its number goes on the list of tiles readied
           # (ChipPaint::READIED), which the console reads after the run to point each one's cell of
           # the map back at it. The console also marks each row of tiles the rectangle covers as
           # changed (Paint's DIRTY), which is in work RAM too.
           #
-          # HOW IT PAINTS. A band at a time, a band being the rectangle's rows inside one row of
+          # How it paints. A band at a time, a band being the rectangle's rows inside one row of
           # tiles; across the band a tile at a time; in each tile a pair of planes at a time, down
-          # the band's rows with LOOP. A tile the rectangle covers all across is written without
-          # being read (SOLID); an edge tile is read, its pixels outside the rectangle kept and the
-          # rest written (MASKED).
+          # the band's rows with loop. A tile the rectangle covers all across is written without
+          # being read (solid); an edge tile is read, its pixels outside the rectangle kept and the
+          # rest written (masked).
           #
-          # THE CHIP'S QUICK MEMORY. Code the chip runs from its 512-byte cache takes a cycle a byte,
-          # and from the ROM five; filling the cache is five a byte too, once. CACHE starts it at the
+          # The chip's quick memory. Code the chip runs from its 512-byte cache takes a cycle a byte,
+          # and from the ROM five; filling the cache is five a byte too, once. Cache starts it at the
           # entry and the code comes in the order of how often it runs: the band's code, then the
           # two routines setting up calls more than once, then what runs once a rectangle (SETUP),
           # whose end is past the cache. The cache lasts from one rectangle to the next while
@@ -504,7 +504,7 @@ module VBlank
               gsu.nop
             end
 
-            # CLAMP (LINK): R0 = the 32-bit number in R1:R2 held between R3 and R4, two small numbers,
+            # Clamp (link): R0 = the 32-bit number in R1:R2 held between R3 and R4, two small numbers,
             # nought or more (Paint's emit_clamp): R3 when it is below R3, R4 when it is R4 or past.
             def emit_clamp(gsu)
               gsu.label(CLAMP)

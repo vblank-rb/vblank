@@ -5,11 +5,11 @@ module VBlank
     module Backends
       class Genesis
         module Runtime
-          # THE MUSIC PLAYER. The game only names a tune (rt_music_play) or stops it (rt_music_stop), and the
+          # The music player. The game only names a tune (rt_music_play) or stops it (rt_music_stop), and the
           # player walks each part's notes (Genesis::Music) a frame at a time, sending each note's group of
           # commands to the sound chips as its frame comes.
           #
-          # WHERE IT RUNS. Where a pass's wait ends (Sound's rt_sound_frame), once for every frame the pass
+          # Where it runs. Where a pass's wait ends (Sound's rt_sound_frame), once for every frame the pass
           # took, which is where the interpreter moves its music on too (Reference#advance_frame), after the
           # pass and by every frame it took. A game that keeps up hears each note on its own frame; one
           # that falls behind hears the frames it missed at once, as the interpreter logs them.
@@ -19,10 +19,14 @@ module VBlank
           # first frame; one that played once and ended stays quiet), then each part's next note if its frame
           # has come, then the frame on, round to the tune's loop frame at its end.
           #
-          # WHAT IS IN THE REGISTERS. A group sent to the chips uses most of them, so nothing is kept in a
+          # What is in the registers. A group sent to the chips uses most of them, so nothing is kept in a
           # register across one. Where the player has got to is in work RAM, the tune, the part and the
           # note as addresses in the song table, which A0 and A1 are loaded from as each is wanted.
           module Music
+            # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
+            # its count, a word from power-on, and how many ticks the frame playing now has, a word.
+            EFFECT_CLOCK = "rt sfx clock"
+            EFFECT_TICKED = "rt sfx ticked"
             NAMED = "rt music named" # The tune the game named last (Genesis::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -37,7 +41,7 @@ module VBlank
             PARTS_IN = "rt music parts in" # How many parts there are
             ENTRY = "rt music entry" # Where the part being played's entry is, an address
             NOTE = "rt music note" # Its note being played
-            # THE MUSIC VOLUME, in a game that sets it (Genesis::Music#follows_level?): the level the notes
+            # The music volume, in a game that sets it (Genesis::Music#follows_level?): the level the notes
             # sounding were set at, with its FULL_LEVEL bit turned over so the nought memory starts at means
             # full; each part's note's volume as written, while its voice holds it (nought for a rest, or
             # none); and which parts' voices hold one, in the order they first took one since the tune
@@ -50,7 +54,7 @@ module VBlank
             HELD_WALK = "rt music held walk"
             CHANNEL_FOUND = "rt music channel found"
             LOUDNESS_LIST = "rt music loudness list" # Which of a part's lists of loudness groups a strike reads
-            # EACH CONSOLE VOICE'S NOTE THAT CHANGES AS IT PLAYS, VOICE_BYTES a voice, in a game with one: a
+            # Each console voice's note that changes as it plays, VOICE_BYTES a voice, in a game with one: a
             # wobble's record (Genesis::Music#wobble_record), nought for a voice holding still, the frames still
             # to wait, the frames its swing has left, and whether it is above the note's pitch.
             WOBBLES = "rt music wobbles"
@@ -80,7 +84,8 @@ module VBlank
 
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false, sides: false)
+                        slides: false, sides: false, effect_clock_step: nil)
+              [EFFECT_CLOCK, EFFECT_TICKED].each { |name| memory.reserve(name, 2) } if effect_clock_step
               memory.reserve(TUNE_HELD, 2) if holds
               memory.reserve(LOUDNESS_LIST, 2) if sides
               memory.reserve(SLIDE_CURSOR, 4) if slides
@@ -105,17 +110,17 @@ module VBlank
             # +level_at+ is where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or nil;
             # +effects+ how many sound effects the game has; +recorded+ for a game with a part that plays a
             # recording.
-            def emit(asm, memory, level_at: nil, effects: 0, recorded: false)
+            def emit(asm, memory, level_at: nil, effects: 0, recorded: false, effect_clock_step: nil)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               sharing = effects.positive?
               emit_game_side(asm, at)
               emit_tune_hold(asm, at) if holds?(memory)
-              emit_frames(asm, at, sharing, memory)
+              emit_frames(asm, at, sharing, memory, sharing && effect_clock_step)
               emit_voice_changes(asm, at, memory)
               emit_switch(asm, at, memory, level_at, sharing, recorded)
               emit_song_frame(asm, at, memory, level_at, sharing, recorded)
               emit_level(asm, at, memory, level_at, recorded) if level_at
-              Effects.emit(asm, memory, effects, level_at, recorded: recorded) if sharing
+              Effects.emit(asm, memory, level_at, recorded: recorded) if sharing
               emit_group(asm)
             end
 
@@ -168,7 +173,7 @@ module VBlank
               asm.label("rt_voice_stops_changing_done")
             end
 
-            # A HELD TUNE'S NOTES HOLD STILL, and an effect's move on (Reference::Player#held_still?). With
+            # A held tune's notes hold still, and an effect's move on (Reference::Player#held_still?). With
             # no effects the whole walk stops at the top; with them each voice is asked. Inline, the voice in
             # D4: on to +next_voice+ when it holds still.
             def emit_skip_voice_held_still(asm, at, memory, next_voice, label)
@@ -271,20 +276,78 @@ module VBlank
 
             # rt_music_frame: one frame of the player: with sound effects, Reference::Player#advance's order:
             # the tune caught up with, the effects that outrank it, its parts, and the other effects.
-            def emit_frames(asm, at, sharing, memory)
+            #
+            # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
+            # step): ADDI sets the carry as its count comes round, and SCS keeps that as the frame's
+            # tick. On a frame with no tick neither pass over the effects is made.
+            #
+            # With Strikes, a tick's pass lists its chips' writes to be made at the tick's own line, and once
+            # the frame has played what is due already is made.
+            def emit_frames(asm, at, sharing, memory, clock_step = nil)
+              strikes = clock_step && Strikes.strikes?(memory)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs_l("rt_music_switch"))
-              asm.jsr(asm.abs_l("rt_sfx_above")) if sharing
+              Strikes.emit_set_frame_base(asm, at, EFFECT_CLOCK) if strikes
+              emit_step_effect_clock(asm, at, clock_step) if clock_step
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.tst(:w, at.call(PLAYING))
               asm.branch(:eq, "rt_music_frame_played")
               asm.jsr(asm.abs_l("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              asm.jsr(asm.abs_l("rt_sfx_below")) if sharing
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
+              emit_later_ticks(asm, at, clock_step, strikes) if clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jsr(asm.abs_l("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs_l("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs_l("rt_music_wobbles")) if wobbles?(memory)
               asm.jsr(asm.abs_l("rt_music_shapes")) if steps_shapes?(memory)
+              Strikes.emit_due_now(asm) if strikes
               asm.rts
+            end
+
+            # The sound effects' timer moved on a frame, inline: the step added to its count in a long,
+            # the count's 16 bits kept (EFFECT_CLOCK) and the ticks past them the frame's (EFFECT_TICKED).
+            def emit_step_effect_clock(asm, at, step)
+              asm.moveq(0, asm.d(0))
+              asm.move(:w, at.call(EFFECT_CLOCK), asm.d(0))
+              asm.add(:l, asm.imm(step), asm.d(0))
+              asm.move(:w, asm.d(0), at.call(EFFECT_CLOCK))
+              asm.swap(asm.d(0))
+              asm.move(:w, asm.d(0), at.call(EFFECT_TICKED))
+            end
+
+            # Each later tick of a frame the effects' timer ticks more than once on, inline after the
+            # first's pass below the tune: both passes again (IR::Tunes, "Several ticks in one frame"),
+            # with +strikes+ each a tick further into the frame.
+            def emit_later_ticks(asm, at, step, strikes)
+              asm.label("rt_sfx_later_tick")
+              asm.subq(:w, 1, at.call(EFFECT_TICKED))
+              asm.branch(:le, "rt_sfx_later_ticks_done")
+              if strikes
+                Strikes.emit_next_tick(asm, at)
+                Strikes.emit_striking_on(asm, at, step)
+              end
+              asm.jsr(asm.abs_l("rt_sfx_above"))
+              asm.jsr(asm.abs_l("rt_sfx_below"))
+              Strikes.emit_striking_off(asm, at) if strikes
+              asm.bra("rt_sfx_later_tick")
+              asm.label("rt_sfx_later_ticks_done")
+            end
+
+            # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
+            # effects' timer has no tick, when they are on one. With +strikes+ its writes are made at its
+            # tick's own line (Strikes).
+            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
+              unless clock_step
+                asm.jsr(asm.abs_l(routine))
+                return
+              end
+
+              asm.tst(:w, at.call(EFFECT_TICKED))
+              asm.branch(:eq, "#{routine}_untimed")
+              Strikes.emit_striking_on(asm, at, clock_step) if strikes
+              asm.jsr(asm.abs_l(routine))
+              Strikes.emit_striking_off(asm, at) if strikes
+              asm.label("#{routine}_untimed")
             end
 
             # What changes as a note plays: each kind the game's songs have.
@@ -652,7 +715,7 @@ module VBlank
               PARTS.times { |part| asm.clr(:w, at.call(CURSORS, part * 2)) }
               asm.rts
 
-              # THE PLAYING TUNE STOPS (Reference::Player#silence_song; SONG is still the tune's): the voices
+              # The playing tune stops (Reference::Player#silence_song; SONG is still the tune's): the voices
               # its parts play on let go, but one a sound effect holds, which stays the effect's; every voice the
               # tune held free, no note held, and the tune's own stop logged (Music.stop_entry).
               asm.label("rt_music_quiet")
@@ -852,7 +915,7 @@ module VBlank
               asm.label(label)
             end
 
-            # A NOTE'S LOUDNESS, between its head and its tail (Genesis::Music#part_layout): its volume as
+            # A note's loudness, between its head and its tail (Genesis::Music#part_layout): its volume as
             # written held for a new level to reach, if its voice holds one, and its loudness at the level
             # written and logged.
             def emit_note_loudness(asm, at, memory)
@@ -902,7 +965,7 @@ module VBlank
               asm.label("rt_music_note_loud") if swells?(memory)
             end
 
-            # THE MUSIC VOLUME MOVED (Reference::Player#apply_music_volume): at the start of a frame of the
+            # The music volume moved (Reference::Player#apply_music_volume): at the start of a frame of the
             # tune, before any note, every part whose voice holds a note writes and logs its loudness at the
             # new level, in the order the parts first took their voices (HELD_ORDER).
             #

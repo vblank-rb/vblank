@@ -4,11 +4,11 @@ require "test_helper"
 require "fileutils"
 require "tmpdir"
 require "made_up_original"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 require VBlank.root.join("test/fixtures/pacman_port/pacman_fixture").to_s
 require VBlank.root.join("test/fixtures/pacman_port/pacman_port").to_s
 
-# WHAT A SHELL MUST NOT HOLD, for the shell tests of every runtime: none of the original's bytes, in
+# What a shell must not hold, for the shell tests of every runtime: none of the original's bytes, in
 # any of the ways a build writes data out. A piece of the original is looked for twelve bytes at a
 # time (a window with at least four different bytes, so a run of zeros is never taken for it) as
 # the bytes themselves, as decimal numbers a byte or two bytes at a time, and as base64 from each of
@@ -39,7 +39,7 @@ module OriginalBytesSearch
   private def folder_bytes(folder) = Dir.glob(File.join(folder, "**", "*")).select { |path| File.file?(path) }.map { |path| File.binread(path) }.join.b
 end
 
-# THE MADE-UP PORT A SHELL IS TESTED WITH, shared by the shell tests of each runtime
+# The made-up port a shell is tested with, shared by the shell tests of each runtime
 # (test/lowering/ruby/vblank/live/test_shell.rb, and the web page's and the desktop program's). The
 # shell holds none of MadeUpOriginal's data; the answer key is the same game built all-in-one from
 # the same copy, and the pack that build makes.
@@ -94,7 +94,7 @@ module ShellTests
     box.include?(PALETTE[1])
   end
 
-  # A PORT WHOSE UNPACKING WORKS A LONG TIME BETWEEN WRITES (a port rendering music before it writes
+  # A port whose unpacking works a long time between writes (a port rendering music before it writes
   # a byte): +steps+ rounds of arithmetic on the copy's own bytes, which no compiler can work out
   # ahead, with no write and no wait for a frame among them, and then the heights unpacked. The
   # pack it makes does not depend on +steps+.
@@ -119,7 +119,7 @@ module ShellTests
     end
   end
 
-  # A PORT WHOSE UNPACKING ROUTINE IS LONG: LONG_ROUTINE_COPIES frame copies written out, each a
+  # A port whose unpacking routine is long: LONG_ROUTINE_COPIES frame copies written out, each a
   # word read whose answer places a byte read, a test and a slot write, and every eighth a copy of
   # bytes, are thousands of statements, and a loop of copy reads ends it. Played in a Ractor, whose
   # stack is small, by the Ruby shell, and in the web page's worker.
@@ -190,7 +190,7 @@ module ShellTests
   end
 end
 
-# THE PAC-MAN PORT A SHELL IS TESTED WITH (test/fixtures/pacman_port/), shared by the Pac-Man shell
+# The Pac-Man port a shell is tested with (test/fixtures/pacman_port/), shared by the Pac-Man shell
 # tests of each runtime. The original is pacman.gba, which the shells are handed as a copy in a
 # folder of the test's own, so the copy can be taken out of reach for the second start.
 module PacmanShellTests

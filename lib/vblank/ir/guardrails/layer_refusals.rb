@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # THE LAYERS A SCREEN CANNOT HAVE, asked by the interpreter and by each console's lowering as
+        # The layers a screen cannot have, asked by the interpreter and by each console's lowering as
         # well as by the build: more backgrounds than the console stacks, more than one status bar,
         # more than one background shown alone above a row, and a status bar, or a background held
         # to a box, beside something that needs the same part of the display; and a sprite over a

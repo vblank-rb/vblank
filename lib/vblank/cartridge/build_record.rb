@@ -4,7 +4,7 @@ require VBlank.root.join("lib/vblank/ir/backends/gba/placement").to_s # FRAME_RO
 
 module VBlank
   module Cartridge
-    # WHAT THE BUILD WORKED OUT about a cartridge: everything a finished ROM needs to report
+    # What the build worked out about a cartridge: everything a finished ROM needs to report
     # on itself, and nothing it needs to run.
     #
     # A cartridge is finished the moment its header, checksum and padding are written, and it
@@ -14,12 +14,12 @@ module VBlank
     # in a register — and where every routine ended up. So `rom.profile` cannot report on a
     # cartridge without it, and the build is the only thing that knows.
     #
-    # IT ARRIVES IN ONE PIECE, which is most of why it exists. These were six fields a caller
+    # It arrives in one piece, which is most of why it exists. These were six fields a caller
     # set on a ROM one at a time after assembling it, so between the assemble and the sixth
     # line there was a ROM that was a valid cartridge and half a report — and nothing showed
     # which of the two you were holding. Now a ROM either has a record or has none, and having
     # none is exactly what "assembled straight from machine code" means.
-    # +build_options+ is what the build was TOLD rather than what it worked out — the cartridge
+    # +build_options+ is what the build was told rather than what it worked out — the cartridge
     # timing it asks for at boot, and whether it chose what to keep in quick memory — and it is
     # here because measuring a cartridge means building it again, the same way: a ROM measured
     # with different settings is not the ROM that ships, and the difference between code in the
@@ -52,7 +52,7 @@ module VBlank
     # +voices+ is where the console keeps the sounds it is playing and where each sample landed
     # in the cartridge (see IR::Backends::GBA::Mixer::VoiceTable), or nil for a program that
     # plays no samples. It is what lets a finished cartridge be asked what it is playing.
-    # +sound_drops+ is where it counts the sounds it could NOT play, for the same reason and with
+    # +sound_drops+ is where it counts the sounds it could not play, for the same reason and with
     # the same catch: they are hidden variables, so only the build knows their addresses (see
     # IR::Backends::GBA::Mixer::DropTable). nil where nothing plays and nothing can be lost.
     # +video_copies+ is every copy into video memory the game makes while it runs — tiles it
@@ -73,7 +73,7 @@ module VBlank
     # table shows which place a sprite is in and nothing more, so without this nothing can get
     # from a place back to the name the game wrote. Empty for a game with no sprites.
     # +sprite_offsets+ is how far along the build moved each of a sprite's stored poses, and it
-    # is what keeps +sprite_slots+ honest about WHERE. A pose is stored trimmed to the part of
+    # is what keeps +sprite_slots+ honest about where. A pose is stored trimmed to the part of
     # the canvas it actually draws on, and the sprite is then told to stand that much further
     # along so the picture lands where the author put it — and a pose drawn backwards is trimmed
     # from the other side, so it stands a different amount further along. Both are the build's
@@ -81,8 +81,17 @@ module VBlank
     # to have them taken off again before it means the corner of the picture. Keyed by the place
     # in that table, then by the two things a row of it holds about which pose it is holding: its
     # first tile, and whether it is being drawn backwards.
+    # +sprite_pictures+ is which picture each sprite is showing, by the name the game gave it,
+    # keyed as +sprite_offsets+ is: by a sprite's first place, then by what tells its poses
+    # apart there. A picture cut into pieces is named on its first place alone. It is what lets a
+    # running cartridge be asked which picture a sprite shows, as the interpreter names it.
+    # +sprite_pose_choices+ is where those two cannot give one answer, keyed as they are: two
+    # poses trimmed to the same stored tiles at different places on their canvas hold the same
+    # row, moved by different distances, so the row cannot say which it is. Each such place is a
+    # PoseChoices: the poses each such key could be, a PoseChoice each, and where the game keeps
+    # the pose it picked, which is what tells them apart. Neither of the other two leaves the key out.
     # +streamed_sprite_pose_vars+ is the exception to that keying, and it exists because a sprite with
-    # more pictures than sprite memory holds keeps ONE of them there at a time — so every pose of
+    # more pictures than sprite memory holds keeps one of them there at a time — so every pose of
     # it goes into the same place, and the place stops telling the poses apart. Such a sprite's
     # +sprite_offsets+ are counted by pose number instead, and this gives where to read the pose
     # number from: the address of the variable the cartridge writes as it copies a frame in. A
@@ -113,24 +122,39 @@ module VBlank
     # name (DataAsset): where it starts in the file, how many bytes it takes there, how it is packed
     # (:lz77, :rle, or :none) and how many bytes it is unpacked. It is what a port of the cartridge
     # reads its facts from, since the bytes alone do not show where one asset stops and the next starts.
-    # +colors_short_at+ is where the console counts each time a sprite drawn with a list of
+    # +colors_short+ is where the console counts each time a sprite drawn with a list of
     # colours that borrows a group found none free, and was drawn in another list's colours
-    # (see IR::Backends::GBA::ScreenLayout::LentColors) — a hidden variable, like the dropped
-    # sounds' count. nil for a game whose lists all have a group of their own.
+    # (see IR::Backends::GBA::ScreenLayout::LentColors) — hidden variables, like the dropped
+    # sounds' count — and whose those lists are (ColorsShort). nil for a game whose lists all
+    # have a group of their own.
+    # +routine_statements+ is, for every routine, the line of the game that wrote each of its
+    # statements and the bytes that statement's code takes, counted from the routine's first
+    # instruction (see IR::Backends::GBA#routine_statements). It is what lets a profile say which
+    # lines of any routine its time went to (Diagnostics::RoutineLines). +missed_routine_parts+ is
+    # the same for the routines that missed the quick memory, at the addresses they run from.
+    # +func_spans+ is the byte span of each routine's code, counted from where the code starts in
+    # the cartridge, and +number_tables+ the part of a span that is a table of numbers the routine
+    # reads and not instructions, and +statement_spans+ where each statement's code is and what wrote it
+    # (see Diagnostics::FuncDumper, which lists a routine from them).
+    # +sound_player+ is where the cartridge's sound player keeps what it is playing, and the names
+    # of the songs and sound effects it knows only by number (SoundPlayer). It is what lets a
+    # running cartridge be asked which effect it started on a frame and which song it is on, by
+    # name. nil for a game that plays neither.
     class BuildRecord < Data.define(:source_program, :placement, :var_addresses, :loop_shapes,
                                     :palette_entries, :column_stretches, :compression,
                                     :build_options, :findings, :emitted, :routines, :video_memory,
                                     :roomy_memory, :timer_handlers, :voices, :sound_drops,
-                                    :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
+                                    :sprite_slots, :sprite_offsets, :sprite_pictures, :sprite_pose_choices, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
-                                    :missed_routine_parts, :colors_short_at, :sprite_turns, :held_sprites,
-                                    :runtime, :data_assets, :gap_ends)
+                                    :missed_routine_parts, :colors_short, :sprite_turns, :held_sprites,
+                                    :runtime, :data_assets, :gap_ends, :routine_statements, :func_spans, :number_tables, :statement_spans,
+                                    :sound_player)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
-                     sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
+                     sprite_slots: {}, sprite_offsets: {}, sprite_pictures: {}, sprite_pose_choices: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
-                     missed_routine_parts: {}, colors_short_at: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
-                     data_assets: [], **rest)
+                     missed_routine_parts: {}, routine_statements: {}, colors_short: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
+                     data_assets: [], func_spans: {}, number_tables: {}, statement_spans: [], sound_player: nil, **rest)
         super
       end
 
@@ -138,6 +162,14 @@ module VBlank
       # file, +size+ how many bytes it takes there (packed, when it is), +codec+ is :lz77, :rle or
       # :none, and +unpacked_size+ how many bytes it is once unpacked.
       DataAsset = Data.define(:name, :at, :size, :codec, :unpacked_size)
+
+      # Where a game that lends groups of sprite colours counts the sprites that found none
+      # (+count_at+) and keeps the number of the last list that found none (+list_at+), and which
+      # sprites and pools wear each list, by its number (+wearers+).
+      ColorsShort = Data.define(:count_at, :list_at, :wearers) do
+        # The names of the sprites and pools that wear the list numbered +number+.
+        def wearers_of(number) = wearers.fetch(number, [])
+      end
 
       # Where a game keeping more rows than the console's table notes which of them each of the
       # console's rows holds, and where it counts the rows left out (see +held_sprites+).
@@ -147,7 +179,17 @@ module VBlank
         def row_in_copy(slot) = yield(came_from + (slot * 2))
       end
 
-      # WHERE EACH SCENE'S OWN ROUTINES RUN, for a game whose quick memory is swapped as a scene
+      # Where a game's sound player keeps what it is playing (see +sound_player+).
+      #
+      # +effect_states+ is, for each sound effect, the address of the word saying what it is doing,
+      # by the effect's name: a state of +asked_states+ is the game asking for it, and
+      # +sounding_state+ is the player starting it. +song_playing+ is the address of the number of
+      # the song the player is on, 0 for none, and +song_wanted+ the address of the number the game
+      # last named; each nil in a game with no songs. +songs+ is each song's name by its number.
+      SoundPlayer = Data.define(:effect_states, :asked_states, :sounding_state, :song_playing, :song_wanted,
+                                :songs)
+
+      # Where each scene's own routines run, for a game whose quick memory is swapped as a scene
       # takes over (see IR::Backends::GBA::SceneQuickMemory). Scenes' sets share one room, so an
       # address there is a different routine depending on which sets are in — and +routines+,
       # which can hold one place per routine, gives such a routine the place it sits in the
@@ -170,8 +212,21 @@ module VBlank
       # scenes' variable held when the table was last written for a change of scene, and the
       # sprite is in the place while that holds +value+. +pose_var+ is where a sprite keeping
       # one frame at a time records which pose it is showing (see +streamed_sprite_pose_vars+), or
-      # nil.
-      SpriteTurn = Data.define(:at, :value, :name, :offsets, :pose_var)
+      # nil. +pictures+ names its pictures as +sprite_pictures+ does, empty past its first place,
+      # and +choices+ are its keys that hold more than one pose, as +sprite_pose_choices+ gives them.
+      SpriteTurn = Data.define(:at, :value, :name, :offsets, :pose_var, :pictures, :choices)
+
+      # One of the poses a row could be holding where several share what the row holds (see
+      # +sprite_pose_choices+): the +picture+ it names, nil past a sprite's first place, its
+      # number among the sprite's poses, +pose+, and how far along the build moved it, +dx+
+      # and +dy+.
+      PoseChoice = Data.define(:picture, :pose, :dx, :dy)
+
+      # One place's keys that several poses share (see +sprite_pose_choices+): +keys+ gives the
+      # PoseChoices for each, and +pose_from+ is the sprite's pose as the program works it out,
+      # an IR value node of numbers, variables and fixed slots of lists the cartridge keeps, or
+      # nil where it is worked out some way a reader cannot follow.
+      PoseChoices = Data.define(:pose_from, :keys)
 
       # One run of the sprite table drawn in an order the game works out: +order+ is the address
       # of its order, and +homes+ is each of its sprites' own first place and how many places it

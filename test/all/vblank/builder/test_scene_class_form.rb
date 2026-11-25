@@ -8,8 +8,8 @@ require VBlank.root.join("test/fixtures/scene_classes/play_screen").to_s
 # A scene can be a plain class in its own file — the coarse-grained form of the multi-file
 # parts pattern. Each screen (TitleScreen, PlayScreen — separate files) takes the build,
 # declares its presentation in initialize, and exposes `update`. You wire them with the
-# ordinary verbs: construct each INSIDE its `scene` block (so its sprites belong to that
-# scene) and dispatch with case_var. No base class, no registrar, no magic — this test
+# ordinary verbs: construct each inside its `scene` block (so its sprites belong to that
+# scene) and pick one with `call`. No base class, no registrar, no magic — this test
 # proves only the active screen's presentation shows and only its update runs.
 class TestSceneClassForm < Minitest::Test
   GREEN = Color.resolve(:green) # TitleScreen's marker
@@ -30,10 +30,7 @@ class TestSceneClassForm < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program
@@ -80,10 +77,7 @@ class TestSceneClassForm < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
     b.finalize_program

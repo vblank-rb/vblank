@@ -5,9 +5,9 @@ module VBlank
     module Backends
       class GBC
         class Lowering
-          # THE CARTRIDGE'S CLOCK CHIP, read and set for the game. Mixed into Lowering.
+          # The cartridge's clock chip, read and set for the game. Mixed into Lowering.
           #
-          # THE HARDWARE. The console has no clock of its own. The Color's games that kept the time
+          # The hardware. The console has no clock of its own. The Color's games that kept the time
           # (Pokemon Gold, Silver and Crystal) carried a cartridge whose memory bank controller, an
           # MBC3, has a clock chip beside it with a watch battery that keeps it counting while the
           # console is off. The chip holds no date: it counts the seconds, minutes and hours of the
@@ -18,21 +18,21 @@ module VBlank
           # taken as its days on from 1 January 2000 (IR::Clock.undated), and nothing reads as set,
           # and every reading is 0, until the game has set a time on a chip that is counting.
           #
-          # AT POWER-ON the chip is read, and taken to be there unless all five registers read 0xFF,
+          # At power-on the chip is read, and taken to be there unless all five registers read 0xFF,
           # which is what the bus reads with nothing on it. A chip that is halted has not been set.
           # One that counted past what it holds (its carry bit), or holds a second, minute or hour
           # no clock can show — what a real chip can hold once its battery has run out and been put
           # back — has lost any time set from it: it is started again as Crystal starts one, all
           # five registers written, nought days and the time of day it held where that was one,
-          # and left halted, so it too reads as not set until the game sets it. THEN AFTER EACH WAIT
-          # FOR THE SCREEN it is read again, so every reading between two waits is of one moment.
+          # and left halted, so it too reads as not set until the game sets it. Then after each wait
+          # for the screen it is read again, so every reading between two waits is of one moment.
           #
-          # SETTING IT keeps how far the time set is from the chip's own, and lets a halted chip go,
+          # Setting it keeps how far the time set is from the chip's own, and lets a halted chip go,
           # which is what marks it as set. The readings are worked out from the chip's count
           # and that offset after each wait, after the saved offset is read back at power-on, and
           # after the game sets a new one — never while a number is being worked out.
           #
-          # BEFORE THE COUNT FILLS, whole days move from the chip into the offset. Once the chip has
+          # Before the count fills, whole days move from the chip into the offset. Once the chip has
           # counted 256 days its ninth bit is cleared — 256 days fewer — and the offset is 256 days
           # more, in the save too. The time read is the same, and the chip is far from its carry
           # however long the game is played. Crystal does the same at 140 days, keeping only the day
@@ -138,7 +138,7 @@ module VBlank
             # it, and the time. A game that never sets the clock reads nought for both of the last.
             def value_of_clock(node) = load_variable(clock_kept(node.reading))
 
-            # SETTING THE CLOCK, as Reference#exec_set_clock does: nothing at all with no chip; each
+            # Setting the clock, as Reference#exec_set_clock does: nothing at all with no chip; each
             # part worked out once, in order; how far the time set is from the chip's own, in days
             # and the seconds left over; a halted chip let go; and the readings worked out from it.
             def emit_set_clock(node)
@@ -261,7 +261,7 @@ module VBlank
               emit_clock_off
             end
 
-            # A CHIP THAT LOST ITS TIME STARTED AGAIN: halted first, which clears its carry and its
+            # A chip that lost its time started again: halted first, which clears its carry and its
             # ninth bit, then every register written — a second, minute or hour no clock can show as
             # nought, the others as they were, and nought days — and left halted.
             def emit_clock_restart(pause)
@@ -291,7 +291,7 @@ module VBlank
               emit_clock_off
             end
 
-            # A HALTED CHIP LET GO, once the game sets it: its day count's ninth bit written back
+            # A halted chip let go, once the game sets it: its day count's ninth bit written back
             # with the halt bit clear, and the chip counting from then on.
             def emit_clock_start(pause)
               h = Console::GBCHardware
@@ -311,7 +311,7 @@ module VBlank
               @asm.ret
             end
 
-            # 256 DAYS OUT OF THE CHIP AND INTO THE OFFSET, once the chip has counted that many: the
+            # 256 days out of the chip and into the offset, once the chip has counted that many: the
             # offset and its place in the save 256 days more, then the chip halted with its ninth
             # bit still on, the bit cleared, and the chip let go — the low eight bits stay as they
             # are. A halted chip is left as it is.
@@ -357,7 +357,7 @@ module VBlank
               @asm.label(same)
             end
 
-            # THE READINGS WORKED OUT: set when the chip is counting and the game set a time on it
+            # The readings worked out: set when the chip is counting and the game set a time on it
             # (IR::Clock.undated_set?), and then the chip's own day and time with the offset added,
             # a day carried when the seconds pass midnight, back to a date and a time.
             def emit_clock_work_out

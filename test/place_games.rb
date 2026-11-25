@@ -619,7 +619,7 @@ module PlaceGames
     builder.program
   end
 
-  # +count+ PLACES, EACH ONE SQUARE FACE showing the tile, laid out ten to a row ten wholes ahead,
+  # +count+ places, each one square face showing the tile, laid out ten to a row ten wholes ahead,
   # drawn without perspective. Each place is its own drawing routine with its own words, so a game
   # of many places names many variables before the routine that fills a face.
   def self.many_places(count)
@@ -646,7 +646,7 @@ module PlaceGames
     builder.program
   end
 
-  # THE ANSWER KEY FOR A MOVED SHAPE: the same square drawn two ways, which must be the same picture.
+  # The answer key for a moved shape: the same square drawn two ways, which must be the same picture.
   # The viewer looks along x (its right is -z), and the square stands at STANCE_SPOT turned a
   # quarter round so its right points up and its up points along z. With +moved+ the square is
   # declared round its own middle and drawn with at: and facing:; without, it is declared with its
@@ -690,7 +690,7 @@ module PlaceGames
     builder.program
   end
 
-  # THE ANSWER KEY FOR A SHAPE AT THE EDGE OF THE VIEW. A shape drawn at a spot (`at:`) is first
+  # The answer key for a shape at the edge of the view. A shape drawn at a spot (`at:`) is first
   # tested as a ball round its points and passed over when wholly out of view; the test must never
   # pass over a shape that shows a pixel. So eight-sided shapes, a point SHAPE_REACH from the middle
   # along each arrow either way, stand at EDGE_SPOTS, each just inside, at or just past an edge of
@@ -908,7 +908,7 @@ module PlaceGames
     builder.program
   end
 
-  # A FLOOR OF ABOUT A THOUSAND FACES, as a level file gives a mine: BIG_FLOOR_SIDE points each way,
+  # A floor of about a thousand faces, as a level file gives a mine: BIG_FLOOR_SIDE points each way,
   # one whole apart, a whole below a viewer standing over its middle a quarter of the way in, so
   # about half its faces are behind the viewer or beside the view. Each face shows the tile.
   BIG_FLOOR_SIDE = 32

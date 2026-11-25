@@ -4,7 +4,7 @@ require "digest"
 
 module VBlank
   module Original
-    # WHICH SLOTS A PART OF AN UNPACKING ROUTINE READS AND WRITES, by name, recorded as the part is
+    # Which slots a part of an unpacking routine reads and writes, by name, recorded as the part is
     # built (SlotBytes#record_read, #record_write): what tells UnpackingParts which parts read what
     # another wrote.
     class SlotUses
@@ -23,7 +23,7 @@ module VBlank
     # (BuiltNames#refuse_outside_variables!).
     class OutsideVariableError < BuildError; end
 
-    # THE VARIABLES ONE BUILD OF AN UNPACKING ROUTINE MADE (Builder#unpacking_program records
+    # The variables one build of an unpacking routine made (Builder#unpacking_program records
     # them): every one, which part's block made each, and which the build made unique
     # (Builder#unique_names). +whole+ is the whole routine's BuiltNames, for a build of one part
     # alone: which part made a variable there.
@@ -48,7 +48,7 @@ module VBlank
       # The part that made the variable +name+ in this build, or nil where no part's block did.
       def part_that_made(name) = @parts_by_variable[name]
 
-      # REFUSES A BUILD THAT REACHED A VARIABLE ANOTHER BUILD MADE. A game variable belongs to the
+      # Refuses a build that reached a variable another build made. A game variable belongs to the
       # build that made it: an object's instance variable, or a Ruby local, keeps the variable it
       # was first given, and a later build that reaches the same object or local uses that one
       # rather than making its own. Its writes are recorded in the build that made it, and its
@@ -84,7 +84,7 @@ module VBlank
       end
     end
 
-    # THE WHOLE ROUTINE'S BUILD, which the parts built alone are held to (Builder::DataPacks#unpacking_parts):
+    # The whole routine's build, which the parts built alone are held to (Builder::DataPacks#unpacking_parts):
     # its Unpacking, its BuiltNames, and its PartPrograms.
     WholeRoutine = Data.define(:unpacking, :names, :programs)
 
@@ -92,13 +92,13 @@ module VBlank
     # (PartPrograms#refuse_part_built_apart!).
     class PartBuiltApartError < BuildError; end
 
-    # WHAT EACH PART OF AN UNPACKING ROUTINE PUT IN ONE BUILD'S PROGRAM, recorded as the part's
+    # What each part of an unpacking routine put in one build's program, recorded as the part's
     # block runs (Builder::DataPacks#unpacking_program): the statements it added to the program and
     # the routines it declared. A part's cache entry
     # is keyed on its program built alone (UnpackingParts#key_source), and that is only the part
     # the whole routine plays if the part builds the same both ways.
     #
-    # WHY IT CAN BUILD ANOTHER WAY. A part's block is Ruby, run as the routine is built. Ruby one
+    # Why it can build another way. A part's block is Ruby, run as the routine is built. Ruby one
     # block leaves for another (an instance variable of the builder, an object both reach) is
     # there when the whole routine is built and not when the part is built alone. The programs
     # are what such Ruby changes, so they are what is compared: Ruby both blocks reach that makes
@@ -133,7 +133,7 @@ module VBlank
         in_order_of_first_use(own.map { |node| IR::Dump.source(node) }.join("\n"), unique_names)
       end
 
-      # REFUSES A PART THAT BUILDS ANOTHER PROGRAM ALONE (+alone+, the PartPrograms of its build
+      # Refuses a part that builds another program alone (+alone+, the PartPrograms of its build
       # alone, of +alone_program+) than in the whole routine (this, of +whole_program+). Each
       # program comes with the names its build made unique.
       def refuse_part_built_apart!(part, whole_program, whole_unique, alone, alone_program, alone_unique)
@@ -168,20 +168,20 @@ module VBlank
       end
     end
 
-    # THE PARTS OF AN UNPACKING ROUTINE (`slots.fill_from_copy :music do ... end`, one block a
+    # The parts of an unpacking routine (`slots.fill_from_copy :music do ... end`, one block a
     # part), as the pack cache keeps them apart (PackCache#pack). Each part is built once more as
     # a program of its own, the slots copied as they are and that part alone, to learn what it
     # reads and writes; the parts are then played as programs of the parts asked for and nothing
     # else (#unpacking_of), which run in the order the game gave them, as the whole routine does.
     #
-    # WHAT A PART NEEDS BEFORE IT (#inputs_of). A part reads only the copy, the slots and the
+    # What a part needs before it (#inputs_of). A part reads only the copy, the slots and the
     # variables, lists and routines it names. So it needs an earlier part played before it when
     # that part writes a slot it reads or writes too (SlotUses), or names a variable, list, table
     # or routine it names too (+names+). The second is conservative: two parts that each set a
     # variable of the same name before reading it need nothing of each other, and are played
     # together all the same.
     #
-    # A NAME MEANS ONE THING TO TWO PARTS only where the whole routine would mean one variable by
+    # A name means one thing to two parts only where the whole routine would mean one variable by
     # it. Each part is built alone, so names the build makes unique, by a counter or by taking a
     # free name (Builder#unique_names: a `repeat`'s index, the hidden copy of a picked value, the
     # variable of a plain-Ruby local or of an object's instance variable), start again in each
@@ -195,7 +195,7 @@ module VBlank
     # writes, byte for byte. The cost is that a part changed alone plays again what it reads from
     # too, though that part's slots are in the cache.
     #
-    # WHAT IS REFUSED RATHER THAN MISSED. Only what the program holds is looked at, so a part that
+    # What is refused rather than missed. Only what the program holds is looked at, so a part that
     # hands anything to another must hand it through a slot. Three other ways are refused as the
     # routine is built: a part built alone that reads a game variable another part's object or
     # local keeps (BuiltNames#refuse_outside_variables!); a part whose program built alone is not
@@ -205,7 +205,7 @@ module VBlank
     # next (UnpackingPartBuilding#refuse_bytes_done_in_later_part!). What is still not seen is Ruby
     # that changes only a variable's start, and Ruby kept between builds outside the game's blocks.
     #
-    # WHAT A PART'S CACHE KEY IS MADE OF (#key_source): the program of the part built alone, for each
+    # What a part's cache key is made of (#key_source): the program of the part built alone, for each
     # part played to make it (#played_for), as digests of each one's text as the pack cache keys a
     # program (PackCache.program_source). A part's blocks
     # run as the same DSL calls however many parts are built with them, so the program of a part

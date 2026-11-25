@@ -1,33 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="328" viewBox="0 0 640 328" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
-<rect x="0.5" y="0.5" width="639" height="327" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="362" viewBox="0 0 640 362" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<rect x="0.5" y="0.5" width="639" height="361" rx="12" fill="#ffffff" stroke="#d0d7de"/>
 <text x="24" y="38" fill="#1f2328" font-size="15" font-weight="600">The hardware VBlank drives on each target</text>
 <text x="24" y="72" fill="#1f2328" font-size="14">Game Boy Advance</text>
 <rect x="174" y="62" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="62" width="331.5" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="72" fill="#59636e" font-size="14" text-anchor="end">46 / 53</text>
+<rect x="174" y="62" width="337.9" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="72" fill="#59636e" font-size="14" text-anchor="end">46 / 52</text>
 <text x="24" y="106" fill="#1f2328" font-size="14">Super Nintendo</text>
 <rect x="174" y="96" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="96" width="151.0" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="106" fill="#59636e" font-size="14" text-anchor="end">17 / 43</text>
+<rect x="174" y="96" width="165.0" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="106" fill="#59636e" font-size="14" text-anchor="end">19 / 44</text>
 <text x="24" y="140" fill="#1f2328" font-size="14">Sega Genesis</text>
 <rect x="174" y="130" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="130" width="172.3" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="140" fill="#59636e" font-size="14" text-anchor="end">23 / 51</text>
+<rect x="174" y="130" width="180.2" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="140" fill="#59636e" font-size="14" text-anchor="end">25 / 53</text>
 <text x="24" y="174" fill="#1f2328" font-size="14">Game Boy Color</text>
 <rect x="174" y="164" width="382" height="12" rx="6" fill="#eaeef2"/>
 <rect x="174" y="164" width="249.1" height="12" rx="6" fill="#2f81f7"/>
 <text x="616" y="174" fill="#59636e" font-size="14" text-anchor="end">30 / 46</text>
 <text x="24" y="208" fill="#1f2328" font-size="14">PlayStation</text>
 <rect x="174" y="198" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="198" width="150.3" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="208" fill="#59636e" font-size="14" text-anchor="end">24 / 61</text>
-<text x="24" y="242" fill="#1f2328" font-size="14">Desktop program</text>
+<rect x="174" y="198" width="161.2" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="208" fill="#59636e" font-size="14" text-anchor="end">27 / 64</text>
+<text x="24" y="242" fill="#1f2328" font-size="14">DOS</text>
 <rect x="174" y="232" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="232" width="154.9" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="242" fill="#59636e" font-size="14" text-anchor="end">15 / 37</text>
-<text x="24" y="276" fill="#1f2328" font-size="14">Web page</text>
+<rect x="174" y="232" width="235.1" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="242" fill="#59636e" font-size="14" text-anchor="end">16 / 26</text>
+<text x="24" y="276" fill="#1f2328" font-size="14">Desktop program</text>
 <rect x="174" y="266" width="382" height="12" rx="6" fill="#eaeef2"/>
-<rect x="174" y="266" width="238.8" height="12" rx="6" fill="#2f81f7"/>
-<text x="616" y="276" fill="#59636e" font-size="14" text-anchor="end">15 / 24</text>
-<text x="24" y="306" fill="#59636e" font-size="12">Features supported out of the target's whole list. Rare add-ons are left out.</text>
+<rect x="174" y="266" width="154.9" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="276" fill="#59636e" font-size="14" text-anchor="end">15 / 37</text>
+<text x="24" y="310" fill="#1f2328" font-size="14">Web page</text>
+<rect x="174" y="300" width="382" height="12" rx="6" fill="#eaeef2"/>
+<rect x="174" y="300" width="238.8" height="12" rx="6" fill="#2f81f7"/>
+<text x="616" y="310" fill="#59636e" font-size="14" text-anchor="end">15 / 24</text>
+<text x="24" y="340" fill="#59636e" font-size="12">Features supported out of the target's whole list. Rare add-ons are left out.</text>
 </svg>

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A KEPT WIDTH SAVES on the Color, whose processor works a byte at a time: the same game with
+# What a kept width saves on the Color, whose processor works a byte at a time: the same game with
 # and without `width:`, compared by the size of what it was made into.
 class TestGBCVariableWidths < Minitest::Test
   GBC = VBlank::IR::Backends::GBC
@@ -56,7 +56,7 @@ class TestGBCVariableWidths < Minitest::Test
       a = var :a, 1, width: :half
       a = -a
       b = var :b, 1, width: :byte
-      negate! :b
+      b.flip!
     end
 
     refute_match(/rt_neg32/, listed)

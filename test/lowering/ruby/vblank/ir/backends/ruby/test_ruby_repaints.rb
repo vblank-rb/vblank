@@ -3,7 +3,7 @@
 require "test_helper"
 require "repaint_games"
 
-# HOW OFTEN THE RUBY RUNTIME BUILDS THE WHOLE VIEW AGAIN. A screen that scrolls a background is built
+# How often the Ruby runtime builds the whole view again. A screen that scrolls a background is built
 # from its scenery and its sprites each time something asks, and the scroll and the sprites ask
 # every frame, moved or not. A frame on which neither moved asks for nothing, so a game standing
 # still is built a few times (the frames before the first picture) and not once a frame. The

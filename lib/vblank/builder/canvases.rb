@@ -2,27 +2,63 @@
 
 module VBlank
   class Builder
-    # A CANVAS: a picture the game draws into with words while it runs (see DSL::Canvas).
+    # Canvases
     #
-    # It is the friendly side of `tiles ..., from: list` and `image ..., from: list`. Those
-    # hand the game a list to pack pixels into itself; this keeps the list and gives the game
-    # words — a pixel, a rectangle, a picture, a letter, text, a number — in colour names.
+    # A canvas is a picture your game draws into while it runs, using colour names: a pixel, a
+    # rectangle, a picture, a letter, some text or a number. Use one for what the game works out as
+    # it goes, such as a name typed a letter at a time, a meter or a map of where the player has
+    # been. A background shows it, or a sprite uses it as its picture.
+    #
+    # ```ruby picture=once frames=90
+    # VBlank.game "CANVAS", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   colors :ink,
+    #          %i[transparent white yellow red]
+    #   board = canvas :board, width: 96,
+    #                  height: 32, colors: :ink
+    #   background :sign, tiles: :board,
+    #                     map: board.cells
+    #   board.draw_text "ENERGY", 8, 4, :white
+    #   board.fill_rect 8, 18, 80, 8, :red
+    #   energy = 0
+    #   game_loop do
+    #     energy += 1 if energy < 80
+    #     # a meter that fills as the game runs
+    #     board.fill_rect 8, 18, energy, 8,
+    #                     :yellow
+    #   end
+    # end
+    # ```
+    #--
+    # See DSL::Canvas. It is the friendly side of `tiles ..., from: list` and `image ..., from:
+    # list`, which hand the game a list to pack pixels into itself; a canvas keeps that list.
+    #++
     module Canvases
       # The characters a canvas can draw a letter of: every code a game writes as text.
-      LETTER_CODES = 128
+      LETTER_CODES = 128  # :nodoc:
 
       # FontTables: one font, as the tables a canvas reads a letter out of while the game
       # runs — each character's rows of lit pixels, and its width.
-      FontTables = Data.define(:rows, :widths, :height, :widest, :spacing)
+      FontTables = Data.define(:rows, :widths, :height, :widest, :spacing)  # :nodoc:
 
-      # Declare a canvas +width+ by +height+ pixels (each a whole number of tiles), drawn
-      # from +colors+ (a `colors` list by name, or the colours themselves, see-through
-      # first). By default a background shows it — `background :box, tiles: :name, map:
-      # canvas.cells` — and other keys given here are ordinary tiles beside it in the same
-      # tileset, a box's frame say. `as: :sprite` makes it a sprite's picture instead, and
-      # then it is a size the console draws a sprite at.
+      # Declares a picture the game draws into while it runs, and returns it to draw with.
       #
-      # @return [DSL::Canvas]
+      # By default a background shows the canvas. Other keys given here are ordinary tiles beside
+      # it in the same set, such as a box's frame. With `as: :sprite` it is a sprite's picture
+      # instead, and then its size must be one the console draws a sprite at.
+      #
+      # ```ruby
+      # board = canvas :board, width: 208, height: 32, colors: :ink
+      # background :box, tiles: :board, map: board.cells
+      # board.fill_rect 4, 4, 40, 8, :red
+      # ```
+      #
+      # * `name` - the canvas's name, as a symbol.
+      # * `width:` and `height:` - its size in pixels, each a whole number of tiles (a multiple of 8).
+      # * `colors:` - the colours it draws with: a `colors` list by name, or the colours
+      #   themselves, with the see-through one first.
+      # * `as:` - `:tiles` for a background to show it, or `:sprite` for a sprite's picture.
+      # * `fast:` - `true` or `false` to choose whether its pixels sit in the quick memory.
       def canvas(name, width:, height:, colors:, as: :tiles, fast: nil, **fixed)
         refuse_bad_canvas!(name, width, height, as)
         bytes = width * height / 2
@@ -41,7 +77,8 @@ module VBlank
 
       # A font a canvas draws letters of, as tables read while the game runs. Made once per
       # font however many canvases use it.
-      def canvas_font_tables(font)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def canvas_font_tables(font)  # :nodoc:
         @canvas_font_tables ||= {}
         @canvas_font_tables[font] ||= begin
           face = canvas_font(font)
@@ -60,10 +97,12 @@ module VBlank
       end
 
       # The font named +font+.
-      def canvas_font(font) = IR::FontTable.of(@program).get(font)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def canvas_font(font) = IR::FontTable.of(@program).get(font)  # :nodoc:
 
       # A declared picture's size, [width, height].
-      def image_size(image)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def image_size(image)  # :nodoc:
         @images.fetch(image) do
           raise ArgumentError, "there is no image named :#{image}. Define it first with `image :#{image}, ...`."
         end
@@ -73,7 +112,8 @@ module VBlank
       # A pixel in a colour read from the data pack as the game starts is the marker it is
       # (IR::StartFile), which the canvas's own list of such colours holds too: masked to fifteen
       # bits it would be a colour that is no colour of the list.
-      def image_pixels(image)
+      # Asked by a `canvas` while it builds its words; documented on `canvas`.
+      def image_pixels(image)  # :nodoc:
         image_size(image)
         node = @program.walk.find { |each| each.kind == :bitmap && each.name == image }
         picture = IR::Assets::Image.of(node)

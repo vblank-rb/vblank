@@ -4,9 +4,9 @@ require "test_helper"
 require "node_copy"
 require "zlib"
 require "vblank/live"
-require VBlank.root.join("examples/wanderers").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/wanderers").to_s)
 
-# CHAT BETWEEN A COPY BUILT AS JAVASCRIPT AND A RUBY BUILD, in a match, in the network's own messages: each sees
+# Chat between a copy built as JavaScript and a Ruby build, in a match, in the network's own messages: each sees
 # the other's lines as "Player N: text", and the game goes on as it would without them, which the state
 # number of every pass (a checkpoint on every pass) and the pictures agreeing show.
 class TestNodeChat < Minitest::Test

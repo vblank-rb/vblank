@@ -2,30 +2,45 @@
 
 module VBlank
   class Builder
-    # WHAT ONLY THIS MACHINE'S PERSON SEES. In a match played over a network every machine runs the
-    # whole game, and must run the same game: if the game read a number that is different on each
-    # machine (which player I am) and let it reach a variable, the machines would drift apart and the
-    # match would stop at the next checkpoint. But a game wants to know who it is playing for, to mark
-    # the player's own walker, or to centre a camera on it. So the number is given out in one place
-    # only, a block that may draw and may not change the game:
+    # What only this machine's person sees
     #
-    #   drawing_for_local_player do |me|
-    #     draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
-    #   end
+    # In a match played over a network every machine runs the whole game, and every machine must
+    # run the same game. A game still wants to know who it is playing for, to mark the player's own
+    # walker or to centre a camera on it. `drawing_for_local_player` gives out that number in one
+    # place only, a block that may draw and may not change the game. What is drawn on one machine
+    # and not on another changes the picture and nothing the game remembers.
     #
-    # The build holds the game to that in two ways. Every statement in the block must be a drawing one
-    # (or an `if` around drawing ones), so a variable, a list, a pool, a call, a sound and a random draw
-    # are refused where they are written; and the number itself, which is `me`, is refused anywhere
-    # outside such a block, even when the block kept it in a Ruby variable. What is drawn on one
-    # machine and not on another changes the picture and nothing the game remembers.
+    # ```ruby
+    # drawing_for_local_player do |me|
+    #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
+    # end
+    # ```
     #
     # On a cartridge, and in a game played alone, `me` is 1.
+    #--
+    # If the game read a number that is different on each machine and let it reach a variable, the
+    # machines would drift apart and the match would stop at the next checkpoint. The build holds
+    # the game to the rule in two ways. Every statement in the block must be a drawing one (or an
+    # `if` around drawing ones), so a variable, a list, a pool, a call, a sound and a random draw
+    # are refused where they are written; and the number itself, which is `me`, is refused
+    # anywhere outside such a block, even when the block kept it in a Ruby variable.
+    #++
     module LocalView
       # What a view may hold: everything the game draws, `if` to choose what to draw, and the
       # declarations drawing needs (a picture, a letter), which do nothing where they are written.
-      DECLARATIONS = %i[declaration part].freeze
+      DECLARATIONS = %i[declaration part].freeze  # :nodoc:
 
-      # Draws what the block asks for, for the player number it is handed.
+      # Draws what the block asks for, for the player number the block is given.
+      #
+      # Only drawing is allowed in the block, and an `if` that chooses what to draw. A variable, a
+      # list, a pool, a call, a sound or a random draw there is an error, because they would make
+      # the machines of a match differ.
+      #
+      # ```ruby
+      # drawing_for_local_player do |me|
+      #   draw_text "YOU", hero.x, hero.y - 8, :white if me == 1
+      # end
+      # ```
       def drawing_for_local_player
         unless block_given?
           raise ArgumentError, "`drawing_for_local_player` needs a block. To fix this, write the drawing in it: " \
@@ -42,14 +57,25 @@ module VBlank
         nil
       end
 
-      # A picture shown over +over+ (a sprite of the console's: any sprite on a `screen :tiled`, or one
-      # made with `over_picture: true`), centred just above it, and moved +offset+ [dx, dy] from there.
+      # Shows a picture over a sprite, such as an arrow over the player's own walker.
       #
-      #   drawing_for_local_player do |me|
-      #     walkers.each.with_index(1) { |walker, player| mark over: walker, with: :arrow if me == player }
-      #   end
+      # The picture is centred just above the sprite, and moved by `offset:` from there. It has no
+      # place of its own: it is shown while the sprite is shown, and while the `if`s it is written
+      # under hold. It is for a match, to mark the player's own walker, and also for a label over a
+      # boss. The sprite must be one the console shows, which is any sprite on a `screen :tiled`,
+      # or one made with `over_picture: true`.
       #
-      # WHY A MARK HAS NO VARIABLES. A tiled screen shows only sprites and backgrounds, so the "you"
+      # ```ruby
+      # drawing_for_local_player do |me|
+      #   walkers.each.with_index(1) { |walker, player| mark over: walker, with: :arrow if me == player }
+      # end
+      # ```
+      #
+      # * `over:` - the sprite to mark.
+      # * `with:` - the name of the picture to show.
+      # * `offset:` - `[dx, dy]`, how far to move it from just above the sprite's centre.
+      #--
+      # Why a mark has no variables. A tiled screen shows only sprites and backgrounds, so the "you"
       # arrow over a walker must be a sprite. But an ordinary sprite's place and its shown flag are
       # game variables, and in a match the variables are what every machine checks against every
       # other: an arrow moved or shown from `me` would differ from machine to machine, and the match
@@ -64,8 +90,8 @@ module VBlank
       # The guarantee stays the build's to check, as the block's is: `me` may be in the sums only
       # when the mark is written inside `drawing_for_local_player`.
       #
-      # It is not only for a match: a label over a boss is a mark too. A game with no `mark` builds
-      # the same bytes as before.
+      # A game with no `mark` builds the same bytes as before.
+      #++
       def mark(over:, with:, offset: [0, 0])
         refuse_unmarkable_sprite!(over, with)
         mark_width, mark_height = resolve_sprite_art(with, nil, nil, subject: "mark")[2, 2]

@@ -5,7 +5,7 @@ require "tmpdir"
 require "vblank/live"
 require "console_bios_cases"
 
-# WHICH GAME BOY ADVANCE BIOS THE DESKTOP BUILD PLAYS THE START-UP FROM (runtime/rg_console_bios.h).
+# Which Game Boy Advance BIOS the desktop build plays the start-up from (runtime/rg_console_bios.h).
 # A built game and `vblank run` find the same file, so the C rule gives the Ruby one's answer, word for
 # word, on every row of the table. Every file is made up: no BIOS is needed.
 class TestNativeConsoleBIOS < Minitest::Test

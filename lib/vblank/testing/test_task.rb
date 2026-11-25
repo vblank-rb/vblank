@@ -11,7 +11,7 @@ require_relative "watched_run"
 
 module VBlank
   module Testing
-    # ONE TEST TASK, FOR ONE LOWERING, under a name and over files the game chooses — for a game
+    # One test task, for one lowering, under a name and over files the game chooses — for a game
     # whose Rakefile keeps its own rake test and a task for each group of its tests, and wants a
     # native twin of a group without the rest of RakeTasks:
     #
@@ -31,16 +31,21 @@ module VBlank
     # its run is for. RakeTasks makes its two runs out of two of these, so a twin a game makes is
     # the run `rake test:lowering:native` is, and how a native run is started lives here alone.
     #
-    # A NATIVE RUN is played differently, and this is all of how. Every test starts zig and the
-    # program it builds, which Ruby cannot do from inside a Ractor, so it is plain minitest's
-    # whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests are spread over
-    # several processes instead (Processes) — TEST_PROCESSES of them, or as many as the Ractor run
-    # has workers, or half the machine's cores — each playing one test at a time (MT_CPU=1). And
-    # zig is asked for before any test is played, so a missing or wrong one stops the run with
-    # one plain line rather than failing every test in turn.
+    # A run is played in Ractors or in processes, as its record says (Lowering::Run#ractors). A run
+    # in Ractors takes the game's Ractor settings as they are, so long as they give it --ractor; one
+    # not given it (a suite that never applies RactorSettings, or --no-ractor) is played as it was
+    # before any run could choose: the GBA run plain in one process, a checked run as below. Each
+    # other checked run is
+    # plain minitest's whatever the game sets for Ractors (no --ractor, no MT_RACTOR); its tests
+    # are spread over several processes instead (Processes) — TEST_PROCESSES of them, or as many
+    # as the Ractor run has workers, or half the machine's cores — each playing one test at a time
+    # (MT_CPU=1). That is not because a test starts programs: one in a Ractor can (zig, node, the
+    # program a build makes), as Testing's unbuffered standard output lets it. Those runs have
+    # not been moved and measured yet.
     #
-    # A JAVASCRIPT RUN is played the same way, for the same reason — every test starts node and
-    # the program it builds — and asks for node in place of zig.
+    # A native run asks for zig before any test is played, so a missing or wrong one stops the
+    # run with one plain line rather than failing every test in turn; a JavaScript run asks for
+    # node the same way.
     #
     # None of that is written into the settings of the rake process: it is handed to the run this
     # task starts and to nothing else, so a GBA run after it in the same rake call is played as the
@@ -50,7 +55,7 @@ module VBlank
     # one task a game that keeps its own was making this to stay clear of.
     class TestTask < Rake::TestTask
       # The lowering this task's run is for, :gba unless told; and the console it plays games as.
-      # Left untold, that is the one CONSOLE names, or the lowering's own: a runtime's run can play
+      # Left untold, that is the one console names, or the lowering's own: a runtime's run can play
       # as any (Lowering::Run#plays_any_console?), and the rest refuse another.
       attr_reader :lowering
       attr_writer :console
@@ -93,14 +98,20 @@ module VBlank
       def define
         @ruby_opts << "-r#{bundler_setup_path}" if bundler_setup_path
         @ruby_opts << "-r#{File.expand_path('quiet_warnings.rb', __dir__)}"
-        @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if checked?
+        warnings_after_boot! if warning
+        @ruby_opts << "-r#{File.expand_path('processes.rb', __dir__)}" if in_processes?
         @defined = true
         super
       end
 
-      # The test options this run is played with. A checked run leaves out --ractor.
+      # The test options as rake reads them (TESTOPTS, or the task's own), before this task takes
+      # anything out.
+      alias_method :given_options, :option_list
+      private :given_options
+
+      # The test options this run is played with. A run played in processes leaves out --ractor.
       def option_list(...)
-        checked? ? without_ractor(super) : super
+        in_processes? ? without_ractor(super) : super
       end
 
       private
@@ -154,16 +165,23 @@ module VBlank
       # RUBYOPT names then loads nothing a second time.
       def bundler_setup_path = ENV.fetch("RUBYOPT", "")[%r{-r(\S*bundler/setup)(?:\.rb)?(?=\s|\z)}, 1]
 
-      def checked? = Lowering.run_named(lowering).checked?
+      # A run whose tests are played in Ractors: one whose record allows it (Lowering::Run#ractors),
+      # given --ractor. Asked of the options as given, since #option_list takes the flag out of a
+      # run in processes.
+      def in_ractors? = Lowering.run_named(lowering).ractors? && given_options.split.include?("--ractor")
 
-      # A run whose tests are played in Ractors: one that is not checked, told --ractor.
-      def in_ractors? = !checked? && option_list.split.include?("--ractor")
+      # A run whose tests are spread over processes (Processes): a checked run not played in
+      # Ractors, one whose record allows them included when it is not given --ractor. A game's
+      # suite that never applies RactorSettings, or TESTOPTS=--no-ractor, would otherwise play a
+      # whole checked run in one process. The GBA run, which plays the interpreter alone, is plain
+      # minitest in one process outside Ractors, as it always was.
+      def in_processes? = Lowering.run_named(lowering).checked? && !in_ractors?
 
       # Is the run played with YJIT, Ruby's compiler of hot methods to machine code? Where its
       # record shows YJIT makes it faster (Lowering::Run#yjit), and never in Ractors: with several
       # running at once it makes a run many times slower. Off is set on Ruby's command line,
       # which wins over a --yjit in RUBYOPT; on is set in the environment (#run_settings), which
-      # the processes a checked run starts for its tests inherit. A Ruby built without YJIT takes
+      # the processes a run in processes starts for its tests inherit. A Ruby built without YJIT takes
       # both and ignores them.
       def yjit? = Lowering.run_named(lowering).yjit? && !in_ractors?
 
@@ -171,20 +189,36 @@ module VBlank
 
       def without_ractor(options) = (options.split - %w[--ractor]).join(" ")
 
-      # What the run is handed. A checked run's own copy of TESTOPTS loses --ractor
+      # What the run is handed. A run in processes has its own copy of TESTOPTS lose --ractor
       # too, since a test that starts a run of its own hands that copy on. YJIT as #yjit? returns.
-      # The console is always set, as VBLANK_CONSOLE, and CONSOLE is not handed on
+      # The console is always set, as VBLANK_CONSOLE, and console is not handed on
       # (Lowering::PLAYED_AS_SETTING says why), and the variant the same way, as VBLANK_VARIANT.
       def run_settings
         shared = { "RUBY_YJIT_ENABLE" => yjit? ? "1" : nil, Lowering::PLAYED_AS_SETTING => console.to_s,
                    Lowering::CONSOLE_SETTING => nil, Lowering::FAIL_FAST_SETTING => nil,
                    Lowering::BUILT_AS_SETTING => variant&.to_s, Lowering::VARIANT_SETTING => nil,
                    Lowering::RESUME_SETTING => nil, Lowering::STOPS_AT_FAILURE_SETTING => ENV.fetch(Lowering::FAIL_FAST_SETTING, nil) }
-        return { Lowering::SETTING => "gba", **shared } unless checked?
+        return { Lowering::SETTING => lowering.to_s, **roomy_heap_settings, **shared } unless in_processes?
 
         { Lowering::SETTING => lowering.to_s, "MT_RACTOR" => nil, "MT_CPU" => "1", **shared,
           "TESTOPTS" => ENV["TESTOPTS"] && without_ractor(ENV["TESTOPTS"]),
           "TEST_PROCESSES" => ENV.fetch("TEST_PROCESSES") { ENV.fetch("MT_RACTOR_WORKERS") { RactorSettings.default_workers.to_s } } }
+      end
+
+      # Warnings asked for (`t.warning`, on unless a game turns it off) are turned on by a file the
+      # run loads first (warnings_on.rb says why) rather than by `ruby -w`.
+      def warnings_after_boot!
+        self.warning = false
+        @ruby_opts << "-r#{File.expand_path('warnings_on.rb', __dir__)}"
+      end
+
+      # RactorSettings' roomy heap, for a run in Ractors whose record asks for it
+      # (Lowering::Run#roomy_heap), with any of its settings already in the environment left as
+      # they are. Handed to that run alone, so a run after it in the same rake call keeps its own.
+      def roomy_heap_settings
+        return {} unless in_ractors? && Lowering.run_named(lowering).roomy_heap?
+
+        RactorSettings::ROOMY_HEAP.to_h { |name, value| [name, ENV.fetch(name, value)] }
       end
 
       def refuse_lowering_after_definition!

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A POSE PICKED BY A NUMBER THE GAME WORKS OUT: `hero.face [:a, :b, :c], showing: step`.
+# A pose picked by a number the game works out: `hero.face [:a, :b, :c], showing: step`.
 # An animation step, a state, a variant of an effect — the pose a game wants is usually a
 # number, and written as a test per pose it is code that grows with the poses. This reads the
 # pose out of a table instead, so a hundred poses cost what three do.

@@ -230,24 +230,32 @@ module VBlank
 
       # The adapter used when a caller doesn't name one.
       #
-      # ONE PER RACTOR, not one per process, and that is what makes importing art work when
+      # One per Ractor, not one per process, and that is what makes importing art work when
       # a game builds on several cores at once. The adapter remembers which image tool this
       # machine has, which costs a subprocess to find out, so it is worth keeping — but kept
       # on the module it is state a worker may neither write nor read, and the import stopped
       # dead there. Ruby gives each Ractor a store of its own; a worker fills in its own
       # adapter, pays that subprocess once, and nothing is shared.
+      #
+      # An adapter given with #with_adapter wins, on its own thread only.
       def default_adapter
-        Ractor.current[:vblank_image_adapter] ||= Adapters::ImageMagick.new
+        Thread.current.thread_variable_get(GIVEN_ADAPTER_KEY) ||
+          (Ractor.current[:vblank_image_adapter] ||= Adapters::ImageMagick.new)
       end
 
+      GIVEN_ADAPTER_KEY = :vblank_image_adapter_given
+
       # Import through +adapter+ for the duration of the block — how a test imports art with
-      # no image tool installed. Restores whatever was in use, including nothing.
+      # no image tool installed. Restores whatever was in use, including nothing. Kept per thread,
+      # not per Ractor: two threads of one Ractor can import at once, and the other one must
+      # still read the real file. Each Ractor has threads of its own.
       def with_adapter(adapter)
-        was = Ractor.current[:vblank_image_adapter]
-        Ractor.current[:vblank_image_adapter] = adapter
+        thread = Thread.current
+        was = thread.thread_variable_get(GIVEN_ADAPTER_KEY)
+        thread.thread_variable_set(GIVEN_ADAPTER_KEY, adapter)
         yield
       ensure
-        Ractor.current[:vblank_image_adapter] = was
+        thread.thread_variable_set(GIVEN_ADAPTER_KEY, was)
       end
     end
   end

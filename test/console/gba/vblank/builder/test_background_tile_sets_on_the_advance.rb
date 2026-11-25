@@ -270,10 +270,7 @@ class TestBackgroundTileSetsOnTheAdvance < Minitest::Test
         where = 1 if tick == 8
         state = 0 if tick == 10
         where = 0 if tick == 12
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end

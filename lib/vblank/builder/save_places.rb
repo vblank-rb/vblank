@@ -2,7 +2,8 @@
 
 module VBlank
   class Builder
-    # WHERE EACH `save_data` RECORD LIVES IN SAVE MEMORY, decided at power-on from the table of
+    #--
+    # Where each `save_data` record lives in save memory, decided at power-on from the table of
     # places kept at the front of it (see IR::SaveLayout).
     #
     # A cartridge that shipped holds the player's saves, and the next build of the game has to
@@ -23,13 +24,17 @@ module VBlank
     #      is free, and otherwise its copies are moved, byte for byte, to room big enough.
     #   3. The table is written back if anything changed.
     #
+    # A chip with no good table (never written, or damaged) skips all three: every row is empty,
+    # so where each record goes is known when the game is built, and those rows are written in
+    # as numbers (#save_places_fresh).
+    #
     # ROOM is looked for in three steps, each only when the one before found none: room nothing
     # holds; then room held by a record this build no longer declares (kept until then, so a
     # game can drop a record and bring it back in a later build); then the records are slid
     # down together to put all the free room in one piece at the end. The build has already
     # checked that every record fits at once, so the last step always finds it.
     #
-    # THE POWER GOING OFF while this runs loses nothing, with one exception. Moving a record's
+    # The power going off while this runs loses nothing, with one exception. Moving a record's
     # copies writes them into room the table marks as free, and the table is written the moment
     # they are in — so until then the table still points at the old place, which nothing has
     # touched. The exception is the last resort, when save memory is nearly full and the free
@@ -41,17 +46,16 @@ module VBlank
     # All of it is ordinary program built from the three save-memory steps, like the records'
     # own routines, so the interpreter and the console cannot disagree about any of it.
     #
-    # AN OBJECT OF ITS OWN, made once the records are laid out and handed what it needs: the
+    # An object of its own, made once the records are laid out and handed what it needs: the
     # port it builds program through, the save memory, the records to place, and a way to
     # declare the table as a record of its own (whose routines are the records' to build). It
     # keeps nothing in common with them, so what it builds depends on those and nothing else.
+    #++
     class SavePlaces
       include SaveProgram
 
-      ROWS = IR::SaveLayout::TABLE_ROWS
-
       SCRATCH = %i[changed key half copies need room found row fits probe skip cursor pick
-                   low limit from to length up extra place first].freeze
+                   low limit from to length up extra place first].freeze  # :nodoc:
 
       # +memory+ is the IR::SaveLayout::Memory the records are laid out in, +records+ their
       # SaveRecords::Layouts by name, in declaration order (as SaveJobs is given them), and +table_record+ is called with the
@@ -70,11 +74,15 @@ module VBlank
         # Each column starts as a whole table of empty rows, which a good table on the chip then
         # replaces: on an empty chip the table needs no rows added one at a time.
         kept = IR::SaveLayout::TABLE_COLUMNS.map do |column|
-          at_boot(Build.list_new(table_list(column), ROWS, width: :word, full_of: 0))
-          SaveRecords::Kept.new(kind: :list, name: table_list(column), at: 0, width: :word, count: ROWS)
+          at_boot(Build.list_new(table_list(column), table_rows, width: :word, full_of: 0))
+          SaveRecords::Kept.new(kind: :list, name: table_list(column), at: 0, width: :word, count: table_rows)
         end
         @save_table = @table_record.call(kept, place: @memory.table_at)
         SCRATCH.each { |what| ensure_var(places_name(what)) }
+        unless @records.empty?
+          at_boot(Build.list_new(record_rows, @records.length, width: :byte, full_of: -1))
+          declare_fresh_tables
+        end
         declare_func(places_name(:boot)) { save_places_boot }
         declare_func(places_name(:place_record)) { save_places_place_record }
         declare_func(places_name(:find_room)) { save_places_find_room }
@@ -90,6 +98,7 @@ module VBlank
 
       private
 
+      def table_rows = @memory.table_rows
       def table_list(column) = Messages::MadeNames.make(:save_table, column: column)
       def places_name(what) = Messages::MadeNames.make(:save_places, piece: what)
       def place_var(what) = sd_var(places_name(what))
@@ -114,33 +123,106 @@ module VBlank
       end
       def row_end(row) = sd_add(cell(:at, row), row_size(row))
 
+      # A table that reads as good is worked from (#save_places_from_table). One never written,
+      # or damaged, gives every record a place the build has already worked out
+      # (#save_places_fresh).
       def save_places_boot
         record(Build.set(@save_table.scratch(:copy), sd_int(0)))
         record(Build.call(@save_table.routine(:scan)))
+        good = IR::SaveLayout::STATES.index(:good)
+        sd_when(sd_eq(@save_table.directory_at(:state, sd_int(0)), sd_int(good))) { save_places_from_table }
+          .else { save_places_fresh }
+      end
+
+      # With no table to go by, every row is empty, and placing the records one by one as
+      # #save_places_from_table does gives each the next free row and the room just past the
+      # record before it, in the order they were declared. That is known before the game runs,
+      # so the rows are copied in from tables the build writes (#fresh_rows) rather than found
+      # by searching an empty table, which on a slow console was frames of work at the first
+      # power-on. Each record's copies are then marked as never saved (#save_places_clear says
+      # why), and the table written, in the order the search would have done them.
+      def save_places_fresh
+        return if @records.empty?
+
+        repeat(@records.length) do |i|
+          row = i.node
+          IR::SaveLayout::TABLE_COLUMNS.each do |column|
+            set_cell(column, row, Build.table_get(fresh_table(column), row, in_range: true))
+          end
+          set_place_var(:found, row)
+          set_place_var(:half, cell(:half, row))
+          set_place_var(:copies, cell(:copies, row))
+          set_place_var(:first, 0)
+          sp_call(:clear)
+        end
+        @records.each_value.zip(fresh_rows) { |layout, row| record(Build.set(layout.place, sd_int(row[:at]))) }
+        # Written once, so not read back (SaveRecords#save_data_save).
+        sp_call(:commit)
+      end
+
+      # The rows of a table placed from nothing: each record in the order declared, from the
+      # start of save data, each just past the one before. Each a Hash of TABLE_COLUMNS.
+      def fresh_rows
+        at = @memory.data_start
+        @records.each_value.map do |layout|
+          row = { key: layout.key, at: at, half: layout.half, copies: layout.copies }
+          at += @memory.record_room(layout.half, layout.copies)
+          row
+        end
+      end
+
+      # The table in the cartridge that holds +column+ of #fresh_rows.
+      def fresh_table(column) = places_name(:"fresh_#{column}")
+
+      # Declare the tables #save_places_fresh copies its rows from, one a column, each a half
+      # with no sign where its numbers fit one and a word otherwise (a key always needs a word).
+      def declare_fresh_tables
+        rows = fresh_rows
+        IR::SaveLayout::TABLE_COLUMNS.each do |column|
+          values = rows.map { |row| row[column] }
+          signed = values.any?(&:negative?)
+          width = values.all? { |value| value.between?(0, 0xFFFF) } ? :half : :word
+          at_boot(Build.table(fresh_table(column), values, width: width, signed: signed))
+        end
+      end
+
+      def save_places_from_table
         record(Build.call(@save_table.routine(:load)))
         # A table written with fewer rows is filled out with empty ones. One never written, or
         # damaged, is not loaded at all, so its columns are still the empty rows they started as.
         IR::SaveLayout::TABLE_COLUMNS.each do |column|
-          short = sd_op(:-, sd_int(ROWS), Build.list_len(table_list(column)))
+          short = sd_op(:-, sd_int(table_rows), Build.list_len(table_list(column)))
           repeat(DSL::Value.new(handle, short)) { |_| record(Build.list_push(table_list(column), sd_int(0))) }
         end
         set_place_var(:changed, 0)
-        repeat(ROWS) { |i| save_places_reconcile_row(i.node) }
-        @records.each_value do |layout|
+        repeat(table_rows) { |i| save_places_reconcile_row(i.node) }
+        @records.each_value.with_index do |layout, n|
           set_place_var(:key, layout.key)
           set_place_var(:half, layout.half)
           set_place_var(:copies, layout.copies)
+          set_place_var(:found, Build.list_get(record_rows, sd_int(n)))
           sp_call(:place_record)
           record(Build.set(layout.place, place_var(:place)))
         end
         sd_when(sd_eq(place_var(:changed), sd_int(1))) { sp_call(:commit) }
       end
 
+      # The list that holds each record's row, in the order declared, once
+      # #save_places_reconcile_row has looked at every row: the last row with its key, or -1 for
+      # none. Made at power-on full of -1, so a game holds one list for this however many
+      # records it has.
+      def record_rows = places_name(:record_rows)
+
       # One row against the records this build declares: a record that keeps other things now
-      # frees its room, and one with fewer copies gives up the room past them.
+      # frees its room, and one with fewer copies gives up the room past them. A row still
+      # holding a record's key after that is the record's row. Its key is read once, into the
+      # probe scratch (free until the records are placed), for all the records: the rows a
+      # record's row is looked for in are the same rows, since placing a record never gives
+      # another record's key to a row.
       def save_places_reconcile_row(row)
-        @records.each_value do |layout|
-          sd_when(sd_eq(cell(:key, row), sd_int(layout.key))) do
+        set_place_var(:probe, cell(:key, row))
+        @records.each_value.with_index do |layout, n|
+          sd_when(sd_eq(place_var(:probe), sd_int(layout.key))) do
             sd_when(sd_op(:!=, cell(:half, row), sd_int(layout.half))) do
               set_cell(:key, row, sd_int(0))
               set_place_var(:changed, 1)
@@ -149,16 +231,16 @@ module VBlank
               set_cell(:copies, row, sd_int(layout.copies))
               set_place_var(:changed, 1)
             end
+            sd_when(sd_eq(cell(:key, row), sd_int(layout.key))) { record(Build.list_set(record_rows, sd_int(n), row)) }
           end
         end
       end
 
-      # PLACE ONE RECORD, named by the key, half and copies scratch; leaves where it starts
-      # in the place scratch.
+      # Place one record, named by the key, half and copies scratch and its row in the found
+      # scratch (-1 for none, #save_places_reconcile_row); leaves where it starts in the place
+      # scratch.
       def save_places_place_record
         set_place_var(:need, sd_op(:*, half_room(place_var(:half)), sd_op(:*, place_var(:copies), sd_int(2))))
-        set_place_var(:found, -1)
-        repeat(ROWS) { |i| sd_when(sd_eq(cell(:key, i.node), place_var(:key))) { set_place_var(:found, i.node) } }
         sd_when(sd_eq(place_var(:found), sd_int(-1))) { save_places_new_row }
           .else do
             sd_when(sd_op(:<, cell(:copies, place_var(:found)), place_var(:copies))) { sp_call(:grow) }
@@ -199,13 +281,13 @@ module VBlank
 
       def save_places_free_row
         set_place_var(:row, -1)
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           free = sd_and(sd_eq(cell(:key, i.node), sd_int(0)), sd_eq(place_var(:row), sd_int(-1)))
           sd_when(free) { set_place_var(:row, i.node) }
         end
       end
 
-      # A RECORD WITH MORE COPIES THAN ITS ROW GIVES keeps the ones it had. It grows where it is
+      # A record with more copies than its row gives keeps the ones it had. It grows where it is
       # when the room after it is free; otherwise its copies move to room big enough for all of
       # them, and the table is written once they are there. With no such room anywhere the
       # records are slid down together, and those above this one are then lifted by as much as
@@ -237,7 +319,7 @@ module VBlank
         set_place_var(:changed, 1)
       end
 
-      # WIPE WHAT A RECORD HAS JUST BEEN GIVEN: the copies from the first scratch up to the
+      # Wipe what a record has just been given: the copies from the first scratch up to the
       # copies scratch, of the record in the found row. Room a record did not own a moment ago
       # can hold anything — a copy a build before this one dropped, or another record's save
       # that keeps the same things — and a half there with the right marker, shape and
@@ -262,10 +344,10 @@ module VBlank
       def save_places_lift_above(row)
         set_place_var(:extra, sd_op(:-, place_var(:need), row_size(row)))
         set_place_var(:limit, sd_int(@memory.size))
-        repeat(ROWS) do
+        repeat(table_rows) do
           set_place_var(:pick, -1)
           set_place_var(:low, cell(:at, row))
-          repeat(ROWS) do |i|
+          repeat(table_rows) do |i|
             higher = sd_and(sd_and(row_in_use(i.node), sd_op(:>, cell(:at, i.node), place_var(:low))),
                             sd_op(:<, cell(:at, i.node), place_var(:limit)))
             sd_when(higher) do
@@ -282,14 +364,14 @@ module VBlank
         end
       end
 
-      # ROOM FOR +need+ bytes, in the room scratch, or -1: the start of save data, or the end
+      # Room for +need+ bytes, in the room scratch, or -1: the start of save data, or the end
       # of any record, whichever comes first with nothing in the way.
       def save_places_find_room
         set_place_var(:room, -1)
         set_place_var(:probe, @memory.data_start)
         sp_call(:fits)
         sd_when(sd_eq(place_var(:fits), sd_int(1))) { set_place_var(:room, place_var(:probe)) }
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           candidate = sd_and(sd_and(sd_eq(place_var(:room), sd_int(-1)), row_in_use(i.node)), sd_op(:!=, i.node, place_var(:skip)))
           sd_when(candidate) do
             set_place_var(:probe, row_end(i.node))
@@ -307,7 +389,7 @@ module VBlank
         # A row nothing uses costs one test: the overlap, with its multiplications, is worked out
         # only for a row in use. Most of the table is empty, and on a slow console the overlap
         # worked out for every row was most of the time spent placing a record.
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           sd_when(row_in_use(i.node)) do
             clear = sd_op(:|, sd_op(:<=, ends, cell(:at, i.node)), sd_op(:>=, place_var(:probe), row_end(i.node)))
             sd_when(sd_and(sd_op(:!=, i.node, place_var(:skip)), sd_eq(clear, sd_int(0)))) do
@@ -319,7 +401,7 @@ module VBlank
 
       # Free the rows of records this build does not declare.
       def save_places_reclaim
-        repeat(ROWS) do |i|
+        repeat(table_rows) do |i|
           stale = @records.each_value.reduce(row_in_use(i.node)) do |test, layout|
             sd_and(test, sd_op(:!=, cell(:key, i.node), sd_int(layout.key)))
           end
@@ -330,14 +412,14 @@ module VBlank
         end
       end
 
-      # SLIDE THE RECORDS DOWN TOGETHER, lowest first, so all the free room is one piece from
+      # Slide the records down together, lowest first, so all the free room is one piece from
       # the cursor scratch to the end.
       def save_places_compact
         set_place_var(:cursor, @memory.data_start)
-        repeat(ROWS) do
+        repeat(table_rows) do
           set_place_var(:pick, -1)
           set_place_var(:low, @memory.size)
-          repeat(ROWS) do |i|
+          repeat(table_rows) do |i|
             lower = sd_and(sd_and(row_in_use(i.node), sd_op(:>=, cell(:at, i.node), place_var(:cursor))),
                            sd_op(:<, cell(:at, i.node), place_var(:low)))
             sd_when(lower) do
@@ -356,7 +438,7 @@ module VBlank
         end
       end
 
-      # MOVE ONE RECORD'S COPIES — the record in the row scratch, as many as its row holds — to
+      # Move one record's copies — the record in the row scratch, as many as its row holds — to
       # the to scratch, then write the table, so it points at them only once they are there.
       # Moving up, the bytes go last first, so a move by less than the record's size never
       # reads a byte it has already written over.

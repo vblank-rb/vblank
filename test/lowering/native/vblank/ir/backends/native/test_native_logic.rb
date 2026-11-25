@@ -34,7 +34,7 @@ class TestNativeLogic < Minitest::Test
     assert_equal 13, last.variables.fetch(:x), "three passes each added three, and nothing else moved it"
   end
 
-  # TIMERS. A rate that is no whole number of ticks a frame, so the part of a tick left over has
+  # Timers. A rate that is no whole number of ticks a frame, so the part of a tick left over has
   # to be carried the way the interpreter carries it; a fast one whose handler runs several times
   # a frame; a handler written inside a routine nothing calls, which is still its timer's; a
   # second handler that takes the first one's place; a timer stopped and started again, which
@@ -175,10 +175,7 @@ class TestNativeLogic < Minitest::Test
       end
       scene(:playing) { call :bump }
       game_loop do
-        case_var :state do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
 
@@ -316,7 +313,7 @@ class TestNativeLogic < Minitest::Test
     # asserts one thing.
     assert_raises(VBlank::IR::ProgramError) { reference_snapshots(program, frames: 4, buttons: {}) }
     error = assert_raises(VBlank::IR::ProgramError) { lowered_snapshots(program, frames: 4, buttons: {}, mode: :checked) }
-    assert_includes error.message, "list :full is full"
+    assert_includes error.message, "`full` is full"
   end
 
   def test_random_numbers_follow_the_same_stream

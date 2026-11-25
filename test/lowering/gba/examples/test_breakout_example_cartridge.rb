@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/breakout").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/breakout").to_s)
 
 # The Breakout example (examples/breakout.rb) on the Advance's cartridge: the picture really
 # renders, read from settled frames in the emulator. What the game does is in
@@ -11,7 +11,7 @@ require VBlank.root.join("examples/breakout").to_s
 class TestBreakoutExampleCartridge < Minitest::Test
   include VBlank::Console::Hardware
 
-  # The title shows "BREAKOUT" in cyan — the simplest proof it isn't a black screen
+  # The title shows "breakout" in cyan — the simplest proof it isn't a black screen
   # and that text renders through the buffered (indexed) screen. It drops in from above
   # at four pixels a frame, so it is in place by the fortieth frame.
   def test_the_title_renders_on_the_console

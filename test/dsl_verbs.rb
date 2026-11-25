@@ -1,8 +1,16 @@
 # frozen_string_literal: true
 
-# EVERY VERB A GAME CAN WRITE, worked out from what is mixed into Builder right now, for the tests
-# that hold something to every verb: the DSL reference (test_dsl_reference.rb) and each
-# console's answer for every verb (test_answers.rb).
+require "prism"
+
+# Every verb a game can write, worked out from what is mixed into Builder right now, for the tests
+# that hold something to every verb: the DSL reference (test_dsl_reference.rb), each console's
+# answer for every verb (test_answers.rb) and the doc comment on every verb
+# (test_verb_doc_comments.rb).
+#
+# A public method of a concern module is a verb unless its `def` line carries RDoc's `# :nodoc:`.
+# That is the one mark: RDoc leaves the method out of the reference the website is generated from,
+# and this list leaves it out of the verbs. The methods marked are hooks that handles and the build
+# call, public only so they can; the comment above each says whose hook it is.
 module DslVerbs
   # The DSL verbs are the public methods the concern modules mix into Builder…
   CONCERNS = VBlank::Builder.included_modules.select { |m| m.name&.start_with?("VBlank::Builder::") }.freeze
@@ -11,84 +19,123 @@ module DslVerbs
   # framework: program, finalize_program, record_*, the Condition bookkeeping).
   BUILDER_VERBS = %i[list entry].freeze
 
-  # Public concern methods that are introspection/debug, not verbs to look up — the
-  # reference needn't spell each out. Move a verb here only if it's genuinely not
-  # part of the authoring surface.
-  # make_object_rotatable / make_object_scalable are not authoring verbs — they're
-  # internal hooks a HardwareSprite handle calls to wire up its rotation and its size
-  # (see #face_angle / #turn / #scale), which the reference documents on the sprite
-  # verb, not on their own lines. record_row_bend is the same: the hook behind
-  # Background#scroll_each_row, documented on the background verb.
-  # screen_pages and keep_showing_pictures are introspection behind `keep_showing`:
-  # how many pictures the chosen screen keeps, and the pictures declared so far. The
-  # reference documents the verb; a game reads neither of these to write one.
-  # tile_collision_routine is the same kind of hook: a HardwareSprite told `blocked_by`
-  # asks for the shared routine that consults the background's grid of solid cells. The
-  # reference documents `blocked_by`; nobody writes this.
-  # play_from_list is the hook behind SongList#play, which the reference documents on the
-  # `songs` verb — a game writes `music.play track`, never this. play_sound_effect is the same
-  # hook behind SoundEffectList#play, documented on `sound_effects`.
-  # The three pool-walk ones are the seam between a Pool and the build, behind `pool.func`:
-  # declaring one of its routines, and remembering where a walk is so a routine can be told
-  # which instance it ran for. The reference documents `pool.func`; nobody writes these.
-  # The three recolouring ones are the hooks behind `draw_with` on a sprite and on a pool
-  # instance: checking the lists named against the sprite's own, and giving a sprite or a
-  # pool somewhere to keep its choice. The reference documents `colors` and `draw_with`.
-  # The four list lookups are what a background drawn from several lists asks while it works
-  # out which list is which, behind `draw_with` on a background.
-  # pool_refill_nodes is the hook behind a save_data record's `reset` of a kept pool, which the
-  # reference documents on `save_data`; nobody writes it. request_tile_copy and
-  # emit_tile_copy_in_place are the hooks behind `changed` and `changed now: true` on tiles
-  # painted from a list, which the reference documents on `tiles`. load_sprite_tiles is the hook
-  # behind `copy_from` on a set of sprite tiles, which the reference documents on `sprite_tiles`.
-  # canvas_font, canvas_font_tables, image_size and image_pixels are what a `canvas` asks while
-  # it builds its words, documented on `canvas`; nobody writes them. write_picked_pose is the
-  # hook behind `face ..., showing:` on a sprite and a pool instance, documented on `sprite`.
-  # make_object_layer_choosable, refuse_unknown_layers! and put_objects_in_layer are the hooks behind `put_in_layer` on a
-  # sprite and a pool, documented under Layers.
-  # remember_sprite_recolors and remember_background_draws_with are the hooks behind `recolor`:
-  # a sprite, a pool and a background say which lists they draw with, so a list that changes
-  # can find them. The reference documents `recolor`; nobody writes these.
-  # follow_pose_lists is what a sprite's handle calls when `draw_with` is given a hash, documented there;
-  # one_list_for_pose_lists?, list_for_every_pose_list! and colors_to_draw_across_lists are what a sprite
-  # and a pool ask and call when that hash draws every list with one other list, documented there too;
-  # list_chosen_at_start? and follow_lists_chosen_at_start are what it asks and calls for a pose whose list
-  # its frame picks in a build that reads its pack as the game starts, documented with the pose.
-  # record_light_shape, light_circle and show_light_now are the hooks behind `shape`, `circle`
-  # and `show_now` on the light, documented on `spotlight`. game_pack_checks is what a build asks of `uses`, documented there.
-  # record_clock_set is the hook behind `set_to` on the clock, documented on `clock`.
-  # keep_walls_changeable, kept_walls_of, every_kept_walls, record_wall_change and
-  # record_walls_brought_up are the hooks behind `set_tile` changing a cell's wall, which a
-  # Background asks of the build; the reference documents `set_tile` and `solid:` on `tiles`.
-  # store!, increase!, decrease! and copy_variable! are what a variable's own handle calls.
-  # members_of_part and known_parts_sentence are what a save_data record keeping a part asks of the
-  # build; the reference documents `keep part:` on `save_data`.
-  # declared_data_pack is what a shell build asks of the game (Original::Shell), and made_data_pack_file
-  # what Cartridge::Game#data_pack_file does, both documented on `data_pack`. declared_shell_screen
-  # is the same question for the shell's first screen, documented on `shell_screen`.
-  # declared_function_names is what the build of a data pack's unpacking asks of its builder, to
-  # tell which routines each part declared (Original::PartPrograms). pack_tiles_read is a count the
-  # build-cost test reads (test_pack_pose_build_cost.rb), not something a game calls.
-  SKIP = %i[variables debug_halted? make_object_rotatable make_object_scalable with_test set_shown_tile_picture
-            store! increase! decrease! copy_variable!
-            keep_walls_changeable kept_walls_of every_kept_walls record_wall_change record_walls_brought_up
-            remember_sprite_recolors remember_background_draws_with
-            remember_boolean_variable boolean_variable? members_of_part known_parts_sentence
-            record_row_bend make_background_affine screen_pages keep_showing_pictures
-            tile_collision_routine play_from_list play_sound_effect
-            declare_instance_routine record_walk_instance_writes pool_walk_scratch_var
-            colors_to_draw_with follow_pose_lists one_list_for_pose_lists? list_for_every_pose_list!
-            colors_to_draw_across_lists list_chosen_at_start? follow_lists_chosen_at_start make_object_recolorable make_pool_recolorable
-            make_object_layer_choosable refuse_unknown_layers! put_objects_in_layer write_picked_choice
-            lists_drawn_from list_drawn_from list_name_drawn_from colors_drawn_from declared_colors name_of_colors pool_refill_nodes
-            request_tile_copy emit_tile_copy_in_place load_sprite_tiles canvas_font canvas_font_tables image_size image_pixels write_picked_pose
-            record_light_shape light_circle show_light_now game_pack_checks record_clock_set declared_data_pack
-            made_data_pack_file declared_shell_screen declared_function_names pack_tiles_read].freeze
+  # Where a verb is written: its file, the line of its `def`, the comment lines directly above it
+  # (without their `#`), and whether its `def` line carries `# :nodoc:`.
+  Definition = Data.define(:name, :file, :line, :comment, :nodoc)
 
   # …plus the verbs the loaded effect packs contribute. A pack's verb is an ordinary
   # DSL verb at the call site, so it has to be looked up in the same place.
   def dsl_verbs
-    (CONCERNS.flat_map { |m| m.public_instance_methods(false) } +
-     BUILDER_VERBS + VBlank::Effects.verbs.keys - SKIP).uniq.sort
+    dsl_verb_candidates.reject { |name, owners| owners.any? { |owner| DslVerbs.definition_of(owner, name)&.nodoc } }
+                       .keys.sort
+  end
+
+  # Each verb with where it is written, or nil for one not written with `def`.
+  def dsl_verb_definitions
+    owners = dsl_verb_candidates
+    dsl_verbs.to_h do |name|
+      [name, owners.fetch(name).filter_map { |owner| DslVerbs.definition_of(owner, name) }.first]
+    end
+  end
+
+  # The `def` of +name+ as +owner+ (a module) has it, or nil where it is not written with `def`
+  # (a method made by `define_method` or `attr_reader`).
+  def self.definition_of(owner, name)
+    file, near_line = owner.instance_method(name).source_location
+    return nil unless file
+
+    parsed = parsed_file(file)
+    directed = comment_with_method_directive(parsed, name)
+    return Definition.new(name: name, file: file, line: directed.first, comment: directed.last, nodoc: false) if directed
+
+    node = parsed.defs.select { |d| d.name == name }.min_by { |d| (d.location.start_line - near_line).abs }
+    return nil unless node
+
+    Definition.new(name: name, file: file, line: node.location.start_line,
+                   comment: comment_above(parsed, node), nodoc: nodoc_marked?(parsed, node))
+  end
+
+  # A verb made from source text or by `alias` has no `def` to carry its comment. RDoc takes a
+  # comment that opens with `# :method: name` as that method's documentation, and so does this:
+  # [line of the directive, the comment lines after it], or nil where the file has none for +name+.
+  def self.comment_with_method_directive(parsed, name)
+    opener = parsed.comments.find { |comment| comment.slice.match?(/\A#\s*:method:\s*#{Regexp.escape(name.to_s)}\s*\z/) }
+    return nil unless opener
+
+    by_line = parsed.comments.to_h { |comment| [comment.location.start_line, comment] }
+    start = opener.location.start_line
+    lines = []
+    line = start + 1
+    while (comment = by_line[line])
+      lines << comment.slice.sub(/\A# ?/, "")
+      line += 1
+    end
+    [start, lines]
+  end
+
+  ParsedFile = Data.define(:lines, :comments, :defs, :root)
+
+  # One parse of a file per Ractor, since a test asks about hundreds of verbs in a few dozen files.
+  def self.parsed_file(file)
+    cache = (Ractor.current[:dsl_verbs_parsed_files] ||= {})
+    cache[file] ||= begin
+      result = Prism.parse_file(file)
+      defs = []
+      collect_defs(result.value, defs)
+      ParsedFile.new(lines: File.readlines(file), comments: result.comments, defs: defs, root: result.value)
+    end
+  end
+
+  def self.collect_defs(node, defs)
+    defs << node if node.is_a?(Prism::DefNode) && node.receiver.nil?
+    node.compact_child_nodes.each { |child| collect_defs(child, defs) }
+  end
+
+  # The comment on the `def` line, in its signature (up to the `=` of an endless def, the closing
+  # parenthesis or the last parameter), which is where RDoc reads `# :nodoc:`.
+  def self.nodoc_marked?(parsed, node)
+    signature_end = (node.equal_loc || node.rparen_loc || node.parameters&.location || node.name_loc).end_line
+    parsed.comments.any? do |comment|
+      comment.location.start_line.between?(node.location.start_line, signature_end) &&
+        comment.slice.match?(/\A#\s*:nodoc:/)
+    end
+  end
+
+  # The comment above each `module` and `class` written in +file+, as [name, line of the keyword,
+  # comment lines], for the comments that become a group's page introduction.
+  def self.container_comments(file)
+    parsed = parsed_file(file)
+    found = []
+    collect_containers(parsed.root, found)
+    found.map { |node| [node.constant_path.slice, node.location.start_line, comment_above(parsed, node)] }
+  end
+
+  def self.collect_containers(node, found)
+    found << node if node.is_a?(Prism::ModuleNode) || node.is_a?(Prism::ClassNode)
+    node.compact_child_nodes.each { |child| collect_containers(child, found) }
+  end
+
+  # The comment lines directly above the `def`: each a whole line of its own and none blank between.
+  def self.comment_above(parsed, node)
+    by_line = parsed.comments.to_h { |comment| [comment.location.start_line, comment] }
+    lines = []
+    line = node.location.start_line - 1
+    while (comment = by_line[line]) && parsed.lines[line - 1].lstrip.start_with?("#")
+      lines.unshift(comment.slice.sub(/\A# ?/, ""))
+      line -= 1
+    end
+    lines
+  end
+
+  # Each candidate name with the modules that define it.
+  private def dsl_verb_candidates
+    candidates = Hash.new { |hash, name| hash[name] = [] }
+    CONCERNS.each { |mod| mod.public_instance_methods(false).each { |name| candidates[name] << mod } }
+    BUILDER_VERBS.each { |name| candidates[name] << VBlank::Builder }
+    VBlank::Effects.verbs.each do |name, pack|
+      candidates[name] << pack if pack.is_a?(Module)
+      candidates[name] # an inline verb has no `def` to mark
+    end
+    candidates
   end
 end

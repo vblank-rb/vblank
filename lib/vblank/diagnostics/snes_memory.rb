@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A RUNNING SUPER NINTENDO CARTRIDGE'S MEMORY, read by the address its own code uses. Two kinds
+    # A running Super Nintendo cartridge's memory, read by the address its own code uses. Two kinds
     # of memory hold a game's numbers. Work RAM is the console's own: banks $7E and $7F, and its
     # first 8K is seen again at the low addresses every bank shares, so an address there is its own
     # offset. A Super FX cartridge has RAM of its own too, which the console sees as bank $70
@@ -20,6 +20,17 @@ module VBlank
       def read8(core, address) = chip_ram?(address) ? chip_ram(core, address, 1).getbyte(0) : core.wram_read8(work_ram_offset(address))
       def read16(core, address) = chip_ram?(address) ? chip_ram(core, address, 2).unpack1("v") : core.wram_read16(work_ram_offset(address))
       def read32(core, address) = chip_ram?(address) ? chip_ram(core, address, 4).unpack1("V") : core.wram_read32(work_ram_offset(address))
+
+      # A 32-bit word written into work RAM at +address+, low byte first as the 65816 keeps it. The
+      # Super FX's RAM is read here and not written.
+      def write32(core, address, value)
+        if chip_ram?(address)
+          raise ArgumentError, "#{format('$%06X', address)} is in the Super FX chip's RAM, and this reader writes only " \
+                               "work RAM. To fix this, write an address in work RAM."
+        end
+
+        core.wram_write32(work_ram_offset(address), value)
+      end
 
       # Where +address+ is in work RAM: an address in the first 8K is its own offset, and one in
       # banks $7E and $7F is counted from $7E:0000.

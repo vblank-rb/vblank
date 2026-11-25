@@ -28,7 +28,9 @@
  *                       down already: at its middle, or DX and DY of the way from there to its
  *                       right and bottom edges (each -1 to 1, so "1 0" is its right edge)
  *   finger N nowhere    ...slid off every part of the page
- *   lift N / cancel N   finger N lifted, or taken back by the browser (a scroll, a call coming in)
+ *   lift N / cancel N   finger N lifted, or taken back by the browser (a scroll, a call coming in);
+ *                       a lift is a press that lets a page open a file picker, and a finger
+ *                       going down is not, as in a browser
  *   pointer coarse / pointer fine   the screen's main pointer becoming a finger (a tablet with its
  *                       keyboard taken off) or a mouse (with it put back), which the page is told of
  *   check ID / uncheck ID   the page's checkbox of that id ticked or cleared (each starts as the
@@ -38,6 +40,8 @@
  *                       file the page fetches (from beside it) arrives before the first of them.
  *   skip N              N console frames of time go by with no browser frame: the page was busy,
  *                       and its next frame finds the frames it owes
+ *   allocated N         plays N frames as "play" does, and prints "allocated" and the bytes the page
+ *                       allocated a frame meanwhile, counted by V8's allocation sampler
  *   counts              prints "counts", how many frames the page has asked the browser for
  *                       (frames=), how many pictures it has put on a canvas (pictures=) and how many
  *                       sound buffers it has made (buffers=)
@@ -50,10 +54,10 @@
  *                       holds at (X, Y), as the browser keeps them
  *   picture [ID]        prints "picture" and every pixel last put on the canvas of that id
  *                       ("screen" unless named), as the console's fifteen-bit colours
- *   js CODE             runs CODE in the page, and prints "js" and what it comes to, if anything:
+ *   js code             runs code in the page, and prints "js" and what it comes to, if anything:
  *                       how a test reaches a game a page made with createGame (`games[0].pause()`)
- *   choose PATH         the file picker, if the page opened one, is given the file at PATH, or the
- *                       folder at PATH where the page asked for a folder
+ *   choose path         the file picker, if the page opened one, is given the file at path, or the
+ *                       folder at path where the page asked for a folder
  *   cancel-pick         ...or closed without a file
  *   picker              prints "picker" and how many times the page opened the file picker
  *   settle              lets the page's promises run on for a while with no frame, any worker the
@@ -64,13 +68,56 @@
  *                       page that is busy the whole time asks for one or two
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
+ *   downloaded          prints "downloaded", then for each file the page downloaded, its name and its
+ *                       bytes as hex ("downloaded SAVER.sav 07ff..."), one line each
+ *   reloads             prints "reloads" and how many times the page asked the browser to reload it
+ *   confirmed           prints "confirmed" and each question the page asked with confirm(), joined by " | "
+ *   persist             prints "persist" and how many times the page asked the browser to keep its storage
+ *   cookie              prints "cookie" and document.cookie as the page reads it
+ *   resize WxH [R]      the layout now gives the canvas W by H, and the ratio becomes R if given; the
+ *                       window is told it was resized (and, with R, the page's resolution query changes)
+ *   style ID            prints "style ID" and the element's style width, height and outline, each "-"
+ *                       where none is set
+ *   drag-enter / drag-leave   a dragged file entering the page (or one of its parts) and leaving it;
+ *                       an enter is followed by a dragover, as in a browser
+ *   drop PATH           the file or folder at PATH dropped on the page, as a browser's DataTransfer
+ *                       gives it: its first item's file-system entry (a folder's entries handed out
+ *                       two at a time, then an empty batch) and its file; prints "opened NAME"
+ *                       where the page left the browser to open it in place of the page
+ *   entries-read        prints "entries-read" and the names of the files whose bytes the page read
+ *                       through a dropped entry, in order, joined by ","
+ *   workers             prints "workers" and how many workers the page has started and not ended
+ *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
+ *   clipboard           prints "clipboard" and what the page last copied
  *   state               prints "state" and what the browser holds now: the sound device
  *                       (none, running or suspended), what fills the screen (none or an id),
  *                       and how many key presses the page kept from the browser
  *
+ * Started with "local-storage:FILE", the page's localStorage is read from FILE (JSON, key to text)
+ * when the page opens and written to it each time the page sets or removes a key, so a second run
+ * of the page finds what the first kept. With "confirm-no" every confirm() is answered No (Yes
+ * otherwise).
+ *
+ * Started with "device-pixel-ratio:R", window.devicePixelRatio is R (1 unless given); with
+ * "canvas-box:WxH", the page's layout gives the canvas that size when the page sets none of its own
+ * (720x480 unless given).
+ *
+ * Started with "cookie:NAME=VALUE" the page starts with that cookie set (once for each such flag);
+ * with "persist-refused" the browser answers the page's request to keep its storage with false.
+ *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
  * is read from FILE when the page opens and written to it as the page puts something in, so a
- * second run of the page finds what the first kept.
+ * second run of the page finds what the first kept. "idb-error" and "idb-silent" make it fail or
+ * never answer, and "no-local-storage" makes asking for localStorage throw: a browser that keeps
+ * nothing for the page. With "idb-slow:MS" the first time the page opens a database it is answered
+ * after MS milliseconds of real time, as a phone opening its storage for the first time is; every
+ * open after it is answered at once.
+ *
+ * Started with "address:URL", the page's address (location.href, and location.search from the
+ * URL's query) is URL instead of the file it is read from. With "framed" the page is in a frame
+ * of another site: window.top is another window whose location throws when read, as a parent
+ * from another origin does; with "framed-same-origin:URL" the parent is of the same origin and
+ * its location.href is URL. With "referrer:URL", document.referrer is URL.
  *
  * Started with "unfocused" after the page, the window starts without the keyboard, as a page in
  * a frame on another site does. With "touchscreen" the screen's main pointer is a finger, as a
@@ -124,7 +171,28 @@ const asked = { frames: 0, pictures: 0, buffers: 0 };
 const posted = []; /* every message the page sent its speaker */
 const heard = [[], []]; /* what the speaker has put out, each channel */
 let next_frame_id = 1;
-const stored = new Map();
+const local_flag = process.argv.slice(3).find((flag) => flag.startsWith("local-storage:"));
+const local_path = local_flag ? local_flag.slice("local-storage:".length) : null;
+const stored = new Map(local_path && fs.existsSync(local_path) ? Object.entries(JSON.parse(fs.readFileSync(local_path, "utf8"))) : []);
+function local_write() {
+  if (local_path) fs.writeFileSync(local_path, JSON.stringify(Object.fromEntries(stored)));
+}
+const downloads = []; /* every file the page made a link download */
+const blobs = new Map(); /* each blob by the address the page made for it */
+const questions = []; /* every question the page asked with confirm() */
+let reloads = 0;
+let persist_asks = 0;
+const entries_read = []; /* the files read through a dropped entry, by path from the dropped folder */
+const ratio_flag = process.argv.slice(3).find((flag) => flag.startsWith("device-pixel-ratio:"));
+let pixel_ratio = ratio_flag ? Number(ratio_flag.slice("device-pixel-ratio:".length)) : 1;
+const box_flag = process.argv.slice(3).find((flag) => flag.startsWith("canvas-box:"));
+let canvas_box = (box_flag ? box_flag.slice("canvas-box:".length) : "720x480").split("x").map(Number); /* the room the layout gives the canvas */
+/* The page's cookies, by name, seeded by each "cookie:NAME=VALUE" flag. */
+const cookies = new Map(process.argv.slice(3).filter((flag) => flag.startsWith("cookie:")).map((flag) => {
+  const pair = flag.slice("cookie:".length);
+  return [pair.slice(0, pair.indexOf("=")), pair.slice(pair.indexOf("=") + 1)];
+}));
+let clipboard = null; /* what the page last copied */
 let now = 0;
 const shown = {};
 let kept = 0;
@@ -138,18 +206,36 @@ const finger_too = finger_first || flags.includes("touch-and-mouse");
  * a finger can be on. Asked for the parts whose id starts a certain way, it finds them all. */
 const BOX = 100;
 const elements = {};
+/* Whether the page's own tag for +id+ has the hidden attribute. */
+function hidden_in_html(id) {
+  return new RegExp(`<[a-z]+[^>]*\\bid="${id}"[^>]*\\bhidden\\b|<[a-z]+[^>]*\\bhidden\\b[^>]*\\bid="${id}"`).test(html);
+}
+
+/* The width and height written in the page's own canvas tag. */
+function canvas_size_in_html() {
+  const tag = html.match(/<canvas[^>]*\bid="screen"[^>]*>/);
+  const number = (name) => Number(tag && (tag[0].match(new RegExp(`\\b${name}="(\\d+)"`)) || [])[1]);
+  return { width: number("width"), height: number("height") };
+}
+
 function element(id) {
   if (elements[id]) return elements[id];
   const checked = new RegExp(`<input[^>]*\\bid="${id}"[^>]*\\bchecked\\b|<input[^>]*\\bchecked\\b[^>]*\\bid="${id}"`).test(html);
   const left = Object.keys(elements).length * BOX * 2;
   elements[id] = {
-    id, textContent: "", hidden: id === "said", checked, ...listening(),
+    id, textContent: "", blur() {}, style: {}, ...(id === "screen" ? canvas_size_in_html() : {}), hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
     getContext: () => ({
       createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
       putImageData: (image) => { asked.pictures += 1; shown[id] = Uint8ClampedArray.from(image.data); },
     }),
-    requestFullscreen() { document.fullscreenElement = this; return Promise.resolve(); },
-    getBoundingClientRect: () => ({ left, top: 0, right: left + BOX, bottom: BOX, width: BOX, height: BOX }),
+    requestFullscreen() { document.fullscreenElement = this; tell(document, "fullscreenchange"); return Promise.resolve(); },
+    /* The screen has the size its style gives it, or else the room the layout gives it; every other
+     * part is a box of its own. */
+    getBoundingClientRect() {
+      if (id !== "screen") return { left, top: 0, right: left + BOX, bottom: BOX, width: BOX, height: BOX };
+      const [width, height] = this.style.width ? [parseFloat(this.style.width), parseFloat(this.style.height)] : canvas_box;
+      return { left, top: 0, right: left + width, bottom: height, width, height };
+    },
     querySelectorAll(selector) {
       const start = selector.match(/^\[id\^="([^"]+)"\]$/)[1];
       return [...ids].filter((each) => each.startsWith(start)).map(element);
@@ -163,9 +249,13 @@ function element(id) {
  * is. A page listening for the answer to change is told when the main one does. */
 const asked_media = [];
 function media(query) {
+  const resolution = query.match(/^\(resolution: ([\d.]+)dppx\)$/);
   const answer = {
     ...listening(),
+    query,
+    seen: resolution ? Number(resolution[1]) === pixel_ratio : false,
     get matches() {
+      if (resolution) return Number(resolution[1]) === pixel_ratio;
       if (query === "(pointer: coarse)") return finger_first;
       if (query === "(any-pointer: coarse)") return finger_too || finger_first;
       return false;
@@ -175,9 +265,26 @@ function media(query) {
   return answer;
 }
 
+/* The layout now gives the canvas +room+ (W by H), and the ratio becomes +ratio+ where given. A
+ * resolution query that stopped or started matching is told, once; the window is told of the resize. */
+function resize(room, ratio) {
+  canvas_box = room.split("x").map(Number);
+  if (ratio !== undefined) {
+    pixel_ratio = Number(ratio);
+    for (const answer of asked_media) {
+      if (!answer.query.startsWith("(resolution:") || answer.matches === answer.seen) continue;
+      answer.seen = answer.matches;
+      tell(answer, "change", { matches: answer.matches });
+    }
+  }
+  tell(page, "resize");
+}
+
 function pointer(kind) {
   finger_first = kind === "coarse";
-  for (const answer of asked_media) tell(answer, "change", { matches: answer.matches });
+  for (const answer of asked_media.filter((each) => !each.query.startsWith("(resolution:"))) {
+    tell(answer, "change", { matches: answer.matches });
+  }
 }
 
 /* The fingers down, and what each was last put on. */
@@ -196,13 +303,16 @@ function finger(n, id, dx = 0, dy = 0) {
   } else {
     fingers.add(n);
     tell(pad, "pointerdown", { pointerId: Number(n), pointerType: "touch", ...at });
-    tell(page, "pointerdown");
+    tell(page, "pointerdown", { pointerId: Number(n), pointerType: "touch" });
   }
 }
 
+/* A finger's events go on up to the window, as a browser's do, the touch event after the pointer one. */
 function lift(n, type) {
   fingers.delete(n);
   tell(element("touchpad"), type, { pointerId: Number(n), pointerType: "touch" });
+  tell(page, type, { pointerId: Number(n), pointerType: "touch" });
+  tell(page, type === "pointerup" ? "touchend" : "touchcancel");
 }
 
 /* The file picker: an <input type="file"> the page makes and clicks waits here for a "choose" or "cancel-pick" step. */
@@ -225,12 +335,65 @@ function folder_files(folder_path, relative = path.basename(folder_path)) {
 }
 let picks_asked = 0;
 
+/* A file-system entry for what is dropped, as a browser's DataTransfer item gives one: a folder
+ * hands out its entries two at a time and then an empty batch, and a file hands over its bytes
+ * when asked, which is noted in entries_read. +relative+ is the path from the dropped folder. */
+function entry_for(entry_path, relative = path.basename(entry_path), root = true) {
+  const name = path.basename(entry_path);
+  if (!fs.statSync(entry_path).isDirectory()) {
+    return { isFile: true, isDirectory: false, name,
+             file(ok) { entries_read.push(relative); setImmediate(() => ok(picked_file(entry_path, name))); } };
+  }
+  return { isFile: false, isDirectory: true, name,
+    createReader() {
+      const inside = fs.readdirSync(entry_path).sort().map((each) => entry_for(path.join(entry_path, each), root ? each : `${relative}/${each}`, false));
+      let at = 0;
+      return { readEntries(ok) { const batch = inside.slice(at, at + 2); at += 2; setImmediate(() => ok(batch)); } };
+    } };
+}
+
+/* Tells the page's listeners of a drag event of +type+. Gives whether one of them prevented the
+ * browser's own handling of it. */
+function tell_drag(type, transfer) {
+  let prevented = false;
+  for (const listener of page.heard[type] || []) listener({ dataTransfer: transfer, preventDefault() { prevented = true; } });
+  return prevented;
+}
+
+/* A file dragged over the page: it enters, and the browser then sends dragover. */
+function drag_enter() {
+  const transfer = { dropEffect: "" };
+  tell_drag("dragenter", transfer);
+  tell_drag("dragover", transfer);
+}
+
+/* A file or folder dropped on the page, as a browser drops it: a dragover first. Where the page
+ * prevents neither the dragover nor the drop, the browser opens the file in place of the page;
+ * where the dragover's dropEffect is "none", no drop is sent and nothing opens. The DataTransfer
+ * is emptied once the page's listeners return, as a browser's is, so a page that reads it later
+ * finds nothing. Gives whether the browser opened the file. */
+function drop(dropped_path) {
+  const transfer = { items: [{ webkitGetAsEntry: () => entry_for(dropped_path) }],
+                     files: [picked_file(dropped_path, path.basename(dropped_path))], dropEffect: "" };
+  let opened = !tell_drag("dragover", transfer);
+  if (!opened && transfer.dropEffect !== "none") opened = !tell_drag("drop", transfer);
+  transfer.items = [];
+  transfer.files = [];
+  return opened;
+}
+
 /* IndexedDB, as far as the shell uses it: one object store of byte strings under a key, kept in
  * a file between runs where the page is started with "idb:FILE". */
 const idb_flag = flags.find((flag) => flag.startsWith("idb:"));
 const idb_path = idb_flag ? idb_flag.slice(4) : null;
 const idb_kept = new Map(idb_path && fs.existsSync(idb_path)
   ? Object.entries(JSON.parse(fs.readFileSync(idb_path, "utf8"))).map(([key, text]) => [key, Buffer.from(text, "base64")]) : []);
+function idb_write() {
+  if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
+}
+/* Started with "idb-slow:MS", the first open is answered after MS milliseconds. */
+const idb_slow_flag = flags.find((flag) => flag.startsWith("idb-slow:"));
+let idb_slow_left = idb_slow_flag ? Number(idb_slow_flag.slice(9)) : 0;
 function idb_request(answer) {
   const request = {};
   setImmediate(() => {
@@ -239,10 +402,23 @@ function idb_request(answer) {
   });
   return request;
 }
+/* Started with "idb-error", opening a database fails, as a browser that keeps nothing for the page
+ * answers; with "idb-silent" it never answers at all, as some apps' built-in browsers do. */
 const indexedDB_stand_in = {
   open(name) {
     const request = {};
-    setImmediate(() => {
+    if (flags.includes("idb-silent")) return request;
+    if (flags.includes("idb-error")) {
+      setImmediate(() => {
+        request.error = new Error("the browser keeps nothing for this page");
+        if (request.onerror) request.onerror();
+      });
+      return request;
+    }
+    const slow = idb_slow_left;
+    idb_slow_left = 0;
+    const later = slow > 0 ? (work) => setTimeout(work, slow) : setImmediate;
+    later(() => {
       const database = {
         createObjectStore() {},
         transaction: () => ({
@@ -253,8 +429,13 @@ const indexedDB_stand_in = {
             }),
             put: (value, key) => idb_request(() => {
               idb_kept.set(`${name}/${key}`, Buffer.from(value));
-              if (idb_path) fs.writeFileSync(idb_path, JSON.stringify(Object.fromEntries([...idb_kept].map(([k, v]) => [k, v.toString("base64")]))));
+              idb_write();
               return key;
+            }),
+            delete: (key) => idb_request(() => {
+              idb_kept.delete(`${name}/${key}`);
+              idb_write();
+              return undefined;
             }),
           }),
         }),
@@ -267,21 +448,33 @@ const indexedDB_stand_in = {
   },
 };
 
+const referrer_flag = flags.find((flag) => flag.startsWith("referrer:"));
 const document = {
   ...listening(),
+  referrer: referrer_flag ? referrer_flag.slice(9) : "",
   createElement(tag) {
+    if (tag === "a") {
+      return { href: "", download: "", click() { downloads.push({ name: this.download, bytes: blobs.get(this.href).bytes }); } };
+    }
     if (tag !== "input") throw new Error(`page_harness: no element called ${tag} can be made`);
     const input = { ...listening(), type: "", files: [], click() { picks_asked += 1; pickers.push(this); } };
     return input;
+  },
+  get cookie() { return [...cookies].map(([name, value]) => `${name}=${value}`).join("; "); },
+  set cookie(text) {
+    const [pair, ...attributes] = text.split(";");
+    const name = pair.slice(0, pair.indexOf("="));
+    if (attributes.some((each) => each.trim() === "max-age=0")) cookies.delete(name);
+    else cookies.set(name, pair.slice(pair.indexOf("=") + 1));
   },
   hidden: false,
   visibilityState: "visible",
   readyState: "loading",
   fullscreenElement: null,
-  documentElement: { id: "page", requestFullscreen() { document.fullscreenElement = this; return Promise.resolve(); } },
+  documentElement: { id: "page", requestFullscreen() { document.fullscreenElement = this; tell(document, "fullscreenchange"); return Promise.resolve(); } },
   getElementById: (id) => (ids.has(id) ? element(id) : null),
   hasFocus: () => focused,
-  exitFullscreen() { document.fullscreenElement = null; return Promise.resolve(); },
+  exitFullscreen() { document.fullscreenElement = null; tell(document, "fullscreenchange"); return Promise.resolve(); },
 };
 
 /* The sound device: made on a page's first key press or click, as a browser allows. It runs at the
@@ -295,11 +488,16 @@ let speaker_node = null;
 const processors = new Map();
 const blob_texts = new Map();
 class Blob {
-  constructor(parts) { this.text = parts.join(""); }
+  constructor(parts) {
+    this.parts = parts;
+    this.text = parts.filter((part) => typeof part === "string").join("");
+    this.bytes = Buffer.concat(parts.filter((part) => part instanceof Uint8Array));
+  }
 }
 URL.createObjectURL = (blob) => {
   const url = `blob:stand-in/${blob_texts.size}`;
   blob_texts.set(url, blob.text);
+  blobs.set(url, blob);
   return url;
 };
 URL.revokeObjectURL = () => {};
@@ -307,7 +505,7 @@ class AudioWorkletProcessor {
   constructor() { this.port = { onmessage: null }; }
 }
 
-/* A WEB WORKER: the code at a Blob's address run on a thread of its own (node's worker_threads),
+/* A web worker: the code at a Blob's address run on a thread of its own (node's worker_threads),
  * with the names a worker's code finds in a browser put in front of it: self, postMessage and
  * onmessage. It has no window and no document, as a browser's has none. Each one the page has
  * started and not ended is in +workers+. */
@@ -394,6 +592,15 @@ const controllers = [0, 1, 2, 3].map((index) => ({
  * and a localStorage of its own, which these take the place of — so a classic script and a
  * module both find them as they would in a browser. */
 const page = globalThis;
+const address_flag = flags.find((flag) => flag.startsWith("address:"));
+const address_location = address_flag
+  ? { href: address_flag.slice(8), search: new URL(address_flag.slice(8)).search, reload() { reloads += 1; } }
+  : { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "", reload() { reloads += 1; } };
+/* The window at the top of the frames: this one, or a frame's parent. */
+const parent_flag = flags.find((flag) => flag.startsWith("framed-same-origin:"));
+const top_window = parent_flag ? { location: { href: parent_flag.slice(19) } }
+  : flags.includes("framed") ? { get location() { throw new Error("SecurityError: a window of another origin"); } }
+  : page;
 const browser = {
   ...listening(),
   window: page,
@@ -403,7 +610,12 @@ const browser = {
   Blob,
   /* Started with "refuse-worker", the browser refuses to start one, as a content security policy can. */
   Worker: flags.includes("refuse-worker") ? class { constructor() { throw new Error("the page's content security policy refuses it"); } } : Worker,
-  navigator: { getGamepads: () => pads.slice() },
+  navigator: {
+    getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } },
+    storage: { persist: async () => { persist_asks += 1; return !flags.includes("persist-refused"); } },
+  },
+  location: address_location,
+  confirm(question) { questions.push(question); return !flags.includes("confirm-no"); },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
     asked.frames += 1;
@@ -424,10 +636,21 @@ const browser = {
     return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
   },
   indexedDB: indexedDB_stand_in,
-  localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+  top: top_window,
+  localStorage: { getItem: (key) => stored.get(key) ?? null,
+                  setItem: (key, value) => { stored.set(key, value); local_write(); },
+                  removeItem: (key) => { stored.delete(key); local_write(); } },
 };
 for (const [name, value] of Object.entries(browser)) {
   Object.defineProperty(page, name, { value, writable: true, configurable: true, enumerable: true });
+}
+Object.defineProperty(page, "devicePixelRatio", { get: () => pixel_ratio, configurable: true });
+/* Started with "no-local-storage", asking for localStorage throws, as a browser that blocks storage
+ * in a framed page does. */
+if (flags.includes("no-local-storage")) {
+  Object.defineProperty(page, "localStorage", {
+    get() { throw new Error("SecurityError: the browser keeps nothing for this page"); }, configurable: true,
+  });
 }
 
 function key(type, code, modifier) {
@@ -446,6 +669,9 @@ function pad(...words) {
     tell(page, "gamepaddisconnected", { gamepad: controller });
   } else if (action === "press" || action === "release") {
     controller.buttons[Number(a)] = { pressed: action === "press", value: action === "press" ? 1 : 0 };
+  } else if (action === "pull") {
+    /* A trigger part pulled: its value is how far, and the browser calls it pressed from half way. */
+    controller.buttons[Number(a)] = { pressed: Number(b) >= 0.5, value: Number(b) };
   } else if (action === "stick") {
     controller.axes[0] = Number(a);
     controller.axes[1] = Number(b);
@@ -466,6 +692,32 @@ function play(frames) {
     if (!document.hidden) for (const { callback } of waiting.splice(0)) callback(now);
     now += FRAME_MS;
   }
+}
+
+/* How much the page allocates a frame, while it plays +frames+ of them: V8's allocation sampler,
+ * told to take a sample at every ALLOCATION_SAMPLE_BYTES allocated, with no randomness in where, and
+ * to keep the samples of what was collected since, so the count is of everything allocated and the
+ * same on every run. Gives the bytes a frame, to the nearest sample. The browser's collector has to
+ * take back every byte of it, and a page that leaves it a great deal pauses for it. */
+const ALLOCATION_SAMPLE_BYTES = 256;
+function allocated_a_frame(frames) {
+  const v8 = require("v8");
+  const inspector = require("inspector");
+  v8.setFlagsFromString("--sampling-heap-profiler-suppress-randomness");
+  const session = new inspector.Session();
+  session.connect();
+  let samples = 0;
+  session.post("HeapProfiler.enable");
+  session.post("HeapProfiler.startSampling", {
+    samplingInterval: ALLOCATION_SAMPLE_BYTES, includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true,
+  });
+  play(frames);
+  session.post("HeapProfiler.stopSampling", (error, result) => {
+    if (error) throw new Error(`page_harness: the allocation sampler stopped: ${error.message}`);
+    samples = result.profile.samples.length;
+  });
+  session.disconnect();
+  return Math.round((samples * ALLOCATION_SAMPLE_BYTES) / frames);
 }
 
 /* The page was busy with something else: the time passes and no frame comes. */
@@ -566,7 +818,7 @@ async function steps() {
     else if (step === "focus") { focused = true; tell(page, "focus"); }
     else if (step === "hide") visible(false);
     else if (step === "show") visible(true);
-    else if (step === "click") { tell(element(what), "click"); tell(page, "pointerdown"); }
+    else if (step === "click") { tell(element(what), "click"); tell(page, "pointerdown", { pointerType: "mouse" }); tell(page, "click"); }
     else if (step === "finger") finger(what, ...rest);
     else if (step === "lift") lift(what, "pointerup");
     else if (step === "cancel") lift(what, "pointercancel");
@@ -574,6 +826,7 @@ async function steps() {
     else if (step === "check" || step === "uncheck") { element(what).checked = step === "check"; tell(element(what), "change"); }
     else if (step === "play") play(Number(what));
     else if (step === "skip") skip(what);
+    else if (step === "allocated") printed.push(`allocated ${allocated_a_frame(Number(what))}`);
     else if (step === "pixel") printed.push(`pixel ${bytes_at(what, Number(rest[0]), Number(rest[1]))}`);
     else if (step === "counts") printed.push(`counts frames=${asked.frames} pictures=${asked.pictures} buffers=${asked.buffers}`);
     else if (step === "speaker") pull_speaker(Number(what));
@@ -609,6 +862,29 @@ async function steps() {
       printed.push(`worked frames=${asked.frames - before}`);
     }
     else if (step === "text") printed.push(text(what));
+    else if (step === "downloaded") {
+      printed.push("downloaded");
+      for (const file of downloads) printed.push(`downloaded ${file.name} ${file.bytes.toString("hex")}`);
+    }
+    else if (step === "reloads") printed.push(`reloads ${reloads}`);
+    else if (step === "confirmed") printed.push(`confirmed ${questions.join(" | ")}`);
+    else if (step === "resize") resize(what, rest[0]);
+    else if (step === "style") {
+      const style = element(what).style;
+      printed.push(`style ${what} width=${style.width || "-"} height=${style.height || "-"} outline=${style.outline || "-"}`);
+    }
+    else if (step === "drag-enter") drag_enter();
+    else if (step === "drag-leave") tell(page, "dragleave");
+    else if (step === "drop") {
+      if (drop(what)) printed.push(`opened ${path.basename(what)}`);
+      for (let i = 0; i < 20; i++) await settle();
+    }
+    else if (step === "entries-read") printed.push(`entries-read ${entries_read.join(",")}`);
+    else if (step === "persist") printed.push(`persist ${persist_asks}`);
+    else if (step === "cookie") printed.push(`cookie ${document.cookie}`);
+    else if (step === "workers") printed.push(`workers ${workers.size}`);
+    else if (step === "wait") await real_ms(Number(what));
+    else if (step === "clipboard") printed.push(`clipboard ${clipboard}`);
     else if (step === "state") printed.push(state());
     else if (step) throw new Error(`page_harness: no step called ${step}`);
     await settle();

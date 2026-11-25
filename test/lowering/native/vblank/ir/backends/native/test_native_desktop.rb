@@ -6,7 +6,7 @@ require "border_frame_tests"
 require "fileutils"
 require "open3"
 require "tmpdir"
-require VBlank.root.join("examples/pong").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong").to_s)
 
 # The program a player runs — pong with its window, built with SDL — is the same program the
 # tests drive, and it stands on its own.
@@ -25,7 +25,7 @@ class TestNativeDesktop < Minitest::Test
   FRAMES = 40
 
   # The title's menus worked the way a person works them, each button held for several frames:
-  # down to the music row and A to turn it off, down to DIFFICULTY and A to open it, up to NORMAL
+  # down to the music row and A to turn it off, down to difficulty and A to open it, up to normal
   # and A to choose it.
   MENU_RUN = Ractor.make_shareable(
     NativeComparison.held_for([10..15, :down], [30..38, :a], [50..55, :down], [70..78, :a], [95..100, :up], [115..122, :a])
@@ -107,7 +107,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE WINDOW KEEPS THE GAME'S SAVE IN A FILE, holding the bytes the interpreter's save memory
+  # The window keeps the game's save in a file, holding the bytes the interpreter's save memory
   # holds after the same presses — a .sav file, as an emulator keeps one.
   def test_the_program_a_player_runs_keeps_its_save_in_a_file
     game = game_that_keeps_a_count
@@ -122,6 +122,58 @@ class TestNativeDesktop < Minitest::Test
       assert_keeps_its_save_in_the_file_it_is_told(exe, File.join(dir, "told.sav"), saved)
       assert_writes_its_save_while_it_is_still_running(exe, File.join(dir, "running.sav"))
       assert_refuses_a_file_that_is_not_its_save(exe, File.join(dir, "other.sav"))
+    end
+  end
+
+  # A game that keeps a number in save memory and stops on a fault at the second press of B, when it
+  # pushes onto a list of one that is full. Its screen is blue, so its last picture shows behind a box.
+  private def game_that_stops_at_the_second_b(consoles: %i[gba])
+    VBlank.game("STOPPER", consoles: consoles) do
+      screen :bitmap
+      save_var :best, 5
+      full = list :full, capacity: 1
+      game_loop do
+        clear_screen :blue
+        full.push 1 if pressed(:b)
+      end
+    end
+  end
+
+  # What ends the program is told in the window, never in a pop-up of the system's: a save file that
+  # is not the game's, and a game that stopped on a fault. Each is a box over the last picture, under
+  # a title of its own, with the words on the error stream as well, and the program ends once a
+  # button answers it, or with nobody to answer it, once the script runs out. --told writes a line
+  # for each box the window draws and for each pop-up of the system's it shows.
+  def test_what_ends_the_program_is_told_in_the_window
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_stops_at_the_second_b, File.join(dir, "stopper"), err: nil)
+      plain, = picture_of_window(exe, dir, [], frames: 12, options: ["--save-file", File.join(dir, "plain.sav")])
+      foot = [40...680, 300...470]
+
+      assert_a_fault_is_told_in_the_window_until_answered(exe, dir, plain, foot)
+      assert_a_save_file_cut_short_is_told_in_the_window(exe, dir, plain, foot)
+    end
+  end
+
+  # A box too big for the window makes the window bigger. A Color game's window at the least scale
+  # is its 160 by 144 screen, where a save file's path would run off it: the window is made a whole
+  # number of times the screen that holds the box, while the settings file keeps the player's size.
+  def test_a_box_too_big_for_the_window_makes_the_window_bigger
+    Dir.mktmpdir do |dir|
+      exe = Native.new.build_desktop(game_that_stops_at_the_second_b(consoles: %i[gbc]), File.join(dir, "stopper"), console: :gbc, err: nil)
+      settings = File.join(dir, "small.txt")
+      File.write(settings, "scale = 1\n")
+      small, = picture_of_window(exe, dir, [], frames: 5, options: ["--settings-file", settings, "--save-file", File.join(dir, "new.sav")])
+      path = File.join(dir, "short.sav")
+      File.binwrite(path, "x" * 100)
+      grown, _, told = told_in_window(exe, dir, [], frames: 5, options: ["--settings-file", settings, "--save-file", path], succeeds: false)
+
+      assert_equal [160, 144], [small.width, small.height]
+      assert_equal 1, told.size
+      assert_operator grown.width, :>, 160, "the window grew for the box"
+      assert_equal [0, 0], [grown.width % 160, grown.height % 144], "a whole number of times the screen"
+      assert_equal grown.width / 160, grown.height / 144, "and the screen's shape"
+      assert_includes File.read(settings), "scale = 1", "the player's size is kept"
     end
   end
 
@@ -164,7 +216,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE WINDOW'S CLOCK IS THE COMPUTER'S, in its local time: the game is told there is a clock,
+  # The window's clock is the computer's, in its local time: the game is told there is a clock,
   # that it was set, and the date and the minute the computer says — at the start of the run or
   # at its end, should a minute turn over between the two.
   def test_the_program_a_player_runs_reads_the_computers_clock
@@ -200,7 +252,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME'S OWN KEYS (computer_keys): the window starts with them, beside VBlank's. How the window
+  # A game's own keys (computer_keys): the window starts with them, beside VBlank's. How the window
   # keeps them is tested with no window (test_native_window.rb); this is that the game's build hands
   # them to it.
   def test_the_window_starts_with_the_keys_the_game_adds
@@ -230,7 +282,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GENESIS PAD'S C: the C key presses it in a Genesis game's window, and --help names it among
+  # A Genesis pad's C: the C key presses it in a Genesis game's window, and --help names it among
   # the Genesis's buttons alone. Which key starts on which button is tested with no window
   # (test_native_window.rb); this is that the build tells the window its console's buttons.
   def test_the_c_key_presses_c_in_a_genesis_game
@@ -250,6 +302,30 @@ class TestNativeDesktop < Minitest::Test
       assert_match(/^  C +C$/, help)
       refute_match(/^  Select /, help, "a Genesis pad has no Select")
       assert_operator played.variables[:held_c], :>=, 3, "the C key presses C"
+    end
+  end
+
+  # A PlayStation pad's L2 and R2: E and R, all or nothing, and --help names them.
+  def test_e_and_r_press_l2_and_r2_in_a_playstation_game
+    Dir.mktmpdir do |dir|
+      game = VBlank.game("PRESSES L2", consoles: %i[ps1]) do
+        screen :bitmap
+        held_l2 = var(:held_l2, 0)
+        pulled_r2 = var(:pulled_r2, 0)
+        game_loop do
+          clear_screen :black
+          held_l2.increase! 1 if held(:l2)
+          pulled_r2.increase! pulled(:r2)
+        end
+      end
+      exe = Native.new.build_desktop(game, File.join(dir, "l2"), err: nil)
+      help, = Open3.capture2e(exe, "--help", chdir: dir)
+      played = play_window(exe, dir, ["0", "0 keydown:E keydown:R", "0", "0", "0", "0 keyup:E keyup:R", "0"], frames: 10)
+
+      assert_match(/^  L2 +E$/, help)
+      assert_operator played.variables[:held_l2], :>=, 3, "E presses L2"
+      assert_equal 0, played.variables[:pulled_r2] % 100, "a key pulls R2 all the way"
+      assert_operator played.variables[:pulled_r2], :>=, 300, "R presses R2"
     end
   end
 
@@ -276,7 +352,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # PLAYER 2 ON THE KEYBOARD: the keyboard's right hand presses player 2's buttons, and player 1's
+  # PLAYER 2 on the keyboard: the keyboard's right hand presses player 2's buttons, and player 1's
   # keys stay player 1's. Which key is which, and the gamepads' players, are tested with no window
   # (test_native_seats.rb); this is that the window hands player 2's buttons to the game. --help
   # names the keys.
@@ -340,7 +416,7 @@ class TestNativeDesktop < Minitest::Test
   BUTTONS = %i[a b select start right left up down r l].freeze
   BUTTONS_HELD = BUTTONS.map { |name| :"held_#{name}" }.freeze
 
-  # WHAT A PLAYER DOES TO THE WINDOW, judged by what the game saw and what came out: hotkeys, pause
+  # What a player does to the window, judged by what the game saw and what came out: hotkeys, pause
   # and step, fast forward, the volume, the settings file and the menu over the picture. The logic
   # of each is tested with no window (test_native_window.rb); this is that the window does it.
   def test_the_window_a_player_controls
@@ -361,10 +437,37 @@ class TestNativeDesktop < Minitest::Test
       assert_the_menu_holds_the_game_and_keeps_its_keys(exe, dir)
       assert_save_states_are_kept_beside_the_save_and_put_back(exe, dir)
       assert_the_frame_time_shows_without_the_frame_rate(exe, dir)
+      assert_the_game_variables_window_lists_and_finds_them(exe, dir)
     end
   end
 
-  # A MAC'S RETINA SCREEN has two pixels to a point each way, and SDL's stand-in display has one, so
+  # A game with no menu (menu: false) builds a program that plays with no menu over its picture:
+  # F1 opens nothing, and the game sees every frame. No program has Dear ImGui in it, a game with a
+  # menu or without, and one with no word on it keeps its menu.
+  def test_a_game_with_menu_false_builds_and_opens_no_menu
+    Dir.mktmpdir do |dir|
+      no_menu = VBlank.game("NOMENU", consoles: %i[gba], menu: false) do
+        screen :bitmap
+        frames = 0
+        game_loop do
+          clear_screen :black
+          frames += 1
+        end
+      end
+      exe = Native.new.build_desktop(no_menu, File.join(dir, "nomenu"), err: nil)
+      with_menu = Native.new.build_desktop(game_that_counts, File.join(dir, "windowed"), err: nil)
+      asked, played = picture_of_window(exe, dir, ["0", "0 hotkey:menu", "0 key:F1"], frames: 20)
+      opened, = picture_of_window(with_menu, dir, ["0", "0 hotkey:menu"], frames: 20)
+      bar = [0...(asked.width / 2), 0...20]
+
+      assert_equal 0, asked.lit_in(*bar), "F1 opens no menu in a game that has none"
+      assert_equal 20, played.variables[:frames], "and nothing holds the game"
+      assert_operator opened.lit_in(*bar), :>, opened.width * 5, "a game with no word on it keeps its menu"
+      [exe, with_menu].each { |program| refute_includes File.binread(program), "ImGui", "#{program} has Dear ImGui in it" }
+    end
+  end
+
+  # A Mac's retina screen has two pixels to a point each way, and SDL's stand-in display has one, so
   # only a real window can show the menu drawn at the screen's own scale. Drawn at the wrong one it
   # lands at half its size in the top left, away from the mouse, with its text cut off. A real
   # window opens on this Mac's screen for a few seconds.
@@ -397,7 +500,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # THE CONSOLE'S OWN START-UP plays before an Advance game built to use the player's BIOS (bios:)
+  # The console's own start-up plays before an Advance game built to use the player's BIOS (bios:)
   # where the player has it, and the game then plays its own frames as it would have. A scripted
   # run plays it only when told
   # (--start-up), and says how many frames it played. Without a BIOS the game starts at once and
@@ -419,7 +522,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME LAID OUT FOR THE GAME BOY COLOR, BUILT FOR THE ADVANCE IN A BORDER, fills the Advance's
+  # A game laid out for the Game Boy Color, built for the Advance in a border, fills the Advance's
   # window: 240×160 three times over, the border round the game's screen (test/border_frame_tests.rb
   # holds every pixel of it), and the game's red bar at its corner, (40, 8).
   def test_a_color_game_in_a_border_fills_the_advances_window
@@ -438,7 +541,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A GAME OF BIG PIXELS (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
+  # A game of big pixels (`pixel_size: 2`) draws a 120×80 picture and opens the Advance's window all
   # the same: 240×160 three times over, each of its pixels a square of six of the window's. Its
   # white last pixel fills the window's last six rows and columns, and the blue beside it starts
   # just past them.
@@ -503,7 +606,8 @@ class TestNativeDesktop < Minitest::Test
   # given one) of +frames+ frames with a script's lines, a line each, as --scripted-keys reads
   # them; the frames' worth of lines are made up to with idle ones. +audio+ saves what the
   # speaker was given, through SDL's disk driver, and tells where.
-  def play_window(exe, dir, lines, frames:, options: [], env: {}, audio: false, own_settings: true)
+  # +succeeds+ false is a run that must end with a failing status, as one the window stops does.
+  def play_window(exe, dir, lines, frames:, options: [], env: {}, audio: false, own_settings: true, succeeds: true)
     script = lines + ["0"] * [frames - lines.length, 0].max
     needs_a_file = own_settings && !options.include?("--settings-file") && !options.include?("--usual-settings")
     settings = needs_a_file ? ["--settings-file", File.join(dir, "none-#{rand(1 << 30)}.txt")] : []
@@ -512,7 +616,7 @@ class TestNativeDesktop < Minitest::Test
     environment = environment.merge("SDL_AUDIO_DRIVER" => "disk", "SDL_AUDIO_DISK_OUTPUT_FILE" => raw) if audio
     printed, said, status = Open3.capture3(environment, exe, "--scripted-keys", frames.to_s, *settings, *options,
                                            stdin_data: script.map { |line| "#{line}\n" }.join)
-    assert_predicate status, :success?, said
+    assert_equal succeeds, status.success?, said
     Played.new(variables: Native::HeadlessRun.variables_in(printed.lines.map(&:chomp)), printed: printed, said: said,
                audio: audio ? File.binread(raw).unpack("s<*") : nil)
   end
@@ -625,10 +729,51 @@ class TestNativeDesktop < Minitest::Test
     Window.new(width, height, pixels)
   end
 
-  def picture_of_window(exe, dir, lines, frames:, options: [], env: {})
+  def picture_of_window(exe, dir, lines, frames:, options: [], env: {}, succeeds: true)
     picture = File.join(dir, "window-#{rand(1 << 30)}.bmp")
-    played = play_window(exe, dir, lines, frames: frames, options: ["--window-picture", picture] + options, env: env)
+    played = play_window(exe, dir, lines, frames: frames, options: ["--window-picture", picture] + options, env: env,
+                                          succeeds: succeeds)
     [window_picture(picture), played]
+  end
+
+  # A run's picture of the window as it ended, what it said, and the lines --told wrote: a box each.
+  def told_in_window(exe, dir, lines, frames:, options: [], succeeds: true)
+    told = File.join(dir, "told-#{rand(1 << 30)}.txt")
+    window, played = picture_of_window(exe, dir, lines, frames: frames, options: ["--told", told] + options, succeeds: succeeds)
+    [window, played, File.exist?(told) ? File.readlines(told, chomp: true) : []]
+  end
+
+  # The game's fault, at the second press of B, is a box over its last picture titled The game
+  # stopped, and the program waits there for the player and ends failing: once the script runs out,
+  # the box still up, or once a button answers it, which closes it and ends the program at once, the
+  # script's lines left unread.
+  def assert_a_fault_is_told_in_the_window_until_answered(exe, dir, plain, foot)
+    save = ["--save-file", File.join(dir, "fault.sav")]
+    stopped, played, told = told_in_window(exe, dir, ["0", "2", "0", "2"], frames: 30, options: save, succeeds: false)
+
+    assert_match(/list :full is full/, played.said)
+    assert_equal 1, told.size, "one box: #{told.inspect}"
+    assert_match(/\AThe game stopped: .*list :full is full/, told.first)
+    assert_operator stopped.text_in(*foot), :>, plain.text_in(*foot) + 500, "the fault is told over the picture"
+    assert_operator stopped.lit_in(0...720, 0...100), :>, 50_000, "the game's last picture stays behind it"
+
+    answered, _, told = told_in_window(exe, dir, ["0", "2", "0", "2", "0", "0 key:X"], frames: 30, options: save, succeeds: false)
+    assert_equal 1, told.size
+    assert_equal plain.text_in(*foot), answered.text_in(*foot), "a button pressed answers the box, as its OK does"
+  end
+
+  # A save file that is not as big as the game's save memory is told in a box titled The save file,
+  # over the window before the game starts, and the program ends failing, the file left as it was.
+  def assert_a_save_file_cut_short_is_told_in_the_window(exe, dir, plain, foot)
+    path = File.join(dir, "short.sav")
+    File.binwrite(path, "x" * 100)
+    refused, played, told = told_in_window(exe, dir, [], frames: 5, options: ["--save-file", path], succeeds: false)
+
+    assert_match(/is not a save of this game, whose save is 32768 bytes/, played.said)
+    assert_equal 1, told.size, "one box: #{told.inspect}"
+    assert_match(/\AThe save file: The file at .*short\.sav is not a save of this game/, told.first)
+    assert_operator refused.text_in(*foot), :>, plain.text_in(*foot) + 500, "what is wrong is told over the window"
+    assert_equal "x" * 100, File.binread(path)
   end
 
   # The window opens as large as the settings say, a whole number of times the console's screen.
@@ -707,8 +852,9 @@ class TestNativeDesktop < Minitest::Test
     assert_equal 0, hidden.lit_in(*corner), "and not when the settings say not"
   end
 
-  # A file that cannot be used is said in plain words, on the error stream and over the picture as
-  # the window opens, and the window opens anyway, as it starts.
+  # A file that cannot be used is said in plain words, on the error stream and in a box over the
+  # picture as the window opens, never a pop-up of the system's, and the window opens anyway, as it
+  # starts.
   def assert_a_file_that_cannot_be_used_is_said_and_the_game_plays_on(exe, dir)
     plain_window, plain_run = picture_of_window(exe, dir, [], frames: 20)
     garbage = File.join(dir, "garbage.txt")
@@ -726,6 +872,10 @@ class TestNativeDesktop < Minitest::Test
     middle = [40...400, 100...400]
     assert_operator garbage_window.lit_in(*middle), :>, plain_window.lit_in(*middle) + 10_000,
                     "what was wrong is said over the picture, for a player with no terminal"
+    answered, _, told = told_in_window(exe, dir, ["0", "0 key:X"], frames: 20, options: ["--settings-file", garbage])
+    assert_equal plain_window.lit_in(*middle), answered.lit_in(*middle), "a button pressed answers it, as its OK does"
+    assert_equal 1, told.size, "one box, and no pop-up of the system's: #{told.inspect}"
+    assert_match(/\AThe settings file: .*Line 2: volume is a whole number/, told.first)
     assert_equal game_saw(plain_run), game_saw(from_folder)
     assert_match(/The window cannot read .*a-folder\.txt/, from_folder.said)
   end
@@ -798,8 +948,8 @@ class TestNativeDesktop < Minitest::Test
   end
 
   # The menu is drawn over the picture once it is opened (the game's own is black there), its
-  # headings written along the top; the frame rate is in the corner; the pause says so; a window of
-  # keys or of the game's variables draws when it is opened; and none of them is the game's.
+  # headings written along the top; the frame rate is in the corner; the pause says so; the window
+  # of the game's variables draws when it is opened; and none of them is the game's.
   def assert_the_menu_is_drawn_over_the_picture(exe, dir)
     window, = picture_of_window(exe, dir, [], frames: 20)
     opened_menu, = picture_of_window(exe, dir, ["0", "0 hotkey:menu"], frames: 20)
@@ -813,10 +963,7 @@ class TestNativeDesktop < Minitest::Test
     corner = [(window.width - 140)...(window.width - 10), 0...100]
     assert_operator paused.lit_in(*corner), :>, window.lit_in(*corner), "a pause says PAUSED under the frame rate"
 
-    opened, = picture_of_window(exe, dir, ["0 panel:controls"], frames: 20)
     middle = [40...400, 100...400]
-    assert_operator opened.lit_in(*middle), :>, window.lit_in(*middle) + 20_000, "the window of keys opens"
-
     variables, played = picture_of_window(exe, dir, ["0 panel:variables hotkey:pause"], frames: 20)
     assert_operator variables.lit_in(*middle), :>, window.lit_in(*middle) + 10_000
     assert_equal 0, played.variables.values_at(*BUTTONS_HELD).sum, "opening a window of the menu is not a button"
@@ -841,7 +988,7 @@ class TestNativeDesktop < Minitest::Test
     assert_operator escaped.variables[:frames], :<, 5, "Escape stops the play"
   end
 
-  # SAVE STATES: F5 saves the quick one and F9 puts it back, between two frames, so the game's count
+  # Save states: F5 saves the quick one and F9 puts it back, between two frames, so the game's count
   # goes back to what it was when F5 was pressed. The menu does the same with a slot: the Save
   # heading's Slot 2, then the Load heading's Slot 2. States are files beside the save asked for
   # (--save-file), and a state another game wrote is refused in plain words and the game plays on.
@@ -892,9 +1039,31 @@ class TestNativeDesktop < Minitest::Test
     assert_operator shown.text_in(*corner), :>, 50, "the frame time is written in the corner"
   end
 
+  # Developer, Game variables opens a window of the game's variables over the game as it plays, in
+  # the top left corner; letters typed find a name, and are not the game's buttons; Show frame time,
+  # under it, is a setting the file keeps.
+  def assert_the_game_variables_window_lists_and_finds_them(exe, dir)
+    to_variables = ["0", "0 hotkey:menu", "0 key:Left", "0 key:Down", "0 key:Return"]
+    plain, = picture_of_window(exe, dir, [], frames: 20)
+    listed, = picture_of_window(exe, dir, [*to_variables, "0", "0"], frames: 20)
+    found, typed = picture_of_window(exe, dir, [*to_variables, "0 key:Z", "0 key:Z", "0 key:Q"], frames: 20)
+    rows = [16...260, 90...340] # under the window's heading, where its lines are
+
+    assert_operator listed.text_in(*rows), :>, plain.text_in(*rows) + 500, "a line is written for each variable"
+    assert_operator found.text_in(*rows), :<, listed.text_in(*rows) / 4, "no name has zzq in it"
+    assert_equal 0, typed.variables[:held_b], "Z typed into the window is not the game's B"
+    assert_operator typed.variables[:frames], :>, 10, "the game plays on under the window"
+
+    settings = File.join(dir, "developer.txt")
+    File.write(settings, "")
+    play_window(exe, dir, ["0", "0 hotkey:menu", "0 key:Left", "0 key:Down", "0 key:Down", "0 key:Return"], frames: 20,
+                          options: ["--settings-file", settings])
+    assert_includes settings_lines(settings), "frame_time = on"
+  end
+
   public
 
-  # THE SAME GAME FOR ANOTHER COMPUTER, built from this one: zig carries the C library of each, and
+  # The same game for another computer, built from this one: zig carries the C library of each, and
   # SDL is compiled for each from its own source. These are only built here, not run — nothing
   # here can run them — so what is checked is that each is a program for the computer it was asked
   # for, read off the first bytes of the file the way that computer reads them.
@@ -916,7 +1085,7 @@ class TestNativeDesktop < Minitest::Test
     end
   end
 
-  # A STRIPPED PROGRAM is the same program with its debugging data left out, which is most of a
+  # A stripped program is the same program with its debugging data left out, which is most of a
   # Linux file. SDL and the menu are libraries of their own, so the data has to go at the link.
   def test_a_stripped_program_is_a_fraction_of_the_size_and_still_a_program
     Dir.mktmpdir do |dir|

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EACH SCREEN'S SPRITE TILES ARE ITS OWN TO COUNT. Video memory holds 512 sprite tiles at once, and a
+# Each screen's sprite tiles are its own to count. Video memory holds 512 sprite tiles at once, and a
 # Super Nintendo's own games load a screen's with the screen, so two screens of 300 each never meet.
 class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
   SWITCH_AT = 4
@@ -44,10 +44,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
         state = 1 if tick == switch
         state = 0 if tick == switch * 3
         dispatch = lambda do
-          case_var(:state) do
-            when_val 0, :one
-            when_val 1, :two
-          end
+          call({ 0 => :one, 1 => :two }, number: :state)
         end
         if dispatch_inside_test
           dispatch.call if tick >= 0
@@ -60,7 +57,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
     b.program
   end
 
-  # A DISPATCH INSIDE A TEST notes the scene number as the pass starts (IR::Frames), so the frame
+  # A dispatch inside a test notes the scene number as the pass starts (IR::Frames), so the frame
   # that hands over shows the arriving scene's background with the leaving scene's sprite, in the
   # leaving scene's own tiles.
   def test_a_dispatch_inside_a_test_shows_the_leaving_sprite_in_its_own_tiles
@@ -93,10 +90,7 @@ class TestSceneSpriteTilesOnTheSuperNintendo < Minitest::Test
         tick += 1
         opened = frames_since_power_on if tick == 2
         state = 1 if tick == 5
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
     b.finalize_program

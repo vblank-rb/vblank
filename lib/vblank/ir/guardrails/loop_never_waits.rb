@@ -6,17 +6,31 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a `while` loop that can only end when something changes between
+        # frames, but never waits for the next frame:
+        #
+        # > This loop never waits for the next frame. The game does not draw and does not read
+        # > the buttons until the loop ends. To fix this, add `wait_vblank` inside the loop.
+        #
+        # The screen is drawn and the buttons are read between frames. A loop like
+        # `while !pressed?(:a)` that never waits holds the whole game still, and since only a new
+        # frame could make its test change, the game stops for good: the picture freezes and no
+        # button does anything.
+        #
+        # Put `wait_vblank` inside the loop, so each turn of it lets a frame pass. A loop that
+        # counts its own way to the end (`while i < n` with `i += 1` inside) does its work inside
+        # one frame and is not warned about, and neither is `repeat`.
+        #
+        #--
         # A `while` in normal Ruby on a test the game makes, with no wait for the next frame
-        # anywhere in it, and nothing in it that can change what its test reads. The screen is
-        # drawn and the buttons are read between frames, so a loop like that holds the whole game
-        # still, and since only a frame could make its test fail, the game has stopped for good.
+        # anywhere in it, and nothing in it that can change what its test reads.
         #
         # A loop of a known length is an ordinary way to do work inside a frame, so `repeat` is
         # left alone: only the count such a `while` is given is looked for. A `while` whose own
         # work changes what its test reads is the same kind of work, counted by the game rather
         # than by a number: `while i < n` with `i += 1`, or a retry that clears its flag once a
         # try succeeds (a stage laid out at random squares until each one fits). Whether such a
-        # loop ends cannot be proved from the tree, but it CAN end without a frame, which a loop
+        # loop ends cannot be proved from the tree, but it can end without a frame, which a loop
         # on a button never can, so it is left alone too. The loop's work is everything in
         # it and every routine it calls, on either side of every `if`, since any of them can
         # be the round that ends it.
@@ -24,6 +38,7 @@ module VBlank
         # A variable counts as changed by any statement that names it. That errs toward silence:
         # a statement that only reads a name in a field of its own (not in a value it works
         # out) hides a loop that never ends, but never makes one that does end warn.
+        #++
         class LoopNeverWaits
           NAME = :loop_never_waits
           PLAIN_NAME = "a loop with no wait for the next frame"

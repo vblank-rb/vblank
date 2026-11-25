@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A GROUP OF TILE PICTURES ON THE COLOR is held in the Color's own form, so showing a picture is a
+# A group of tile pictures on the color is held in the Color's own form, so showing a picture is a
 # copy, with no tile turned from one form to the other as the game plays. Two groups of 24 tiles,
 # each picture of a colour of its own, change together, and a cell changes beside them.
 class TestTilePicturesOnTheColor < Minitest::Test

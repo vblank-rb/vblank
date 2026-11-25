@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # HOW A GAME IS BUILT, as one value: what a game sets for its cartridge beside its name.
+    # How a game is built, as one value: what a game sets for its cartridge beside its name.
     #
     # A game sets these where it is named (`VBlank.game "NAME", consoles: %i[gba], save_memory: 128`) or where it
     # is built (`VBlank.build`), and they are needed a long way from there — the frame pacing and
@@ -22,7 +22,7 @@ module VBlank
     # however it was written. It is nil until something names one: a game names its consoles where it
     # is named and is built for one of them, and VBlank.build refuses a build that names none.
     #
-    # +fast_cartridge+, +fast_code+ and +stack_room+ are SETTINGS ONLY THE ADVANCE HAS, and only its
+    # +fast_cartridge+, +fast_code+ and +stack_room+ are settings only the Advance has, and only its
     # build reads them: what each means, what it is when nothing is set, and which values it can
     # take are Cartridge::AdvanceBuild's, and so is refusing a value it cannot use. Each is nil when
     # the game sets none, so that a build for another console can tell a setting it does not
@@ -51,11 +51,23 @@ module VBlank
     # +pack_at_start+ makes a build for a computer leave the game's data pack out: `data_pack` reads
     # no copy of the original, and the program reads the pack from a file it is handed as it starts
     # (Builder::DataPacks says how). A cartridge build refuses it there, since a cartridge holds its data.
+    #
+    # +features+ are the parts of the game a build can leave out, each to the features it brings, as
+    # the game named them (Cartridge::Features). +features_built+ are the ones this build has, each
+    # with what it brings, or nil for every one (Game#with_features).
+    #
+    # +starts+ are what this build starts variables and lists at in place of what the game declares,
+    # by name (Game#starting_with), in order of name; empty for the game as declared.
     Options = Data.define(:frame_sync, :fast_cartridge, :fast_code, :save_memory, :stack_room, :console,
-                          :variant, :sprite_piece_size, :for_computer, :players, :consoles, :pack_at_start) do
+                          :variant, :sprite_piece_size, :for_computer, :players, :consoles, :pack_at_start,
+                          :features, :features_built, :starts) do
       def initialize(frame_sync: :auto, fast_cartridge: nil, fast_code: nil, save_memory: nil, stack_room: nil,
                      console: nil, variant: nil, sprite_piece_size: {}, for_computer: false, players: nil,
-                     consoles: nil, pack_at_start: false)
+                     consoles: nil, pack_at_start: false, features: {}, features_built: nil, starts: {})
+        features = Features.refuse_unusable!(features)
+        # In order of name, so starts given in any order are one build and one key in a build cache.
+        starts = Ractor.make_shareable(starts.to_h { |name, value| [name.to_sym, value.dup] }.sort.to_h)
+        features_built = Features.brought_by(features, features_built) unless features_built.nil?
         console = Console.named(console) unless console.nil?
         consoles = consoles&.map { |name| Console.named(name) }&.freeze
         sprite_piece_size = Console.refuse_unusable_sprite_piece_sizes!(sprite_piece_size).freeze
@@ -70,7 +82,7 @@ module VBlank
         end
         unless save_memory.nil? || IR::SaveLayout::NAMEABLE.include?(save_memory)
           raise ArgumentError, "save_memory: #{save_memory.inspect} is not a size of save memory. A cartridge " \
-                               "has 8, 32, 64 or 128 kilobytes. To fix this, use one of those numbers, or leave " \
+                               "has 0.5 (512 bytes), 8, 32, 64 or 128 kilobytes. To fix this, use one of those numbers, or leave " \
                                "save_memory: out and the build picks the smallest that holds the saves."
         end
 
@@ -80,6 +92,9 @@ module VBlank
       # The consoles the game is for: the ones it names, or the one console this build names when it
       # was given no list.
       def game_consoles = consoles || [console].compact
+
+      # Whether this build has the feature +name+, which the game declares.
+      def feature_built?(name) = features_built.nil? || features_built.include?(name)
     end
   end
 end

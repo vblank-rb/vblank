@@ -3,7 +3,7 @@
 require "test_helper"
 require "number_width_cost_games"
 
-# A TEST OF NUMBERS PROVEN SMALL ON THE GAME BOY COLOR, measured in the emulator: two sides that stay
+# A test of numbers proven small on the Game Boy Color, measured in the emulator: two sides that stay
 # in a byte compared with one CP, with their sign bits turned over where they can be below nought, and
 # two that stay in 16 bits with a two-byte subtraction (GBC::Lowering::SmallNumbers), where a
 # comparison of two whole numbers calls rt_cmp32; a size or a shift down of such a number worked in its

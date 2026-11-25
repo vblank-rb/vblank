@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 
-# A ROUTINE IN PARTS IS CACHED A PART AT A TIME. A port's unpacking given as named parts
+# A routine in parts is cached a part at a time. A port's unpacking given as named parts
 # (`slots.fill_from_copy :music do ... end`) keeps each part's slots apart in the pack cache, so a
 # change to one part plays that part again, with the parts that read what it wrote, and takes the
 # rest from the cache. The answer key is the whole routine played on the interpreter: the pack
@@ -87,7 +87,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # A GAME'S OWN TEST asks for the slots (PackCache#slot_bytes) rather than a pack file, and is
+  # A game's own test asks for the slots (PackCache#slot_bytes) rather than a pack file, and is
   # cached a part at a time as a build is: the block plays the Unpacking it is handed, the parts
   # named, and a part changed between two calls is the only one played the second time.
   def test_slot_bytes_of_a_routine_in_parts_plays_only_a_changed_part
@@ -167,7 +167,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # NAMES VBLANK MAKES FOR A PART carry nothing between parts: the console the build is for, named
+  # Names VBLANK makes for a part carry nothing between parts: the console the build is for, named
   # by every part's program, and the names the build makes unique, each part built alone making
   # the same ones: the hidden copy of a value picked between two, and the game variable of an
   # object's instance variable (TickerPart, test/plain_ruby_game_parts.rb), which the whole routine
@@ -213,7 +213,7 @@ class TestPackCacheParts < Minitest::Test
     Dir.mktmpdir { |folder| assert_equal %i[first], parts_with_locals(folder).inputs_of(:third) }
   end
 
-  # ONE OBJECT REACHED FROM TWO PARTS hands a number from one to the other through its instance
+  # One object reached from two parts hands a number from one to the other through its instance
   # variable's game variable (LampPart, test/plain_ruby_game_parts.rb), which no slot shows. Built
   # alone, the part reading it reaches the variable the other part's build made, and a change to
   # the writing part would leave the reader's cached slots stale: the build refuses, naming both.
@@ -254,7 +254,31 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # RUBY STATE ONE PART'S BLOCK LEAVES FOR ANOTHER, which no program shows. Here the first part
+  # Two parts, each asking for steps from a Ruby loop, each made into a table loop
+  # (Original::StepTables). Built alone, a part makes the same tables as after the part before it,
+  # so it is no part built apart, and the pack put together from the parts is the whole routine's.
+  COPIES_A_PART = 4
+
+  def test_parts_whose_steps_are_made_into_table_loops_build_alike_alone
+    Dir.mktmpdir do |folder|
+      pack = VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+        slots.numbers :first, count: COPIES_A_PART, width: :byte, signed: false
+        slots.numbers :second, count: COPIES_A_PART, width: :byte, signed: false
+        slots.fill_from_copy :first do |copy, into|
+          COPIES_A_PART.times { |n| copy.copy_bytes at: SPEEDS_AT + n, count: 1, into: into[:first], start: n }
+        end
+        slots.fill_from_copy :second do |copy, into|
+          COPIES_A_PART.times { |n| copy.copy_bytes at: TILES_AT + (n * 3), count: 1, into: into[:second], start: n }
+        end
+      end
+      cache = PackCache.new(File.join(folder, "packs"))
+      made, = cached_pack(cache, pack.unpacking, pack.unpacking_parts)
+
+      assert_equal whole_routine_pack(pack.unpacking), made.to_bytes
+    end
+  end
+
+  # Ruby state one part's block leaves for another, which no program shows. Here the first part
   # sets an instance variable as it is built, and the second reads it to choose where it reads the
   # copy. Built alone, the second part reads somewhere else, so its cache entry would be keyed on
   # a part that is not the one the whole routine plays: a change to the first part's number would
@@ -277,7 +301,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # A LOCAL BOTH PARTS' BLOCKS CLOSE OVER, which the first part sets as it is built and the second
+  # A local both parts' blocks close over, which the first part sets as it is built and the second
   # reads. Each part built alone is built after the whole routine, so the second sees the number
   # the first set, and a change to that number changes the second part's key: the pack after the
   # change is the whole routine's, byte for byte.
@@ -305,7 +329,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # THE COUNT OF BYTES DONE runs on from one part to the next, so a later part reading it reads
+  # The count of bytes done runs on from one part to the next, so a later part reading it reads
   # what the parts before it wrote, which a part played alone does not. The build refuses it in
   # every part but the first.
   def test_a_later_part_reading_the_bytes_done_is_refused
@@ -339,7 +363,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # EVERY WAY A PART WRITES A SLOT tells the cache it wrote it, so a part reading that slot is
+  # Every way a part writes a slot tells the cache it wrote it, so a part reading that slot is
   # played with the part that wrote it. One block a verb, each writing the slot :written.
   WRITES_BY_VERB = {
     byte: ->(copy, into) { into[:written][0] = copy.byte(0) },
@@ -390,7 +414,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # A FIRST BUILD BUILDS EACH PART TWICE AT MOST: once in the whole routine, which it plays, and
+  # A first build builds each part twice at most: once in the whole routine, which it plays, and
   # once alone, to learn what it reads and writes. A part's key is made from those, so working out
   # the keys builds nothing more; a port's routine of many parts was otherwise built again for the
   # key of every part, which cost more than playing it.
@@ -420,7 +444,7 @@ class TestPackCacheParts < Minitest::Test
     end
   end
 
-  # A ROUTINE OF ONE BLOCK IS BUILT ONCE in a build with a cache, through to the pack file, and the
+  # A routine of one block is built once in a build with a cache, through to the pack file, and the
   # pack's handle hands a game's test that same unpacking rather than building it again.
   def test_a_routine_of_one_block_is_built_once
     Dir.mktmpdir do |folder|

@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # HOW A CONSOLE KEEPS A POOL IN MEMORY, one layout per pool, chosen as the game is built.
+      # How a console keeps a pool in memory, one layout per pool, chosen as the game is built.
       #
       # A pool reaches the tree as plain lists, variables and loops (DSL::Pool), and the interpreter
       # runs that tree: one list for each field and for the pool's own bookkeeping, a repeat for each
@@ -18,7 +18,7 @@ module VBlank
       # A layout of a console's own is an adapter of this interface, chosen per pool,
       # so adding one is one new adapter and no lowering's code changes for a pool it does not keep.
       #
-      # WHAT A LAYOUT SAYS (an adapter):
+      # What a layout says (an adapter):
       #
       #   name                      :lists, :tables or :records (Console::Description#pool_layouts)
       #   fits?(shape, steps)       whether it can keep this pool (IR::PoolShape), given every kind of
@@ -27,7 +27,7 @@ module VBlank
       #                             that builds today always builds
       #   place(shape)              where each of the pool's slot lists is (a Placement)
       #
-      # WHAT A PLACEMENT SAYS, in bytes and numbers, never one processor's registers: the pool's
+      # What a placement says, in bytes and numbers, never one processor's registers: the pool's
       # areas of memory, and for each slot list where slot s of it is (SlotPlace#at), how wide its
       # value is, and the number it is kept multiplied by. Each lowering turns that into its own
       # instructions: an index register set once to the slot times the stride where every list
@@ -57,7 +57,7 @@ module VBlank
           end
         end
 
-        # TODAY'S LAYOUT, every console's: each slot list in an area of its own, a slot as wide as the
+        # Today's layout, every console's: each slot list in an area of its own, a slot as wide as the
         # list, kept as the tree holds it. A lowering keeping a pool so builds it as it always has.
         class Lists
           def name = :lists
@@ -73,7 +73,7 @@ module VBlank
           end
         end
 
-        # THE STEPS A LAYOUT OF ITS OWN KEEPS A POOL'S LIST THROUGH: making it full, reading and
+        # The steps a layout of its own keeps a pool's list through: making it full, reading and
         # writing a slot, and asking its length. The runtime's other list routines (filling part of
         # it, copying, sorting, saving) walk a list's slots one after another from its header, so a
         # pool whose lists any of those reach is kept as :lists.
@@ -88,7 +88,7 @@ module VBlank
           (steps - STRIDED_STEPS).empty? && bytes <= MOST_STRIDED_BYTES
         end
 
-        # THE BYTES ONE SLOT OF +list+ TAKES in a layout at one stride: the list's own width, but a
+        # The bytes one slot of +list+ TAKES in a layout at one stride: the list's own width, but a
         # link (PoolShape#link_lists) is kept as the slot times the stride, so the next thing's place
         # is read straight into an index, and that takes two bytes, NONE being $FFFF.
         def self.stored_bytes(shape, list, width)
@@ -104,7 +104,7 @@ module VBlank
                         scale: link ? stride : 1)
         end
 
-        # TABLES SIDE BY SIDE: each slot list in an area of its own, as :lists, but every slot as wide
+        # Tables side by side: each slot list in an area of its own, as :lists, but every slot as wide
         # as the pool's widest list, so one index, the slot number times that stride, reaches the same
         # thing's slot in any of them. Each value keeps its own width at the front of its slot, and the
         # links are kept scaled. A pool whose slots would all be one width is already kept so, and
@@ -128,7 +128,7 @@ module VBlank
           def stored_widths(shape) = shape.slot_lists.map { |list, width| PoolLayout.stored_bytes(shape, list, width) }
         end
 
-        # A RECORD FOR EACH THING: every slot list of the pool in one area, the thing's values side by
+        # A record for each thing: every slot list of the pool in one area, the thing's values side by
         # side in a record, widest first so each sits at an offset its width divides, the record
         # rounded up to a power of two so the slot number times it is a few doublings. One index
         # reaches every value of one thing.
@@ -161,7 +161,7 @@ module VBlank
         # Every layout there is an adapter for, by name.
         ADAPTERS = Ractor.make_shareable({ lists: Lists.new, tables: Tables.new, records: Records.new })
 
-        # EACH CONSOLE'S LAYOUTS BEYOND :lists, with why its build keeps a pool that way: the measured
+        # Each console's layouts beyond :lists, with why its build keeps a pool that way: the measured
         # reason, as ControlFlow::OWN_WAYS gives its lowerings' own ways. test_pool_layout.rb holds
         # each console's Console::Description#pool_layouts to this list, both ways.
         OWN_LAYOUTS = Ractor.make_shareable(

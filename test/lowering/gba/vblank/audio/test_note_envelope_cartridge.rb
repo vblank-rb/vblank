@@ -3,14 +3,14 @@
 require "test_helper"
 require "all/vblank/audio/test_note_envelope"
 
-# A NOTE'S ENVELOPE ON THE ADVANCE'S CARTRIDGE, heard in the emulator: a note that ends without a
+# A note's envelope on the Advance's cartridge, heard in the emulator: a note that ends without a
 # click, and a note that can outlast the recording it is made of. The envelope's numbers and the
 # errors an author is told are in test/all/vblank/audio/test_note_envelope.rb.
 #
 # The click is the point of the whole feature, so the console test measures it the way the
 # report that asked for this measured it: a sine of a whole number of cycles is played, and the
 # biggest jump between one sample of the rendering and the next is held against the biggest jump
-# the WAVE ITSELF ever makes. A note cut dead leaves the speaker wherever the wave was, and that
+# the wave itself ever makes. A note cut dead leaves the speaker wherever the wave was, and that
 # jump is several times the wave's own. A note that fades does not.
 class TestNoteEnvelopeCartridge < Minitest::Test
   include EmulatorSupport
@@ -19,7 +19,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
   # A second of the sine.
   RECORDING = (SINE * (RATE / CYCLE)).freeze
 
-  # Six notes, each a frame longer than the last, so the six of them END AT SIX DIFFERENT POINTS
+  # Six notes, each a frame longer than the last, so the six of them end at six different points
   # of the wave. That is what makes the click "only sometimes": a note that happens to end near
   # a zero crossing is quiet about it, and one that ends near a peak is not.
   #
@@ -62,7 +62,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
     [mono, mono.each_cons(2).map { |a, b| (b - a).abs }]
   end
 
-  # THE BIGGEST JUMP THE WAVE ITSELF MAKES — the bar everything else is held against. Measured
+  # The biggest jump the wave itself makes — the bar everything else is held against. Measured
   # on the same recording played round and round with no note ever starting or stopping, so
   # there is nothing in it but the wave, and measured rather than worked out because what
   # reaches the test is the console's output through the emulator's own resampling.
@@ -83,7 +83,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
     rendered(control).last.max
   end
 
-  # WHERE EACH NOTE ENDS, found in the rendering itself rather than counted out in frames. Every
+  # Where each note ends, found in the rendering itself rather than counted out in frames. Every
   # note here is followed by a rest, so a note's end is where the sound falls to nothing — and
   # the biggest jump in the run-up to that silence is the one a click would be.
   #
@@ -127,7 +127,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
     end
   end
 
-  # THE FASTEST RELEASE ON A RETAIL CARTRIDGE: 89, which keeps about a third of the level each
+  # The fastest release on a retail cartridge: 89, which keeps about a third of the level each
   # frame and is silent in six. Most of that fall happens in the first frame, so a level that moved
   # only at the frame boundary took most of the wave away in one step — a click, a smaller one than
   # stopping dead but the same thing. The gain slides across the frame instead.
@@ -146,7 +146,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
     end
   end
 
-  # A NOTE THAT COMES BEFORE THE LAST ONE HAS FINISHED FADING. The last one falls away on its own
+  # A note that comes before the last one has finished fading. The last one falls away on its own
   # voice while the new one sounds on another, so for a moment two waves are playing — and two
   # waves together can move twice as far in a sample as one. Anything past that is a break in the
   # sound: the new note taking the old one's voice would stop the old wave dead mid-fade.
@@ -167,7 +167,7 @@ class TestNoteEnvelopeCartridge < Minitest::Test
     end
   end
 
-  # A NOTE CAN OUTLAST ITS RECORDING. Without a hold point the recording runs out and the note
+  # A note can outlast its recording. Without a hold point the recording runs out and the note
   # ends there, however long the note was written; with one it reads round and lasts.
   def test_a_held_note_lasts_longer_than_its_recording
     short = (SINE * 4).freeze # a tenth of a second at most

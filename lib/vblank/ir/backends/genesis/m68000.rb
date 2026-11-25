@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # THE GENESIS'S PROCESSOR, ONE INSTRUCTION AT A TIME: an assembler for the Motorola 68000, written
+        # The Genesis's processor, one instruction at a time: an assembler for the Motorola 68000, written
         # so the lowering reads like the assembly a person would write and never spells out an opcode
         # by hand.
         #
@@ -22,7 +22,7 @@ module VBlank
         # with an address error; the assembler pads each section to an even length so a section
         # placed after another still starts on one.
         #
-        # An instruction names where its numbers are with an EFFECTIVE ADDRESS, six bits: three for how
+        # An instruction names where its numbers are with an effective address, six bits: three for how
         # to find it and three for which register. The first word of the instruction holds them, and
         # whatever the way needs more (a number, a distance, a place) follows as more words:
         #

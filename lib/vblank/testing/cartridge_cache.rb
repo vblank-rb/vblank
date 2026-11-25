@@ -6,41 +6,41 @@ require "json"
 
 module VBlank
   module Testing
-    # BUILT CARTRIDGES KEPT ACROSS TESTS AND RUNS, so a game that takes most of a minute to build is
+    # Built cartridges kept across tests and runs, so a game that takes most of a minute to build is
     # built once for every test that plays it, and again only when something it is built from changes:
     #
     #   BUILDS = VBlank::Testing::CartridgeCache.new(".cache/builds", inputs: ["games/rocket/rocket.gbc"])
     #   rom = BUILDS.cartridge(Rocket.game, console: :gbc)   # built the first time, kept after
     #   BUILDS.cartridge_path(Rocket.game, console: :gbc)    # ...and as a file, for an emulator to open
     #
-    # THE KEY is everything the cartridge is made of: its title, code, maker and build options, the
+    # The key is everything the cartridge is made of: its title, code, maker and build options, the
     # console, variant and settings, whether the build is measured, the library and emulators that
     # build it (every file under VBlank's lib and the emulators' sources, as they are on disk, so a
     # pinned gem and a checkout alike), the Ruby that runs them, and the files the game names in
     # +inputs+ by their contents (what a build reads that is not the game's code: a player's copy of
     # the original, say). And the game itself, one of two ways:
     #
-    # - by its PROGRAM, unless set: the tree the game's block builds for that console, so a change
+    # - by its program, unless set: the tree the game's block builds for that console, so a change
     #   to the game's code that changes what it builds changes the key and one that does not, does
     #   not. Making the tree runs the game's block, which is most of a build for a big game, once in
     #   each process and Ractor that asks.
-    # - by its SOURCES, when +sources+ names the game's files (globs): their contents, read once when
+    # - by its sources, when +sources+ names the game's files (globs): their contents, read once when
     #   the cache is made, so asking costs nothing, and any edit to them builds again.
     #
-    # ONCE IN EVERY PROCESS AND EVERY RACTOR: a cartridge built or read is kept for the length of the
+    # Once in every process and every Ractor: a cartridge built or read is kept for the length of the
     # run in the Ractor that asked (tests in Ractors each have their own), and on disk in +folder+
     # for every process and every later run. Two processes or Ractors that want one cartridge at once
     # take a lock on its file: the first builds it, and the rest wait and read what it kept. A file is
     # written under a name of its own and then renamed, so a run stopped half way leaves no
     # half-written cartridge.
     #
-    # WHAT IS KEPT is pruned: everything a different library built, as soon as this one stores a
+    # What is kept is pruned: everything a different library built, as soon as this one stores a
     # cartridge, and a cartridge no run has read for EXPIRE_DAYS. NO_BUILD_CACHE=1 builds every
     # cartridge afresh, once in each process and Ractor, and keeps what it built, to check that a
     # cached run and a fresh one agree. A built cartridge may hold the original's data, so +folder+
     # must be one git ignores.
     #
-    # WHAT IT DID IS REPORTED at the end of a run (#report): every ask in every process and Ractor, a
+    # What it did is reported at the end of a run (#report): every ask in every process and Ractor, a
     # hit or a miss, and for each miss how long it built and which part of its key changed since the
     # cartridge was last built, so a run that rebuilt more than a change should have says so.
     #
@@ -52,6 +52,8 @@ module VBlank
       # The name of the folder a library's cartridges are kept in: the start of its digest. Only
       # folders named so are ever pruned, whatever else is in the folder the game names.
       LIBRARY_FOLDER = /\A\h{16}\z/
+      # The folder of #snapshots, inside +folder+.
+      SNAPSHOTS_FOLDER = "snapshots"
 
       # The files of the library and of the emulators that build and measure a cartridge.
       FRAMEWORK_GLOBS = ["lib/**/*", "ext/**/*", "core/**/*", "ruby-*-emulator/{lib,ext,core}/**/*"].freeze
@@ -60,7 +62,7 @@ module VBlank
       EMULATOR_ROOTS = Ractor.make_shareable(%w[ruby-gba-emulator ruby-snes-emulator ruby-genesis-emulator ruby-ps1-emulator ruby-dos-emulator]
                                               .filter_map { |name| Gem.loaded_specs[name]&.full_gem_path })
 
-      # WHAT A KEY IS MADE OF, each part's digest: the library's and emulators' files, the Ruby, the
+      # What a key is made of, each part's digest: the library's and emulators' files, the Ruby, the
       # game (its program or its sources), its title, code, maker and options, and the extra inputs.
       # A miss is explained by the parts that differ from the last key the same cartridge was built
       # under.
@@ -109,11 +111,12 @@ module VBlank
         return kept if kept
 
         built[[object_id, key]] = read_or_build(key, label, parts, key_seconds) do
-          game.build_rom(out: nil, err: nil, profile: profile, settings: settings, console: console, variant: variant)
+          game.build_rom(out: nil, err: nil, profile: profile, settings: settings, console: console, variant: variant,
+                         from_cache: false)
         end
       end
 
-      # WHAT THE CACHE DID THIS RUN, written to +out+, and its logs deleted: how many cartridges were
+      # What the cache did this run, written to +out+, and its logs deleted: how many cartridges were
       # read from disk (hits) and how many built (misses), in every process and Ractor that asked since
       # this cache was made, how long working out their keys took, a line for each miss with how long
       # it built and why it missed, and the building the hits saved. Asking again for a cartridge a
@@ -146,6 +149,15 @@ module VBlank
         path
       end
 
+      # Snapshots of consoles part way through a tape (Playthroughs::SnapshotCache), kept in a folder
+      # beside the builds, for a comparison that starts after a frame:
+      #
+      #   SNAPSHOTS = BUILDS.snapshots
+      #   tape.compare(ours, original, starting_after: 4194, snapshots: SNAPSHOTS)
+      #
+      # The library's builds are pruned by their folders' names, which this one never has.
+      def snapshots(env: ENV) = Playthroughs::SnapshotCache.new(File.join(@base, SNAPSHOTS_FOLDER), env: env)
+
       private
 
       # The key and its parts, worked out once in each Ractor for each game and build: by the program,
@@ -157,16 +169,25 @@ module VBlank
           # Marshal is not: it writes an object it has met before as a link back, so a program whose
           # pieces are shared on one process and equal copies on another gave two keys.
           what = @sources || Digest::SHA256.hexdigest(IR::Dump.source(game.program(settings: settings, console: console, variant: variant)))
+          # Every setting the build is told, the handle's (Game#with_settings) and the call's.
           header = Digest::SHA256.hexdigest(Marshal.dump([game.title, game.code, game.maker, game.options.to_h, console, variant,
-                                                          settings, profile]))
+                                                          game.merged_settings(settings), profile]))
           parts = KeyParts.new(library: @library, ruby: @ruby, game: what, header: header, inputs: @inputs)
           [Digest::SHA256.hexdigest(parts.to_h.values.join(" ")), parts]
         end
       end
 
-      # How a report names a cartridge: the game, the console, and the settings that make it one.
+      # How a report names a cartridge: the game, the console, the features it was built with where it
+      # was built with some alone (Game#with_features), the starts it was given (Game#starting_with),
+      # and the settings that make it one, the handle's (Game#with_settings) with the call's.
       def label_for(game, console, variant, settings, profile)
-        [game.title, console, variant, (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
+        built = game.options if game.options.is_a?(Cartridge::Options)
+        features = built&.features_built
+        starts = built&.starts
+        settings = game.merged_settings(settings)
+        [game.title, console, variant, ("features #{features.join(',')}" if features),
+         ("starting #{starts.sort.to_h}" unless starts.nil? || starts.empty?),
+         (settings.sort.to_h unless settings.empty?), ("measured" if profile)].compact.join(" ")
       end
 
       def files_digest(paths)
@@ -214,7 +235,7 @@ module VBlank
         prune
       end
 
-      # WHY A CARTRIDGE MISSED: the parts of its key that differ from the key it was last built under,
+      # Why a cartridge missed: the parts of its key that differ from the key it was last built under,
       # by any run, or that it was never built.
       def miss_reason(label, parts)
         last = last_parts_path(label)

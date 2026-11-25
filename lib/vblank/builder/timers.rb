@@ -2,22 +2,27 @@
 
 module VBlank
   class Builder
-    # The hardware-timer verb: `timer` — start a counter running at a chosen rate and
-    # hand back a {Timer} handle to read (`.ticks`) and stop it. A concern of {Builder},
-    # mixed in so `timer` stays a flat DSL verb.
+    # Hardware timers
+    #
+    # `timer` starts a counter that runs at a rate you choose, on its own and apart from the
+    # frames. The handle it gives back reads the ticks and stops it.
+    #--
+    # A concern of Builder, mixed in so `timer` stays a flat DSL verb.
+    #++
     module Timers
-      # Start a hardware timer named +name+ that ticks +per_second+ times a second.
-      # Returns a {Timer} handle. Calling `timer` again with the same name restarts it
-      # (its tick count resets to zero).
+      # Starts a counter that ticks a number of times a second, and returns a handle to read its
+      # ticks and stop it.
       #
-      #   beat = timer :beat, per_second: 2   # ticks twice a second
+      # Calling `timer` again with the same name restarts it, and its tick count goes back to
+      # zero. For timing that follows the frames, use `every` or `after` instead. A timer is for
+      # precise timing that keeps counting on its own.
       #
-      # For frame-paced gameplay timing, reach for `every` / `after` instead; a hardware
-      # timer is for precise, free-running timing that keeps counting on its own.
+      # ```ruby
+      # beat = timer :beat, per_second: 2   # ticks twice a second
+      # ```
       #
-      # @param name [Symbol] the timer's name
-      # @param per_second [Integer] how many times a second it ticks (a positive whole number)
-      # @return [Timer]
+      # * `name` - the timer's name, as a symbol.
+      # * `per_second:` - how many times a second it ticks: a positive whole number.
       def timer(name, per_second:)
         raise ArgumentError, "A timer name must be a Symbol. Got #{name.inspect}. Use a name like :beat." unless name.is_a?(Symbol)
         unless DSL::Whole.positive?(per_second)

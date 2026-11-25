@@ -3,13 +3,13 @@
 require "test_helper"
 
 # `sprite ..., facing_from: "sheet.png", tile:, dirs: [...]` imports a directional
-# sprite sheet: each ROW of the sheet is a direction (in the order dirs: names, top to
-# bottom) and the COLUMNS of that row are its frames. One column gives a still pose per
+# sprite sheet: each row of the sheet is a direction (in the order dirs: names, top to
+# bottom) and the columns of that row are its frames. One column gives a still pose per
 # direction (a plain facing: sprite); several columns give a per-direction animation.
 # So a four-way character's art comes from one file, like its frames and tiles do.
 #
 # The sheet is sliced through a fake image adapter (canned pixels, no ImageMagick), but
-# the slicing happens at BUILD time and bakes real images into the program — so the same
+# the slicing happens at build time and bakes real images into the program — so the same
 # imported art is checked on every run here AND on real hardware (the emulator), in
 # test/lowering/gba/vblank/builder/test_facing_sheet_cartridge.rb.
 #

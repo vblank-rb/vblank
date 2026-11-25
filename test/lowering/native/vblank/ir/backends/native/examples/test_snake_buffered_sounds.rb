@@ -3,7 +3,7 @@
 require "test_helper"
 require "native_comparison"
 require "sound_comparison"
-require VBlank.root.join("examples/snake_buffered").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake_buffered").to_s)
 
 # examples/snake_buffered.rb built for the desktop sounds like the cartridge: started and then
 # left alone, the snake runs straight into a wall, and the beep as it dies — on the second square

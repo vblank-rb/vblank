@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_save_data"
 
-# A SAVE OF ALL OF PLAY IN ONE WORD: `keep part: :play` keeps every variable, list and pool the part
+# A save of all of play in one word: `keep part: :play` keeps every variable, list and pool the part
 # declares, as `start_over :play` puts them back, so a game can save in the middle of play and carry
 # on after the power goes off without naming each of its hundreds of numbers.
 class TestSaveDataKeepPart < Minitest::Test

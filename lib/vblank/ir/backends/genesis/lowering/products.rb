@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class Genesis
         class Lowering
-          # MULTIPLYING BY A NUMBER WRITTEN IN THE GAME, written where the sum is rather than as a call of
+          # Multiplying by a number written in the game, written where the sum is rather than as a call of
           # the runtime's multiply. Mixed into Lowering.
           #
           # The 68000 has no multiply of two long words. The runtime's (rt_mul32) makes one of three of its
@@ -26,7 +26,7 @@ module VBlank
           # (an index times how many numbers a record has), a sprite's picture from the way it faces (the
           # way times how many frames each has), a row of a map (a row times how many cells across).
           #
-          # A PRODUCT BY A COMPARISON is the other side while the comparison holds and nought while it
+          # A product by a comparison is the other side while the comparison holds and nought while it
           # does not, since a comparison is 1 or 0: a shown flag times "this scene is up", a digit times
           # "this place is reached". The comparison jumps on its own flags (#emit_product_by_comparison).
           module Products
@@ -216,8 +216,14 @@ module VBlank
               [[node.lhs, node.rhs], [node.rhs, node.lhs]].any? { |test, other| comparison?(test) && unchanging?(other) }
             end
 
-            # Does working +operand+ out change nothing (IR::Unchanging)?
-            def unchanging?(operand) = operand.is_a?(Symbol) || (operand.is_a?(Node) && Unchanging.value?(operand) { |part| folded(part) })
+            # Does working +operand+ out change nothing (IR::Unchanging)? A slot at an address known
+            # here (#fixed_slot) is inside its list, so reading it cannot stop the game.
+            def unchanging?(operand)
+              operand.is_a?(Symbol) || (operand.is_a?(Node) && Unchanging.value?(operand) { |part| folded(part) || fixed_slot_read?(part) })
+            end
+
+            # Whether +node+ reads a list's slot at an address known here (#fixed_slot).
+            def fixed_slot_read?(node) = node.kind == :list_get && !fixed_slot(node).nil?
           end
         end
       end

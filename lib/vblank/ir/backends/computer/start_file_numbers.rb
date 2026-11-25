@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # HOW MANY NUMBERS, AND WHERE, a picture read from the start file is handed to the runtimes
+        # How many numbers, and where, a picture read from the start file is handed to the runtimes
         # in (StartFileFills#start_file_fill_rules): the layout its tiles are kept in, then the
         # layout its colours are kept in. Written ahead of each runtime with the console's numbers
         # (ConsoleNumbers#values), so the C, JavaScript and Ruby runtimes read the same names and
@@ -40,18 +40,26 @@ module VBlank
           # cells are kept, where its tiles and its banks of colours are, how many sets of colours
           # its tiles are written in, which of its tiles is the map's first in each, how many bytes
           # a cell of its map is, where the cells it is told by a slot are in the file, how many,
-          # and which of the tiles the game holds is the first of theirs, and how many tiles each
-          # set of colours is, the maps of every set of tiles together.
-          BACKGROUND_HEADER_NUMBERS = 25
+          # and which of the tiles the game holds is the first of theirs, how many tiles each
+          # set of colours is, the maps of every set of tiles together, where the map starts in the
+          # map cells, where its pool's tiles of places start in the tile pixels, and whether it is
+          # the first and the last map of its pool (StartFileFills#record_start_file_background_fill),
+          # the bit of a cell read for being in front of the sprites (one never set where none is
+          # read), the number the runtime knows the background by, how many tiles a bank's table
+          # of colours takes, the pool's first tile of places among the background's, and the
+          # background's first table among its tiles.
+          BACKGROUND_HEADER_NUMBERS = 34
 
           # The numbers before the tile layout in a pose's rules (StartFileFills#start_file_pose_rules):
           # what is filled, the totals, how many copies of it there are, the turn, the colours, where
           # the frame's entry is in the file and where the frames' records start, the origin, where
           # the tiles are, the bank a piece must name to be painted (-1 for every piece), and how
-          # the console's sprite table holds a piece (StartFileFills#pose_piece_rules). How the
+          # the console's sprite table holds a piece (StartFileFills#pose_piece_rules), how many places
+          # the pose's colours are, and for a pose of several banks those banks, a bit each (0 for
+          # any other pose), and how many places one bank's colours are. How the
           # original keeps a frame is not among them: the file holds a record of VBlank's own for
           # each (Original::FrameRecord), which each runtime reads by that record's fixed layout.
-          POSE_HEADER_NUMBERS = 18
+          POSE_HEADER_NUMBERS = 20
 
           # The numbers before the colour layout in the rules of colours of a list the file chooses
           # (StartFileFills#chosen_color_rules): where the frame's entry is and where the frames'
@@ -59,7 +67,7 @@ module VBlank
           # lists there are, and the first place filled.
           CHOSEN_COLORS_HEADER_NUMBERS = 6
 
-          # THE LAYOUT OF A FRAME'S RECORD, as each runtime reads it: how many bytes a directory
+          # The layout of a frame's record, as each runtime reads it: how many bytes a directory
           # entry, a frame's header and a piece are, and where each part of a piece is. They are
           # Original::FrameRecord's own numbers, the one place the layout is written down, handed on
           # under the names the runtimes know them by. That module loads after this one, so they are

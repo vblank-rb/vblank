@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/scroll").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/scroll").to_s)
 
 # examples/scroll.rb on a Genesis: a 64x64-tile world, as big as a plane of the console's video chip is,
 # panned under the screen and held to the interpreter — every pixel — after every pass.

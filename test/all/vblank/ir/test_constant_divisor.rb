@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# DIVIDING BY A NUMBER WRITTEN IN THE GAME (IR::ConstantDivisor): a lowering may multiply by a
+# Dividing by a number written in the game (IR::ConstantDivisor): a lowering may multiply by a
 # reciprocal worked out when the game is built rather than divide, and a shift does for a power of
 # two. Either way the answer is Int32.div's and Int32.mod's, for every numerator, the most negative
 # included, and for every divisor's sign.

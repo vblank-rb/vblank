@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# A SHELL'S UNPACKING PLAYED IN A RACTOR OF ITS OWN (Live::BackgroundUnpacking). On the Ruby run
+# A shell's unpacking played in a Ractor of its own (Live::BackgroundUnpacking). On the Ruby run
 # alone: it plays the unpacking as Ruby whatever run it is in.
 class TestBackgroundUnpacking < Minitest::Test
   BackgroundUnpacking = VBlank::Live::BackgroundUnpacking

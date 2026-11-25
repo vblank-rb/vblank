@@ -1,13 +1,13 @@
 # frozen_string_literal: true
 
 # The child half of the Color's numbers in `rake emitted:check` (see tools/emitted_baseline.rb):
-# build ONE example's Game Boy Color cartridge and print what it holds, as a line of JSON.
+# build one example's Game Boy Color cartridge and print what it holds, as a line of JSON.
 #
 #   ruby tools/emitted_color_probe.rb <lib root> <repo root> <example.rb>
 #
 # It runs in a process of its own as tools/emitted_probe.rb does, for the same reasons.
 #
-# TWO NUMBERS, because a Color cartridge has two kinds of room. +code+ is the part always in view,
+# Two numbers, because a Color cartridge has two kinds of room. +code+ is the part always in view,
 # 16384 bytes that everything short of the banks must share, and a game that runs out of it does
 # not build. +data+ is what the banks hold. Each is read off the finished cartridge: a bank is
 # filled from its start and the rest left at 0xFF, so its last byte that is not 0xFF is how far it

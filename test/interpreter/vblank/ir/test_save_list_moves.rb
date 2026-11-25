@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A WHOLE LIST MOVED TO OR FROM SAVE MEMORY IN ONE STEP (IR save_store_list, save_load_list) means
+# A whole list moved to or from save memory in one step (IR save_store_list, save_load_list) means
 # exactly the loops it stands for (IR::SaveListMoves.loops_for): the same bytes in save memory and
 # the same list. The interpreter runs the step itself, so this holds its own reading of the step to
 # the loops every backend without a routine of its own lowers.

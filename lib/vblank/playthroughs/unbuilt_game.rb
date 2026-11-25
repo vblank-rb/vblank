@@ -4,7 +4,7 @@ require "zlib"
 
 module VBlank
   module Playthroughs
-    # A GAME CHECKED AND NOT BUILT INTO A CARTRIDGE, standing where a cartridge stands for a
+    # A game checked and not built into a cartridge, standing where a cartridge stands for a
     # playthrough that runs the game itself: as Ruby, as JavaScript, as C, its rules alone, or in
     # the interpreter (LoweredGame). `vblank run` plays a script or a tape on one of these, so it
     # never waits for a cartridge it would not play. A big game's cartridge is built twice, once to
@@ -24,6 +24,16 @@ module VBlank
         @source_program = program
         @title = title.to_s
         @checksum = Zlib.crc32(source.to_s)
+      end
+
+      # +game+ (a Cartridge::Game, what `VBlank.game` gives back) checked and not built: the checks
+      # every build makes, and none of what only a cartridge needs (lowering it, measuring it, putting
+      # it together). Made once, it plays on every way that runs the game itself, with a seed per
+      # playing (Playthrough#play) as often as wanted. +settings+, +console+, +err+ and +progress+ are
+      # as for Cartridge::Game#checked_program.
+      def self.of(game, settings: {}, console: game.consoles.first, err: $stderr, progress: Messages::Progress.silent)
+        program = game.checked_program(settings: settings, console: console, err: err, progress: progress)
+        new(program, title: game.title, source: [game.title, settings, console])
       end
 
       def console = @source_program.console

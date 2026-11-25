@@ -2,7 +2,7 @@
 
 module VBlank
   module Original
-    # WHAT EVERY RUNTIME IS TOLD ABOUT A SHELL (Shell#facts), the one record the desktop program's
+    # What every runtime is told about a shell (Shell#facts), the one record the desktop program's
     # (Native::ShellData), the web page's (JS#build_shell_page) and the Ruby one's (Live::Shell, in
     # this process or written out as one file) are all made from. Every sentence a shell refuses a
     # file in is here, made once in Ruby, with {name} where a runtime fills in what only it knows
@@ -28,7 +28,7 @@ module VBlank
                              :pack_after_sha1, :pack_rules, :menu, :unpacking, :words, :pieces, :bar)
 
     class ShellFacts
-      # AN UNPACKING SPLIT FOR SEVERAL WORKERS, as a runtime plays it (Original::PiecedUnpacking
+      # An unpacking split for several workers, as a runtime plays it (Original::PiecedUnpacking
       # makes it): +main+, the number of the program of the parts not in pieces in the runtime's
       # list of worker programs, which holds +main_bytes+ of slots and is +main_work+ to make;
       # +pieces+, each a PlannedPiece; +whole_work+, the whole pack's; and +queue+, the pieces'
@@ -74,7 +74,7 @@ module VBlank
         def start_file(copy) = ShellFacts.piece_start_file(copy, number)
       end
 
-      # WHERE A SHELL DRAWS THE BAR OF SEVERAL WORKERS, over the picture the main program draws
+      # Where a shell draws the bar of several workers, over the picture the main program draws
       # (Original::UnpackingProgress, whose look this is): +side+ pixels in from the picture's left
       # and right, +height+ tall and in the middle from top to bottom, its done part +filled+ and the
       # rest +empty+, each a colour of fifteen bits as the picture keeps them.
@@ -152,7 +152,7 @@ module VBlank
       # a runtime that unpacks on workers plays in place of its whole routine.
       def split?(number) = !pieces&.fetch(number).nil?
 
-      # THE FILE A PIECE'S PROGRAM IS HANDED AS IT STARTS: the copy, +copy+, then the piece's
+      # The file a piece's program is handed as it starts: the copy, +copy+, then the piece's
       # +number+ in Original::Unpacking::PIECE_NUMBER_BYTES, low byte first (rg_shell.js writes
       # the same).
       def self.piece_start_file(copy, number) = copy.b + [number].pack("v")

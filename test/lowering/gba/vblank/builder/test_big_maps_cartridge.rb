@@ -36,10 +36,10 @@ class TestBigMapsCartridge < Minitest::Test
   # --- how much a view costs to put up ---
 
   # Cells the console copied into the view of background :ground over the 20 frames a profile
-  # measures, or 0 when it copied none.
-  private def cells_copied(rom)
-    copies = VBlank::Diagnostics::Profiler.run(rom, frames: 20, picture: false).video_copies
-    copies.find { |copy| copy.source.include?(":ground") }&.copies || 0
+  # measures, two bytes a cell, or 0 when it copied none.
+  private def cells_copied(rom, frames: 20, settle: VBlank::Diagnostics::Profiler::SETTLE)
+    copies = VBlank::Diagnostics::Profiler.run(rom, frames: frames, settle: settle, picture: false).video_copies
+    (copies.find { |copy| copy.source.include?(":ground") }&.bytes || 0) / 2
   end
 
   # A scene owning a big room takes over every fourth pass, for one pass. +body+ is what else
@@ -61,15 +61,12 @@ class TestBigMapsCartridge < Minitest::Test
         pass += 1
         mode = 0
         mode = 1 if (pass & 3) == 0
-        case_var(:mode) do
-          when_val 0, :waiting
-          when_val 1, :playing
-        end
+        call({ 0 => :waiting, 1 => :playing }, number: :mode)
       end
     end
   end
 
-  # A SCENE TAKING OVER FILLS ITS BIG ROOM'S VIEW ONCE, in the five takeovers a profile sees,
+  # A scene taking over fills its big room's view once, in the five takeovers a profile sees,
   # and once still when it names the first map on that pass. Naming ANOTHER map there is two
   # pictures, each a whole view: the frame the scene takes over on shows its first map, as
   # declared, on every backend, and the frame after shows the map named.
@@ -79,7 +76,7 @@ class TestBigMapsCartridge < Minitest::Test
     assert_equal 10 * VIEW_CELLS, cells_copied(taking_over_every_fourth_pass("BIGT3") { |ground| ground.show_map :second })
   end
 
-  # A SCENE'S FIRST TAKEOVER, NAMED AT THE END OF THE PASS BEFORE — as a file screen does on START
+  # A scene's first takeover, named at the end of the pass before — as a file screen does on START
   # — fills the view once. The gap between that pass and the takeover already counts the new scene
   # as the one running, so its big room's view used to be filled there too, before the scene had put
   # its scenery up at all, and then again as it did.
@@ -88,9 +85,6 @@ class TestBigMapsCartridge < Minitest::Test
   def test_a_first_takeover_named_at_the_end_of_the_pass_before_fills_the_view_once
     test = self
     rom = VBlank.build("BIGF1", console: :gba, out: nil, err: nil) { test.named_at_the_end_of_a_pass(self) }
-    copies = VBlank::Diagnostics::Profiler.run(rom, frames: 30, settle: 0, picture: false).video_copies
-    copied = copies.find { |copy| copy.source.include?(":ground") }&.copies || 0
-
-    assert_equal VIEW_CELLS + (5 * 21) + (3 * 31), copied, "cells copied into the view over the takeover"
+    assert_equal VIEW_CELLS + (5 * 21) + (3 * 31), cells_copied(rom, frames: 30, settle: 0), "cells copied into the view over the takeover"
   end
 end

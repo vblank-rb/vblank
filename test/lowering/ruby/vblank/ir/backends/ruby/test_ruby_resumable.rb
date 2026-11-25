@@ -116,7 +116,7 @@ class TestRubyResumable < Minitest::Test
     assert_equal 55_669, game.trail
   end
 
-  # A TIMER'S TICK THAT WAITS, in the routine the game is stopped inside: the tick starts stop_or_not
+  # A timer's tick that waits, in the routine the game is stopped inside: the tick starts stop_or_not
   # afresh (5), stops in its wait and hands the runtime 1, and carries on from there when ticked again (6), and
   # the game then carries on from where it had stopped (6, 9). A tick at a boundary inside the
   # handler's wait runs it to its end (5, 6) and leaves it stopped where it was.

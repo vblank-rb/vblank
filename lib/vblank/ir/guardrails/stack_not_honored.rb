@@ -7,7 +7,28 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A BACKGROUND a bitmap screen cannot move in the stack.
+        # A warning for a `layers` line that puts backgrounds on a bitmap screen in an order the
+        # screen cannot show:
+        #
+        # > This game draws with `screen :bitmap`, and its stack asks for a background order that
+        # > screen does not give.
+        #
+        # The message goes on to show both orders:
+        #
+        # > The stack asks for <names>, back to front. The screen will show <names>.
+        #
+        # A bitmap screen has one picture, and a `background` paints into it where it is declared.
+        # So the backgrounds come out in the order the declarations run, and the `layers` line
+        # cannot move them. The game runs, but the picture is not the one the `layers` line
+        # describes.
+        #
+        # To fix this, use `screen :tiled`, where the console draws each background every frame and
+        # the stack decides what is in front. Or declare the backgrounds in the order you want them
+        # painted. Sprites are not affected: they are drawn again every frame, so their layers work
+        # on this screen.
+        #
+        #--
+        # A background a bitmap screen cannot move in the stack.
         #
         # A bitmap screen has one picture, and a `background` there stamps its tiles
         # straight into it where it is declared. After that it is not a background at
@@ -15,7 +36,7 @@ module VBlank
         # reach back and move them. So the order backgrounds come out in is the order
         # the declarations ran, whatever the stack asks for.
         #
-        # SPRITES ARE NOT LIKE THAT, and used to be caught here too. A software sprite
+        # Sprites are not like that, and used to be caught here too. A software sprite
         # is repainted every frame, so its place in the stack is a live question the
         # frame boundary answers — it draws them back to front and erases them front to
         # back (see Builder::ControlFlow#emit_frame_boundary). A stack that reorders
@@ -28,6 +49,7 @@ module VBlank
         # shows both: what the stack asks for, and what the screen will show. Nothing
         # else ever mentions it. The game runs, the picture is simply not the one the
         # stack describes, and the stack is the one line a reader trusts for this.
+        #++
         class StackNotHonored
           NAME = :stack_not_honored
           PLAIN_NAME = "a stack the screen cannot show"
@@ -58,7 +80,7 @@ module VBlank
           # What a bitmap screen really paints, in the order it really paints it — and the
           # two halves are not alike, which is the whole of what this check knows.
           #
-          # A BACKGROUND stamps itself into the one picture where it is declared, so the
+          # A background stamps itself into the one picture where it is declared, so the
           # backgrounds come out in declaration order and nothing later can move them.
           # SPRITES are repainted every frame, and the frame boundary already puts them
           # in stack order, so they come out where the stack asked.

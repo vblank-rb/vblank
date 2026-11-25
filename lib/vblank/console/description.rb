@@ -5,21 +5,21 @@ require_relative "dos_hardware"
 
 module VBlank
   module Console
-    # The save memory an Advance cartridge can carry: an 8K EEPROM, 32K of battery-backed memory,
+    # The save memory an Advance cartridge can carry: a 512-byte EEPROM, an 8K EEPROM, 32K of battery-backed memory,
     # or 64K or 128K of flash (IR::SaveLayout says what each keeps where).
-    ADVANCE_SAVE_MEMORIES = Ractor.make_shareable([[8, :eeprom], [32, :battery], [64, :flash], [128, :flash]])
+    ADVANCE_SAVE_MEMORIES = Ractor.make_shareable([[0.5, :eeprom], [8, :eeprom], [32, :battery], [64, :flash], [128, :flash]])
 
     # A plain Super Nintendo cartridge's: 32K of battery-backed RAM. One with a Super FX chip keeps
     # 64K, the whole of the second bank of the chip's RAM (Cartridge::SNESROM::SUPER_FX).
     SNES_PLAIN_SAVE_MEMORIES = Ractor.make_shareable([[32, :battery]])
     SNES_SUPER_FX_SAVE_MEMORIES = Ractor.make_shareable([[64, :battery]])
 
-    # WHAT A CONSOLE IS, AS FAR AS A GAME CAN TELL: how big its screen is, which buttons it has, how
+    # What a console is, as far as a game can tell: how big its screen is, which buttons it has, how
     # many sprites it shows, and which of the picture's tricks it can do at all. The builder, the
     # build checks and the interpreter read these, so a game is laid out, checked and played for the
     # screen it will be shown on.
     #
-    # It holds nothing about HOW the console is driven — register addresses, memory, the processor —
+    # It holds nothing about how the console is driven — register addresses, memory, the processor —
     # which is each lowering's own business (Console::Hardware is the Advance's). A program carries
     # the name of the console it was built for, and anything that reads it asks
     # Program#described_console.
@@ -102,7 +102,7 @@ module VBlank
     # stood at each of those moments, a hiss of its own and a lower one. A backend that makes the
     # sound itself looks at the hiss at the same moments to make the same one. +lowest_square_hz+ is
     # the bottom of a square voice, or nil where it has none: a chip that tunes one by a number of
-    # clock ticks a wave runs out of ticks, and plays a lower note AT its bottom, a different note
+    # clock ticks a wave runs out of ticks, and plays a lower note at its bottom, a different note
     # with nothing to say so. A console whose square is a recording reads it more slowly and has no
     # such place. +largest_memory_bytes+ is how
     # many bytes the largest memory a game's lists and pools are kept in holds: one pool is kept
@@ -182,9 +182,18 @@ module VBlank
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
-                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels,
+                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas, :bigger_pixels_pixelate, :bigger_pixels_camera,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
-                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts) do
+                              :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
+                              :screen_of_its_own, :largest_list_bytes) do
+      # +largest_list_bytes+ is the most one list can take, where the console keeps each list whole
+      # in one part of its work memory and the parts differ in size: the Color's banked half, the
+      # largest of its two. Nil is no limit but the memory itself (Checks::IwramBudget).
+      #
+      # +screen_of_its_own+ marks a computer's build of a game that asks a size of screen
+      # (#with_screen_size): the window shows the picture whole, or a scene's smaller screen in the
+      # middle of it (Program::SHOWN_SCREEN_VARIABLE, rg_screen_show_size). False for every console.
+      #
       # +code_cache_bytes+ is how much of the game's code the processor keeps in a cache of its own and
       # runs without going out to memory for each instruction, or nil for a processor with none (it
       # reads every instruction from memory as it runs it, or memory as quick as a cache). Where it is
@@ -209,6 +218,10 @@ module VBlank
       # (`screen :bitmap, pixel_size: 2`, #with_pixel_size). The screen size above is then the
       # game's small picture, which is what the game lays itself out on and what the interpreter
       # plays. +shows_bigger_pixels+ marks whether the console's hardware can show it that way.
+      # +bigger_pixels_fade_areas+ marks whether, shown that way, it can also hold a fade to a rectangle the
+      # game gives in its own pixels (`fade ..., inside:` or `outside:`). +bigger_pixels_pixelate+ marks whether
+      # it can pixelate, the biggest block being 16 over +pixel_size+. +bigger_pixels_camera+ marks whether it
+      # can move the camera, counted in the game's pixels.
       #
       # +pose_lists+ sets what the console's build makes of one sprite whose poses are drawn from
       # different lists of colours. A console's sprite table names the group of colours of each entry
@@ -253,12 +266,12 @@ module VBlank
       # read with one index; :records, a record for each thing. A game may name one
       # (`pool :enemy, ..., layout: :tables`); one the console lacks is refused.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
-                     pixel_size: 1, shows_bigger_pixels: false, pose_lists: :one, sprites_in_blocks: true,
+                     pixel_size: 1, shows_bigger_pixels: false, bigger_pixels_fade_areas: false, bigger_pixels_pixelate: false, bigger_pixels_camera: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
-                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -276,6 +289,20 @@ module VBlank
 
         with(screen_width: screen_width / size, screen_height: screen_height / size, pixel_size: size,
              plays_bios_start_up: false)
+      end
+
+      # This console as a computer's build plays it for a game that asks a screen of its own
+      # (`screen :bitmap, size: [320, 200]`): +size+ is [width, height], and nil leaves the console
+      # as it is. A computer's window is any size, so the screen is the size asked and the window
+      # opens that big. Nothing else changes: the buttons, the sound and the clock are still the
+      # console the program is made as, which is what --console promises. A border is the
+      # console's way of showing a smaller screen inside its own, and the start-up's logo is drawn
+      # for the console's screen, so a screen of its own has neither.
+      def with_screen_size(size)
+        return self if size.nil?
+
+        with(screen_width: size[0], screen_height: size[1], whole_screen_size: nil, plays_bios_start_up: false,
+             screen_of_its_own: true)
       end
 
       # This console showing only the rows [first, past] of +rows+ (see +shown_rows+); the console
@@ -386,8 +413,8 @@ module VBlank
                               # The sprite table and the scroll are written straight into the
                               # console in the gap after the wait, and show on the frame after it.
                               sprites_placed_before_wait: false,
-                              # Its rumble cartridges are not made here yet: nothing is felt.
-                              rumbles: false,
+                              # A cartridge with a motor, for a game that rumbles (Backends::GBA::Rumble).
+                              rumbles: true,
                               # The logo and its chime, played from the player's own BIOS.
                               plays_bios_start_up: true, whole_screen_size: nil, extension: ".gba",
                               # The fill in ARM (Backends::GBA::Faces) tests a face's corners against
@@ -396,6 +423,16 @@ module VBlank
                               # The painted screen is drawn through a background that resizes, so
                               # told to read half a pixel a step it shows each pixel as four.
                               shows_bigger_pixels: true,
+                              # The display's window is cut by the console's pixels, so the edges the
+                              # game gives are doubled as they are written (ScreenEffects#emit_fade_window).
+                              bigger_pixels_fade_areas: true,
+                              # The display's mosaic is counted in the console's pixels, so the game's
+                              # block is written times pixel_size and the biggest is 16 over it
+                              # (Backends::Blocks.largest_for).
+                              bigger_pixels_pixelate: true,
+                              # The camera moves the window over the picture by the game's pixels, a
+                              # half step each (ScreenEffects#emit_camera).
+                              bigger_pixels_camera: true,
                               # A record for each thing where it fits, else as lists; tables side by
                               # side where a game asks (Backends::PoolLayout::OWN_LAYOUTS says why).
                               pool_layouts: %i[records lists tables].freeze)
@@ -438,7 +475,12 @@ module VBlank
                             # runtime's own state are in it before any variable, which the Color
                             # lowering's tests hold this to (test_gbc_memory.rb).
                             largest_memory_bytes: 8 * 1024,
-                            work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 2048,
+                            # A list never spans the two halves, and the always-there half is the
+                            # smaller, so the banked half's 4K is the most one list can take. This
+                            # file must not require the lowering, so the number is written out;
+                            # test_gbc_memory.rb holds it to GBC::Memory.
+                            largest_list_bytes: 4 * 1024,
+                            work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 1952,
                             roomier_memory_bytes: 0, variables_go_far: false,
                             # The sprite table and the scroll are sent from a copy as the wait
                             # ends, so a pass's are placed before it to show on the frame after.
@@ -459,11 +501,12 @@ module VBlank
 
     # The Super Nintendo: a wider and taller screen than the Advance's, twelve buttons (a game reads
     # the ten the Advance has), 128 sprites and 34 pieces of them on a row, backgrounds of tiles,
-    # nothing that turns but one layer the build does not use, lists of sixteen colours. What each
-    # verb does on it is Console::SNESAnswers's to say.
+    # nothing that turns but one layer the build does not use, lists of sixteen colours. Four
+    # controllers: the first port's, and three through a Super Multitap in the second
+    # (SNES::Runtime::Frame#emit_tap_bits). What each verb does on it is Console::SNESAnswers's to say.
     SUPER_NINTENDO = Description.new(name: :snes, title: "Super Nintendo", screen_width: 256, screen_height: 224,
-                                     buttons: %i[a b select start right left up down r l x y].freeze, controllers: 2,
-                                     holds_background_above_row: true, background_box: nil, glides_recordings: true, sets_main_volume: true, sprites: 128,
+                                     buttons: %i[a b select start right left up down r l x y].freeze, controllers: 4,
+                                     holds_background_above_row: true, background_box: :own_window, glides_recordings: true, sets_main_volume: true, sprites: 128,
                                      # rt_paint_area keeps the area in memory, and a routine on a
                                      # Super FX chip is handed it (SNES::Lowering::Paint#emit_inside,
                                      # SNES::ChipCode#area_places).
@@ -552,12 +595,14 @@ module VBlank
                                      save_memories: SNES_PLAIN_SAVE_MEMORIES,
                                      extension: ".sfc")
 
-    # The Sega Genesis: a 320×224 screen, a pad of seven buttons (the D-pad, A, B, C and Start: no
-    # Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
+    # The Sega Genesis: a 320×224 screen, pads of seven buttons each (the D-pad, A, B, C and Start:
+    # no Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
     # tiles, nothing that turns, four lists of sixteen colours, and colours of 9 bits, three to a
-    # channel. What each verb does on it is Console::GenesisAnswers's to say.
+    # channel. Four pads: the first port's, and three on a Team Player in the second
+    # (Genesis::Runtime::Frame#emit_team_player_read). What each verb does on it is
+    # Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
-                              buttons: %i[a b c start right left up down].freeze, controllers: 1,
+                              buttons: %i[a b c start right left up down].freeze, controllers: 4,
                               holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
                               sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
@@ -623,13 +668,14 @@ module VBlank
                               extension: ".gen")
 
     # The PlayStation: a 320×240 screen, a pad whose buttons a game names by the shared names (Cross is
-    # :a, Circle :b, Triangle :x, Square :y, L1 and R1 :l and :r), pictures drawn by a graphics chip with no
-    # limit of sprites on a row, colours of fifteen bits and lists of 256 of them. What each verb does on it
-    # is Console::PS1Answers's to say.
+    # :a, Circle :b, Triangle :x, Square :y, L1 and R1 :l and :r, and L2 and R2 :l2 and :r2), pictures drawn
+    # by a graphics chip with no limit of sprites on a row, colours of fifteen bits and lists of 256 of them.
+    # What each verb does on it is Console::PS1Answers's to say.
     PLAYSTATION = Description.new(name: :ps1, title: "PlayStation", screen_width: 320, screen_height: 240,
-                                  buttons: %i[a b select start right left up down r l x y].freeze,
-                                  # Two ports for pads (the build reads the first alone for now).
-                                  controllers: 2,
+                                  buttons: %i[a b select start right left up down r l x y l2 r2].freeze,
+                                  # Four pads: the first port's, and three on a Multitap in the second
+                                  # (PS1::Runtime::Pads).
+                                  controllers: 4,
                                   # A background is a picture the graphics chip draws, so it can be held to
                                   # a box (the chip's drawing area) that nothing else uses. A recorded note
                                   # can glide: its voice's pitch is a register written while it plays.

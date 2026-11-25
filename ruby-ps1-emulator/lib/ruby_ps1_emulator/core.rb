@@ -80,8 +80,14 @@ module RubyPS1Emulator
     WIDTHS = [256, 320, 512, 640].freeze
     WIDTH_368 = 1 << 6
 
-    # The settings the core asks for, as libretro names them: none, so it keeps its own.
-    SETTINGS = Ractor.make_shareable({})
+    # The settings the core asks for, as libretro names them: its own for everything but the second port,
+    # which holds a pad unless a Multitap is plugged in (#plug_in_multitap). The core reads that one as it
+    # loads a program and makes its ports then, so it cannot be changed while one plays. It is always
+    # given: the core keeps what it read last in the library's own memory, and a copy of the library a
+    # console with a Multitap gave back (KeptCopy) would otherwise keep the tap for the next.
+    MULTITAP_SETTING = "beetle_psx_enable_multitap_port2"
+    SETTINGS = Ractor.make_shareable({ MULTITAP_SETTING => "disabled" })
+    MULTITAP_SETTINGS = Ractor.make_shareable({ MULTITAP_SETTING => "enabled" })
 
     # The picture format the core is let draw in: whichever it asks for, since the picture is read
     # from video RAM and never from what the core hands over.
@@ -107,16 +113,48 @@ module RubyPS1Emulator
     def initialize(exe_path, save_dir: nil, bios: nil)
       raise ArgumentError, "there is no BIOS file at #{bios}" if bios && !File.file?(bios)
 
-      @dir = Dir.mktmpdir("ruby-ps1-emulator")
-      File.symlink(File.expand_path(bios), File.join(@dir, BIOS_NAME)) if bios
       @frames = 0
       @sound_frames = 0
       @audio = []
-      start_frontend(save_dir || @dir)
-      load_program(exe_path)
+      @opened = Opened.new(exe_path: exe_path, save_dir: save_dir, bios: bios)
+      power_on(SETTINGS)
     end
 
-    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS).
+    # What a Core was made with, to make it again (#plug_in_multitap).
+    Opened = Data.define(:exe_path, :save_dir, :bios)
+
+    # Sony's Multitap (SCPH-1070) in the second port, in place of the pad there: four plugs, each a pad
+    # of its own, ports 1 to 4 of #set_buttons, the first port's pad staying port 0. The core makes its
+    # ports as it loads the program, so the console is switched on again with the tap in, and only
+    # before its first frame. A program reads the tap through the second port's serial line, all four
+    # plugs in one exchange (psx-spx, "Controllers and Memory Cards", Multitap).
+    def plug_in_multitap
+      return self if @multitap
+      raise ArgumentError, "a Multitap is plugged in before the first frame, and #{@frames} have run" unless @frames.zero?
+
+      destroy
+      power_on(SETTINGS.merge(MULTITAP_SETTINGS))
+      @multitap = true
+      self
+    end
+
+    # Whether a Multitap is in the second port (#plug_in_multitap).
+    def multitap? = @multitap == true
+
+    # What can be in a port (#plug), as libretro names its devices: Sony's digital pad, its Dual Analog
+    # pad (SCPH-1180, which answers as an analog pad, kind 73h, its sticks after its buttons), or nothing
+    # (Beetle's RETRO_DEVICE_PS_ANALOG and RETRO_DEVICE_NONE, in its input.h).
+    PLUGGED = { pad: JOYPAD, analog: 0x105, nothing: 0 }.freeze
+
+    # +kind+ (PLUGGED) in controller +port+ (0 for the first, 1 to 4 a Multitap's plugs), in place of
+    # what was there.
+    def plug(port, kind)
+      @frontend.set_controller_port_device(port, PLUGGED.fetch(kind))
+      self
+    end
+
+    # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are read
+    # only through a Multitap (#plug_in_multitap); without one, nothing asks for them.
     def set_buttons(buttons, port: 0)
       unknown = buttons - BUTTONS.keys
       raise ArgumentError, "a PlayStation pad has no #{unknown.join(', ')} button" unless unknown.empty?
@@ -223,6 +261,16 @@ module RubyPS1Emulator
         bytes += @frontend.memory_read(VIDEO_RAM, line, (width - before_edge) * 2) if width > before_edge
         bytes.unpack("v*").map { |color| color & 0x7FFF }
       end.flatten
+    end
+
+    # THE CONSOLE'S WHOLE STATE, as Beetle PSX saves it: every chip's memory and registers, in its own
+    # format, for #unserialize to put back on a console playing the same program.
+    def serialize = @frontend.serialize
+
+    def unserialize(state)
+      raise ArgumentError, "Beetle PSX did not take this state. It must be one this core saved." unless @frontend.unserialize(state)
+
+      self
     end
 
     # --- the memories ---
@@ -372,12 +420,21 @@ module RubyPS1Emulator
       @audio.concat(bytes.unpack("s<*"))
     end
 
+    # A system folder of its own, with the BIOS linked in, the core started in it with +settings+, and
+    # the program loaded.
+    def power_on(settings)
+      @dir = Dir.mktmpdir("ruby-ps1-emulator")
+      File.symlink(File.expand_path(@opened.bios), File.join(@dir, BIOS_NAME)) if @opened.bios
+      start_frontend(@opened.save_dir || @dir, settings)
+      load_program(@opened.exe_path)
+    end
+
     # Opens a copy of the core of this Core's own and starts it, with the system folder (where a BIOS
-    # is linked) and the save folder it is told.
-    def start_frontend(save_dir)
+    # is linked), the save folder it is told and the core's +settings+.
+    def start_frontend(save_dir, settings)
       copy = KeptCopy.take
       begin
-        @frontend = Frontend.new(copy.path, @dir, save_dir, SETTINGS, ANY_PIXEL_FORMAT)
+        @frontend = Frontend.new(copy.path, @dir, save_dir, settings, ANY_PIXEL_FORMAT)
       rescue StandardError, LoadError
         copy.give_back
         FileUtils.rm_rf(@dir)

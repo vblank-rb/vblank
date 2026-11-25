@@ -12,14 +12,14 @@ module VBlank
     # showing it. So a picture font needs nothing of its own from any backend.
     module PictureFonts
       # The hidden variables a live number's digit routine reads: which picture, and where.
-      DIGIT_SHOWN = :__picture_digit_shown
-      DIGIT_COLUMN = :__picture_digit_column
-      DIGIT_ROW = :__picture_digit_row
+      DIGIT_SHOWN = :__picture_digit_shown  # :nodoc:
+      DIGIT_COLUMN = :__picture_digit_column  # :nodoc:
+      DIGIT_ROW = :__picture_digit_row  # :nodoc:
 
       # A font of a pack's pixels with the pack left out (#declare_lettering_font): its letters'
       # slices by character, the byte that is not lit, and its widths and spacing as a font of
       # pictures (+metrics+).
-      Lettering = Data.define(:slices, :blank, :metrics)
+      Lettering = Data.define(:slices, :blank, :metrics)  # :nodoc:
 
       private
 
@@ -154,7 +154,7 @@ module VBlank
         tiles.with(tile_index: tiles.tile_index + (left / side), across: width / side)
       end
 
-      # A FONT OF A DATA PACK'S PIXELS: an alphabet as a computer game keeps it, each letter a run
+      # A font of a data pack's pixels: an alphabet as a computer game keeps it, each letter a run
       # of a slot of pixels, one byte a pixel, row by row, +height+ rows, lit where the byte is not
       # +blank+, and written in the colour draw_text asks, as a font of glyphs is.
       #
@@ -162,7 +162,7 @@ module VBlank
       #
       # Each letter is as wide as its pixels over the height, so the font is proportional. Where the
       # build reads the pack (every cartridge, and a computer build all-in-one), the letters are read
-      # here and the font IS a font of glyphs given as rows, so it draws, measures and places alike on
+      # here and the font is a font of glyphs given as rows, so it draws, measures and places alike on
       # every console. Where the build leaves the pack out, nothing knows which pixels are lit until the
       # game starts, so each letter becomes a picture of the slot's pixels in one colour, a picture for
       # each colour the game writes in (#picture_font_of_lettering), and words are drawn as a font of
@@ -382,8 +382,7 @@ module VBlank
       # is a test and a copy for each, and written at every column of every number that is most
       # of a cartridge's code.
       def draw_live_number_in_pictures(value, x, y, font, cell, numerals, blank, digits, leading_zeros)
-        source = next_number_var
-        store!(source, value)
+        source = number_source(value)
         # A tear-free screen draws a picture only at a column it can prove even. Columns known
         # to be even are handed over halved and doubled in the routine, which proves it.
         halved = x.even? && cell.even?
@@ -430,7 +429,7 @@ module VBlank
       # The digit of +source+ at +place+, or +blank+ while the number is smaller than the place:
       # blank + (source >= place) * (digit - blank), with no test to branch on.
       def digit_or_blank(source, place, blank)
-        reached = Build.binop(:>=, Build.var_ref(source), Build.int(place))
+        reached = Build.binop(:>=, read_of_source(source), Build.int(place))
         Build.binop(:+, Build.int(blank), Build.binop(:*, reached, Build.binop(:-, digit_at(source, place), Build.int(blank))))
       end
 
@@ -440,14 +439,14 @@ module VBlank
       # a picture of nothing would have to share the numerals' colours, which a picture from a
       # data pack has only as the game runs.
       def draw_live_number_in_sprites(value, x, y, cell, numerals, blank, digits, leading_zeros)
-        source = hud_number_variable(value)
+        source = hud_number_source(value)
         digits.times do |i|
           place = 10**(digits - 1 - i)
           at = x + (i * cell)
           if blank
             hud_glyph_object(poses: [blank] + numerals, pose: hud_digit_pose(source, place), x: at, y: y)
           else
-            reached = place == 1 || leading_zeros ? Build.int(1) : Build.binop(:>=, Build.var_ref(source), Build.int(place))
+            reached = place == 1 || leading_zeros ? Build.int(1) : Build.binop(:>=, read_of_source(source), Build.int(place))
             hud_glyph_object(poses: numerals, pose: digit_at(source, place), x: at, y: y, shown_while: reached)
           end
         end

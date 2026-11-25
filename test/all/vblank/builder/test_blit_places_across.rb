@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PICTURE PAINTED AT EVERY PLACE ACROSS. A console that draws in 8-pixel tiles keeps a picture
+# A picture painted at every place across. A console that draws in 8-pixel tiles keeps a picture
 # ready for the places across it can be painted at (a Super Nintendo keeps its rows already
 # shifted for each place modulo eight it can reach), so a picture at a written place, at a place
 # worked out as the game runs, and at a column times eight plus a written number must each come out

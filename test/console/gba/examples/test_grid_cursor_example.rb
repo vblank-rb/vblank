@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/grid_cursor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/grid_cursor").to_s)
 
 # Where the cursor starts, shared with the Advance cartridge's own tests of the example
 # (test/lowering/gba/examples/test_grid_cursor_example_cartridge.rb).
@@ -20,7 +20,7 @@ end
 # The grid-cursor example: a single lit cell steered around a board with the d-pad,
 # leaving no trail. It's the worked demonstration of `grid` — the game moves in
 # cell coordinates, and each tap erases the old cell and paints the new one. These
-# assert BEHAVIOR (the cursor lights the right cell and leaves nothing behind) on
+# assert behavior (the cursor lights the right cell and leaves nothing behind) on
 # every run that plays the Advance's games; the cartridge it builds, rendering and steering in
 # the emulator, is in test/lowering/gba/examples/test_grid_cursor_example_cartridge.rb.
 class TestGridCursorExample < Minitest::Test

@@ -53,7 +53,7 @@ class TestAffineBackground < Minitest::Test
         image :white, "#" => :white do "########\n" * 8 end
         tiles :t, "#" => :white
         board = background :board, tiles: :t, map: map
-        board.rotate(45)
+        board.rotate!(45)
       end
     end
     # A tile screen is what this needs, and there are two of those — a bitmap screen is

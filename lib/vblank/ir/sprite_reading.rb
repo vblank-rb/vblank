@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # WHERE A NAMED SPRITE'S STATE IS KEPT, so anything reading a running game asks for the sprite
+    # Where a named sprite's state is kept, so anything reading a running game asks for the sprite
     # by the game's name for it rather than by the hidden variables the build made for it
     # (__obj1_x, __spr2_on). The build writes one for each sprite a game declared on the program
     # (Program#sprite_readings), and every reader answers #state_from with its own stored numbers.

@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # A GAME'S SETS OF PICTURE GROUPS, as the cartridge keeps them (see Builder::PictureGroups).
+        # A game's sets of picture groups, as the cartridge keeps them (see Builder::PictureGroups).
         #
         # A grouped picture is not kept in sprite memory for its whole scene. It has a place of
         # its own there (see IR::PictureGroupPlaces), the room of each set is kept on the screen the
@@ -14,7 +14,7 @@ module VBlank
         class GroupedPictures
           include Console::Hardware
 
-          # WHAT THE CARTRIDGE NEEDS TO BRING ONE SET'S GROUPS UP while the game runs.
+          # What the cartridge needs to bring one set's groups up while the game runs.
           #
           # +blob+ holds every picture of the set once, back to back. +entries+ is a table of
           # four words for each picture a group holds, group after group: where the picture
@@ -43,7 +43,7 @@ module VBlank
 
           def any? = @sets.any?
 
-          # THE SET A SPRITE'S POSE IS GROUPED BY, or nil: a set of the sprite's own scene or of
+          # The set a sprite's pose is grouped by, or nil: a set of the sprite's own scene or of
           # every screen, which holds the picture in one of its groups. A sprite answers to those
           # sets and no others, the same as the interpreter's check.
           def set_holding(sprite, picture)
@@ -52,7 +52,7 @@ module VBlank
             end
           end
 
-          # WHERE EVERY SET'S PICTURES GO, laid out once every sprite's pictures are encoded. A
+          # Where every set's pictures go, laid out once every sprite's pictures are encoded. A
           # picture two sprites store alike is one picture to place, in every group either
           # sprite's pose of it is in.
           def place_pictures(pictures)
@@ -83,7 +83,7 @@ module VBlank
           # How far into its set's room the picture +bytes+ goes.
           def offset(name, bytes) = @laid.fetch(name).places.offset(bytes)
 
-          # WHAT THE CARTRIDGE NEEDS FOR EACH SET whose room starts at +bases+[name], given each
+          # What the cartridge needs for each set whose room starts at +bases+[name], given each
           # blob and table to put in the cartridge as they are made.
           def copy_plans(bases, &store)
             @sets.filter_map do |set|
@@ -92,7 +92,7 @@ module VBlank
             end.to_h
           end
 
-          # THE SETS UP ON +scene+ (nil: every screen), the scene's own and every screen's, as the map
+          # The sets up on +scene+ (nil: every screen), the scene's own and every screen's, as the map
           # of sprite memory lists them, for the sets whose rooms start at +bases+[name].
           def map_entries(scene, bases)
             sets_up_on(scene).filter_map do |set|
@@ -109,7 +109,7 @@ module VBlank
           # the biggest of those pictures by name, with their bytes.
           WorstSet = Data.define(:name, :groups, :bytes, :room_bytes, :biggest)
 
-          # THE SET UP ON +scene+ WHOSE ROOM IS BIGGEST, with its worst set (see WorstSet), or nil
+          # The set up on +scene+ whose room is biggest, with its worst set (see WorstSet), or nil
           # when no set there has a picture a sprite shows.
           def biggest_set_on(scene)
             set = sets_up_on(scene).select { |candidate| room_units(candidate).positive? }.max_by { |candidate| room_units(candidate) }

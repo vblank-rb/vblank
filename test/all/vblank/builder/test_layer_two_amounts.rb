@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A SEE-THROUGH LAYER GIVEN TWO AMOUNTS: how much of ITSELF shows, and how much of what is
+# A see-through layer given two amounts: how much of itself shows, and how much of what is
 # BEHIND it. `transparency:` splits one whole between the two; these need not add to one,
 # and a sum past a whole comes out brighter than either side and stops at full brightness —
 # which is how a window glows over a backdrop, or a shaft of light brightens a forest.
@@ -60,7 +60,7 @@ class TestLayerTwoAmounts < Minitest::Test
   # red: 255*25/16 is past full, so 31; green and blue: 255*15/16 = 239 -> 29
   BRIGHT_MIXED = [31, 29, 29].freeze
 
-  # AMOUNTS THE GAME WORKS OUT, the way a retail title steps its light rays through
+  # Amounts the game works out, the way a retail title steps its light rays through
   # (9,9) (8,10) (7,11) sixteenths — the layer fading as what is behind comes up. Here the
   # step moves every frame, so the frame read decides the pair.
   private def stepping_program
@@ -83,7 +83,7 @@ class TestLayerTwoAmounts < Minitest::Test
     end
   end
 
-  # A WALKER IN FRONT OF MIST THAT THICKENS, on a picture where nothing scrolls. The mist's
+  # A walker in front of mist that thickens, on a picture where nothing scrolls. The mist's
   # amounts step every third frame while the walker moves a pixel every frame: the walker is
   # drawn on every one of those frames, the ones where the mist changed included.
   private def walker_in_front_of_thickening_mist
@@ -113,7 +113,7 @@ class TestLayerTwoAmounts < Minitest::Test
 
   RED = VBlank::Graphics::Color.resolve(:red)
 
-  # The same over a picture that STAYS: the glass's amounts never change and nothing
+  # The same over a picture that stays: the glass's amounts never change and nothing
   # scrolls, so the scenery is painted once and a walker in front of it is drawn onto it,
   # the scenery put back behind it as it moves on. What is put back is a mix too, and the
   # tint has to reach both sides of it.
@@ -137,7 +137,7 @@ class TestLayerTwoAmounts < Minitest::Test
     end
   end
 
-  # A see-through SPRITE under a tint: it is mixed with the scenery behind it, and the
+  # A see-through sprite under a tint: it is mixed with the scenery behind it, and the
   # tint reaches both before the mix, as it does for a layer of scenery.
   private def ghost_under_a_tint
     tile = SOLID_TILE
@@ -156,7 +156,7 @@ class TestLayerTwoAmounts < Minitest::Test
     end
   end
 
-  # ONE SEE-THROUGH LAYER PER SCREEN, NOT PER GAME. A title whose light rays the game
+  # One see-through layer per screen, not per game. A title whose light rays the game
   # steps, and a file screen whose window sits over its backdrop at fixed amounts: each
   # scene has a see-through layer of its own, and the two are never on screen together.
   # A press of A moves from the title to the file screen, and a press of B back.
@@ -188,10 +188,7 @@ class TestLayerTwoAmounts < Minitest::Test
         where = 1 if pressed(:a)
         where = 0 if pressed(:b)
         glow = 6
-        case_var(:where) do
-          when_val 0, :title
-          when_val 1, :files
-        end
+        call({ 0 => :title, 1 => :files }, number: :where)
       end
     end
   end
@@ -205,7 +202,7 @@ class TestLayerTwoAmounts < Minitest::Test
              .run(two_screens_program, frames: 6).screen.pixel(*DIM)
   end
 
-  # Two see-through layers on ONE screen are refused: the console blends one layer with
+  # Two see-through layers on one screen are refused: the console blends one layer with
   # what is behind it, so it cannot show both.
   def test_two_see_through_layers_on_one_screen_is_a_friendly_error
     tile = SOLID_TILE
@@ -221,7 +218,7 @@ class TestLayerTwoAmounts < Minitest::Test
         layer(:glass, transparency: 60) { background :pane, tiles: :twos, map: ["#"] }
       end
       var :where, 0
-      game_loop { case_var(:where) { when_val 0, :inside } }
+      game_loop { call({ 0 => :inside }, number: :where) }
     end
     checks = [VBlank::IR::Guardrails::Checks::SeeThroughPerScreen.new]
     message = VBlank::IR::Guardrails::Validator.new(checks: checks).run(both, autofix: false).errors.first.message

@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class PS1
         module Runtime
-          # A SCREEN DRAWN FROM TILES, with its sprites in front: what a Game Boy Advance shows with its tile
+          # A screen drawn from tiles, with its sprites in front: what a Game Boy Advance shows with its tile
           # and sprite hardware, which the PlayStation does not have. Its graphics chip draws whatever it is
           # sent, so the runtime sends the whole picture again at the end of every pass (rt_tiles_draw):
           # the backdrop, each background back to front, then each sprite. That is how the console's own 2D
           # games drew.
           #
-          # A BACKGROUND IS A PLANE: a picture of its whole map, 256 × 256 pixels or more, kept in video RAM
+          # A background is a plane: a picture of its whole map, 256 × 256 pixels or more, kept in video RAM
           # beside the screen's pages (PS1::TextureMemory#reserve_planes says where). A map is put on its
           # plane once, as it goes up: the plane emptied with a fill, then each cell's tile copied in from
           # the sheet of tiles kept further along video RAM, video RAM to video RAM (GP0 80h), a command of
@@ -20,7 +20,7 @@ module VBlank
           # rectangle's place in its texture is a byte across and a byte down, which come round at 256 by
           # themselves, so the map comes round as a background does.
           #
-          # A PLANE HOLDS PLACES IN A COLOUR TABLE, 4 or 8 bits a texel (PS1::PlaneColors), not colours: so a
+          # A plane holds places in a colour table, 4 or 8 bits a texel (PS1::PlaneColors), not colours: so a
           # halfword of video RAM holds four texels or two, and the chip reads a quarter or half of what it
           # would at 15 bits as it draws the plane; and a colour the game changes is one entry of the
           # background's table written again (Runtime::Colors). The background up on the plane names its
@@ -31,7 +31,7 @@ module VBlank
           # A texel of the plane that no tile draws is nought: the table's place 0, which holds 0000h, or the
           # colour 0000h itself, which the chip leaves undrawn, so what is behind shows through.
           #
-          # A SPRITE is a picture the painted screen draws too (Runtime::Paint's rt_paint_blit), drawn in
+          # A sprite is a picture the painted screen draws too (Runtime::Paint's rt_paint_blit), drawn in
           # front of every background, in the order the pass placed them (rt_sprite_place). The ones a pass
           # placed are kept in DRAWN, a row each, which a reader of the run reads back too.
           module Tiles
@@ -54,7 +54,7 @@ module VBlank
             PLANE_BYTES = 32
             MOST_PLANES = 4
 
-            # A STATUS BAR takes no level of the stack: it is drawn in front of every background and behind
+            # A status bar takes no level of the stack: it is drawn in front of every background and behind
             # every sprite (Reference#repaint_view). Its plane's level is this, which no level is.
             BAR_LEVEL = -1
             # The row the status bar up shows from, kept between 0 and the screen's height (rt_bar_place); and
@@ -68,11 +68,11 @@ module VBlank
             # The fill command (its colour in its low 24 bits) for what shows where nothing is drawn.
             BACKDROP = "rt backdrop"
 
-            # IN A GAME THAT SHOWS A PAINTED SCREEN TOO (Screen#crosses), not nought while the screen up is drawn from
+            # In a game that shows a painted screen too (Screen#crosses), not nought while the screen up is drawn from
             # tiles: only then is the picture drawn whole as a pass ends (rt_tiles_draw). Nought from power-on.
             TILES_UP = "rt tiles up"
 
-            # WHAT THE RUNTIME DRAWS A GAME'S TILED SCREEN WITH, worked out as the game is built
+            # What the runtime draws a game's tiled screen with, worked out as the game is built
             # (Lowering::Picture#tiled_screen): each plane's place in video RAM (TextureMemory::Plane), how many
             # bits a texel each is kept at, the planes whose every background draws every pixel (+opaque+), the
             # planes a status bar goes up on (+bar_planes+), and +levels+: nil where every sprite is drawn in
@@ -82,7 +82,7 @@ module VBlank
             # up on, each drawn as its PLANE_MIXES word says.
             Screen = Data.define(:places, :depths, :opaque, :bar_planes, :levels, :crosses, :mixed_planes)
 
-            # A SEE-THROUGH BACKGROUND (`layer ..., transparency:`) is its plane drawn with the chip's own
+            # A see-through background (`layer ..., transparency:`) is its plane drawn with the chip's own
             # semi-transparency (Console::PS1Hardware::GP0_SEMI_TRANSPARENT): every texel it draws mixed with the
             # pixel already under it, which is the backdrop, the planes behind it and the sprites at the levels
             # behind it, as the interpreter mixes the layer with what it painted first. Which way it mixes is the
@@ -271,7 +271,7 @@ module VBlank
               asm.jr(:ra) { asm.sw(:a2, PLANE_SCROLL_Y, :v0) }
             end
 
-            # HANDING OVER TO THE OTHER KIND OF SCREEN replaces the whole picture (Reference#exec_screen): what was
+            # Handing over to the other kind of screen replaces the whole picture (Reference#exec_screen): what was
             # up is gone, and comes back only by being put up again.
             #
             # rt_screen_cross: a0 = 1 for a screen drawn from tiles, 0 for a painted one. TILES_UP is set to it, every
@@ -394,7 +394,7 @@ module VBlank
               asm.j("rt_fault") { asm.li(:a0, Frame::DRAW_ORDER_NAMES_NONE) }
             end
 
-            # A STATUS BAR is a plane drawn from the row its top is at down to the bottom of the screen, its map
+            # A status bar is a plane drawn from the row its top is at down to the bottom of the screen, its map
             # from its corner, never scrolled (Reference#paint_status_bar): one textured rectangle, since a bar's map
             # is one texture page at most (32 cells each way), no wider than the map, so the columns past it show
             # the backdrop rather than the map come round. The rows past its map are the plane's empty texels.
@@ -462,7 +462,7 @@ module VBlank
             # level, then the sprites at it. Last, a bar that covers sprites is drawn again over them, on the
             # backdrop.
             #
-            # A PLANE THAT DRAWS EVERY PIXEL hides the backdrop and every plane behind it, so while one is up the
+            # A plane that draws every pixel hides the backdrop and every plane behind it, so while one is up the
             # drawing starts at it: the front-most of them up is found first, and nothing behind it is sent to the
             # chip, which would fill the whole screen for each only to have it covered. Not while a status bar
             # shows, below whose top no plane is drawn.
@@ -532,7 +532,7 @@ module VBlank
               asm.sw(:t0, DrawList.word_offset_bytes(2), :t1)
             end
 
-            # THE STATUS BAR UP, if one is: s2 = its plane's state, or nought, and s3 = the draw mode naming its page;
+            # The status bar up, if one is: s2 = its plane's state, or nought, and s3 = the draw mode naming its page;
             # and SCENERY_ROWS set to the rows the backgrounds are drawn in, down to its top, or the whole screen.
             def emit_bar_search(asm, at, screen)
               asm.li(:t0, Console::PS1Hardware::SCREEN_HEIGHT)
@@ -562,7 +562,7 @@ module VBlank
               asm.label(past)
             end
 
-            # A STATUS BAR THAT COVERS SPRITES (Reference#paint_bar_over_sprites): its rows filled with the
+            # A status bar that covers sprites (Reference#paint_bar_over_sprites): its rows filled with the
             # backdrop again, over the sprites, and the bar drawn on that.
             def emit_bar_over_sprites(asm, at)
               asm.beq(:s2, :zero, "rt_tiles_draw_uncovered")
@@ -627,7 +627,7 @@ module VBlank
               asm.label(not_drawn) if mixed
             end
 
-            # THE PICTURE A LEVEL AT A TIME (Reference#repaint_view), s4 the level: at each, the planes up whose
+            # The picture a level at a time (Reference#repaint_view), s4 the level: at each, the planes up whose
             # background sits there, the back one first, then the sprites placed at it (rt_sprites_draw_at_level).
             # A status bar's plane sits at no level (BAR_LEVEL), so is never one of them.
             def emit_draw_by_level(asm, at, screen)

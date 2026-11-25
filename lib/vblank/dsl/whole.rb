@@ -2,7 +2,7 @@
 
 module VBlank
   module DSL
-    # WHOLE NUMBERS AN AUTHOR WRITES — a capacity, a rate, a size, how many digits.
+    # Whole numbers an author writes — a capacity, a rate, a size, how many digits.
     #
     # Fifteen verbs across the surface and the op-tree ask the same thing of an argument
     # before they will accept it, and asking it in fifteen places is how fifteen places come
@@ -13,7 +13,7 @@ module VBlank
     # size must be even so the fast fill is legal, a timer points you at `every` for slower
     # timing. Folding those into one sentence would save a few lines and cost the thing the
     # guardrails are for.
-    module Whole
+    module Whole # :nodoc:
       module_function
 
       # A count of something there must be at least one of.

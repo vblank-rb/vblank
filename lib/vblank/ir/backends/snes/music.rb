@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # A GAME'S SONGS AND SOUND EFFECTS, AS THE SUPER NINTENDO'S PLAYER READS THEM (Runtime::Music):
+        # A game's songs and sound effects, as the Super Nintendo's player reads them (Runtime::Music):
         # the table is SongTable's, and what is the Super Nintendo's is here. A chip write is a write to
         # the S-DSP (DSPWrites), and the recordings a game plays share its eight voices.
         class Music < SongTable
@@ -16,7 +16,13 @@ module VBlank
 
           LoweringError = SNES::LoweringError
 
-          # THE SOUND CHIP'S VOICES RECORDINGS PLAY ON in +program+, the first place's first: the four
+          def initialize(program)
+            super
+            @whole_square_notes = !IR::Tunes.effect_clock_step(program, program.described_console).nil? &&
+                                  !Lowering::Sound.chip_envelopes?(program) && !IR::Tunes.recorded_pans?(program)
+          end
+
+          # The sound chip's voices recordings play on in +program+, the first place's first: the four
           # past the square, wave and noise parts', and then each of those four the game never
           # sounds, so a game with no use for them has all eight. Asked of the whole program, since
           # a voice is either kept for those sounds everywhere or free everywhere.
@@ -57,6 +63,32 @@ module VBlank
 
           def song_writes = DSPWrites
           def sound_command(write) = Runtime::Sound.command_for(write)
+
+          # A square or wave note's nine writes (DSPWrites#song_note, #wave) as two commands, in a game whose
+          # effects are struck inside the frame: its pitch held (HOLD_PITCH), then the rest told whole
+          # (WHOLE_NOTE), which the sound unit's program writes as those same registers. Each command is a
+          # turn of the mailboxes, which carry a few dozen a frame, so a run of ticks' notes is sent in a
+          # fraction of the turns and does not hold back the game's own sound behind it.
+          def commands_for(writes)
+            packed = (whole_note_commands(writes) if @whole_square_notes)
+            packed || super
+          end
+
+          def whole_note_commands(writes)
+            return unless writes.size == 9 && writes.first.size == 2
+
+            dsp = DSPWrites
+            base = writes.first.first & 0x70
+            level, _, low, high, source = writes.first(5).map(&:last)
+            bit = 1 << (base >> 4)
+            expected = [[base + dsp::VOLUME_LEFT, level], [base + dsp::VOLUME_RIGHT, level], [base + dsp::PITCH_LOW, low],
+                        [base + dsp::PITCH_HIGH, high], [base + dsp::SOURCE, source], [base + dsp::ADSR1, dsp::ADSR_OFF],
+                        [base + dsp::GAIN, dsp::FIXED_TOP], *dsp.key_on(base >> 4)]
+            return unless writes == expected && bit.positive?
+
+            s = Runtime::Sound
+            [[s::HOLD_PITCH, low, high], [s::WHOLE_NOTE | base, source, level]]
+          end
           def music_assembler = W65816.new("music", holds: SONGS)
           def not_made_yet_error = Lowering::NotMadeYet
           def console_title = "Super Nintendo"

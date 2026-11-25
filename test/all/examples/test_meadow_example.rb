@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/meadow").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/meadow").to_s)
 
 # The Meadow example (examples/meadow.rb): a hero walks out of a one-screen cabin into a
 # meadow of 120x100 cells, far bigger than the console's grid. The streaming itself is
@@ -12,7 +12,7 @@ require VBlank.root.join("examples/meadow").to_s
 # picture breaks up into blocks, the room is swapped while nobody can read it, and it comes
 # back together, with the room's name kept sharp throughout.
 #
-# WHICH ROOM A PICTURE SHOWS IS READ OFF THE PICTURE, by the name in its corner, and never
+# Which room a picture shows is read off the picture, by the name in its corner, and never
 # off the game's `room` variable: the room a frame draws is the one the variable held a
 # frame before (see "Which frame's numbers the picture was drawn from" in the testing rules).
 # The Advance's cartridge is checked against the interpreter in

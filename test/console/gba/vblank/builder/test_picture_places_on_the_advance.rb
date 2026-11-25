@@ -3,17 +3,17 @@
 require "test_helper"
 require "differential"
 
-# THE TESTS OF vblank/builder/test_picture_places.rb THAT ONLY THE GAME BOY ADVANCE CAN PLAY, kept apart so that the
+# The tests of vblank/builder/test_picture_places.rb that only the Game Boy Advance can play, kept apart so that the
 # Game Boy Color's run never loads them (test/console/gba); the rest are in that file.
 #
-# A PICTURE WHOSE PIXELS ARE PLACES IN ITS OWN LIST OF COLOURS.
+# A picture whose pixels are places in its own list of colours.
 #
 # Art made anywhere else on this console arrives as numbers picking out of a table, and every
 # picture the framework keeps holds a whole colour per pixel instead. Those are the same
 # picture right up until the table holds one colour twice — and a palette lifted out of a real
 # cartridge nearly always does, two blacks or two whites — because a colour then no longer says
 # which place it came from. That matters because a sprite drawn with another list swaps colours
-# BY PLACE: the two places are one colour in the art and two different colours in the list it is
+# by place: the two places are one colour in the art and two different colours in the list it is
 # drawn with, so the picture has to remember which of them each pixel meant.
 class TestPicturePlacesOnTheAdvance < Minitest::Test
   include Differential
@@ -74,7 +74,7 @@ class TestPicturePlacesOnTheAdvance < Minitest::Test
     builder.program
   end
 
-  # THE SAME PICTURE THE OTHER WAY ROUND has to turn its places round with it, and nothing
+  # The same picture the other way round has to turn its places round with it, and nothing
   # about the pixels says so: this art is red both halves, so reversing the pixels changes
   # nothing at all and only the places tell the two sides apart.
   private def mirrored_program
@@ -110,10 +110,10 @@ class TestPicturePlacesOnTheAdvance < Minitest::Test
     assert_empty mismatched_pixels(oracle, console)
   end
 
-  # A LIST SHAPED THE WAY A REAL CARTRIDGE'S IS, which differs from the lists above in two
+  # A list shaped the way a real cartridge's is, which differs from the lists above in two
   # ways that both bear on the same trap. Its entries are the console's own colour values
   # rather than names, so its see-through entry is written as a number like the rest; and
-  # the colour it repeats is BLACK, which is the value that see-through entry holds too.
+  # the colour it repeats is black, which is the value that see-through entry holds too.
   # Three of its six entries are therefore identical, and a picture that matched a pixel by
   # colour would hand every black pixel the see-through place and draw a character full of
   # holes. Half the palettes on a real cartridge repeat a colour, most often black.
@@ -153,7 +153,7 @@ class TestPicturePlacesOnTheAdvance < Minitest::Test
     assert_empty mismatched_pixels(oracle, console)
   end
 
-  # A PICTURE THE CONSOLE STORES THE BIG WAY HAS NO PLACES TO KEEP. A background that can
+  # A picture the console stores the big way has no places to keep. A background that can
   # turn and resize reads a whole byte a pixel out of the one shared table, where a colour
   # is a single entry however many places the author's list gave it — so a place number
   # names an unrelated entry there and the colour has to be looked up instead.

@@ -4,6 +4,7 @@ require "test_helper"
 require "json"
 require "open3"
 require "tmpdir"
+require "heard_film"
 
 # A film of one cartridge, or of two side by side: every frame of the parts asked for, doubled,
 # over a strip naming each side, held at the end of each part and at the end of the film, and
@@ -14,9 +15,10 @@ require "tmpdir"
 # is the console's blank white, before the game has painted anything, which is the second game's
 # first colour too; so a test that tells the two apart starts on the second frame.
 class TestFilm < Minitest::Test
-  # A film is made by ImageMagick and ffmpeg, and its MP4 read back by ffprobe and ffmpeg: child
-  # processes, which hang inside a Ractor.
+  # A film plays each side in a copy of this process (Diagnostics::Film#start_side_process forks),
+  # and only the main Ractor may fork. Its reel also reads $CHILD_STATUS, a main-Ractor global.
   runs_on_the_main_ractor!
+  include HeardFilm
 
   Film = VBlank::Diagnostics::Film
 
@@ -81,6 +83,26 @@ class TestFilm < Minitest::Test
     assert_equal reel.map { |frame| CYCLE[colour_index(frame)] }, colours_at(film, shape, x: GAME_X * 2)
   end
 
+  # Parts are shown in the order given, a later part of the game before an earlier one.
+  def test_parts_out_of_order_are_shown_in_the_order_given
+    film = make_film(parts: [6..7, 2..3])
+    shape = video_shape(film)
+    reel = expected_reel([[6, 1], [7, PART_END_HOLD], [2, 1], [3, SHORTEST - 50]])
+
+    assert_equal reel.map { |frame| CYCLE[colour_index(frame)] }, colours_at(film, shape, x: GAME_X * 2)
+    assert_equal reel.map { |frame| CYCLE_BACKWARDS[colour_index(frame)] }, colours_at(film, shape, x: 480 + (GAME_X * 2))
+  end
+
+  # Parts that overlap show the frames they share in each.
+  def test_overlapping_parts_show_the_frames_they_share_twice
+    film = make_film(parts: [2..4, 3..5])
+    shape = video_shape(film)
+    reel = expected_reel([[2, 1], [3, 1], [4, PART_END_HOLD], [3, 1], [4, PART_END_HOLD], [5, SHORTEST - 99]])
+
+    assert_equal reel.map { |frame| CYCLE[colour_index(frame)] }, colours_at(film, shape, x: GAME_X * 2)
+    assert_equal reel.map { |frame| CYCLE_BACKWARDS[colour_index(frame)] }, colours_at(film, shape, x: 480 + (GAME_X * 2))
+  end
+
   # ImageMagick reads `%` and a leading `@` in what it writes; a label is written as given.
   def test_a_label_with_percent_or_at_sign_is_written_as_given
     rom = game(CYCLE)
@@ -113,6 +135,45 @@ class TestFilm < Minitest::Test
     refute_equal shown[1], shown[3]
   end
 
+  # A probe a game has driven to the moment worth filming is a side as it stands: the film's frame 1
+  # is the frame after the probe's last, and closing the side closes the probe, its save folder too.
+  def test_a_probe_driven_first_is_filmed_from_where_it_stands
+    probe = VBlank::Playthroughs::Probe.open(game(CYCLE))
+    probe.step(5)
+    film = File.join(scratch, "probe.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..4])
+    shape = video_shape(film)
+    reel = expected_reel([[1, 1], [2, 1], [3, 1], [4, SHORTEST - 3]])
+
+    assert_equal reel.map { |frame| CYCLE[colour_index(5 + frame)] }, colours_at(film, shape, x: GAME_X * 2)
+    assert_equal 9, probe.frame
+    refute Dir.exist?(probe.save_dir), "the probe's save folder is left behind"
+  end
+
+  # The film's buttons reach the probe, on the film's frames.
+  def test_a_probe_side_is_stepped_with_the_films_buttons
+    probe = VBlank::Playthroughs::Probe.open(game(CYCLE, step_with: :a))
+    probe.step(3, holding: :a)
+    film = File.join(scratch, "probe_pressed.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..4], keys: ->(frame) { :a if frame >= 3 })
+    shown = colours_at(film, video_shape(film), x: GAME_X * 2)
+
+    assert_equal shown[0], shown[1]
+    refute_equal shown[1], shown[2]
+  end
+
+  # A probe heard: its sound is on the film's frames counted from where the probe stood.
+  def test_a_probe_side_is_heard_from_where_it_stands
+    rom = beeping_game(beep_on: 12)
+    probe = VBlank::Playthroughs::Probe.open(rom)
+    probe.step(4)
+    film = File.join(scratch, "probe_heard.mp4")
+    Film.make(film, sides: { "probe" => -> { probe } }, parts: [1..40], sound: "probe")
+    left, = film_sound(film)
+
+    assert_in_delta onset_frame(rom) - 1 - 4, onset(left), 1, "the sound is not on the frames that show it"
+  end
+
   # A side that draws a 256 wide picture for its first two frames and a 320 wide one after.
   class GrowingScreen
     def initialize = @frames = 0
@@ -141,6 +202,181 @@ class TestFilm < Minitest::Test
     assert_match(/256×240 on frame 1 and 320×240 on frame 3/, error.message)
   end
 
+  # A side showing one picture, +colour+ and black in a check, that notes in +log+ each frame it
+  # plays, with how many sides were playing a frame as it began, and plays each long enough that
+  # sides playing at once overlap.
+  class LoggedScreen
+    def initialize(colour, running, log)
+      @colour = colour
+      @running = running
+      @log = log
+    end
+
+    def step(_count, keys: 0)
+      marker = File.join(@running, "#{Process.pid}-#{object_id}")
+      File.write(marker, "")
+      File.write(@log, "step #{Dir.children(@running).size}\n", mode: "a")
+      sleep 0.03
+      File.delete(marker)
+      self
+    end
+
+    def pixels = Array.new(240 * 160) { |i| i.even? ? 0 : @colour }
+    def screen_picture = Film::Picture.new(pixels: pixels, width: 240, height: 160)
+  end
+
+  # A folder of tools for Film: ImageMagick noting in +log+ each time it runs, and ffmpeg noting
+  # that it started, with its arguments, and keeping a copy of whatever it is handed on its input in
+  # +handed+.
+  private def logged_tools(log, handed)
+    tools = Dir.mktmpdir("film-path", scratch)
+    File.write(File.join(tools, "magick"), <<~SH)
+      #!/bin/sh
+      echo magick >> "#{log}"
+      exec "#{program_path('magick')}" "$@"
+    SH
+    File.write(File.join(tools, "ffmpeg"), <<~SH)
+      #!/bin/sh
+      echo "ffmpeg $*" >> "#{log}"
+      tee "#{handed}" | exec "#{program_path('ffmpeg')}" "$@"
+    SH
+    File.chmod(0o755, File.join(tools, "magick"))
+    File.chmod(0o755, File.join(tools, "ffmpeg"))
+    tools
+  end
+
+  private def logged_sides(log)
+    running = Dir.mktmpdir("running", scratch)
+    { "ours" => -> { LoggedScreen.new(0x001F, running, log) }, "theirs" => -> { LoggedScreen.new(0x7C00, running, log) } }
+  end
+
+  private def logged_film(frames, log, handed = File.join(scratch, "handed"))
+    Film.make(File.join(scratch, "logged.mp4"), sides: logged_sides(log), parts: [1..frames],
+                                                search_path: logged_tools(log, handed))
+    File.readlines(log, chomp: true)
+  end
+
+  # The two sides are played at the same time, each in a process of its own.
+  def test_the_sides_play_at_the_same_time
+    steps = logged_film(6, File.join(scratch, "sides.log")).grep(/\Astep/)
+
+    assert_equal 12, steps.size
+    assert_operator steps.map { |line| line.split.last.to_i }.max, :>=, 2, "the sides were played one after the other"
+  end
+
+  # A side like LoggedScreen that, before it plays its +last+ frame, waits for ffmpeg to have been
+  # handed a whole frame (the stand-in ffmpeg copies what it is handed to +handed+), and notes in
+  # +log+ whether it was. It waits at most WAIT_SECONDS, which only a film that hands over nothing
+  # until its sides have finished takes, so that film fails rather than hangs.
+  class WaitsForFfmpegScreen < LoggedScreen
+    WAIT_SECONDS = 30
+
+    def initialize(colour, log, handed:, frame_bytes:, last:)
+      super(colour, Dir.mktmpdir, log)
+      @handed = handed
+      @frame_bytes = frame_bytes
+      @last = last
+      @played = 0
+    end
+
+    def step(_count, keys: 0)
+      @played += 1
+      return self unless @played == @last
+
+      give_up_at = now + WAIT_SECONDS
+      sleep 0.01 until handed_a_frame? || now > give_up_at
+      File.write(@log, handed_a_frame? ? "handed a frame\n" : "handed nothing\n", mode: "a")
+      self
+    end
+
+    private
+
+    def handed_a_frame? = (File.size?(@handed) || 0) >= @frame_bytes
+    def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  end
+
+  # Frames go to ffmpeg as soon as every side has played them, not once every side has finished:
+  # each side's last frame waits until ffmpeg has the first.
+  def test_frames_reach_ffmpeg_while_the_sides_play_on
+    log = File.join(scratch, "arrivals.log")
+    handed = File.join(scratch, "handed")
+    frame_bytes = (2 * 2 * 240) * ((2 * 160) + STRIP) * 3
+    sides = { "ours" => 0x001F, "theirs" => 0x7C00 }.transform_values do |colour|
+      -> { WaitsForFfmpegScreen.new(colour, log, handed: handed, frame_bytes: frame_bytes, last: 6) }
+    end
+    Film.make(File.join(scratch, "waited.mp4"), sides: sides, parts: [1..6], search_path: logged_tools(log, handed))
+
+    assert_equal ["handed a frame"] * 2, File.readlines(log, chomp: true).grep(/\Ahanded/),
+                 "ffmpeg was handed no frame until the sides had finished"
+  end
+
+  # A film whose second side's process cannot start, as when the computer has no room for another
+  # process: it notes the process each side before it started.
+  class SecondSideCannotStart < Film
+    def started = @started ||= []
+
+    private def start_side_process(running, side, shown, dir)
+      raise Errno::EAGAIN, "no room for the second side's process" if side == 1
+
+      super.tap { |pid, _pipe| started << pid }
+    end
+  end
+
+  # A side whose process has started is stopped, and its process taken away, when a later side's
+  # cannot start: nothing is left playing with nobody reading it.
+  def test_a_side_left_playing_when_the_next_cannot_start_is_stopped
+    film = SecondSideCannotStart.new(sides: logged_sides(File.join(scratch, "stopped.log")), parts: [1..200],
+                                     keys: ->(_frame) {}, scale: 2, search_path: ENV.fetch("PATH"))
+
+    assert_raises(Errno::EAGAIN) { film.write(File.join(scratch, "never.mp4")) }
+    assert_equal 1, film.started.size
+    assert_raises(Errno::ESRCH, "the first side's process is still there") { Process.kill(0, film.started.first) }
+  end
+
+  # An ffmpeg that stops before it has every frame is named, in words, not as a broken pipe.
+  def test_an_ffmpeg_that_stops_early_is_named
+    tools = Dir.mktmpdir("film-path", scratch)
+    File.symlink(program_path("magick"), File.join(tools, "magick"))
+    File.write(File.join(tools, "ffmpeg"), "#!/bin/sh\nexit 1\n")
+    File.chmod(0o755, File.join(tools, "ffmpeg"))
+
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: logged_sides(File.join(scratch, "early.log")), parts: [1..20],
+                                                 search_path: tools)
+    end
+    assert_match "ffmpeg could not write", error.message
+  end
+
+  # The frames are put together in Ruby: ImageMagick draws the words once, whatever the film's length.
+  def test_imagemagick_draws_the_words_once_not_a_picture_a_frame
+    runs = logged_film(40, File.join(scratch, "runs.log")).count("magick")
+
+    assert_operator runs, :<, 20, "ImageMagick ran for each frame"
+  end
+
+  # Each side's pixels reach ffmpeg as the side showed them, doubled, under the strip: the answer key
+  # is ImageMagick scaling the side's picture to twice its size, as Film's frames were made before.
+  def test_ffmpeg_is_handed_each_sides_pixels_doubled_under_the_strip
+    handed = File.join(scratch, "handed")
+    log = File.join(scratch, "handed.log")
+    arguments = logged_film(2, log, handed).find { |line| line.start_with?("ffmpeg") }.split
+    width, height = arguments[arguments.index("-s") + 1].split("x").map(&:to_i)
+    first = File.binread(handed, width * height * 3)
+
+    assert_equal "rawvideo", arguments[arguments.index("-f") + 1]
+    assert_equal doubled_answer_key([0x001F, 0x7C00]), first.byteslice(width * STRIP * 3..)
+  end
+
+  # Pictures of LoggedScreen in +colours+, each doubled by ImageMagick and put side by side.
+  private def doubled_answer_key(colours)
+    sides = colours.flat_map.with_index do |colour, side|
+      path = File.join(scratch, "side#{side}.png")
+      VBlank::Graphics::PNG.write(path, width: 240, height: 160, pixels: LoggedScreen.new(colour, scratch, File::NULL).pixels)
+      ["(", path, "-scale", "200%", ")"]
+    end
+    IO.popen([program_path("magick"), *sides, "+append", "-depth", "8", "rgb:-"], "rb", &:read)
+  end
+
   def test_missing_ffmpeg_is_named_with_how_to_install_it_before_anything_plays
     only_imagemagick = Dir.mktmpdir("film-path", scratch)
     File.symlink(program_path("magick"), File.join(only_imagemagick, "magick"))
@@ -167,7 +403,112 @@ class TestFilm < Minitest::Test
     assert_match(/brew install ffmpeg/, error.message)
   end
 
+  # Sound. A film asked for none has no sound in it, and is the same bytes each time it is made.
+  def test_a_film_with_no_sound_asked_for_has_none
+    one = make_film(parts: [1..3])
+    first = File.binread(one)
+    again = make_film(parts: [1..3])
+
+    assert_empty audio_streams(one)
+    assert_equal first, File.binread(again)
+  end
+
+  # A side heard alone: its sound is on the film frames that show the frames it made it on.
+  def test_a_side_heard_alone_is_heard_on_the_frames_that_show_its_sound
+    rom = beeping_game(beep_on: 12)
+    film = File.join(scratch, "heard.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(rom) }, "quiet" => -> { opened(game(CYCLE)) } }, parts: [1..40],
+                    sound: "ours")
+    left, right = film_sound(film)
+
+    assert_equal [2], audio_streams(film).map { |stream| stream["channels"] }
+    assert_in_delta onset_frame(rom) - 1, onset(left), 1, "the sound is not on the frames that show it"
+    assert_in_delta onset(left), onset(right), 0, "the side is heard as it made it, on both speakers"
+  end
+
+  # Two sides side by side, each on its own speaker: the first side's on the left.
+  def test_two_sides_side_by_side_are_each_heard_on_their_own_speaker
+    ours = beeping_game(beep_on: 8)
+    theirs = beeping_game(beep_on: 24)
+    film = File.join(scratch, "pair.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(ours) }, "reference" => -> { opened(theirs) } }, parts: [1..40],
+                    sound: :side_by_side)
+    left, right = film_sound(film)
+
+    assert_in_delta onset_frame(ours) - 1, onset(left), 1
+    assert_in_delta onset_frame(theirs) - 1, onset(right), 1
+  end
+
+  # In turn: the film is shown once for each side, and each time one side is heard.
+  def test_sides_in_turn_show_the_film_once_for_each_side
+    ours = beeping_game(beep_on: 8)
+    theirs = beeping_game(beep_on: 24)
+    film = File.join(scratch, "turns.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(ours) }, "reference" => -> { opened(theirs) } }, parts: [1..40],
+                    sound: :in_turn)
+    left, = film_sound(film)
+    shape = video_shape(film)
+
+    assert_equal 2 * SHORTEST, shape[:frames]
+    assert_in_delta shape[:seconds], audio_seconds(film), 1.0 / 60, "the sound is not as long as the pictures"
+    colours = colours_at(film, shape, x: GAME_X * 2)
+    assert_equal colours.first(SHORTEST), colours.drop(SHORTEST), "the second showing is not the first again"
+    assert_in_delta onset_frame(ours) - 1, onset(left.first(SHORTEST)), 1
+    assert_in_delta onset_frame(theirs) - 1, onset(left.drop(SHORTEST)), 1
+  end
+
+  # The frames a part's end is held for are silent, and the next part is heard again.
+  def test_the_held_frames_at_a_parts_end_are_silent
+    rom = beeping_game(beep_on: 3)
+    film = File.join(scratch, "held.mp4")
+    Film.make(film, sides: { "ours" => -> { opened(rom) } }, parts: [2..10, 20..22], sound: "ours")
+    left, = film_sound(film)
+    loud = left.max
+
+    held = left[(9 + 2)...(9 + PART_END_HOLD - 3)]
+    assert(held.all? { |energy| energy < loud / 50 }, "a held frame is not silent")
+    assert_operator left[9 + PART_END_HOLD], :>, loud / 4, "the next part is not heard"
+  end
+
+  def test_sound_of_a_side_the_film_does_not_have_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "ours" => -> { flunk "opened" } }, parts: [1..2], sound: "theirs")
+    end
+    assert_match(/"theirs"/, error.message)
+    assert_match(/"ours"/, error.message)
+  end
+
+  def test_side_by_side_sound_of_one_side_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "ours" => -> { flunk "opened" } }, parts: [1..2],
+                                                 sound: :side_by_side)
+    end
+    assert_match(/two sides/, error.message)
+  end
+
+  # A side that cannot hand its sound over is refused, naming it.
+  def test_a_heard_side_that_gives_no_sound_is_refused
+    error = assert_raises(ArgumentError) do
+      Film.make(File.join(scratch, "never.mp4"), sides: { "program" => -> { GrowingScreen.new } }, parts: [1..2],
+                                                 sound: "program")
+    end
+    assert_match(/"program"/, error.message)
+    assert_match(/sound/, error.message)
+  end
+
   private def scratch = @scratch ||= Dir.mktmpdir("film-test")
+
+  # A game that paints red and blue by turns, and from pass +beep_on+ sounds a tone that does not fade.
+  private def beeping_game(beep_on:)
+    VBlank.build("FILMED", console: :gba, out: StringIO.new, err: StringIO.new, &beeping_game_source(beep_on))
+  end
+
+  # The first frame, counted from one, the cartridge itself puts its sound out on.
+  private def onset_frame(rom)
+    verifier = opened(rom)
+    verifier.step(40, keys: 0)
+    onset(verifier.audio_energy_by_frame) + 1
+  end
 
   def teardown
     FileUtils.rm_rf(@scratch) if @scratch
@@ -225,6 +566,14 @@ class TestFilm < Minitest::Test
     stream = JSON.parse(json).fetch("streams").first
     { width: stream["width"], height: stream["height"], rate: stream["r_frame_rate"],
       frames: Integer(stream["nb_read_frames"]), seconds: Float(stream["duration"]) }
+  end
+
+  # How long the MP4's sound lasts, in seconds.
+  private def audio_seconds(path)
+    json, status = Open3.capture2("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration",
+                                  "-of", "json", path)
+    assert status.success?, "ffprobe read #{path}"
+    Float(JSON.parse(json).fetch("streams").first.fetch("duration"))
   end
 
   # Every frame of the MP4 as eight-bit red, green and blue.

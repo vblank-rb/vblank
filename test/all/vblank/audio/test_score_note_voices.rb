@@ -75,7 +75,7 @@ module ScoreNoteVoicesGames
   end
 end
 
-# A NOTE'S OWN RATTLE AND ITS OWN WAVEFORM. What each note says is what the log says it played, on
+# A note's own rattle and its own waveform. What each note says is what the log says it played, on
 # every run: the interpreter's, and every build checked against it.
 class TestScoreNoteVoices < Minitest::Test
   include ScoreNoteVoicesGames

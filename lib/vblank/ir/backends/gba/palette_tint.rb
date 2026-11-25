@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # Tinting a picture that is drawn through a COLOR TABLE.
+        # Tinting a picture that is drawn through a color table.
         #
         # Two of the console's three screens don't store a color in every pixel. A pixel
         # is a small number instead — an index — and the color it shows is looked up in a
@@ -26,10 +26,10 @@ module VBlank
         # picture is touched — the picture comes back exactly as drawn when the amount
         # returns to 0, because the originals are still in the cartridge.
         #
-        # WHAT IT COSTS, and this is the honest half. It is a blend per table entry, so
-        # it is proportional to HOW MANY COLORS THE GAME DECLARED — never to what is on
+        # What it costs, and this is the honest half. It is a blend per table entry, so
+        # it is proportional to how many colors the game declared — never to what is on
         # screen. It is also transient: the table only has to be rewritten when the
-        # amount (or the color) actually CHANGES, so a tint held steady, and the far more
+        # amount (or the color) actually changes, so a tint held steady, and the far more
         # common no-tint-at-all, cost one compare and a branch. #emit_palette_tint is
         # built around that compare.
         #
@@ -37,10 +37,10 @@ module VBlank
         # sprite table's blob/size, and which blobs a tint must keep readable — is settled
         # by several prepare passes that run after this object exists, so it arrives late,
         # through #palette=, rather than as a constructor argument (the same shape
-        # Functions#modes= is set in). `drawing:` reaches Drawing for the fade/blend
-        # arithmetic it shares with a fade and a see-through layer — GBA builds this
-        # object before its own @drawing exists, so it hands in `self` and the call
-        # resolves once @drawing does (see gba.rb#initialize).
+        # Functions#modes= is set in). The three it calls on other parts (the copies out of the
+        # cartridge, the fade and blend arithmetic it shares with a fade and a see-through layer,
+        # and the notes saying whose scenery is up) are made after this, and arrive late the same
+        # way, through #uploads=, #effects= and #scene_entry= (see gba.rb#initialize).
         class PaletteTint
           include Console::Hardware
 
@@ -51,21 +51,21 @@ module VBlank
           # is the same state and a game that never tints never rewrites anything.
           TINT_STATE = :__tint_state
 
-          # The two halves of a 15-bit color, chosen so each can be blended with ONE
+          # The two halves of a 15-bit color, chosen so each can be blended with one
           # multiply. Red and blue sit five bits apart with green between them, so masking
           # green away leaves two fields far enough apart that multiplying by up to 32
           # cannot make either overflow into the other. Green is then done on its own.
           RB_MASK = 0x7C1F
           G_MASK = 0x03E0
 
-          # HOW FINELY THE WALK COUNTS. A walk means 256ths (see Backends::FadeSteps), and a
+          # How finely the walk counts. A walk means 256ths (see Backends::FadeSteps), and a
           # whole percentage is always a whole number of sixteenths, which is a whole number of
           # thirty-seconds. So a game that never asks for a fraction counts in thirty-seconds,
           # dividing by 32 with a shift of 5, and red times 32 still fits in the ten bits below
-          # blue: red and blue go through one multiply as they are. That is the COARSE walk,
+          # blue: red and blue go through one multiply as they are. That is the coarse walk,
           # and it is the same picture to the bit as the fine one would be.
           #
-          # A game that asks for a fraction anywhere gets the FINE walk, in 256ths, dividing by
+          # A game that asks for a fraction anywhere gets the fine walk, in 256ths, dividing by
           # 256 with a shift of 8. Red times 256 runs into blue, so blue is moved up to sit
           # sixteen bits above red for the multiply and back down after it: four instructions
           # more for each colour, on a frame the tint moves. Only such a game pays them.
@@ -92,9 +92,9 @@ module VBlank
           TINT_ADD_G = 9 # Its green one
           TINT_STEPS = 10 # Where the steps wait while the remembered tint is compared
 
-          # A FADE TOWARD BLACK, which is not quite a tint toward black. A mix KEEPS a share of
+          # A fade toward black, which is not quite a tint toward black. A mix keeps a share of
           # each channel and drops the fraction, so it rounds down; the display's own fade takes
-          # a share AWAY and drops the fraction of that, so it rounds up. On a dark picture the
+          # a share away and drops the fraction of that, so it rounds up. On a dark picture the
           # two are a whole frame apart at the end of a fade in — the mix is still flat black
           # on a frame where the display's fade already shows the picture. So a walked fade
           # rounds the way the display does: nearly one whole step (one of the walk's steps
@@ -106,7 +106,7 @@ module VBlank
           # and contributes nothing to the shares but the rounding.
           DARKEN = 0x8000
 
-          # A FADE TOWARD WHITE, kept across a change of screen (TINT_ASKED). On a screen drawn
+          # A fade toward white, kept across a change of screen (TINT_ASKED). On a screen drawn
           # through a color table it walks to exactly what `tint :white` walks to, so the walk
           # never looks at this bit. The plain bitmap screen is where the two part: there the
           # display brightens for a fade and mixes the backdrop in for a tint, and the two
@@ -130,7 +130,7 @@ module VBlank
             def bg_tables_take_turns? = (screen&.walks_areas? || screen&.scene_bg_palettes?) || false
           end
 
-          # WHERE THE SPRITE COLOURS ON SCREEN NOW CAME FROM, in a game whose scenes each send
+          # Where the sprite colours on screen now came from, in a game whose scenes each send
           # a table of their own (see ScreenLayout#build_shared_object_palette). A walk has to
           # start from the originals of the table the console is really holding, and which one
           # that is changes as the game runs, so it is kept in a variable rather than named.
@@ -182,7 +182,7 @@ module VBlank
             @primitives.store_var(ACC, ScreenLayout::AREA_COLORS_UP)
           end
 
-          # SEND A SCENE'S BACKGROUND COLOURS AS IT TAKES OVER (see
+          # Send a scene's background colours as it takes over (see
           # ScreenLayout#assign_tile_banks), the same way an area's go in.
           def emit_send_scene_bg_colors(blob, units, scene)
             emit_no_area_colors_up
@@ -190,7 +190,7 @@ module VBlank
             emit_send_bg_colors(units, up: scene)
           end
 
-          # SEND A TABLE OF BACKGROUND COLOURS, an area's as it is walked into or a scene's as it
+          # Send a table of background colours, an area's as it is walked into or a scene's as it
           # takes over. ACC holds where its table starts. A plain copy, unless this build moves
           # its colour tables — then the table goes in through whatever tint or fade is in
           # force, the same way a scene's sprite colours do, so an area or a scene arrived at on
@@ -212,18 +212,18 @@ module VBlank
                                                control: units | DMA_ENABLE)
           end
 
-          # SEND A SCENE'S SPRITE COLOURS AS IT TAKES OVER. A plain copy, unless this build moves
+          # Send a scene's sprite colours as it takes over. A plain copy, unless this build moves
           # its colour tables — then the table goes in through whatever tint or fade is in force,
           # the same way a layer's other colours do (see #emit_colors_into_bank), because a
           # plain copy into a screen that is meant to be dark would bring this scene's sprites
           # in at full brightness. It also marks this table as the one to walk from now on.
           #
           # A list of colours that changes has a group in this table, and the table holds the
-          # colours the list was DECLARED with. So each such group is written again from the set
+          # colours the list was declared with. So each such group is written again from the set
           # its list holds now (see #emit_recolored_obj_banks). +scene+ is the one taking over.
           def emit_send_scene_obj_palette(blob, units, scene)
             unless @palette_tint
-              @drawing.emit_plain_dma_blob(blob, OBJ_PALETTE, units)
+              @uploads.emit_plain_dma_blob(blob, OBJ_PALETTE, units)
               return emit_changed_obj_lists_again(up: scene)
             end
 
@@ -244,7 +244,7 @@ module VBlank
             emit_recolored_obj_banks(up: up)
           end
 
-          # AT POWER-ON, BEFORE ANYTHING READS THEM: no list of sprite colours has been told to
+          # At power-on, before anything reads them: no list of sprite colours has been told to
           # hold anything, and no tint is in force. Written rather than assumed, since the
           # console makes no promise about what is in its memory when it powers on — and both
           # are read early. A game that starts on a tiled screen and changes screen kind sets
@@ -269,7 +269,7 @@ module VBlank
             bg_lists.each { |source_var| @primitives.store_var(ACC, source_var) }
           end
 
-          # PUT BACK WHAT THE BACKGROUND COLOURS' BOOT COPY WROTE OVER. Changing the kind of screen
+          # Put back what the background colours' boot copy wrote over. Changing the kind of screen
           # (into a turning one and out again) sends the background colours as the cartridge holds
           # them, so the groups a layer draws from another list, and the backdrop that follows a
           # list, are the declared colours again — and a scene that sends no colours of its own
@@ -283,28 +283,28 @@ module VBlank
             emit_recolored_banks
           end
 
-          # PUT THE SET A CHANGING LIST NOW HOLDS INTO THE GROUP ITS SPRITES READ, through
+          # Put the set a changing list now holds into the group its sprites read, through
           # whatever tint is in force (see #emit_colors_into_bank for why). +list+ is where the
           # list landed (see ScreenLayout::ChangingColors); the variable it names already holds
           # where the set starts.
           #
-          # A LIST ONE SCENE OWNS has its group only while that scene's sprite colours are the
+          # A list one scene owns has its group only while that scene's sprite colours are the
           # ones up, and another scene's colours sit there the rest of the time. So the write
           # waits: the variable is kept either way, and the set goes in as the scene takes
           # over (see #emit_send_scene_obj_palette).
           def emit_changed_list_colors(list)
             return emit_list_colors_into(list.group_at, list.source_var) unless list.scene
 
-            @drawing.scene_entry.emit_if_scene_up(:art, list.scene) do
+            @scene_entry.emit_if_scene_up(:art, list.scene) do
               emit_list_colors_into(list.group_at, list.source_var)
             end
           end
 
-          # PUT THE SET A CHANGING LIST NOW HOLDS INTO EACH GROUP OF BACKGROUND COLOURS THAT FOLLOWS
-          # IT (see ScreenLayout::FollowedColors), through whatever tint is in force. The variable
+          # Put the set a changing list now holds into each group of background colours that follows
+          # it (see ScreenLayout::FollowedColors), through whatever tint is in force. The variable
           # +followed+ names already holds where the set starts.
           #
-          # A GROUP OF A BACKGROUND ONE SCENE OWNS is that background's only while the scene's
+          # A group of a background one scene owns is that background's only while the scene's
           # scenery is up, and holds another scene's colours the rest of the time. So the write
           # waits, as a scene's sprite list does: the variable is kept either way, and the set goes
           # in as the scene sends its background colours (#emit_send_bg_colors), which puts every
@@ -313,7 +313,7 @@ module VBlank
             followed.groups.each do |group|
               next emit_list_colors_into(group.group_at, followed.source_var) unless group.scene
 
-              @drawing.scene_entry.emit_if_scene_up(:scenery, group.scene) do
+              @scene_entry.emit_if_scene_up(:scenery, group.scene) do
                 emit_list_colors_into(group.group_at, followed.source_var)
               end
             end
@@ -324,13 +324,14 @@ module VBlank
             emit_colors_into_bank(dest, COLORS_IN_A_BANK)
           end
 
-          def initialize(emitter:, primitives:, lowering:, drawing:, raster:)
+          def initialize(emitter:, primitives:, lowering:, raster:)
             @emitter = emitter
             @primitives = primitives
             @lowering = lowering
-            @drawing = drawing
             @raster = raster
           end
+
+          attr_writer :uploads, :effects, :scene_entry
 
           attr_writer :modes
 
@@ -367,7 +368,7 @@ module VBlank
             prepare_screen_backdrops(program)
           end
 
-          # A BACKDROP A `screen` NAMES, IN A BUILD THAT MOVES ITS COLOUR TABLES. The console keeps
+          # A backdrop a `screen` NAMES, IN A BUILD THAT MOVES ITS COLOUR TABLES. The console keeps
           # its backdrop in the first place of the background colours, and a walk writes that place
           # from the table of colours in force, whose first place is the game's backdrop unless the
           # scene up sends a table of its own. So a scene that names a backdrop and sends no table
@@ -400,7 +401,7 @@ module VBlank
           # Does a backdrop a `screen` names go in through the tint in force?
           def tints_screen_backdrops? = @screen_backdrops.any?
 
-          # THE BACKDROP +color+ INTO THE FIRST PLACE OF THE BACKGROUND COLOURS, through whatever
+          # The backdrop +color+ INTO THE FIRST PLACE OF THE BACKGROUND COLOURS, through whatever
           # tint is in force, and kept as the one to put back there.
           def emit_backdrop_through_tint(color)
             @emitter.emit_load_data_address(ACC, SCREEN_BACKDROPS)
@@ -438,7 +439,7 @@ module VBlank
 
           # The same for an amount the game works out.
           #
-          # THE ADVANCE'S OWN WAY, beside Backends::PaletteWalk, which every console without a blend
+          # The Advance's own way, beside Backends::PaletteWalk, which every console without a blend
           # takes. The rules are the same; what differs is how they are counted. A game that asks for
           # no fraction walks in thirty-seconds here, so the steps and the colour fit one state word
           # that a single compare tells is unchanged and a single AND unpacks (#emit_state_steps),
@@ -481,7 +482,7 @@ module VBlank
             (color & RED_MASK) | ((color & BLUE_MASK) << (FINE_BLUE_LANE - 10))
           end
 
-          # A TINT LEFT ON WHILE THE GAME CHANGES SCREEN. The plain bitmap screen tints through
+          # A tint left on while the game changes screen. The plain bitmap screen tints through
           # the display's blend and every other screen by walking its color tables, and no
           # tint survives a change: a walked table is sent again as drawn, or has nothing to send
           # to a screen with no table, and the blend reads a color a tiled screen puts its own
@@ -611,7 +612,7 @@ module VBlank
           # left in r0 and kept in TINT_STEPS.
           def emit_tint_word(color, steps)
             @lowering.value(steps)
-            @drawing.emit_clamp_blend_steps(walk_levels)
+            @effects.emit_clamp_blend_steps(walk_levels)
             @emitter.emit(ASM.mov_reg(TINT_STEPS, ACC))                      # kept while the state is compared
             @emitter.emit_number(TMP, color << state_shift)
             @emitter.emit(ASM.orr_reg(TMP, TMP, ACC))                        # r1 = the state asked for
@@ -622,11 +623,11 @@ module VBlank
           # Everything the walk needs that is the same for every entry: the masks, how
           # much of an original survives, and the tint color's own share of the answer.
           #
-          # The color's share is worked out ONCE here rather than per entry, which is what
+          # The color's share is worked out once here rather than per entry, which is what
           # makes the inner loop as short as it is — the color does not change while a
           # table is being walked, so neither does what it contributes.
           #
-          # It is kept UNSHIFTED, still multiplied up, because that is what makes the
+          # It is kept unshifted, still multiplied up, because that is what makes the
           # rounding right: the display adds the two shares and drops the fraction once,
           # from the sum. Dropping it from each share first can land a whole step lower.
           #
@@ -677,12 +678,12 @@ module VBlank
           #
           # The blend is the same arithmetic the display's own unit does, and the same the
           # interpreter does — each channel takes its share of the original and its share
-          # of the color, the two are ADDED, and only then is the fraction dropped.
+          # of the color, the two are added, and only then is the fraction dropped.
           # Doing it channel by channel would be three times this; masking red and blue
           # together (they sit far enough apart that a multiply cannot run one into the
           # other, and neither can the sum) does two of them in one multiply.
           #
-          # A TINT AT FULL KEEPS NOTHING OF ANY ORIGINAL, so every colour of the table comes to the
+          # A tint at full keeps nothing of any original, so every colour of the table comes to the
           # one answer, and one fill by the copy engine puts it everywhere for what the walk spends
           # on a handful of colours. That is the tint that has to be quick. A pass starts well into
           # the gap between frames, since the sprites and the mixer go first, and a table of hundreds
@@ -782,11 +783,11 @@ module VBlank
             @emitter.emit(ASM.add_reg_lsr(TMP, TMP, TINT_RB, FINE_BLUE_LANE + FINE_SHIFT - 10))
           end
 
-          # PUT A LAYER'S OTHER COLOURS INTO THE GROUP ITS TILES READ, through whatever tint
+          # Put a layer's other colours into the group its tiles read, through whatever tint
           # is in force. ACC holds where the list starts on the way in; +dest+ is where that
           # group of sixteen sits in the table.
           #
-          # WHY IT GOES THROUGH THE TINT RATHER THAN STRAIGHT IN. Two things write this one
+          # Why it goes through the tint rather than straight in. Two things write this one
           # table, and a game can do both: a tint moves every colour the game declared, and a
           # layer told `draw_with` replaces sixteen of them. A plain copy would put full
           # brightness back into the middle of a screen that is meant to be dark — one layer
@@ -805,7 +806,7 @@ module VBlank
 
           # ...and the other half of the same agreement: once a tint has walked the tables,
           # the entries it has just written over a recoloured layer's group are the colours
-          # that layer was DRAWN in, which is not what it is being drawn with. So each such
+          # that layer was drawn in, which is not what it is being drawn with. So each such
           # group is written again, from the list it is really showing.
           #
           # The groups (#bg_restore_banks) are (where the group sits, the variable holding
@@ -813,14 +814,14 @@ module VBlank
           # list is, the layer's scene) — nought in that variable meaning the layer has never been
           # told anything, where the tables already hold the right colours.
           #
-          # A LAYER A SCENE OWNS has its group only while that scene is up: another scene's
+          # A layer a scene owns has its group only while that scene is up: another scene's
           # colours sit there the rest of the time, and writing the layer's list over them would
           # recolour that scene's tiles. +up+ is the scene known to be the one up here — the one
           # taking over — and its layers and the ones every scene shows are written; with +up+
           # unknown, as in a tint, a scene's layer is written only while its scenery is the one
           # up.
           #
-          # WRITTEN ONCE AND CALLED. Every tint the game writes, and every area or screen that
+          # Written once and called. Every tint the game writes, and every area or screen that
           # sends its colours, puts these groups back, and each group is a check and a walk of its
           # own: written out at each of them, a layer of six borrowed lists was most of the code of
           # a game that tints in a few places, and enough to push the routine that runs every
@@ -843,7 +844,7 @@ module VBlank
           # Tell that routine whose layers to write: the scene +up+, or with it unknown the one the
           # note names.
           def emit_recolored_scene_up(up)
-            entry = @drawing.scene_entry
+            entry = @scene_entry
             return entry.emit_marker_copy_into(RECOLORED_SCENE_UP, :scenery) if up == :unknown
 
             entry.emit_scene_number_into(RECOLORED_SCENE_UP, up)
@@ -862,9 +863,9 @@ module VBlank
             emit_recolored_banks_of(bg_restore_banks, :scenery, :unknown, scene_up_in: RECOLORED_SCENE_UP)
           end
 
-          # THE SAME AGREEMENT FOR SPRITES: a list of sprite colours that changes has a group of
+          # The same agreement for sprites: a list of sprite colours that changes has a group of
           # its own, and whatever has just rewritten the sprite colours — a tint's walk, a scene
-          # sending its table — put the colours the list was DECLARED with there. So each such
+          # sending its table — put the colours the list was declared with there. So each such
           # group is written again from the set its list holds now. A list one scene owns is
           # held to that scene the way a layer is, by whose sprite colours are up.
           def emit_recolored_obj_banks(up: :unknown)
@@ -882,7 +883,7 @@ module VBlank
               next if scene && up != :unknown && scene != up
 
               if scene && up == :unknown
-                @drawing.scene_entry.emit_if_var_names_scene(scene_up_in, scene) do
+                @scene_entry.emit_if_var_names_scene(scene_up_in, scene) do
                   emit_recolored_bank(dest, source_var, along, units, area)
                 end
               else
@@ -910,7 +911,7 @@ module VBlank
             @emitter.place_label(past)
           end
 
-          # THE BACKDROP FOLLOWS THE LIST +node+ IS TELLING TO HOLD ANOTHER SET (see
+          # The backdrop follows the list +node+ is telling to hold another set (see
           # ScreenLayout::BackdropColors): the colour the backdrop is in that set goes into the first
           # place of the background colours, through whatever tint is in force, as the list's own
           # colours go into their group. Where it was read from is kept, so whatever writes the
@@ -1003,7 +1004,7 @@ module VBlank
 
           # Put the color tables back exactly as they were drawn.
           #
-          # This is what a FADE does on a table-drawn screen when a tint may be in force,
+          # This is what a fade does on a table-drawn screen when a tint may be in force,
           # for the same reason the tint clears the fade: the display holds one
           # whole-picture effect at a time. Nothing has to be blended to undo a tint — the
           # originals are still in the cartridge — so this is the same copy the program
@@ -1036,7 +1037,7 @@ module VBlank
             # colours, or the area a game walked into — never from the one at power-on.
             taking_turns = (blob == @layout.obj_palette_blob && scene_obj_tables?) ||
                            (blob == BG_SHARED_PAL && @layout.bg_tables_take_turns?)
-            return @drawing.emit_plain_dma_blob(blob, dest, units) unless taking_turns
+            return @uploads.emit_plain_dma_blob(blob, dest, units) unless taking_turns
 
             emit_table_source(ACC, blob)
             @primitives.emit_start_copy_engine(from: Primitives::InRegister.new(ACC), to: dest,

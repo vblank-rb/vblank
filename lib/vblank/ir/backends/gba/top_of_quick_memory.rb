@@ -4,9 +4,9 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHAT THE BUILD HOLDS BACK AT THE TOP OF THE QUICK MEMORY, and where each piece of it goes.
+        # What the build holds back at the top of the quick memory, and where each piece of it goes.
         #
-        # THE HARDWARE, briefly. The console's quick memory is 32K, and its top 256 bytes belong to
+        # The hardware, briefly. The console's quick memory is 32K, and its top 256 bytes belong to
         # the console's own startup code, which keeps the stacks it answers an interrupt on there.
         # Just below them is the game's own stack: every routine pushes where to return to on the
         # way in and takes it back on the way out, and a value with nowhere else to wait waits there
@@ -24,7 +24,7 @@ module VBlank
         # variable past the single-instruction address and cost one game an extra 5,700 bytes of
         # code, all of it in variable reads.
         #
-        # HOW MUCH STACK. A game's stack, measured on the console with every scene held and played,
+        # How much stack. A game's stack, measured on the console with every scene held and played,
         # goes a few dozen bytes below where its game loop keeps it — while the build used to hold
         # back the whole 4K for it. So a game gets DEFAULT_STACK_BYTES, many times what any game
         # measured, unless its deepest chain of calls needs more (see .stack_needed), and a game that
@@ -32,10 +32,11 @@ module VBlank
         # anything can see: the stack walks down into the game's own code and lists and writes over
         # them.
         #
-        # THE INTERRUPT STACK IS THE OTHER ONE IN THOSE 256 BYTES, and it is small. When the console
+        # The interrupt stack is the other one in those 256 BYTES, and it is small. When the console
         # stops the game to answer an interrupt, it switches to a stack of its own, which starts 96
         # bytes below the top and grows down towards the game's. The console's own handler saves 24
-        # bytes there and ours saves 36 more, which leaves 100 before it reaches the game's stack.
+        # bytes there and ours saves 36 more, which leaves 100 before it reaches the game's stack
+        # (HANDLER_OWN_BYTES).
         # A timer's `on_tick` runs there, and so does a bend in a game with no frame (in a game
         # with one, the rows are worked out after the frame wakes the game, on the game's stack).
         # Each routine one of those calls costs more: measured on the console, a handler could
@@ -44,7 +45,7 @@ module VBlank
         # them: the game's own stack starts that much lower (#stack_starts_at, which the boot code
         # sets), and the gap is the interrupt stack's to grow into.
         #
-        # THE ROUTINE THAT FILLS A FACE OF A PLACE goes below the divide routines, for a game that
+        # The routine that fills a face of a place goes below the divide routines, for a game that
         # draws a place (see Faces): it runs once for every pixel of every face, and from the
         # cartridge each of its instructions would wait on the cartridge to be read.
         TopOfQuickMemory = Data.define(:ceiling, :divide_at, :divide_fix_at, :fill_face_at, :stack_bytes,
@@ -58,10 +59,27 @@ module VBlank
           # The console's own, at the very top.
           CONSOLE_BYTES = 256
 
+          # The interrupt stack inside those: it starts this far below the top, and the console's
+          # handler saves r0-r3, r12 and lr there and ours the registers in GBA::IRQ_SAVED_REGS.
+          INTERRUPT_STACK_BELOW_TOP_BYTES = 96
+          CONSOLE_HANDLER_SAVES_BYTES = 24
+          DISPATCHER_SAVES_BYTES = 36
+
+          # What is left of the console's bytes once the two have saved theirs, before the
+          # interrupt stack reaches the game's: room for what a handler does itself, which
+          # .interrupt_room_needed does not count. Of it a handler whose code copies keeps
+          # HANDLER_COPY_BYTES on the stack at most, at any depth of calls: the fill's colour word
+          # (Primitives#with_fill_word_saved) and the interrupt switch while a copy is set up
+          # (Primitives#with_copy_setup_held). The rest is for the values a long expression leaves
+          # waiting there.
+          HANDLER_OWN_BYTES = CONSOLE_BYTES - INTERRUPT_STACK_BELOW_TOP_BYTES - CONSOLE_HANDLER_SAVES_BYTES -
+                              DISPATCHER_SAVES_BYTES
+          HANDLER_COPY_BYTES = 8
+
           # The stack room a game gets unless its calls nest deeper or it sets otherwise.
           DEFAULT_STACK_BYTES = 1024
 
-          # WHAT ONE CALL DEEPER COSTS THE STACK, held at its dearest: the return address, and the
+          # What one call deeper costs the stack, held at its dearest: the return address, and the
           # values a counted loop keeps safe around its body. The floor is for the console's own
           # routines a game calls (waiting for the screen, unpacking a picture), which work on the
           # game's stack, and for the values a long expression leaves waiting.
@@ -103,7 +121,7 @@ module VBlank
           def divide_bytes = below_stack - divide_bottom
           def fill_face_bytes = divide_bottom - ceiling
 
-          # THE QUICK MEMORY IS FULL: the variables, +variables+ bytes, ran +over+ bytes into the
+          # The quick memory is full: the variables, +variables+ bytes, ran +over+ bytes into the
           # far end, which holds +kept+ bytes of lists, tables and buffers. The author is told
           # what takes the room, piece by piece, and what to change.
           def overrun_message(over:, variables:, kept:)
@@ -142,11 +160,11 @@ module VBlank
             kb == kb.round ? "#{kb.round}KB" : "#{format('%.1f', kb)}KB"
           end
 
-          # THE STACK THE DEEPEST CHAIN OF CALLS NEEDS, from the game loop's body: the longest run of
+          # The stack the deepest chain of calls needs, from the game loop's body: the longest run of
           # routines each calling the next. What the console runs on an interrupt is not counted
           # here, since it runs on the console's own stack (see .interrupt_room_needed).
           #
-          # A TIMER'S HANDLER THAT WAITS runs on the game's stack, from any wait, and again inside its
+          # A timer's handler that waits runs on the game's stack, from any wait, and again inside its
           # own wait (FrameBoundaryCalls): calls going round in a circle, which get the room for those.
           def self.stack_needed(program)
             depth = deepest_call_depth(program, program.walk.select { |node| node.kind == :loop })
@@ -156,11 +174,12 @@ module VBlank
             STACK_FLOOR_BYTES + (depth * STACK_BYTES_PER_CALL)
           end
 
-          # THE ROOM BELOW THE CONSOLE'S 256 BYTES THAT THE INTERRUPT STACK NEEDS, past the 100 the
-          # console leaves it: the deepest chain of calls from a timer's handler, or from a bend
-          # worked out a line at a time, each call held at its dearest, and the most any handler
-          # saves around itself (FrameBoundaryCalls::SavedState#bytes). The console's 100 stay for
-          # what a handler does itself. A handler that calls nothing needs none, which is every
+          # The room below the console's 256 bytes that the interrupt stack needs, past the
+          # HANDLER_OWN_BYTES the console leaves it: the deepest chain of calls from a timer's
+          # handler, or from a bend worked out a line at a time, each call held at its dearest, and
+          # the most any handler saves around itself (FrameBoundaryCalls::SavedState#bytes). The
+          # HANDLER_OWN_BYTES stay for what a handler does itself, HANDLER_COPY_BYTES among them.
+          # A handler that calls nothing needs none, which is every
           # game that does not write one that does, so the game's stack stays where it always was.
           def self.interrupt_room_needed(program)
             depth = deepest_call_depth(program, interrupt_bodies(program))

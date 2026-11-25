@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 require "tmpdir"
 
-# WHICH ROUTINES GO IN THE CONSOLE'S QUICK MEMORY, decided by measuring the game.
+# Which routines go in the console's quick memory, decided by measuring the game.
 #
 # It is the one choice a build cannot measure its way to on its own: the choice is an input to
 # the lowering, so it has to be made before the cartridge it would run exists. So the game is
@@ -24,8 +24,8 @@ class TestMeasuredPlacement < Minitest::Test
 
   # The work lives in the second scene. Nothing reaches it by holding a button — a scene is
   # switched by a press, and a held button is one press however long it is held.
-  private def game_with_work_in_a_later_scene
-    VBlank.game("MPLC", consoles: %i[gba], code: "MPLC", maker: "01") do
+  private def game_with_work_in_a_later_scene(**settings)
+    VBlank.game("MPLC", consoles: %i[gba], code: "MPLC", maker: "01", **settings) do
       screen :bitmap
       clear_screen :black
       var :state, 0
@@ -36,10 +36,7 @@ class TestMeasuredPlacement < Minitest::Test
       func(:the_hot_one) { repeat(3000) { x += 1 } }
 
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -81,7 +78,24 @@ class TestMeasuredPlacement < Minitest::Test
     end
   end
 
-  # A ROUTINE ON EVERY SCREEN OUTRANKS ONE ON A SINGLE SCREEN THAT DOES LESS IN ALL. The game
+  # A game built with `fast_code: false` is not built twice. The measurement only decides what
+  # the build chooses for the quick memory, and with the choosing off there is nothing for it to
+  # decide: so the build that measures, and the run of each scene, are skipped. Counted by the
+  # phases the build names: the first build is one line of the real one.
+  def test_a_build_with_the_choosing_off_runs_no_measuring_build
+    assert_equal 0, measuring_builds(game_with_work_in_a_later_scene(fast_code: false))
+    assert_equal 1, measuring_builds(game_with_work_in_a_later_scene),
+                 "with the choosing on, the game is built once to measure"
+  end
+
+  private def measuring_builds(game)
+    said = StringIO.new
+    game.build_rom(out: StringIO.new, err: StringIO.new, profile: true,
+                   progress: VBlank::Messages::Progress.to(said))
+    said.string.lines.count { |line| line.strip.start_with?("Building once to measure") }
+  end
+
+  # A routine on every screen outranks one on a single screen that does less in all. The game
   # loop runs on every frame the player ever sees; a menu's routine runs on one screen they see
   # for a moment. Ranking each by its busiest screen weighed the two as though both ran on one,
   # and a file-select screen seen once took the quick memory from the game loop.
@@ -102,12 +116,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing) { x += 1 }
       game_loop do
         call :everywhere
-        case_var(:state) do
-          when_val 0, :logos
-          when_val 1, :title
-          when_val 2, :files
-          when_val 3, :playing
-        end
+        call({ 0 => :logos, 1 => :title, 2 => :files, 3 => :playing }, number: :state)
       end
     end
   end
@@ -151,7 +160,7 @@ class TestMeasuredPlacement < Minitest::Test
     end
   end
 
-  # ...and the routines the BUILD invents are not drift. One glyph walker per font appears and
+  # ...and the routines the build invents are not drift. One glyph walker per font appears and
   # disappears as a game changes, and saying so every time would train an author to ignore it.
   def test_a_routine_the_build_made_is_not_reported_as_drift
     Dir.mktmpdir do |dir|
@@ -183,7 +192,7 @@ class TestMeasuredPlacement < Minitest::Test
                     "measured at nothing, and kept anyway because the author asked"
   end
 
-  # A SAVE NOBODY MAKES WHILE THE GAME IS MEASURED, measured all the same: the two screens that
+  # A save nobody makes while the game is measured, measured all the same: the two screens that
   # save are each measured with a save running, so the routine that writes it a piece a pass is
   # weighed by what it costs there, and kept without the game insisting on it.
   def test_a_save_is_measured_and_kept_without_fast_true
@@ -202,10 +211,7 @@ class TestMeasuredPlacement < Minitest::Test
         files[1].save if pressed(:start)
       end
       game_loop do
-        case_var(:state) do
-          when_val 0, :files
-          when_val 1, :playing
-        end
+        call({ 0 => :files, 1 => :playing }, number: :state)
       end
     end
     placement = game.build_rom(out: StringIO.new, err: StringIO.new, profile: true).built.placement
@@ -216,7 +222,7 @@ class TestMeasuredPlacement < Minitest::Test
 
   # --- what a scene is measured doing ---
 
-  # A ROUTINE THAT RUNS ONLY WHILE A BUTTON IS DOWN. The build measures each scene with nobody
+  # A routine that runs only while a button is down. The build measures each scene with nobody
   # at the controls, so without a word from the game it measures :fighting at nothing.
   private def game_that_fights_while_b_is_held(measuring)
     VBlank.game("MHLD", consoles: %i[gba], maker: "01") do
@@ -228,10 +234,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing, **measuring) { call :fighting if held(:b) }
       func(:fighting) { repeat(3000) { x += 1 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
   end
@@ -259,7 +262,7 @@ class TestMeasuredPlacement < Minitest::Test
     refute_match(/:title.*measured holding/, out.string, "a scene that says nothing is measured standing still")
   end
 
-  # A BUTTON READ AS IT GOES DOWN fires once however long it is held, so a scene where a
+  # A button read as it goes down fires once however long it is held, so a scene where a
   # pistol fires on each press is measured with a tape: here B down for a frame and up for one,
   # over and over.
   def test_a_tape_given_to_measure_holding_is_played_round_while_the_scene_is_measured
@@ -280,10 +283,7 @@ class TestMeasuredPlacement < Minitest::Test
       scene(:playing, measure_holding: tape) { call :fighting if pressed(:b) }
       func(:fighting) { repeat(3000) { x += 1 } }
       game_loop do
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :playing
-        end
+        call({ 0 => :title, 1 => :playing }, number: :state)
       end
     end
     rom = game.build_rom(out: StringIO.new, err: StringIO.new)

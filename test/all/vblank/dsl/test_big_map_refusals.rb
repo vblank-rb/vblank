@@ -2,10 +2,11 @@
 
 require "test_helper"
 
-# WHAT A BACKGROUND WITH A MAP BIGGER THAN THE CONSOLE'S GRID CANNOT DO. Such a background
+# What a background with a map bigger than the console's grid cannot do. Such a background
 # holds only the cells around the view and copies them in again as the view moves (see
-# IR::TileMap.streams?), so changing one cell, turning the layer, or bending its rows would
-# each reach cells that are not there.
+# IR::TileMap.streams?), so changing a block of cells at once, turning the layer, or bending its
+# rows would each reach cells that are not there. One cell is changed with set_tile
+# (test/all/vblank/dsl/test_background_room_cells.rb).
 class TestBigMapRefusals < Minitest::Test
   private def program(&block)
     b = Builder.new
@@ -22,16 +23,17 @@ class TestBigMapRefusals < Minitest::Test
     end
   end
 
-  def test_one_cell_of_a_big_map_cannot_be_changed
+  def test_a_block_of_cells_of_a_big_map_cannot_be_filled
     test = self
     error = assert_raises(ArgumentError) do
       program do
         test.big_ground(self)
         ground = background :ground, tiles: :ground, map: ["." * 80] * 20
-        game_loop { ground.set_tile 1, 1, "." }
+        game_loop { ground.fill_tiles 1, 1, 2, 2, "." }
       end
     end
-    assert_includes error.message, "set_tile cannot change"
+    assert_includes error.message, "fill_tiles cannot change a block"
+    assert_includes error.message, "set_tile"
   end
 
   def test_a_big_map_cannot_turn
@@ -39,7 +41,7 @@ class TestBigMapRefusals < Minitest::Test
     error = assert_raises(ArgumentError) do
       program do
         test.big_ground(self)
-        background(:ground, tiles: :ground, map: ["." * 80] * 80).rotate(10)
+        background(:ground, tiles: :ground, map: ["." * 80] * 80).rotate!(10)
         game_loop {}
       end
     end

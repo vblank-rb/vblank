@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A TILE THAT IS ANOTHER TILE MIRRORED IS STORED ONCE, and the cells that show it say to draw it
+# A tile that is another tile mirrored is stored once, and the cells that show it say to draw it
 # turned round. Nothing in a tileset says which tiles are mirrors of each other — a room's left
 # wall is its right wall reversed, a corner is the same corner four ways — and a whole area of a
 # real game can come to twice the tiles one layer can name if each is kept as drawn. A map cell

@@ -1,12 +1,12 @@
 # VBlank
 
-**Write a 2D retro game in plain Ruby, and build it for the consoles it was made for.**
+**Write a retro game in plain Ruby, and build it for the consoles it was made for.**
 
 ![Six games built with VBlank, running at once in an emulator: Pac-Man, a first-person maze, a walk through a scrolling world, Breakout, a shooter, and a lantern-lit cave](assets/examples.gif)
 
 > Six of the [examples](examples/), each a real Game Boy Advance cartridge running in an emulator.
 
-You write Ruby. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. The language is about 2D games today: tiles, sprites, layers and a painted screen.
+You write Ruby: locals, `if`, loops, Arrays and classes of your own, as [Plain Ruby in a game](PLAIN_RUBY.md) tells. VBlank turns it into a cartridge that boots on the real console or in any emulator, and the same game can also be a program for a computer or a page in a browser. The framework manages the machine: no video memory, no registers, no assembly. It draws with tiles, sprites, layers and a painted screen, and shows places in 3D.
 
 It is made for somebody who knows Ruby and has never touched an old console. You name colours, not palettes; you say `sprite` and `blit`, not OAM and DMA. A verb is plain to call, and takes settings that make it cheaper when a game on a small machine needs them.
 
@@ -16,7 +16,7 @@ The toolchain is shaped around fast, readable feedback while building a game, fo
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/where-a-game-runs-dark.svg">
-  <img alt="How much of each target's hardware VBlank drives: Game Boy Advance 46 of 53 features, Super Nintendo 17 of 43, Sega Genesis 23 of 51, Game Boy Color 30 of 46, PlayStation 24 of 61, desktop program 15 of 37, web page 15 of 24" src="assets/where-a-game-runs-light.svg" width="640">
+  <img alt="How much of each target's hardware VBlank drives: Game Boy Advance 46 of 52, Super Nintendo 19 of 44, Sega Genesis 25 of 53, Game Boy Color 30 of 46, PlayStation 27 of 64, DOS 16 of 26, Desktop program 15 of 37, Web page 15 of 24" src="assets/where-a-game-runs-light.svg" width="640">
 </picture>
 
 Each bar counts the target's hardware features, checked against its documentation, and how many VBlank supports. The desktop program is played and tested on the Mac; Windows and Linux builds are made but not yet run there. `vblank run` also plays any game on Ruby and SDL3, with no compiler, as a tool for trying and stepping through a game while you write it.
@@ -29,6 +29,7 @@ Every game says which consoles it is for, and a build makes a cartridge for each
 require "vblank"
 
 Walk = VBlank.game "WALK", consoles: %i[gba gbc] do
+  # A screen you paint on, pixel by pixel
   screen :bitmap
   x = 40
   y = 40
@@ -108,16 +109,13 @@ Every file in [`examples/`](examples/) is a complete game or demo that teaches o
 
 ## Using it in a game
 
-Building a cartridge needs only Ruby. Checking or measuring one runs it in an emulator, through the `ruby-gba-emulator` gem, which lives in this repository but is not a dependency, so somebody who only builds cartridges needs no C compiler. Add both to a game's Gemfile in one block:
+VBlank is one gem. Add it to a game's Gemfile:
 
 ```ruby
-git "https://github.com/vblank-rb/vblank.git", glob: "{,ruby-gba-emulator/}*.gemspec" do
-  gem "vblank"
-  gem "ruby-gba-emulator"
-end
+gem "vblank", git: "https://github.com/vblank-rb/vblank.git"
 ```
 
-Keep it as one block. Two separate `gem ... github:` lines look the same but are two sources that clone into one folder, and the clone fails.
+Building a cartridge needs only Ruby. Checking or measuring one runs it in an emulator, and the emulators ship inside the gem: installing it builds them where the machine has a C compiler and the emulator's library. Where it cannot, the install still finishes, and the first check that needs an emulator says what is missing and how to fix it (install the tools, then `gem pristine vblank`).
 
 | To… | you need |
 |---|---|
@@ -127,7 +125,7 @@ Keep it as one block. Two separate `gem ... github:` lines look the same but are
 | build a program for a computer | zig 0.17 |
 | import a picture from a PNG | ImageMagick (`.aseprite` files are read in Ruby) |
 | test a game as JavaScript | node 18 or later |
-| check or measure a cartridge | `ruby-gba-emulator`: a C compiler and libmgba |
+| check or measure a cartridge | a C compiler and libmgba when the gem is installed |
 
 ## Status
 

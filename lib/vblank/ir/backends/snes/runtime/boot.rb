@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # FROM POWER-ON TO THE GAME'S FIRST LINE.
+          # From power-on to the game's first line.
           #
           # The processor wakes up pretending to be a 6502: 8-bit registers, 64K of addresses, and
           # the reset vector read from the end of the cartridge's first bank. The first thing done
@@ -109,7 +109,7 @@ module VBlank
               asm.rep(0x20)
             end
 
-            # WHAT SETTING UP CLEARS, and nothing else: the copying engine takes eight of the console's
+            # What setting up clears, and nothing else: the copying engine takes eight of the console's
             # clock cycles a byte with the processor stopped, so all 128K of work RAM and all 64K of video
             # RAM were most of the first six frames. +work_ram+ is the ranges of long addresses the build
             # placed something in (Memory#placed_ranges); +video_ram+ the ranges of word addresses the
@@ -117,10 +117,10 @@ module VBlank
             # (#video_ram_read). The colour memory and the sprite table are always cleared whole.
             Cleared = Data.define(:work_ram, :video_ram)
 
-            # A RANGE OF VIDEO RAM: its first word and how many words.
+            # A range of video RAM: its first word and how many words.
             VideoRange = Data.define(:word, :words)
 
-            # THE VIDEO RAM THE PICTURE READS AND DOES NOT WRITE WHOLE BEFORE IT IS SHOWN. On a tiled
+            # The video RAM the picture reads and does not write whole before it is shown. On a tiled
             # screen the backgrounds' and sprites' tiles in use are copied in by the picture's start
             # (Runtime::Picture: tile 0 among them, the empty cell), and every other tile is named by no
             # cell and no sprite until something copies it in first; but a layer's map is shown whether

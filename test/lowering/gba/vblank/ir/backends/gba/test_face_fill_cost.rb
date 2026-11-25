@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# WHAT FILLING A FACE COSTS on the console, a pixel at a time, which is most of a frame of a place:
+# What filling a face costs on the console, a pixel at a time, which is most of a frame of a place:
 # one face covering the whole screen, measured by running the cartridge, under each setting of
 # perspective. The same face is drawn on the interpreter too, since going faster is not allowed to
 # change a pixel.

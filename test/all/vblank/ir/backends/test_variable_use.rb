@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# HOW OFTEN A RUN NAMES EACH VARIABLE (Backends::VariableUse), the ranking a lowering keeps its
+# How often a run names each variable (Backends::VariableUse), the ranking a lowering keeps its
 # busiest variables in quick memory by: a number worked on in a loop counts for more than one set
 # once a pass, a routine's numbers count at each call, and the game plays the same however they
 # rank.

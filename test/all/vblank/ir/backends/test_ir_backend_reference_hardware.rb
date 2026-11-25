@@ -59,14 +59,6 @@ class TestIRBackendReferenceHardware < Minitest::Test
     assert_equal 0, i.screen.pixel(8, 5)                      # just outside
   end
 
-  def test_dma_fill_rect_paints_a_block
-    # Same picture as fill_rect — the "DMA" is only how a console fills it fast.
-    i = run_ir(program(dma_fill_rect(4, 6, 4, 2, :red)))
-    assert_equal Color.resolve(:red), i.screen.pixel(4, 6)
-    assert_equal Color.resolve(:red), i.screen.pixel(7, 7) # bottom-right (4+4-1, 6+2-1)
-    assert_equal 0, i.screen.pixel(8, 6)                    # just outside
-  end
-
   def test_draw_rect_at_positions_the_block_from_variables
     # The moving-object draw: its position comes from variables at run time.
     i = run_ir(program(
@@ -329,10 +321,7 @@ class TestIRBackendReferenceHardware < Minitest::Test
         else
           state = 1 if tick == 4
         end
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :plain
-        end
+        call({ 0 => :title, 1 => :plain }, number: :state)
       end
     end
     builder.finalize_program
@@ -398,7 +387,7 @@ class TestIRBackendReferenceHardware < Minitest::Test
         tick += 1
         field.scroll_by 3, 1 if scrolls
         if turns
-          sword.rotate tick * 7
+          sword.rotate! tick * 7
           sword.scale 1.0 + (tick % 8).to_f / 8
         end
         instance_exec(tick, &each_frame) if each_frame

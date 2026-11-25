@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/floating_digits").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/floating_digits").to_s)
 
 # examples/floating_digits.rb on a Super Nintendo: ten digit pictures drifting and bouncing off the
 # bigger screen's walls, the screen cleared and every digit painted again each pass, held to the

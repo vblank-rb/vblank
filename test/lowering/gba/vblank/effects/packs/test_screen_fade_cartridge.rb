@@ -70,7 +70,7 @@ class TestScreenFadeCartridge < Minitest::Test
   # The two kinds of screen a game opening on an effect is asked about.
   OPENING_SCREENS = %i[bitmap tiled].freeze
 
-  # AN EFFECT SET BEFORE THE GAME LOOP IS IN FORCE ON THE FIRST FRAME SHOWN (see opening_on).
+  # An effect set before the game loop is in force on the first frame shown (see opening_on).
   def test_the_console_never_shows_the_picture_before_the_effect
     OPENINGS.each do |name, effect|
       OPENING_SCREENS.each do |kind|

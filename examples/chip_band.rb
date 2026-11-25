@@ -9,11 +9,11 @@
 # recording anywhere, which is all a Game Boy Color has for music. So it builds for the Advance
 # and the Color, and sounds the same on both.
 #
-# HELD NOTES is a little tune of four bars the way a song's notes were before they could fade:
+# Held notes is a little tune of four bars the way a song's notes were before they could fade:
 # each note of the melody and the chords starts at its volume and stays there until the next,
 # like an organ. Its drums ring out, as drums always did.
 #
-# FADING NOTES is the same tune, note for note, with the voices counting each note's loudness
+# Fading notes is the same tune, note for note, with the voices counting each note's loudness
 # down or up by themselves while it holds:
 #   1. The lead is plucked: each note fades out (`decay :medium`), so a long note rings away and
 #      a run of short ones sparkles. Its last note says its own, slower fade.
@@ -23,7 +23,7 @@
 #      cymbal played backwards (DRUMS, below).
 # Switch between the two and listen to the same notes come out as two instruments.
 #
-# SLIDING NOTES is the same tune again, with the lead's pitch moving by itself while each note
+# Sliding notes is the same tune again, with the lead's pitch moving by itself while each note
 # holds — only the first square voice can, so only the lead slides:
 #   1. Every eighth note zaps up (`slide_up: :fast`): it climbs faster and faster until it runs off
 #      the top of what the voice can play, and goes silent — the sound of a laser.
@@ -31,26 +31,26 @@
 #
 # The chords and the drums play as they do in FADING NOTES.
 #
-# WOBBLING NOTES is the tune sung: the music player moves each note's pitch a little above and
+# Wobbling notes is the tune sung: the music player moves each note's pitch a little above and
 # below where it began, a few frames each way, the way a singer's voice wobbles on a held note.
 #   1. The lead waits an eighth into each note before it wobbles (`vibrato after: :eighth`), so a
 #      short note stays straight and a long one blooms.
 #   2. The chords wobble slightly and slowly from the start, a string section.
 #
-# LEFT AND RIGHT is the tune spread across the two speakers, the way a band stands on a stage
+# Left and right is the tune spread across the two speakers, the way a band stands on a stage
 # (best heard on headphones):
 #   1. The lead plays from the left (`pan :left`) and the chords from the right.
 #   2. The drums play from both, and the hats between the kicks step from one side to the other
 #      (`pan: :left`, `pan: :right` on a note of their own).
 #
-# SHIMMERING NOTES is the tune with the square waves' shapes moving: how much of each wave is high,
+# Shimmering notes is the tune with the square waves' shapes moving: how much of each wave is high,
 # which is what makes a square wave thin or hollow.
 #   1. The lead steps through four shapes, one a frame, round and round while each note holds
 #      (`duty %i[eighth quarter half quarter]`): a shimmer the ear hears as one bright tone.
 #   2. The chords play each bar in a shape of its own, thin, then hollow, then thin and thick
 #      (`duty:` on a note of their own).
 #
-# DETUNED NOTES is the tune played twice at once, the way a chorus thickens one voice:
+# Detuned notes is the tune played twice at once, the way a chorus thickens one voice:
 #   1. The lead, as written.
 #   2. The same notes on the second square voice, two of the voice's own pitch steps sharp
 #      (`pitch_offset 2`), so the two beat against each other — a slow wobble neither has alone.
@@ -62,7 +62,7 @@
 require_relative "../lib/vblank"
 
 module ChipBand
-  TUNES = Ractor.make_shareable([
+  TUNES = [
     { name: :held, label: "HELD NOTES" },
     { name: :fading, label: "FADING NOTES" },
     { name: :sliding, label: "SLIDING NOTES" },
@@ -70,17 +70,17 @@ module ChipBand
     { name: :spread, label: "LEFT AND RIGHT" },
     { name: :shimmering, label: "SHIMMERING NOTES" },
     { name: :detuned, label: "DETUNED NOTES" },
-  ])
+  ]
 
   # The tune, as four bars of notes every version plays: the lead's [note, length] and the
   # chords under it, one a bar.
-  LEAD = Ractor.make_shareable([
+  LEAD = [
     [:E5, :eighth], [:G5, :eighth], [:A5, :quarter], [:G5, :eighth], [:E5, :eighth], [:D5, :quarter],
     [:C5, :eighth], [:D5, :eighth], [:E5, :eighth], [:G5, :eighth], [:A5, :half],
     [:A5, :eighth], [:G5, :eighth], [:E5, :quarter], [:D5, :eighth], [:C5, :eighth], [:D5, :quarter],
     [:E5, :quarter], [:D5, :quarter], [:C5, :half],
-  ])
-  CHORDS = Ractor.make_shareable(%i[C4 A3 F3 G3])
+  ]
+  CHORDS = %i[C4 A3 F3 G3]
 
   # One bar of drums, played four times: a kick on the beat, hats between, and a last hit high up.
   # A noise note's pitch is how high the hiss sits, so a lower one is a kick and a high one a hat —
@@ -88,15 +88,15 @@ module ChipBand
   # hit says how it fades when the tune lets it: a quick kick, a quicker hat, and the last hit
   # rising from almost nothing and cut off by the next bar, a cymbal played backwards.
   # (The note names stop at C6, so the hat's hiss is given in Hz.)
-  DRUMS = Ractor.make_shareable([
+  DRUMS = [
     [:C4, :quarter, { decay: :fast }],
     [4000, :eighth, { decay: :fast }],
     [4000, :eighth, { decay: :fast }],
     [:C4, :quarter, { decay: :fast }],
     [:C6, :quarter, { swell: 4, volume: 1 }],
-  ])
+  ]
 
-  GAME = Ractor.make_shareable(VBlank.game("CHIP BAND", consoles: %i[gba gbc]) do
+  GAME = VBlank.game("CHIP BAND", consoles: %i[gba gbc]) do
     screen :bitmap
     enable_sound
 
@@ -275,7 +275,7 @@ module ChipBand
         play_song tune[:name] if tunes.picked == i
       end
     end
-  end)
+  end
 
   def self.program(...) = GAME.program(...)
 end

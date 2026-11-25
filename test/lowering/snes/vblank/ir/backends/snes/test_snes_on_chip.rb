@@ -448,7 +448,7 @@ class TestSNESOnChip < Minitest::Test
     end
     error = assert_raises(VBlank::IR::ProgramError) { game_player.run(superfx_program(game), frames: 8) }
 
-    assert_match(/list :cells is full/, error.message)
+    assert_match(/`cells` is full/, error.message)
   end
 
   def test_a_pop_from_an_empty_list_on_the_chip_stops_the_game
@@ -606,18 +606,18 @@ class TestSNESOnChip < Minitest::Test
     assert_match(/Super FX/, error.message)
   end
 
-  # A `case_var` changes scene, and a scene sets up the screen as it starts, which only the
+  # A scene dispatch changes scene, and a scene sets up the screen as it starts, which only the
   # console can do.
   def test_a_change_of_scene_on_the_chip_is_refused_by_name
     error = refusal_of do
       mode = var :mode, 0
       scene(:one) { mode = 1 }
-      func(:pick, on_chip: true) { case_var(:mode) { when_val 0, :one } }
+      func(:pick, on_chip: true) { call({ 0 => :one }, number: :mode) }
       game_loop { call :pick }
     end
 
     assert_match(/pick/, error.message)
-    assert_match(/case_var/, error.message)
+    assert_match(/scene dispatch/, error.message)
     assert_match(/scene/, error.message)
   end
 

@@ -49,7 +49,7 @@
 #     files = save_data :file, copies: 3 do keep px, py, mist, steps, random_numbers end
 #     files[slot].save        files[slot].load        files[n].peek(steps)
 #
-# CONTINUE, COPY TO NEXT and ERASE are grey while the picked file is empty: a menu row can
+# The rows Continue, Copy to next and Erase are grey while the picked file is empty: a menu row can
 # ask a question the game works out, `enabled: files[slot].good?`, and it is asked every
 # frame. A save cut off by the power going out keeps the last good one — each file is kept
 # twice — and none of that is anything the game says.
@@ -103,7 +103,7 @@ module Hero
 
   # A 32x32 world (256x256 pixels — far bigger than the screen): grass, the pond, and
   # trees scattered across it so there's plenty of scenery moving past as you walk.
-  MAP = Ractor.make_shareable((0...32).map do |r|
+  MAP = (0...32).map do |r|
     (0...32).map do |c|
       if POND_ROWS.cover?(r) && POND_COLS.cover?(c) then "~" # the pond
       elsif r == SIGN_ROW && c == SIGN_COL           then "S" # the signpost
@@ -111,7 +111,7 @@ module Hero
       else "."                                              # grass
       end
     end.join
-  end)
+  end
 
   GAME = VBlank.game("HERO", consoles: %i[gba snes]) do
     screen :tiled # tile mode: a scrolling background for the world + a hardware sprite on top
@@ -274,13 +274,13 @@ module Hero
     # Said once, this makes the build refuse any variable or list that no file keeps and that
     # is not named here. What is named here is what a load must leave alone: the file screen,
     # its menu and which file is picked, and the sign's box, which a fresh walk opens shut.
-    saves_keep_everything except: %i[slot saved mode shown0 shown1 shown2 number choosing next_choosing
+    saves_keep_everything except: %i[slot saved mode shown number choosing next_choosing
                                      actions note reading typed pen tick]
 
     slot = 0     # the file picked on the file screen, and the one START saves to
     saved = 0   # frames left of "SAVED" after START
     mode = var :mode, :files
-    shown = Array.new(3) { |n| var :"shown#{n}", 0 } # each file's steps, for the file screen
+    shown = Array.new(3, 0) # each file's steps, for the file screen
     number = 1 # the picked file's number, as the second step shows it
 
     # The file screen is two steps: pick a file, then say what to do with it. Which step is
@@ -303,7 +303,7 @@ module Hero
     # them, so there the box is a picture sprites show instead (`as: :sprite`): the same words,
     # typed the same way.
     two_backgrounds = console.backgrounds < 3
-    note = list :note, capacity: 32, width: :byte # the sign's words, as letters, put together as you read
+    note = Array.new(capacity: 32, width: :byte) # the sign's words, as letters, put together as you read
     box = canvas :box, width: 192, height: 16, colors: [:transparent, :white, rgb(2, 4, 12)],
                        as: two_backgrounds ? :sprite : :tiles
     trail = canvas :trail, width: 32, height: 32, colors: %i[transparent white blue], as: :sprite
@@ -511,7 +511,7 @@ module Hero
       end
       near = ((px - SIGN_X).abs < READING_REACH_X) && ((py - SIGN_Y).abs < READING_REACH_Y)
       call :open_the_sign if pressed(:a) && !reading && near
-      call :type_a_letter if reading && typed < note.length && (tick & 1) == 0
+      call :type_a_letter if reading && typed < note.length && tick.even?
 
       # THE MAP: a dot wherever you are, a pixel for every tile of the world. It is never
       # cleared while you walk, so it is a map of everywhere you have been.

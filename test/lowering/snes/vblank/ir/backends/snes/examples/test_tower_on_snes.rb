@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/tower").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/tower").to_s)
 
 # examples/tower.rb on a Super Nintendo: three floors, each a scene with its own background by one
 # name, put up as the scene takes over, and the roof's gate opened by showing its second map, held

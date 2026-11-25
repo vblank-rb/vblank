@@ -4,7 +4,7 @@ require_relative "labels"
 
 module VBlank
   module Original
-    # THE SYMBOL FILE AN ASSEMBLER WRITES, read into Labels. Each assembler (or linker) says where it
+    # The symbol file an assembler writes, read into Labels. Each assembler (or linker) says where it
     # put every label in a format of its own, and each console maps its cartridge and RAM into the
     # processor's addresses its own way; a reader here knows one of each, and hands back Labels a
     # port's harvest saves:
@@ -21,7 +21,7 @@ module VBlank
     module SymbolFile
       module_function
 
-      # GAME BOY (rgblink, RGBDS's linker, `-n`): `bank:address name`, both in hex, `;` a comment
+      # Game Boy (rgblink, RGBDS's linker, `-n`): `bank:address name`, both in hex, `;` a comment
       # (rgblink(1), "The .sym file"). The processor sees bank 0 at $0000-$3FFF and the bank switched
       # in at $4000-$7FFF, so a label in bank n at $4000+a is at n * $4000 + a in the file. $8000 and up
       # is video memory, the cartridge's RAM, work RAM and high RAM (Pan Docs, "Memory Map").
@@ -46,7 +46,7 @@ module VBlank
         Labels.new(labels, rom_bank_bytes: GAME_BOY_BANK_BYTES)
       end
 
-      # SUPER NINTENDO (sfcasm's symbol table): `bbaaaa name`, the 24-bit address in six hex digits.
+      # Super Nintendo (sfcasm's symbol table): `bbaaaa name`, the 24-bit address in six hex digits.
       # Work RAM is banks $7E and $7F, its first 8 KB seen in banks $00-$3F and $80-$BF too. Where
       # the cartridge is depends on how the board maps it (fullsnes, "SNES Cart LoROM/HiROM
       # Mapping"): HiROM shows it whole from bank $C0, 64 KB a bank; LoROM in the upper half of each
@@ -156,7 +156,7 @@ module VBlank
         end
       end
 
-      # GAME BOY ADVANCE (the GNU linker's map, `ld -Map`): under "Linker script and memory map", a
+      # Game Boy Advance (the GNU linker's map, `ld -Map`): under "Linker script and memory map", a
       # symbol is a line of its address and its name alone; a section's line has its size and file
       # too, and an assignment an `=`. The cartridge is at $08000000, work RAM at $02000000 (256 KB)
       # and $03000000 (32 KB) (GBATEK, "GBA Memory Map").

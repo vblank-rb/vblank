@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # SEVERAL COPIES OF A GAME PLAYED IN ONE PROCESS, a round at a time. Each copy runs in a Fiber until it
+    # Several copies of a game played in one process, a round at a time. Each copy runs in a Fiber until it
     # must wait for a message (a transport's wait_for_message calls #wait), and the next copy then runs.
     # Nothing here keeps time: a round is one trip round every copy, so a test that delays a message by
     # three rounds delays it by three trips, and replays the same whatever machine runs it.

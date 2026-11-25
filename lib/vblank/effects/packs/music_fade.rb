@@ -3,6 +3,51 @@
 module VBlank
   module Effects
     module Packs
+      # Music fades
+      #
+      # `fade_music_out` takes the music down with the lights at the end of a game, and
+      # `fade_music_in` brings it back up for the next one. They are the pair to the screen fades,
+      # and are called the same way. The song goes on playing, silently, while it is faded out.
+      #
+      # ```ruby sound=play frames=420
+      # VBlank.game "FADING", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   enable_sound
+      #   song :theme do
+      #     tempo 120
+      #     voice :lead do
+      #       %i[E4 G4 C5 G4 A4 G4 E4 G4
+      #          F4 A4 G4 E4 D4 E4 C4 D4]
+      #         .each do |pitch|
+      #           note pitch, :eighth
+      #         end
+      #     end
+      #     voice :bass, plays: :triangle do
+      #       %i[C3 G3 C3 G3 F3 A3 G3 B3]
+      #         .each do |pitch|
+      #           note pitch, :quarter
+      #         end
+      #     end
+      #   end
+      #   play_song :theme
+      #   frame = 0
+      #   game_loop do
+      #     frame = (frame + 1) % 480
+      #     # three seconds in, down over three
+      #     # seconds; back up for the next round
+      #     if frame == 180
+      #       fade_music_out frames: 180
+      #     end
+      #     fade_music_in frames: 1 if frame == 0
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
+      # fade_out
+      # fade_music_out
+      # ```
+      #--
       # Music fade — the music going down with the lights at the end of a game, and coming back
       # up for the next one.
       #
@@ -12,52 +57,64 @@ module VBlank
       # in. The level holds a fraction for the reason the screen fade's does — a whole-number
       # step would not land on the frame the author asked for.
       #
-      # A FADED-OUT SONG GOES ON PLAYING, SILENTLY, the way a faded-out screen goes on being
+      # A faded-out song goes on playing, silently, the way a faded-out screen goes on being
       # drawn. What happens while nobody can hear it is the game's to decide: stop it, switch to
       # another song, or bring the same one back. Stopping it here instead would fight a game
       # that names its song every frame, which a jukebox does — the old tune would start over
       # the frame after it stopped.
+      #++
       module MusicFade
-        LEVEL = :__music_fade_level   # How loud, 0.0 to 100.0
-        TARGET = :__music_fade_target # Where the ramp is heading
-        STEP = :__music_fade_step     # How far it moves each frame
-        ACTIVE = :__music_fade_active # 1 while the ramp is running
-        ROUTINE = :__music_fade_tick
+        LEVEL = :__music_fade_level   # :nodoc: How loud, 0.0 to 100.0
+        TARGET = :__music_fade_target # :nodoc: Where the ramp is heading
+        STEP = :__music_fade_step     # :nodoc: How far it moves each frame
+        ACTIVE = :__music_fade_active # :nodoc: 1 while the ramp is running
+        ROUTINE = :__music_fade_tick  # :nodoc:
 
-        FULL = 100.0
-        DEFAULT_FRAMES = 30 # Half a second, the same as a screen fade — they are usually called together
+        FULL = 100.0  # :nodoc:
+        DEFAULT_FRAMES = 30 # :nodoc: Half a second, the same as a screen fade — they are usually called together
 
         # TARGET starts below nothing, so the guardrail can tell a fade in (which writes FULL) from
         # the declaration. The value is never used: the routine runs only once a fade has set both.
-        NEVER_FADED = -1.0
+        NEVER_FADED = -1.0  # :nodoc:
 
-        # Fade the music out, over half a second unless told otherwise. Call it once, at the
-        # moment it begins; the framework walks the volume down every frame from there, and the
-        # song carries on playing silently until `fade_music_in` brings it back.
+        # Fades the music out, over half a second unless told otherwise.
         #
-        #   fade_music_out                    # over half a second
-        #   fade_music_out frames: 90         # a slow fade for a sad ending
-        #   fade_music_out duration: 1.5      # the same, given in seconds
+        # Call it once, at the moment it begins. The framework walks the volume down every frame from
+        # there, and the song carries on playing silently until `fade_music_in` brings it back. What
+        # happens while nobody can hear it is the game's to decide: stop it, switch to another song,
+        # or bring the same one back. Calling it again while a fade runs turns it round from where it
+        # is now.
         #
-        # Calling it again while a fade runs turns it round from where it is now.
+        # ```ruby
+        # fade_music_out                    # over half a second
+        # fade_music_out frames: 90         # a slow fade for a sad ending
+        # fade_music_out duration: 1.5      # the same, given in seconds
+        # ```
         #
-        # @param frames [Integer, nil] how long the fade takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds (instead of frames)
+        # * `frames:` - how long the fade takes, in frames. The default is 30.
+        # * `duration:` - how long it takes, in seconds, instead of `frames:`.
+        #--
+        # A faded-out song goes on playing, silently, the way a faded-out screen goes on being
+        # drawn. Stopping it here instead would fight a game that names its song every frame, which
+        # a jukebox does: the old tune would start over the frame after it stopped.
+        #++
         def fade_music_out(frames: nil, duration: nil)
           start_music_fade(0.0, frames, duration)
         end
 
-        # Bring the music back up to full — after a fade out, from silence.
+        # Brings the music back up to full, after a fade out, from silence.
         #
-        #   fade_music_in                    # as fast as the last fade out went down
-        #   fade_music_in frames: 10
+        # With no length it comes up at the speed the music last went down, so a fade out and a fade
+        # in are two words and no bookkeeping. Called while a fade out runs, it turns round from where
+        # the music is. Called with the music already at full, there is nothing to do.
         #
-        # With no length it comes up at the speed the music last went down, so a fade out and a
-        # fade in are two words and no bookkeeping. Called while a fade out runs, it turns round
-        # from where the music is; called with the music already at full, there is nothing to do.
+        # ```ruby
+        # fade_music_in                    # as fast as the last fade out went down
+        # fade_music_in frames: 10
+        # ```
         #
-        # @param frames [Integer, nil] how long it takes, in frames
-        # @param duration [Numeric, nil] how long it takes, in seconds
+        # * `frames:` - how long it takes, in frames.
+        # * `duration:` - how long it takes, in seconds.
         def fade_music_in(frames: nil, duration: nil)
           start_music_fade(FULL, frames, duration)
         end
@@ -69,23 +126,29 @@ module VBlank
         # (Guardrails::Checks::SongNeedsFrames). Saying it twice would be noise.
         def self.checks = CHECKS
 
-        # Music faded out and never brought back.
+        # A warning about a game that fades its music out and never brings it back:
         #
-        # A faded-out song goes on playing at no volume, and the volume stays at nothing for every
-        # song after it — so the game plays on in silence, which is exactly what a game with its
-        # sound switched off sounds like, and nothing says why. It is the screen fade's footgun
-        # heard rather than seen.
+        # > This game calls `fade_music_out` and never calls `fade_music_in`. A song that fades out
+        # > keeps playing, but it makes no sound. Every song after it makes no sound too. To fix
+        # > this, call `fade_music_in` at the place where the music must come back.
         #
+        # The volume stays at nothing for every song after the fade, so the game plays on in
+        # silence, which sounds the same as a game with its sound switched off. Call
+        # `fade_music_in` where the music must come back. Setting `music_volume` back up yourself
+        # counts too, and the warning is not given.
+        #
+        #--
         # `fade_music_out` writes the target 0 and `fade_music_in` writes the full amount, and
         # nothing else writes the target at all. Turning the volume back up by hand counts too,
         # anywhere in the game: the volume is declared with one write of the full level, and the
         # fade's own routine writes it as it walks, so any other write that is not a plain 0 is
         # the game's own `music_volume` — a number, or one the game works out.
+        #++
         class FadedOutNeverIn
-          NAME = :music_faded_out_never_in
-          PLAIN_NAME = "music faded out and never brought back"
+          NAME = :music_faded_out_never_in  # :nodoc:
+          PLAIN_NAME = "music faded out and never brought back"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game calls `fade_music_out` and never calls `fade_music_in`. A song that " \
             "fades out keeps playing, but it makes no sound. Every song after it makes no sound " \
             "too. To fix this, call `fade_music_in` at the place where the music must come back."
@@ -136,7 +199,7 @@ module VBlank
         # The fade's variables and the routine that walks them, declared once however many places
         # in the game fade the music.
         #
-        # THE LEVEL MOVES FIRST AND IS APPLIED AFTER, which is the other way round from the screen
+        # The level moves first and is applied after, which is the other way round from the screen
         # fade, and for a reason on the other side of the same coin. The frame a fade is called on
         # is already the music at its old volume — the player reads the volume at the start of the
         # next frame — so a routine that applied first would spend a frame saying what was already
@@ -187,7 +250,7 @@ module VBlank
         end
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([FadedOutNeverIn.new])
+        CHECKS = Ractor.make_shareable([FadedOutNeverIn.new])  # :nodoc:
       end
     end
   end

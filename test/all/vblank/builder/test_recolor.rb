@@ -43,7 +43,7 @@ module RecolorGames
     end
   end
 
-  # FOUR LISTS, EACH DRAWN BY SEVERAL THINGS. Colours whose channels are multiples of four, so a
+  # Four lists, each drawn by several things. Colours whose channels are multiples of four, so a
   # console that keeps three bits of each still tells them apart.
   def self.rgb4(red, green, blue) = VBlank::Graphics::Color.rgb(red * 4, green * 4, blue * 4)
 
@@ -122,7 +122,7 @@ module RecolorGames
   end
 end
 
-# A LIST OF SPRITE COLOURS THAT HOLDS OTHER COLOURS while the game runs. A sprite told to
+# A list of sprite colours that holds other colours while the game runs. A sprite told to
 # draw with a list is drawn in whatever that list holds now, so one list can dress a
 # goblin in one room and a bat in the next: the list is a slot, and `recolor` says what
 # is in it. The Advance cartridge's own pixels are read in
@@ -554,7 +554,7 @@ class TestRecolor < Minitest::Test
 
   private def shown_all(*colors) = colors.map { |color| shown(color) }
 
-  # FOUR LISTS, ONE OF THEM DRAWN BY A BACKGROUND AND A SPRITE TOGETHER, and the backdrop following
+  # Four lists, one of them drawn by a background and a sprite together, and the backdrop following
   # another: each thing shows its own list's colours. On a console whose backgrounds and sprites read
   # one table of four lists (the Genesis), the background and the sprite drawn with one list take one
   # of the four between them, or the game does not fit.
@@ -581,7 +581,7 @@ class TestRecolor < Minitest::Test
     { plate: spot.(FOUR_LISTS_PIXELS[:machine]), text: spot.(TEXT_PIXELS), moon: spot.(FOUR_LISTS_PIXELS[:moon]) }
   end
 
-  # A BACKGROUND DRAWN FROM TWO LISTS, ONE OF WHICH THE GAME CHANGES: each tile shows its own list's
+  # A background drawn from two lists, one of which the game changes: each tile shows its own list's
   # colours on every frame. The text tile follows :screen_colors with the moon, and the plate keeps
   # :machine_colors. On a console whose backgrounds and sprites read one table of four lists (the
   # Genesis), the text and the moon take one of the four between them, or the game does not fit.

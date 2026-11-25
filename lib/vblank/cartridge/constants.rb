@@ -2,7 +2,7 @@
 
 module VBlank
   module Cartridge
-    # THE OLD NAME, kept for games written against it. The console's addresses and flags are
+    # The old name, kept for games written against it. The console's addresses and flags are
     # Console::Hardware, and the header layout is Cartridge::Header; this reaches both, so
     # `include VBlank::Cartridge::Constants` and `VBlank::Cartridge::Constants::KEY_DOWN` go
     # on working. Nothing in this library uses it. It goes once the games that name it have

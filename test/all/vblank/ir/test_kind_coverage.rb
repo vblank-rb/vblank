@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# EVERY KIND OF NODE, HANDLED BY BOTH BACKENDS — read off what each kind says about itself
+# Every kind of Node, handled by both backends — read off what each kind says about itself
 # (IR::Nodes.of_role, and each kind's tier) rather than a list kept here.
 #
 # Both backends name the kinds they handle: the console's lowering (Backends::GBA::Lowering)

@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/snake_buffered").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/snake_buffered").to_s)
 
 # The buffered Snake example (examples/snake_buffered.rb): the demonstration that
 # double buffering lets you write the naive "clear and repaint everything every
@@ -14,7 +14,7 @@ require VBlank.root.join("examples/snake_buffered").to_s
 # its title and playing board on the console, and keeps up, is read off the Advance's cartridge
 # in test/lowering/gba/examples/test_snake_buffered_example_cartridge.rb.
 class TestSnakeBufferedExample < Minitest::Test
-  # VBlank.build runs the guardrails and validation, so a clean build IS the check.
+  # VBlank.build runs the guardrails and validation, so a clean build is the check.
   # This game used to warn that its frame goes over budget past about 419 cells. It no
   # longer does, and the warning was wrong rather than the check being broken: it was
   # priced before the build had decided anything, so it charged cartridge speed for a

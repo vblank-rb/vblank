@@ -119,7 +119,7 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta 433, pitch_of(run), 25
   end
 
-  # THE SOUND PROCESSOR IS STOPPED WHILE THE VIDEO CHIP COPIES A BLOCK, and while the 68000 writes
+  # The sound processor is stopped while the video chip copies a block, and while the 68000 writes
   # into its memory. A recording has to keep its pitch through that, so these hold it far closer
   # than the test above, by where the sound crosses its middle and not by a count.
   def test_a_recording_alone_keeps_its_pitch
@@ -131,7 +131,7 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta RECORDED_HZ, pitch_while(clip: CLIP * 100) { game_loop { nil } }, 2
   end
 
-  # A RECORDING LONGER THAN THE SOUND PROCESSOR'S WINDOW ONTO THE CARTRIDGE (32K) is read through more
+  # A recording longer than the sound processor's window onto the cartridge (32K) is read through more
   # than one bank of it, and goes round from the bank it ends on to the one it starts on. Heard over
   # most of three seconds, which takes in both.
   def test_a_recording_across_two_banks_keeps_its_pitch_as_it_goes_round
@@ -143,7 +143,7 @@ class TestGenesisSound < Minitest::Test
     assert_operator longest_wave(heard), :<, WAVE_SAMPLES * 1.25, "every wave is heard, the bank's change and the loop's too"
   end
 
-  # A SONG'S NOTES are written to the FM chip by the sound processor itself, between two samples, so a
+  # A song's notes are written to the FM chip by the sound processor itself, between two samples, so a
   # note does not hold the recording still. Under a wave part playing a note every two frames every
   # wave of the recording is heard, and at its pitch: a wave lost would be a gap twice as long.
   def test_a_recording_keeps_every_wave_under_a_song_playing_a_note_every_two_frames
@@ -160,7 +160,7 @@ class TestGenesisSound < Minitest::Test
     assert_operator longest_wave(heard), :<, WAVE_SAMPLES * 1.25, "no wave of the recording is lost under the song"
   end
 
-  # THE TIMERS' REGISTER ALSO HOLDS THE THIRD FM VOICE'S MODE, and the sound processor writes it every
+  # The timers' register also holds the third FM voice's mode, and the sound processor writes it every
   # sample. A mode the game sets is written into the value of each of those writes, so every write of
   # the register in the sound processor's program must be one the 68000 knows to change.
   def test_every_write_of_the_timers_register_carries_the_third_voices_mode
@@ -168,7 +168,9 @@ class TestGenesisSound < Minitest::Test
     program = recordings.driver
     code = program.code
     loads = (0...code.size - 2).select { |at| code[at] == 0x21 && code[at + 2] == recordings::TIMERS }.map { |at| at + 1 }
-    named = (0...code.size - 5).select { |at| code[at, 3] == [0x3E, recordings::TIMERS, 0x77] }.map { |at| at + 4 }
+    # LD A,$27 ; LD (DE),A ; INC E ; LD A,value, and LD A,$27 ; LD ($4000),A ; LD A,value
+    named = (0...code.size - 6).select { |at| code[at, 4] == [0x3E, recordings::TIMERS, 0x12, 0x1C] }.map { |at| at + 5 } +
+            (0...code.size - 6).select { |at| code[at, 5] == [0x3E, recordings::TIMERS, 0x32, 0x00, 0x40] }.map { |at| at + 6 }
     patched = recordings::TIMER_WRITES.keys.map { |label| program.address_of(label) }
 
     assert_equal (loads + named).sort, patched.sort
@@ -202,7 +204,7 @@ class TestGenesisSound < Minitest::Test
     assert_in_delta RECORDED_HZ, pitch_of_waves(crossings_of(left.last(SAMPLE_RATE / 2))), 2
   end
 
-  # A RECORDED PART SET TO ONE SIDE is heard from that speaker: the FM chip's sixth voice, which the DAC
+  # A recorded part set to one side is heard from that speaker: the FM chip's sixth voice, which the DAC
   # plays through, sounds from the left, the right or both (its register $B6), so a part sits on the
   # nearest of the three. +notes+ writes the part; the [left, right] swing heard over its last frames.
   private def recorded_sides_heard(frames: 20, &notes)
@@ -307,7 +309,7 @@ class TestGenesisSound < Minitest::Test
     pitch_of_gaps(waves_while(kind, clip: clip, frames: 240, seconds: 3, &game))
   end
 
-  # THE WAVES BETWEEN THE FIRST CROSSING AND THE LAST, each gap between two crossings counted as the
+  # The waves between the first crossing and the last, each gap between two crossings counted as the
   # whole waves of the clip it spans. Samples passed over after a stop can take the clip past its
   # upward edge without sounding it, and a count of crossings then reads that wave as lost, flat by
   # a hertz or more over three seconds, though the recording is where its clock says; counted by

@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/tower").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/tower").to_s)
 
 # examples/tower.rb built for the desktop shows the interpreter's picture pixel for pixel, frame
 # by frame, while the hero climbs all three floors and opens the gate on the roof. Each floor is a

@@ -2,12 +2,12 @@
 
 module VBlank
   module Graphics
-    # THE BORDER ROUND A GAME'S SCREEN, where a console shows a smaller screen in the middle of its
+    # The border round a game's screen, where a console shows a smaller screen in the middle of its
     # own: a game laid out for the Game Boy Color's 160×144, on the Advance's 240×160
     # (Console::AdvanceKit::COLOR_SCREEN). An Advance playing a Color cartridge does exactly this,
     # and fills the 40 columns either side and the 8 rows above and below with something.
     #
-    # A border is a picture of the WHOLE screen; its middle is never seen, because the game's own
+    # A border is a picture of the whole screen; its middle is never seen, because the game's own
     # screen is drawn there. A game that gives none gets VBlank's own (#default). A game gives its
     # own with `border`, in any form `image` takes, and a picture smaller than the whole screen is
     # repeated across it, so text art of a few characters makes a pattern.

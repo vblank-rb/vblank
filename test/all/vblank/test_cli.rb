@@ -7,6 +7,7 @@ require "tmpdir"
 require "rbconfig"
 require "json"
 require "stringio"
+require "all/vblank/cartridge/test_game_register"
 
 # End-to-end tests for the `vblank` command. These are the only tests that touch
 # Thor: they run bin/vblank in a subprocess, the way a user does, so the CLI (and
@@ -16,6 +17,8 @@ class TestCLI < Minitest::Test
   # Which Ruby to launch, asked once here. Asking reads Ruby's own table of how it was
   # built, which is not something a worker may touch — and these tests run in a pool.
   RUBY = RbConfig.ruby.freeze
+
+  include RoomsGameFile
 
   BIN = VBlank.root.join("bin/vblank").to_s
   LIB = VBlank.root.join("lib").to_s
@@ -71,7 +74,7 @@ class TestCLI < Minitest::Test
   # What a command said once its build's phases ("  Reading game  0.1s") and its "Building ... -
   # Please wait." are taken out: the refusal, whose first line is what a person reads first.
   private def refusal_lines(out)
-    out.lines.map(&:chomp).reject { |line| line.start_with?("  ") || line.start_with?("Building ") }
+    out.lines.map(&:chomp).reject { |line| line.start_with?("  ", "Building ") }
   end
 
   # A build that stops says so in its first line, before the reason, so nobody reads the reason
@@ -90,10 +93,12 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # The build is the helper's, and the window shows the reason too (for one picture here, where a
+  # person's window shows it until they close it).
   def test_run_says_its_build_stopped_before_the_reason
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "oops.rb"), LOOP_ON_A_NUMBER)
-      out, status = cli("run", "oops.rb", dir: dir)
+      out, status = run_in_dummy_window(dir, "oops.rb", "--pictures", "1")
 
       refute status.success?, out
       lines = refusal_lines(out)
@@ -237,7 +242,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # EVERY CONSOLE IS OFFERED wherever a command asks which console: its name in the help of each
+  # Every console is offered wherever a command asks which console: its name in the help of each
   # command that takes --console, and a flag named for it that says how to build for it.
   def test_every_console_is_named_where_a_command_takes_a_console
     Dir.mktmpdir do |dir|
@@ -273,7 +278,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # A scened game with SCENE, so `build`'s content is the same across the scene tests.
+  # A scened game with scene, so `build`'s content is the same across the scene tests.
   SCENED = <<~RUBY
     require "vblank"
     Scened = VBlank.game "SCENED", consoles: %i[gba], code: "BSCN", maker: "01" do
@@ -283,10 +288,7 @@ class TestCLI < Minitest::Test
       scene(:play)  { clear_screen :red }
       game_loop do
         wait_vblank
-        case_var(:state) do
-          when_val 0, :title
-          when_val 1, :play
-        end
+        call({ 0 => :title, 1 => :play }, number: :state)
       end
     end
   RUBY
@@ -380,6 +382,59 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # `--dump-arm` lists the machine code the build made: every routine, or the one it is given.
+  private def write_dumped_game(dir)
+    File.write(File.join(dir, "dumpy.rb"), <<~RUBY)
+      require "vblank"
+      Dumpy = VBlank.game "DUMPY", consoles: %i[gba], code: "BDMP", maker: "01" do
+        screen :bitmap
+        t = var :t, 0
+        func(:bump) { t += 3 }
+        func(:other) { t += 5 }
+        game_loop do
+          call :bump
+          call :other
+        end
+      end
+    RUBY
+  end
+
+  def test_dump_arm_lists_every_routine
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, status = cli("build", "dumpy.rb", "--dump-arm", dir: dir)
+      assert status.success?, out
+      assert_match(/=== func :bump /, out)
+      assert_match(/=== func :other /, out)
+      assert_match(/0x[0-9A-F]{4}: /, out)
+      assert_match(/; from dumpy\.rb:\d+/, out, "each statement's instructions come under the line that wrote it")
+    end
+  end
+
+  def test_dump_arm_with_a_name_lists_only_that_routine
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, status = cli("build", "dumpy.rb", "--dump-arm=bump", dir: dir)
+      assert status.success?, out
+      assert_match(/=== func :bump /, out)
+      refute_match(/=== func :other /, out)
+    end
+  end
+
+  def test_dump_arm_with_an_unknown_name_says_so
+    Dir.mktmpdir do |dir|
+      write_dumped_game(dir)
+      out, = cli("build", "dumpy.rb", "--dump-arm=nope", dir: dir)
+      assert_match(/:nope not found/, out)
+    end
+  end
+
+  def test_dump_arm_is_in_the_help
+    out, status = cli("help", "build", dir: Dir.tmpdir)
+    assert status.success?, out
+    assert_match(/--dump-arm/, out)
+  end
+
   # `profile` is `build --profile` without the cartridge: same report, no .gba on disk.
   def test_profile_appears_in_the_command_list
     out, status = cli("help", dir: Dir.tmpdir)
@@ -456,6 +511,29 @@ class TestCLI < Minitest::Test
       out, status = cli("profile", "held.rb", "--keys", "left", "a", dir: dir)
       assert status.success?, out
       assert_match(/holding LEFT \+ A/, out)
+    end
+  end
+
+  # A game whose one func spends its time in one line, the third of the file.
+  SPUN = <<~RUBY
+    VBlank.game "SPUN", consoles: %i[gba] do
+      total = 0
+      func(:spin) { repeat(200) { total += 3 } }
+      game_loop { call :spin }
+    end
+  RUBY
+
+  def test_profile_lines_shows_a_routine_line_by_line
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "spun.rb"), SPUN)
+      out, status = cli("profile", "spun.rb", "--lines", "busiest", dir: dir)
+      assert status.success?, out
+      assert_match(/func :spin, by line: .*% of the frame's time/, out)
+      assert_match(/spun\.rb:3 +\d+(\.\d)?% of its time/, out)
+
+      bad, bad_status = cli("profile", "spun.rb", "--lines", "spun", dir: dir)
+      refute bad_status.success?, bad
+      assert_match(/no routine called :spun/, bad)
     end
   end
 
@@ -628,6 +706,26 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # A game that asks a screen of its own gets it on a web page, and the build's help says so.
+  def test_web_gives_a_game_the_screen_size_it_asks_for
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "sized.rb"), <<~GAME)
+        require "vblank"
+        VBlank.game("SIZED", consoles: %i[gba]) do
+          screen :bitmap, size: [320, 200]
+          game_loop { clear_screen :blue }
+        end
+      GAME
+
+      out, status = cli("build", "sized.rb", "--format", "web", dir: dir)
+      assert status.success?, out
+      page = File.read(File.join(dir, Dir.children(dir).find { |name| name.end_with?(".html") }))
+      assert_match(/<canvas id="screen" width="320" height="200"/, page)
+      help, = cli("help", "build", dir: dir)
+      assert_match(/size:/, help)
+    end
+  end
+
   # The IR dump is what the Advance's cartridge is made from, so a game for the Color alone has
   # none, and is refused saying so.
   def test_ir_refuses_a_game_for_the_color_alone
@@ -694,7 +792,7 @@ class TestCLI < Minitest::Test
     end
   end
 
-  # WITH NO TAPE AND NO SCRIPT, A PERSON IS AT THE CONTROLS: the window takes the keys, and the game
+  # With no tape and no script, a person is at the controls: the window takes the keys, and the game
   # plays as Ruby with YJIT on, the same way a script plays it.
   def test_run_with_no_tape_or_script_is_a_person_playing_as_ruby_with_yjit
     Dir.mktmpdir do |dir|
@@ -702,10 +800,134 @@ class TestCLI < Minitest::Test
       out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "3", "--console", "gba")
 
       assert status.success?, out
-      assert_match(/^Building DEMO - Please wait\.$/, out)
       assert_match(/in Ruby #{Regexp.escape(RUBY_VERSION)} with YJIT\./o, out)
       assert_match(/Press P to pause/, out)
       refute_match(/No window|Played \d+ frames/, out)
+    end
+  end
+
+  # The build is another process's. The window's process is the one vblank run started (it becomes
+  # the window), and the game is built by a helper it starts, which ends once the game is written:
+  # the game file is loaded by the command and again by the helper, each noting its process, and
+  # what the window plays is the helper's build. The command says nothing of the build itself.
+  def test_run_builds_the_game_in_a_helper_process_and_plays_it_in_the_window
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      File.write(File.join(dir, "demo.rb"), <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        VBlank.game("DEMO", consoles: %i[gba]) { game_loop { clear_screen :blue } }
+      GAME
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
+      out, status, window = Open3.popen2e(drivers, RUBY, BIN, "run", "demo.rb", "--pictures", "3", "--settings-file",
+                                          File.join(dir, "settings.txt"), chdir: dir) do |stdin, output, waiter|
+        stdin.close
+        [output.read, waiter.value, waiter.pid]
+      end
+      flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+
+      assert status.success?, out
+      assert_match(/2 frames in/, out)
+      command, helper = File.readlines(pids).map(&:to_i)
+      assert_equal window, command
+      refute_nil helper, "the game is loaded a second time, by the helper"
+      refute_equal window, helper
+      refute_match(/Building|Please wait/, out)
+    end
+  end
+
+  # A game written out is played again while it is current. The second launch starts no helper; a
+  # launch after anything the build read has changed builds again: the game file, a file it reads
+  # as it is built, the console, a --set. (A change to VBlank itself is held to in
+  # test_written_games.rb, since a test cannot change the library it runs.) Each process that loads
+  # the game file notes it, so a launch that builds notes two lines and one that reuses notes one.
+  def test_run_plays_a_current_written_game_again_and_builds_a_stale_one_again
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      File.write(File.join(dir, "level.txt"), "1")
+      game = File.join(dir, "demo.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        level = File.read(File.join(__dir__, "level.txt")).to_i
+        VBlank.game("DEMO", consoles: %i[gba gbc]) do
+          shade = setting :shade, 1
+          game_loop { clear_screen level + shade > 2 ? :blue : :red }
+        end
+      GAME
+      launches = lambda do |*args|
+        before = File.exist?(pids) ? File.readlines(pids).size : 0
+        args = ["--console", "gba", *args] unless args.include?("--console")
+        out, status = run_in_dummy_window(dir, "demo.rb", "--pictures", "2", *args)
+        assert status.success?, out
+        File.readlines(pids).size - before - 1 # the helpers that loaded the game: the builds
+      end
+
+      assert_equal 1, launches.call, "the first launch builds"
+      assert_equal 0, launches.call, "a current written game is played again"
+      File.write(File.join(dir, "level.txt"), "2")
+      assert_equal 1, launches.call, "a file the build read changed"
+      assert_equal 0, launches.call
+      File.write(game, "#{File.read(game)}\n# a comment\n")
+      assert_equal 1, launches.call, "the game file changed"
+      assert_equal 1, launches.call("--set", "shade=2"), "a setting the build was not told before"
+      assert_equal 0, launches.call("--set", "shade=2")
+      assert_equal 1, launches.call("--console", "gbc"), "another console"
+      assert_equal 0, launches.call, "each kept beside the others"
+    end
+  end
+
+  # A game that reads a file by a path relative to the working folder is built again when launched
+  # from another folder, where that path is another file; and each is kept for its own folder.
+  def test_run_builds_a_game_launched_from_another_folder_again
+    Dir.mktmpdir do |dir|
+      pids = File.join(dir, "pids.txt")
+      game = File.join(dir, "demo.rb")
+      File.write(game, <<~GAME)
+        File.write(#{pids.dump}, "\#{Process.pid}\\n", mode: "a")
+        level = File.read("level.txt").to_i
+        VBlank.game("DEMO", consoles: %i[gba]) { game_loop { clear_screen level > 1 ? :blue : :red } }
+      GAME
+      %w[one two].each_with_index do |folder, index|
+        FileUtils.mkdir_p(File.join(dir, folder))
+        File.write(File.join(dir, folder, "level.txt"), (index + 1).to_s)
+      end
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
+      launches = lambda do |folder|
+        before = File.exist?(pids) ? File.readlines(pids).size : 0
+        out, status = Open3.capture2e(drivers, RUBY, BIN, "run", game, "--pictures", "2", "--settings-file",
+                                      File.join(dir, "settings.txt"), chdir: File.join(dir, folder))
+        flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+        assert status.success?, out
+        File.readlines(pids).size - before - 1
+      end
+
+      assert_equal 1, launches.call("one")
+      assert_equal 1, launches.call("two"), "another working folder, where level.txt is another file"
+      assert_equal 0, launches.call("one")
+    end
+  end
+
+  # A game whose build stops is said in the window and on the terminal, and the command fails. The
+  # private folder the helper was to write the game in is gone: such a folder can hold an original's data.
+  def test_run_says_why_a_game_built_by_the_helper_cannot_play
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "broken.rb"), <<~GAME)
+        VBlank.game("BROKEN", consoles: %i[gba]) { game_loop { clear_screen :blue if held(:z) } }
+      GAME
+      temporary = File.join(dir, "tmp")
+      FileUtils.mkdir_p(temporary)
+      drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil, "TMPDIR" => temporary,
+                  "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
+      out, status = Open3.capture2e(drivers, RUBY, BIN, "run", "broken.rb", "--pictures", "3", "--settings-file",
+                                    File.join(dir, "settings.txt"), chdir: dir)
+      flunk out.lines.first.chomp if out.include?("cannot find SDL3")
+
+      refute status.success?, out
+      assert_equal 1, out.scan("z is not a known button").size, out
+      refute_match(/\.rb:\d+:in/, out, "should not leak a backtrace")
+      # Nothing at all: exec runs no at_exit hook, so the command tidies what the library made too.
+      assert_empty Dir.children(temporary)
     end
   end
 
@@ -836,6 +1058,19 @@ class TestCLI < Minitest::Test
     end
   end
 
+  # `vblank run --shell` with no pack kept plays the shell's menu, and --pictures stops it there as
+  # it stops a game: the menu waits for a player who is not there.
+  def test_run_shell_with_no_pack_stops_its_menu_after_the_pictures_asked_for
+    Dir.mktmpdir do |dir|
+      fixture = VBlank.root.join("test/fixtures/pacman_port")
+      File.write(File.join(dir, "port.rb"), "require #{fixture.join('pacman_port').to_s.dump}\nPacmanPort.game\n")
+      out, status = run_in_dummy_window(dir, "port.rb", "--shell", "--pack-folder", File.join(dir, "kept"), "--pictures", "3")
+
+      assert status.success?, out
+      assert_match(/as a shell\. Its data pack is kept in #{Regexp.escape(File.join(dir, 'kept'))}/, out)
+    end
+  end
+
   # A console the game does not name is refused in words, before any window opens.
   def test_run_refuses_a_console_the_game_is_not_for
     Dir.mktmpdir do |dir|
@@ -897,8 +1132,10 @@ class TestCLI < Minitest::Test
 
   # `vblank run` on SDL's dummy drivers, failing where SDL3 is not installed, with a settings file
   # of its own, so it plays the same whatever the person running the tests has chosen.
+  # Written games are kept in a folder of the test's own (VBLANK_WRITTEN_GAMES), never the person's.
   private def run_in_dummy_window(dir, *args)
-    drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil }
+    drivers = { "SDL_VIDEODRIVER" => "dummy", "SDL_AUDIODRIVER" => "dummy", "RUBY_YJIT_ENABLE" => nil,
+                "VBLANK_WRITTEN_GAMES" => File.join(dir, "written games") }
     args += ["--settings-file", File.join(dir, "settings.txt")] unless args.include?("--settings-file")
     out, status = Open3.capture2e(drivers, RUBY, BIN, "run", *args, chdir: dir)
     flunk out.lines.first.chomp if out.include?("cannot find SDL3")
@@ -1325,6 +1562,38 @@ class TestCLI < Minitest::Test
       assert status.success?, out
       assert_match(/class MultiIR/, out)
       assert_match(/var: :score/, out)
+    end
+  end
+
+  # A game file names the build its commands take by registering a handle; the whole game, which
+  # refuses to build here, is built only when the file names none.
+  def test_build_takes_the_handle_the_game_file_registers
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "game.with_features(:rooms).with_settings(rooms: 3).register")
+
+      out, status = cli("build", "rooms.rb", "--format=ir", dir: dir)
+      assert status.success?, out
+      assert_match(/\b4323\b/, out)
+    end
+  end
+
+  def test_build_takes_the_handle_write_if_main_was_called_on
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "game.with_features(:rooms).with_settings(rooms: 2).write_if_main(settings: { other: 1 })")
+
+      out, status = cli("build", "rooms.rb", "--console", "gba", dir: dir)
+      assert status.success?, out
+      assert File.exist?(File.join(dir, "rooms.gba")), out
+    end
+  end
+
+  def test_build_of_a_file_that_names_no_handle_builds_the_whole_game
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "")
+
+      out, status = cli("build", "rooms.rb", "--format=ir", dir: dir)
+      refute status.success?
+      assert_match REFUSAL, out
     end
   end
 

@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A PRESS SHOWS ON THE FRAME AFTER IT, as the console's own games show it. An emulated frame starts
+# A press shows on the frame after it, as the console's own games show it. An emulated frame starts
 # with the blank, whose interrupt reads the buttons; the pass that runs in that frame sees the press
 # and moves a sprite, or scrolls a background; and the next blank sends the sprite table and the
 # scroll, so the next frame shows the move. This cartridge sends them from a copy, as the Color's
@@ -54,7 +54,7 @@ class TestSNESPressToPicture < Minitest::Test
         draw_in_order cursor, mark
         cursor.x += 16 if pressed(:down)
       end
-      game_loop { case_var(:state) { when_val 0, :title } }
+      game_loop { call({ 0 => :title }, number: :state) }
     end
     b.finalize_program
     b.program

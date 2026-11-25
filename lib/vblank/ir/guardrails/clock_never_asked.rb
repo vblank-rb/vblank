@@ -4,7 +4,24 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A GAME THAT SHOWS THE TIME AND NEVER ASKS WHETHER THERE IS A CLOCK. The console has no
+        # A warning about a game that reads the time from `clock` and never asks whether there is
+        # a clock to read:
+        #
+        # > This game reads the time from `clock`, but it does not ask `clock.present?` or
+        # > `clock.set?`. Most emulators give a cartridge no clock unless you tell them to. A clock
+        # > with a dead battery was never set. If there is no clock, or the clock was never set,
+        # > every reading is 0, and the game shows 0 for the time. To fix this, ask
+        # > `clock.present?` and `clock.set?` before you show the time. If either one is false,
+        # > tell the player.
+        #
+        # On a computer the clock always works, so a game can look right while it is written and
+        # show zeros the first time it runs on a console or in an emulator. Ask `clock.present?`
+        # and `clock.set?` first, and show the player a line about the clock when either is false.
+        # A game that reads the time only where nobody sees it (to seed its random numbers) can
+        # leave the warning be.
+        #
+        #--
+        # A game that shows the time and never asks whether there is a clock. The console has no
         # clock of its own; some cartridges carry one, and most emulators give a cartridge none
         # unless they are told to. A clock whose watch battery ran out was never set. Either way
         # every reading is 0 (see IR::Clock), so a game written on a desktop, where the clock
@@ -13,6 +30,7 @@ module VBlank
         #
         # A warning and not an error: a game may read the time where nobody sees it (a seed for
         # its random numbers), and zeros there do no harm. It names the first line that reads it.
+        #++
         class ClockNeverAsked
           NAME = :clock_never_asked
           PLAIN_NAME = "the time read without asking for a clock"

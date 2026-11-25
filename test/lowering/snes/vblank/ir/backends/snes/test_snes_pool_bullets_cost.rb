@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# A POOL OF BULLETS, EACH MOVING EVERY PASS: one walk of the pool, each bullet's own fields read and
+# A pool of bullets, each moving every pass: one walk of the pool, each bullet's own fields read and
 # written, the ones that leave the screen removed and new ones fired to keep about twelve in the air.
 # The commonest walk a game makes, so a change to how the Super Nintendo keeps or walks a pool must
 # leave it no slower. The game's share of the frame, its routines and the pool's own together, is

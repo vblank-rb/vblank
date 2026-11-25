@@ -3,7 +3,7 @@
 require "test_helper"
 require "pack_table_tile_background_games"
 
-# A TEXT LAYER OF 256 COLOURS FROM THE DATA PACK: more tiles than a byte names, some turned, under
+# A text layer of 256 COLOURS FROM THE DATA PACK: more tiles than a byte names, some turned, under
 # a map of map cells or of the Advance's own two-byte cells, whose bank bits mean nothing there
 # (PackTableTileBackgroundGames). The answer key is the same background the game draws itself.
 #

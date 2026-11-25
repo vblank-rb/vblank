@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # A FILE A PROGRAM IS HANDED AS IT STARTS, which some of its data is read from rather than
+    # A file a program is handed as it starts, which some of its data is read from rather than
     # written into it. A port of a retail game must not ship the game's data, so a build for a
     # computer can leave the data pack out (Builder::DataPacks): the program is the game's code
     # alone, and the player's pack is handed to it when it starts. The program that makes the pack,
@@ -15,7 +15,7 @@ module VBlank
     # size and the checks are known when the program is built, since the file's layout follows
     # from the shapes and sizes the game wrote (Original::Slot), never from what it holds.
     #
-    # WHAT IS READ FROM IT, each at a place in the file fixed when the program is built:
+    # What is read from it, each at a place in the file fixed when the program is built:
     #
     # - a table (Nodes::Table#from_file, where its first entry starts, and #entries_in_file): its
     #   entries one after another, each as wide as the table sets, in the
@@ -91,7 +91,7 @@ module VBlank
       # for none. A place past the colours is drawn in colour 0. +turns+ are the ways the picture is
       # turned once it is read, in order, each :mirrored or :upside_down (Assets::Image).
       #
-      # A picture of bytes can be a PIECE OF A WIDER ONE, as a letter is of a strip of them: its rows
+      # A picture of bytes can be a piece of a wider one, as a letter is of a strip of them: its rows
       # are then not one run of the file. +row_bytes+ is how many bytes of the file are from one of
       # its rows to the next, the wider picture's width; nil for a picture whose rows follow each
       # other, which is its own width.
@@ -133,13 +133,25 @@ module VBlank
       # end inside the file, however many the record says it holds. A piece, or the part of one,
       # outside the picture is not painted, and a tile past +tile_count+ paints nothing. Where
       # two pieces overlap the earlier one is in front, as a console draws its sprites.
+      #
+      # +banks+, for a pose of the pieces of several banks (`image ..., banks:`), are those banks,
+      # lowest first, and the pose's colours are each one's list after the other, a list of as many
+      # colours as +tile_format+'s tiles hold for each: a piece of one of them is painted with each
+      # of its places counted into its own bank's part (#bank_places_before), and a piece of another
+      # bank is not painted. nil for any other pose.
       Pose = Data.define(:entry_at, :records_at, :origin_x, :origin_y, :tiles_at, :tile_count, :tile_format,
-                         :colors_at, :colors_count, :color_format, :turns, :bank, :bank_lists) do
+                         :colors_at, :colors_count, :color_format, :turns, :bank, :bank_lists, :banks) do
         def initialize(entry_at:, records_at:, origin_x:, origin_y:, tiles_at:, tile_count:, tile_format:, colors_count:,
-                       colors_at: nil, color_format: nil, turns: [].freeze, bank: nil, bank_lists: nil) = super
+                       colors_at: nil, color_format: nil, turns: [].freeze, bank: nil, bank_lists: nil, banks: nil) = super
 
         # The bank its frame names, which picks its list: the bank of the frame's front piece.
         def frame_bank = FrameBank.new(entry_at: entry_at, records_at: records_at)
+
+        # How far into the pose's list the colours of +bank+ start: 0 but for a pose of several banks.
+        def bank_places_before(bank) = banks ? banks.count { |named| named < bank } * tile_format.colors : 0
+
+        # The banks as the runtimes take them: one bit for each, 0 for a pose of no such list.
+        def banks_mask = (banks || []).sum { |bank| 1 << bank }
 
         # The same pose turned +way+ once it is painted.
         def turned(way) = with(turns: [*turns, way].freeze)
@@ -177,7 +189,7 @@ module VBlank
         end.flatten
       end
 
-      # THE PIECES A POSE OF A SET DRAWS, read from the frame +where+ (a TilePose) names in +bytes+,
+      # The pieces a pose of a set draws, read from the frame +where+ (a TilePose) names in +bytes+,
       # each [dx, dy, tile] for a picture +width+ by +height+. The file is the player's, so nothing
       # in it stops the game: a tile that is turned, off the picture's 8-pixel grid, outside the
       # picture or outside the set draws nothing, and of two tiles at one place the earlier is drawn,
@@ -202,7 +214,7 @@ module VBlank
           cell.dx + TILE_SIDE <= width && cell.dy + TILE_SIDE <= height && cell.tile.between?(0, tile_count - 1)
       end
 
-      # THE PIECES A PROGRAM HOLDS FOR SUCH A POSE until the file is read: one for each place of the
+      # The pieces a program holds for such a pose until the file is read: one for each place of the
       # 8-pixel grid of a picture +width+ by +height+, which is the most the frame can draw, each
       # naming a tile below zero, which no set holds, so none draws. The C, JavaScript and Ruby
       # builds write the frame's pieces over them as they start. Down each column the tiles are
@@ -235,7 +247,7 @@ module VBlank
       # PackTilePictures): a cell naming one shows a tile the program holds, which the game
       # repaints, in place of a tile of its own.
       #
-      # THE CELLS A SLOT TELLS IT IT MAY BE WRITTEN LATER (`set_cells: pack[:slot]`): +told_count+
+      # The cells a slot tells it it may be written later (`set_cells: pack[:slot]`): +told_count+
       # cells from +told_at+ on, each kept as a cell of the map is. Which tile, bank and turn each
       # is, is in the file, so the program holds a stand-in tile for each among its own, from its
       # tile +told_first+ on, and `set_cell` writes those by number; each is filled from its cell as
@@ -245,14 +257,51 @@ module VBlank
                                :told_at, :told_count, :told_first) do
         def initialize(moving: [].freeze, told_at: 0, told_count: 0, told_first: 0, **) = super
 
-        # How many tiles across and down the map is, and how many that makes: a tile of its own
-        # for each, since two cells are known to show one tile only once the file is read.
+        # How many tiles across and down the map is, and how many places of the map that makes.
         def columns = across * cell_tiles
         def rows = (cells / across) * cell_tiles
         def tiles_drawn = columns * rows
+
+        # How many tiles of the background's pictures one bank's table of colours takes
+        # (CellTilePool): a tile is 64 pixels, so a bank of up to 64 colours one, and the whole
+        # table of 256 colours four.
+        def tiles_per_bank = (bank_size + TABLE_TILE_PLACES - 1) / TABLE_TILE_PLACES
+
+        # The tables of colours its tiles are drawn from: a table for each bank, and one for a bank
+        # past them, which draws every place but the first in colour 0.
+        def table_tiles = (bank_count + 1) * tiles_per_bank
+
+        # What every tile as drawn of the map is made from, the map itself left out: two records
+        # with the same art draw a cell the same, so their maps can share the slot's tiles. Each
+        # area holds runs of its own for a tile that takes turns, and a show copies the same picture
+        # into every area's (Builder::PackTilePictures), so which of them a tile as drawn shows does
+        # not change the picture: where they are held is left out too.
+        def art = with(map_at: 0, cells: 0, across: 0, cell_tiles: 0, number_format: nil, told_at: 0, told_count: 0, told_first: 0,
+                       moving: moving.map { |tile| tile.with(first: 0) })
       end
 
-      # A TILE OF A BACKGROUND READ FROM THE FILE THAT TAKES TURNS THROUGH PICTURES: +tile+, counted
+      # How many places of a table of colours a tile of pictures holds: one for each of its pixels.
+      TABLE_TILE_PLACES = 64
+
+      # The tiles a build for a computer keeps for the maps of a background read from the file, as
+      # the console keeps them: each tile of the slot once, as its places (+places+ of them, the
+      # slot's tiles), and a table of colours for each bank (+tables+ tiles of the background's
+      # pictures, Background#table_tiles), once for each set of colours it is drawn in. A cell
+      # names its tile, its bank and its turn, applied as the cell is drawn, as a console's map
+      # cell does. The +sets+ (their numbers among the background's records) are those whose maps
+      # draw from the same art (Background#art), so a world of rooms over one slot of tiles keeps
+      # the slot once, however many cells and rooms it has.
+      CellTilePool = Data.define(:sets, :tables, :places)
+
+      # The pools of +records+ (a background's Background records, in order), each in the order
+      # of its first set.
+      def self.cell_tile_pools(records)
+        records.each_index.group_by { |set| records[set].art }.map do |art, sets|
+          CellTilePool.new(sets: sets, tables: art.table_tiles, places: art.tile_count)
+        end
+      end
+
+      # A tile of a background read from the file that takes turns through pictures: +tile+, counted
       # from the background's first tile as a cell names it. The program holds it turned each of
       # the four ways TURNS names, in that order, for each bank of the background's colours, a bank
       # +bank_step+ tiles after the one before, from tile +first+ of the background's tiles. A cell
@@ -267,12 +316,12 @@ module VBlank
         TURNS = Ractor.make_shareable([[], [:mirrored], [:upside_down], %i[mirrored upside_down]])
       end
 
-      # ONE TILE OF THE FILE AS A RUN OF PAINTED TILES KEEPS IT (Builder::TileRuns: two places a
+      # One tile of the file as a run of painted tiles keeps it (Builder::TileRuns: two places a
       # byte, the left one in the low four bits): the tile at +at+, turned +turns+ (as
       # MovingTile::TURNS names them).
       PaintedTile = Data.define(:at, :turns)
 
-      # A TABLE OF BYTES READ FROM THE FILE AS PAINTED TILES (Nodes::Table#painted_from_file): each
+      # A table of bytes read from the file as painted tiles (Nodes::Table#painted_from_file): each
       # of +tiles+ (PaintedTile) one after another, 32 bytes each, from tiles kept as +tile_format+
       # (a Console::TileFormat). A place past fifteen keeps its low four bits.
       PaintedTiles = Data.define(:tile_format, :tiles)
@@ -290,7 +339,7 @@ module VBlank
         end
       end
 
-      # ONE COLOUR IN THE FILE: the two bytes from +at+ on, kept as +format+ (a Console::ColorFormat).
+      # One colour in the file: the two bytes from +at+ on, kept as +format+ (a Console::ColorFormat).
       # It stands where a program built holding its data keeps a colour of fifteen bits, for a
       # colour that is no part of a picture: a screen's backdrop today. A list of colours read
       # from the file is one of these for each of its places, two bytes apart.
@@ -299,7 +348,7 @@ module VBlank
       # The fifteen bits of the colour +where+ (a Color) names in +bytes+, the file.
       def self.color_in(bytes, where) = FormatReading.colors(bytes.byteslice(where.at, 2), where.format).first & 0x7FFF
 
-      # A SHADING IN THE FILE (Nodes::Shading#from_file): its colours, two bytes each from
+      # A shading in the file (Nodes::Shading#from_file): its colours, two bytes each from
       # +colors_at+ on, kept as +color_format+ (a Console::ColorFormat), and its levels, one byte a
       # place from +levels_at+ on, each level's places one after another, darkest level first. How
       # many colours and levels there are is the game's word, so the shading holds that many
@@ -309,7 +358,7 @@ module VBlank
       # same numbers refuses them: a place past the colours is place 0.
       Shading = Data.define(:colors_at, :color_format, :levels_at)
 
-      # ONE NUMBER IN THE FILE: +width+ (:byte, :half or :word) from +at+ on, below zero only where
+      # One number in the file: +width+ (:byte, :half or :word) from +at+ on, below zero only where
       # +signed+, kept as +format+ (a Console::NumberFormat).
       Number = Data.define(:at, :width, :signed, :format)
 
@@ -319,7 +368,7 @@ module VBlank
         FormatReading.numbers(kept, where.format, width: where.width, signed: where.signed).first
       end
 
-      # AN ENVELOPE IN THE FILE: the bytes from +at+ on, kept as +kept_as+ names. :envelope is the
+      # An envelope in the file: the bytes from +at+ on, kept as +kept_as+ names. :envelope is the
       # four bytes an Audio::Envelope keeps, in its order (attack, decay, sustain, release).
       # :snes_envelope is the three the Super Nintendo's sound chip keeps (Audio::SNESEnvelope:
       # adsr1, adsr2, gain), played as the nearest ordinary envelope (#closest_envelope), which
@@ -341,7 +390,7 @@ module VBlank
         end
       end
 
-      # WHAT OF A RECORDING'S SETTINGS IS IN THE FILE, each nil where the game wrote it: +rate+ and
+      # What of a recording's settings is in the file, each nil where the game wrote it: +rate+ and
       # +holds_from+ a Number, +envelope+ an EnvelopeBytes.
       #
       # The file is the player's, so nothing in it stops the game (.rate_held, .hold_held): a rate
@@ -358,7 +407,7 @@ module VBlank
       # pack by the same rule (Builder::SampledAudio#recording_length): a copy without a sound
       # writes nought for it, and that must build both ways.
       #
-      # A HOLD WITH EVERY BIT SET IS NONE (.no_hold?): 255 in a byte, 65535 in two, 4294967295 in
+      # A hold with every bit set is none (.no_hold?): 255 in a byte, 65535 in two, 4294967295 in
       # four, and -1 in a slot that goes below zero. That is how a pack says a recording does not
       # loop, which a sample number cannot: the recording sounds as one written without
       # `holds_from:`. The all-in-one build reads it the same way (Builder::SampledAudio#sample).
@@ -370,7 +419,7 @@ module VBlank
         def initialize(rate: nil, holds_from: nil, envelope: nil, length: nil, brr: nil) = super
       end
 
-      # A RECORDING IN THE SUPER NINTENDO SOUND CHIP'S FORMAT IN THE FILE (Audio::SNESRecording):
+      # A recording in the Super Nintendo sound chip's format in the file (Audio::SNESRecording):
       # +count+ bytes from +at+ on, a whole number of the chip's blocks, whose loop starts +loop_at+
       # bytes in, a whole number the game wrote or a Number of the file. Every backend but the Super
       # Nintendo's cartridge plays the samples the chip decodes from it, which only the file's bytes
@@ -440,21 +489,21 @@ module VBlank
       end
       private_class_method :every_bit_set?
 
-      # WHAT A RECORDING HOLDS FOR A SETTING IT READS FROM THE FILE, until the file is read:
+      # What a recording holds for a setting it reads from the file, until the file is read:
       # numbers a build can lay a recording out with and must work nothing out from. The envelope
       # is one with a shape, so a build makes room for a shape.
       RECORDING_STAND_IN_RATE = 1
       RECORDING_STAND_IN_HOLD = 0
       def self.recording_stand_in_envelope = Audio::Envelope.new(attack: 0, decay: 0, sustain: 0, release: 0)
 
-      # A PART'S NOTES IN THE FILE (Audio::Music::Part#from_file): +count+ records of twelve bytes
+      # A part's notes in the file (Audio::Music::Part#from_file): +count+ records of twelve bytes
       # from +at+ on, each an Original::PackNote, ended early by a note that ends its part.
       # +instruments+ are the recordings a note's instrument number picks from, in order. The
       # rest is what turns the records into the events a part plays, which is the Score's work:
       # +part+, the Audio::Score::Part with no notes in it, +tempo+ and +ticks_per_beat+, the
       # Score's, and +who+, how a message names the part.
       #
-      # WHAT IS KNOWN AS THE GAME IS BUILT is how many records there can be, the song's length in
+      # What is known as the game is built is how many records there can be, the song's length in
       # frames (the Score gives its `length:`), the frame every tick falls on, and what each key,
       # each instrument and each volume a record can name comes to on the part's voice (#key_events).
       # Only which of them each record names, and when, is the file's. So a backend that plays
@@ -501,7 +550,7 @@ module VBlank
         # The kind of voice the part plays (Audio::Music.kind_played).
         def kind = Audio::Music.kind_played(Audio::Music.resolve_plays(part.plays))
 
-        # WHICH OF A VOICED RECORD'S SETTINGS THE PART TAKES, by Original::PackNote::NAMES' names.
+        # Which of a voiced record's settings the part takes, by Original::PackNote::NAMES' names.
         def takes
           return [] unless voiced
 
@@ -517,7 +566,7 @@ module VBlank
           taken
         end
 
-        # WHAT EACH PITCH NUMBER COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
+        # What each pitch number comes to on the part's voice, as #key_events: the event a note of
         # each from 0 to Original::PackNote::MOST_PITCH_NUMBER makes, or none for a part that takes
         # none. An event's frame is its number.
         def pitch_number_events
@@ -534,7 +583,7 @@ module VBlank
         # The part as it plays +notes+ (Audio::Score::Note each) in a song +total+ frames long.
         def voice_playing(notes, total) = part.with(notes: notes).to_voice(timing, total, who)
 
-        # WHAT EACH KEY COMES TO ON THE PART'S VOICE: the event a note of each key from 0 to
+        # What each key comes to on the part's voice: the event a note of each key from 0 to
         # MOST_KEY makes, in the keys' order, worked out as the part works any note out (its
         # voice, its transpose). An event's frame is its key.
         def key_events
@@ -548,7 +597,7 @@ module VBlank
 
         def takes_clock? = StartFile.takes_clock?(part)
 
-        # WHAT EACH NOISE CLOCK COMES TO ON THE PART'S VOICE, as #key_events: the event a note of
+        # What each noise clock comes to on the part's voice, as #key_events: the event a note of
         # each clock byte makes (Original::PackNote::CLOCK_BYTES of them, from 0), or none for a
         # part that does not take a clock. An event's frame is its byte.
         def clock_events
@@ -561,19 +610,19 @@ module VBlank
         end
       end
 
-      # A SONG'S LENGTH IN THE FILE (Nodes::Song#length_from_file): +length+, the tick it comes
+      # A song's length in the file (Nodes::Song#length_from_file): +length+, the tick it comes
       # round at or ends on, and +loop_from+, the tick it comes round to, each a Number or nil
       # where the game wrote it. +tempo+ and +ticks_per_beat+ are the Score's, which turn a tick
       # into a frame as for any Score (an Audio::Score::Timing).
       #
-      # WHAT IS KNOWN AS THE GAME IS BUILT is the most frames the song can last (its Score's
+      # What is known as the game is built is the most frames the song can last (its Score's
       # `longest:`), which the song holds as its length until the file is read, so every room a
       # build makes for the song is room enough.
       #
       # The file is the player's, so nothing in it stops the game (#frames_in). The all-in-one build
       # holds a loop tick read from its pack by the same rule (Builder::PackScores#pack_loop_settings).
       #
-      # A LOOP TICK WITH EVERY BIT SET IS NONE (.no_loop?): 65535 in two bytes, as a sound driver's
+      # A loop tick with every bit set is none (.no_loop?): 65535 in two bytes, as a sound driver's
       # unpacking writes a song that ends. The song plays once, as one written with `plays_once:
       # true`, which a port cannot know to write for each song as it is built. The all-in-one build
       # reads it the same way (Builder::PackScores#score_with_pack_notes).
@@ -598,7 +647,7 @@ module VBlank
       # frame it comes round to (0, its start, for one that plays once), and whether it plays once.
       SongFrames = Data.define(:total, :loop_frame, :plays_once)
 
-      # A WAVE OF THE WAVE VOICE IN THE FILE (Audio::Music::Part#wave_from_file), given as a Score
+      # A wave of the wave voice in the file (Audio::Music::Part#wave_from_file), given as a Score
       # part's `plays:` in place of its steps: Audio::Sound::WAVE_BYTES bytes from +at+ on, kept as
       # Audio::Sound.wave_steps_of_bytes reads them. Every byte is two steps, so nothing in the file
       # is out of range. Until the file is read the part plays .wave_stand_in, silence.
@@ -711,23 +760,23 @@ module VBlank
         end
       end
 
-      # A COLOUR MADE FROM ANOTHER AS THE GAME STARTS: entry +of+ of the file's colours
+      # A colour made from another as the game starts: entry +of+ of the file's colours
       # (StartFile#colors), each of its three channels moved +steps+ toward those of +far+ (a
       # colour of fifteen bits) and no further (Graphics::Color.walked_toward). It is one step of
       # a walk of a list read from the file (Builder#color_walk), whose colours the build cannot
       # work out. +of+ always names an entry before this one, so the entries are made in order.
       WalkedColor = Data.define(:of, :far, :steps)
 
-      # A COLOUR MADE FROM ANOTHER AS THE GAME STARTS BY A WALK THAT WAITS FOR A FALLING COUNT:
+      # A colour made from another as the game starts by a walk that waits for a falling count
       # entry +of+ as the walk from +far+ shows it after +steps+ steps of +step+, the count starting
       # at +count+ (Graphics::Color.counted_walk). A WalkedColor's sibling, for Builder#color_walk's
       # count:; +of+ names an entry before this one too.
       CountedWalkColor = Data.define(:of, :far, :step, :count, :steps)
 
-      # A COLOUR OF A LIST THE FILE CHOOSES: the colour at +place+ of one of +lists+ lists of
+      # A colour of a list the file chooses: the colour at +place+ of one of +lists+ lists of
       # +list_colors+ colours each, kept one after another as +format+ from byte +at+ on. Which
       # list is a number the file holds, named by +choice+ (a FrameBank). It is what a marker
-      # names for a colour whose LIST is data of the player's copy: a console's sprite entry names
+      # names for a colour whose list is data of the player's copy: a console's sprite entry names
       # the bank of colours it is drawn from, so a pose drawn in the bank its frame names is drawn
       # in these (Builder::PackPoses#frame_bank_colors_read_at_start).
       #
@@ -735,7 +784,7 @@ module VBlank
       # colour 0.
       ChosenColor = Data.define(:choice, :at, :list_colors, :lists, :place, :format)
 
-      # THE BANK OF COLOURS A FRAME NAMES: the bank its front piece keeps in the frame's record
+      # The bank of colours a frame names: the bank its front piece keeps in the frame's record
       # (Original::FrameRecord, BANK_AT), the record found as a Pose finds its own, from the
       # four bytes at +entry_at+ and where the records start, +records_at+. A frame with no piece
       # names bank 0.
@@ -754,7 +803,7 @@ module VBlank
         color_in(bytes, Color.new(at: where.at + (((list * where.list_colors) + where.place) * 2), format: where.format))
       end
 
-      # MARKERS: A COLOUR KNOWN ONLY AS THE GAME STARTS, WHEREVER THE PROGRAM WOULD HOLD IT. A
+      # Markers: a colour known only as the game starts, wherever the program would hold it. A
       # program built with its pack left out names lists of colours it does not hold: it knows a
       # sprite is recoloured with bank 2 and not what bank 2 holds. Its lists are still compared
       # with each other, kept in pictures' pixels and handed from verb to verb as colours are, so
@@ -793,7 +842,7 @@ module VBlank
       # The most colours a picture's places can pick from: a place is four bits.
       PLACES = 16
 
-      # THE CHECK OF A FILE, AS EVERY RUNTIME IS HANDED IT: +numbers+, the file's size, how many
+      # The check of a file, as every runtime is handed it: +numbers+, the file's size, how many
       # checks, and each check as where it starts, how long it is and its bytes; and +words+, the
       # sentences for a file that fails it. Built once here, so the interpreter, the shell and the C,
       # JavaScript and Ruby runtimes (rg_start_file_refusal in each) all refuse a file alike.
@@ -874,7 +923,7 @@ module VBlank
         filled
       end
 
-      # EVERY MARKER +program+ HOLDS REPLACED BY ITS COLOUR, +colors+ being the file's colours by
+      # Every marker +program+ HOLDS REPLACED BY ITS COLOUR, +colors+ being the file's colours by
       # entry (#colors_in): in each list of colours a picture, a sprite, a list the game changes, a
       # background, a run of painted tiles and a set of sprite tiles keeps, in a picture's pixels,
       # and in a screen's backdrop. Those are every place a list of colours the game declared
@@ -1053,7 +1102,7 @@ module VBlank
         node.from_file = nil
       end
 
-      # A POSE'S PIECES, read from the frame it names and painted into a picture of the size the
+      # A pose's pieces, read from the frame it names and painted into a picture of the size the
       # game gave, as the build paints them when it holds the frame (Builder::PackPoses). The
       # picture keeps the frame's pieces as that build's does, each cut into the blocks a picture of
       # pieces is made of (Original::FrameRecord::Piece#blocks), in the frame's order: a console
@@ -1078,7 +1127,10 @@ module VBlank
       # names one.
       def self.pose_frame_pieces(where, bytes)
         frame = Original::FrameRecord.read_entry(bytes, entry_at: where.entry_at, section_at: where.records_at)
-        where.bank ? frame.pieces.select { |piece| piece.bank == where.bank } : frame.pieces
+        return frame.pieces.select { |piece| piece.bank == where.bank } if where.bank
+        return frame.pieces.select { |piece| where.banks.include?(piece.bank) } if where.banks
+
+        frame.pieces
       end
 
       # The places of a picture +width+ by +height+ with +pieces+ painted into it, row by row. What
@@ -1132,7 +1184,8 @@ module VBlank
 
         tile_bytes = where.tile_format.tile_bytes
         tiles[tile] ||= FormatReading.tiles(bytes.byteslice(where.tiles_at + (tile * tile_bytes), tile_bytes), where.tile_format).first
-        tiles[tile][((from_y % side) * side) + (from_x % side)]
+        place = tiles[tile][((from_y % side) * side) + (from_x % side)]
+        place.zero? ? 0 : place + where.bank_places_before(piece.bank)
       end
 
       # A picture's places row by row: one byte a pixel, or the tiles they are kept in, read from the
@@ -1149,13 +1202,13 @@ module VBlank
         Assets.picture_places_of_tiles(FormatReading.tiles(tiles, where.tile_format).flatten, across: where.across)
       end
 
-      # A BACKGROUND'S TILES AND MAP, read from the places it names, as the build makes them of the
+      # A background's tiles and map, read from the places it names, as the build makes them of the
       # same numbers held in the game (Builder::PackBackgrounds): each different tile as drawn (a
       # tile, its bank and its turn) a picture of +program+, drawn from its bank's list, and the
       # map those pictures, a cell whose tile draws nothing left empty. Its lists of colours held
       # markers for a bank's colours, and hold the colours by now (.hold_marked_colors).
       #
-      # A BACKGROUND THAT WALKS BETWEEN SETS OF TILES has a record for each set, read in turn: each
+      # A background that walks between sets of tiles has a record for each set, read in turn: each
       # set's pictures follow the sets' before it, and each map is numbered into its own set's.
       def self.fill_background(program, node, bytes)
         # The tiles the program held come first and keep their numbers, since a `set_tile` of the
@@ -1237,7 +1290,7 @@ module VBlank
         BackgroundSetRead.new(drawn: drawn, pictures: pictures, fronts: fronts, told: told)
       end
 
-      # A TILE THE PROGRAM HOLDS SHOWN IN FRONT OF THE SPRITES by a cell of the file: a number of its
+      # A tile the program holds shown in front of the sprites by a cell of the file: a number of its
       # own in the background's tiles naming the same picture, since being in front is the
       # number's (Nodes::Background#in_front) and the same tile behind keeps +held+.
       FrontOfHeld = Data.define(:held)

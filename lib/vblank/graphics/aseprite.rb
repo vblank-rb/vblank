@@ -13,7 +13,7 @@ module VBlank
     # NAMED animations (frameTags), like "walk" or "attack". This turns "cut the sheet into
     # a grid and hope the order matches" into "play the animations the artist defined."
     #
-    # This module PARSES a JSON export into plain data (VBlank::Graphics::Aseprite::Doc), and reads the
+    # This module parses a JSON export into plain data (VBlank::Graphics::Aseprite::Doc), and reads the
     # native .aseprite binary straight into decoded frames (VBlank::Graphics::Aseprite::Sprite). Turning
     # either into sprite frames is the builder's job (see Builder#sprite `from_aseprite:`).
     module Aseprite

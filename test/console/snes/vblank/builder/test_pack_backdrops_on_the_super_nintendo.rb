@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_backdrops"
 
-# A SCENE SAYS ITS BACKDROP IS A COLOUR OF THE DATA PACK, on the Super Nintendo, whose colour 0
+# A scene says its backdrop is a colour of the data pack, on the Super Nintendo, whose colour 0
 # changes with the rest of a screen's colours: the logos show the pack's first colour, the title
 # the second bank's, and a menu that says none the game's, each moved by a tint as the picture is.
 class TestPackBackdropsOnTheSuperNintendo < Minitest::Test

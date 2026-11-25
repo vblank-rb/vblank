@@ -2,14 +2,14 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/corridor").to_s)
 
-# The corridor example (examples/corridor.rb), the corpus's witness NEAR THE LINE, measured on
+# The corridor example (examples/corridor.rb), the corpus's witness near the line, measured on
 # the Advance's own cartridge: how much of a frame it leaves idle, and which side of the line the
 # same game is on with more rays. The picture it draws is in
 # test/console/gba/examples/test_corridor_example.rb.
 class TestCorridorExampleCartridge < Minitest::Test
-  # WHAT THE EXAMPLE IS FOR. It has to stay near the line to be worth having: too light and it
+  # What the example is for. It has to stay near the line to be worth having: too light and it
   # is just another comfortable example, too heavy and it does not ship. Measured by running
   # it — this used to ask an estimate the same question, and how close that estimate came was
   # itself most of what this file tested.
@@ -21,7 +21,7 @@ class TestCorridorExampleCartridge < Minitest::Test
     assert_operator spare, :>, 0.0, "...and an example that ships must still fit: #{spare}"
   end
 
-  # THE TEST THIS EXAMPLE EXISTS FOR: the only question an author acts on is whether it fits,
+  # The test this example exists for: the only question an author acts on is whether it fits,
   # and this is the same game either side of the line. Sixty rays holds 60 frames a second;
   # a hundred and twenty does not. Both are run, so neither answer is anybody's opinion.
   def test_which_side_of_the_line_the_game_is_on

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# TWO LAYERS THAT WALK BETWEEN AREAS TOGETHER, EACH TOLD draw_with: two backgrounds at once, which
+# Two layers that walk between areas together, each told draw_with: two backgrounds at once, which
 # the Color cannot show (the one-layer games are in
 # test/all/vblank/dsl/test_walking_background_draws_with.rb).
 #
@@ -64,7 +64,7 @@ class TestWalkingBackgroundsDrawWithOnTheAdvance < Minitest::Test
     assert_backends_agree(two_layers_walking, frames: [4, 7, 11], name: "AREADW2")
   end
 
-  # BOTH LAYERS BORROWED IN BOTH AREAS, WALKING THERE AND BACK UNDER A TINT. The ground goes into
+  # Both layers borrowed in both areas, walking there and back under a tint. The ground goes into
   # an area first and sends its colours; the scenery follows in the same pass and finds them up,
   # so it sends only its own borrowed group. In between, the scenery is still in the area being
   # left, and its borrowed group there must not go over the colours of the area arriving.
@@ -112,7 +112,7 @@ class TestWalkingBackgroundsDrawWithOnTheAdvance < Minitest::Test
     assert_backends_agree(two_layers_walking_there_and_back, frames: [3, 5, 6, 8, 9], name: "AREADW3")
   end
 
-  # A FIELD OF MANY SMALL LISTS AND A HOUSE THAT BORROWS ONE. The field's sixteen lists of two
+  # A field of many small lists and a house that borrows one. The field's sixteen lists of two
   # colours each share groups of sixteen between them, and only fit the console that way: a group
   # each would be more groups than there are. Only the house's list is ever drawn with another, so
   # only it needs a group to itself. The Color holds fewer lists at once than the field has, so

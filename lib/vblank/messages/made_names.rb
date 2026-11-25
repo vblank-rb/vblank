@@ -2,10 +2,10 @@
 
 module VBlank
   module Messages
-    # THE NAMES THE BUILD MAKES UP, for routines and variables nobody wrote: the routines a
+    # The names the build makes up, for routines and variables nobody wrote: the routines a
     # `save_data` record is built into and the save machinery behind them, the routine each
     # font's numbers are drawn by, the routine that writes one scene's sprites. Each kind is
-    # written here ONCE — how its name is spelled from its parts, and what a report calls it —
+    # written here once — how its name is spelled from its parts, and what a report calls it —
     # and the build makes every such name here and reads every one back here.
     #
     # That is what keeps them apart. A name is spelled with the game's own part (a record's
@@ -40,8 +40,8 @@ module VBlank
                     reset: "putting save_data :%s's things back as declared",
                     autosave: "asking for a save of save_data :%s after a change" }.freeze
 
-      # WHAT A RECORD CAN BE CALLED: letters and digits, with one underscore between words —
-      # which `save_data` holds a game to. A record's own names put its name before TWO
+      # What a record can be called: letters and digits, with one underscore between words —
+      # which `save_data` holds a game to. A record's own names put its name before two
       # underscores and the save machinery's start with one, so held to this shape a record's
       # name can never run into the piece after it, into another record's, or into the
       # framework's.
@@ -54,8 +54,8 @@ module VBlank
       PLAIN = "[A-Za-z0-9_]+"
       ANY = ".+"
 
-      # WHAT A POOL CAN BE CALLED: anything that does not hold two underscores in a row or end
-      # in one — which `pool` holds a game to. A pool's own names put its name before TWO
+      # What a pool can be called: anything that does not hold two underscores in a row or end
+      # in one — which `pool` holds a game to. A pool's own names put its name before two
       # underscores, so held to this shape the first pair of them is always where the name
       # ends, whatever comes after: a part of the pool's own, or a field called anything.
       POOL = "(?:_?[^_])+"
@@ -103,6 +103,11 @@ module VBlank
                                   words: ->(_) { "hiding the sprites of a scene that went" }),
         scene_loop_work: Kind.new(spelling: "__loop_for_scene_%{scene}__%{number}", parts: { scene: ANY, number: "\\d+" },
                                   words: ->(parts) { "the game loop's own work for scene :#{parts[:scene]}" }),
+        # A statement of a routine too big for the quick memory, made a routine of its own
+        # (GBA::RoutinePieces), named by where it is in its routine.
+        routine_piece: Kind.new(spelling: "__piece_%{place}__of_%{routine}",
+                                parts: { place: "\\d+(?:_(?:then|else|loop)_\\d+)*(?:_then)?", routine: ANY },
+                                words: ->(parts) { "a part of func :#{parts[:routine]} (#{parts[:place].tr('_', ' ')})" }),
         picture_groups: Kind.new(spelling: "__picture_groups_%{set}", parts: { set: ANY },
                                  words: ->(parts) { "bringing in the pictures of picture_groups :#{parts[:set]}" }),
         still_sprites: Kind.new(spelling: "__still_objects", parts: {},
@@ -116,6 +121,8 @@ module VBlank
         tile_pictures_part: Kind.new(spelling: "__tile_pictures_%{group}__%{part}", parts: { group: ANY, part: PLAIN }, words: nil),
         # A picture's tiles kept as a table, for `copy_from` on a set of sprite tiles to load from.
         sprite_tiles_source: Kind.new(spelling: "__sprite_tiles_from_%{picture}", parts: { picture: ANY }, words: nil),
+        # The words a tile picked as the game runs (Nodes::SetTile#picked_by) writes into a cell, as a table.
+        picked_cells: Kind.new(spelling: "__picked_cells_%{number}", parts: { number: "\\d+" }, words: nil),
         pose_rows: Kind.new(spelling: "__pose_rows_%{number}", parts: { number: "\\d+" }, words: nil),
         tile_run_pending: Kind.new(spelling: "__tile_runs_pending_%{number}", parts: { number: "\\d+" }, words: nil),
         painted_copies: Kind.new(spelling: "__painted_copies", parts: {},
@@ -172,6 +179,14 @@ module VBlank
                                           end),
         view_along_map: Kind.new(spelling: "__view_along_map_%{background}", parts: { background: ANY },
                                  words: ->(parts) { "bringing the view of background :#{parts[:background]} along its map" }),
+        map_cell_write_in_scene: Kind.new(spelling: "__map_cell_write_%{background}__in_%{scene}",
+                                          parts: { background: ANY, scene: ANY },
+                                          words: lambda do |parts|
+                                            "changing a cell of the map of background :#{parts[:background]} of the scene " \
+                                              ":#{parts[:scene]}"
+                                          end),
+        map_cell_write: Kind.new(spelling: "__map_cell_write_%{background}", parts: { background: ANY },
+                                 words: ->(parts) { "changing a cell of the map of background :#{parts[:background]}" }),
         pool_stacking: Kind.new(spelling: "__stacking_pool_%{pool}", parts: { pool: ANY },
                                 words: ->(parts) { "putting the sprites of pool :#{parts[:pool]} oldest in front" }),
         # A pool's field is a list, and so is much of what the pool keeps for itself. The two
@@ -187,6 +202,16 @@ module VBlank
         draw_order: Kind.new(spelling: "__draw_order_%{number}__%{part}", parts: { number: "\\d+", part: PLAIN },
                              words: lambda do |parts|
                                "putting the sprites of draw_in_order ##{parts[:number]} in order" if parts[:part] == "sort"
+                             end),
+        # The routine one `sort!` or `sort_by!` line of a game sorts its Array by, named for the
+        # Array and the line, so a profile lists each line with its cost.
+        # +order+ spells the whole key, each field and its way (`y_up_x_down`, or `item_down` for
+        # an Array of numbers), so two sorts on one line by different keys are two routines.
+        array_sort: Kind.new(spelling: "__sort_%{array}__line_%{line}__by_%{order}",
+                             parts: { array: POOL, line: "\\d+", order: "(?:_?[^_])+_(?:up|down)" },
+                             words: lambda do |parts|
+                               "sorting `#{parts[:array]}` at line #{parts[:line].to_i} (sort when it changes, or put a " \
+                                 "new item in its place, if sorting it each frame costs too much)"
                              end),
         see_through_amounts: Kind.new(spelling: "__see_through_%{layer}", parts: { layer: ANY },
                                       words: ->(parts) { "telling the display how see-through layer :#{parts[:layer]} is" }),
@@ -270,6 +295,12 @@ module VBlank
         when IR::SaveLayout::SAVE_VAR_RECORD then SAVE_VAR_WORDS
         else "save_data :#{record}"
         end
+      end
+
+      # The routine a piece +name+ was cut from (GBA::RoutinePieces), or nil for any other name.
+      def self.routine_cut_into(name)
+        kind, parts = read(name)
+        parts[:routine].to_sym if kind == :routine_piece
       end
 
       # What a report calls the routine +name+, or nil when it is not one the build made up (or

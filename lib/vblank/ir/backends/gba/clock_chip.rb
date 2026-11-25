@@ -4,9 +4,9 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # THE CARTRIDGE'S CLOCK CHIP, read for the game.
+        # The cartridge's clock chip, read for the game.
         #
-        # THE HARDWARE. The console has no clock of its own. A cartridge that keeps the date and
+        # The hardware. The console has no clock of its own. A cartridge that keeps the date and
         # time carries a small chip for it (the Seiko S-3511A the console's own games used), with
         # a watch battery that keeps it counting while the console is off. The chip is not in the
         # console's memory at all: the cartridge brings four pins out at the bottom of its own
@@ -17,16 +17,16 @@ module VBlank
         # back out the same way, lowest bit first. The answer is the year, month, day, day of the
         # week, hour, minute and second, each a byte holding two decimal digits.
         #
-        # AT POWER-ON the chip is asked whether it is there at all and whether its time was ever
+        # At power-on the chip is asked whether it is there at all and whether its time was ever
         # set; a cartridge with no chip, or one whose battery ran out, is never asked again, and
-        # every reading stays 0, which is IR::Clock's promise. THEN THE FIRST READING OF THE TIME
-        # AFTER EACH WAIT FOR THE SCREEN puts the date and time into a copy the game reads, so every
+        # every reading stays 0, which is IR::Clock's promise. Then the first reading of the time
+        # after each wait for the screen puts the date and time into a copy the game reads, so every
         # reading between two waits is of one moment, as on every backend, a game reading the time
         # twenty times a pass talks to the chip once, and a pass that does not ask does not talk to
         # it at all. Most passes of most games do not, and a conversation is about a thousand
         # instructions run from the cartridge. A wait does no more than mark the copy as old.
         #
-        # IS THERE A CHIP? With none, the pins are not pins: reading them reads two bytes of the
+        # Is there a chip? With none, the pins are not pins: reading them reads two bytes of the
         # cartridge's own code, which never change, so every bit the console ticks back is the same
         # and the chip's settings read as all noughts or all ones. The chip, told to count in 24
         # hours, reads that setting back with that one bit on, which neither of those is.
@@ -121,7 +121,7 @@ module VBlank
           COPY = IR::Clock::TIME.to_h { |reading| [reading, var(reading)] }.freeze
           WORK = %i[cycles of_cycle years into months].to_h { |part| [part, work_var(part)] }.freeze
 
-          # THE REGISTERS THE ROUTINES WORK IN: ACC for the byte going out or coming back, TMP for
+          # The registers the routines work in: ACC for the byte going out or coming back, TMP for
           # the pins' value, SPARE as the bit count, and HIGH holding the pins' address. All four
           # are a statement's own scratch, never held across one. Every routine but one is called
           # only between statements, so nothing the game holds is in them; the one that adds a time
@@ -145,6 +145,10 @@ module VBlank
           # it on (see #emit_add_offset_routine), which are the program's own kind of statement.
           # Handed in once it exists.
           attr_writer :lowering
+
+          # Does a rumble motor share the port's pin 3 (Rumble#shares_port?)? Then every write to the
+          # port keeps the motor's bit, and a talk is marked while it runs. Set once both are prepared.
+          attr_writer :motor_shared
 
           # Does this program read or set the clock at all? Nothing here is emitted for one that
           # does neither.
@@ -182,7 +186,7 @@ module VBlank
             @primitives.store_var(ACC, READ_THIS_PASS)
           end
 
-          # A TIME THE GAME SETS: each part worked out into where it waits, and then the routine
+          # A time the game sets: each part worked out into where it waits, and then the routine
           # that keeps how far it is from the chip's (see #emit_set_body).
           def emit_set_clock(node)
             emit_set_part(:year, node.year)
@@ -276,7 +280,7 @@ module VBlank
             emit_present_and_set
           end
 
-          # THE PINS READ BACK ONLY WHILE THE CONSOLE TALKS TO THE CHIP, as the console's own games
+          # The pins read back only while the console talks to the chip, as the console's own games
           # leave them: readable, their two bytes of the cartridge read as the pins; not, as the
           # cartridge's code. Uses TMP.
           def emit_pins_readable(on)
@@ -291,8 +295,8 @@ module VBlank
             emit_end_conversation
           end
 
-          # THERE IS A CHIP when the settings read back with the 24-hour bit on and are not all
-          # ones; ITS TIME WAS SET when, besides, the battery had not run out before the console
+          # There is a chip when the settings read back with the 24-hour bit on and are not all
+          # ones; its time was set when, besides, the battery had not run out before the console
           # asked.
           def emit_present_and_set
             absent = @emitter.gensym
@@ -315,7 +319,7 @@ module VBlank
             @emitter.place_label(done)
           end
 
-          # A READING: nothing at all unless the chip is there and set, and then the date and time,
+          # A reading: nothing at all unless the chip is there and set, and then the date and time,
           # each byte's two digits made one number as it comes — into the copy, or in a game that
           # sets the clock into the chip's own reading, which the copy is made from when it is read.
           def emit_after_wait_body
@@ -345,13 +349,13 @@ module VBlank
             @primitives.store_var(ACC, COPY_MADE)
           end
 
-          # SETTING IT: nothing at all on a cartridge with no chip. The chip itself is never told
+          # Setting it: nothing at all on a cartridge with no chip. The chip itself is never told
           # the time — an emulator keeps its own whatever a cartridge sends it (mGBA does) — so what is
           # kept is how far the time set is from the chip's (see IR::Clock::OFFSET_DAYS), worked
           # out against a fresh reading. The copy is made from it the next time the game reads the
           # clock, which is the time set, as on every backend.
           #
-          # A CHIP WHOSE BATTERY RAN OUT is put back to its first moment first: on the chip the
+          # A chip whose battery ran out is put back to its first moment first: on the chip the
           # console's own games used that is what clears what it reports about the battery, so the
           # next power-on finds it set — and it clears the chip's settings with it, so it is told
           # again to count the hours 0 to 23. Read after that, the chip gives 2000-01-01, and the
@@ -401,7 +405,7 @@ module VBlank
             ]
           end
 
-          # MAKING THE COPY, the chip's reading with the time set added: the chip's date and time as
+          # Making the copy, the chip's reading with the time set added: the chip's date and time as
           # a day number and the seconds into it, the offset added, a day carried when the seconds
           # pass midnight, and back to a date and a time. Made at most once between two readings
           # of the chip, unless the offset changes in between — the saved one coming in at
@@ -473,13 +477,14 @@ module VBlank
             @emitter.emit(ASM.add_reg(ACC, ACC, BITS))
           end
 
-          # A CONVERSATION STARTS: every pin the console's, CS low with the clock high, which tells
+          # A conversation starts: every pin the console's, CS low with the clock high, which tells
           # the chip to forget any conversation half done, then CS raised and +command+ sent — and,
           # for a command the console reads, SIO handed over to the chip. The pins are pointed
           # first: at power-on they point nowhere, and a pin that is not the console's ignores what
           # is written to it, so the chip would never hear CS go low.
           def emit_start_conversation(command)
-            @emitter.emit(ASM.load_immediate(TMP, SCK | SIO | CS))
+            emit_talk_marked(1) if @motor_shared
+            @emitter.emit(ASM.load_immediate(TMP, SCK | SIO | CS | motor_pin))
             @emitter.emit(ASM.store_halfword_offset(TMP, BASE, DIRECTION))
             emit_pins(SCK)
             emit_pins(SCK | CS)
@@ -487,41 +492,101 @@ module VBlank
             @emitter.emit_branch(:bl, SEND)
             return if command.nobits?(0x80) # the read bit, as the byte is kept turned round
 
-            @emitter.emit(ASM.load_immediate(TMP, SCK | CS))
+            @emitter.emit(ASM.load_immediate(TMP, SCK | CS | motor_pin))
             @emitter.emit(ASM.store_halfword_offset(TMP, BASE, DIRECTION))
           end
 
           # ...and it ends with CS low.
-          def emit_end_conversation = emit_pins(SCK)
+          #
+          # With a motor on pin 3, the talk is marked over first, so the interrupt's step writes the
+          # port again. The motor's bit is then written as it stands, and read again after: a step
+          # that landed between the read and the write wrote its own bit and was then written over,
+          # so a bit that changed is written once more. Uses TMP and BITS.
+          def emit_end_conversation
+            return emit_pins(SCK) unless @motor_shared
 
+            again = @emitter.gensym
+            emit_talk_marked(0)
+            @emitter.place_label(again)
+            @primitives.load_var(BITS, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.orr_imm(TMP, BITS, SCK))
+            @emitter.emit(ASM.store_halfword(TMP, BASE))
+            @primitives.load_var(TMP, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.cmp_reg(TMP, BITS))
+            @emitter.emit_branch(:bcond, again, cond: :ne)
+          end
+
+          # The talk marked begun (1) or over (0) for the motor's step (Rumble::TALKING). Uses TMP.
+          def emit_talk_marked(on)
+            @emitter.emit(ASM.load_immediate(TMP, on))
+            @primitives.store_var(TMP, Rumble::TALKING)
+          end
+
+          # The motor's pin, which stays the console's to drive, where a motor shares the port.
+          def motor_pin = @motor_shared ? Rumble::MOTOR : 0
+
+          # The pins set to +value+ from code the game runs, and the motor's bit with them. Uses TMP.
           def emit_pins(value)
-            @emitter.emit(ASM.load_immediate(TMP, value))
+            return emit_routine_pins(value) unless @motor_shared
+
+            @primitives.load_var(TMP, Rumble::MOTOR_ON)
+            @emitter.emit(ASM.orr_imm(TMP, TMP, value))
             @emitter.emit(ASM.store_halfword(TMP, BASE))
           end
 
-          # SEND THE BYTE IN ACC, lowest bit first: each bit put on SIO with the clock low, then
+          # The pins set to +value+ inside SEND and RECEIVE, which hold the motor's bit in MOTOR_HELD
+          # (#emit_hold_motor_bit). Uses TMP.
+          def emit_routine_pins(value)
+            @emitter.emit(ASM.load_immediate(TMP, value))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, MOTOR_HELD)) if @motor_shared
+            @emitter.emit(ASM.store_halfword(TMP, BASE))
+          end
+
+          # Where SEND and RECEIVE keep the motor's bit, saved and given back round them.
+          MOTOR_HELD = 4
+
+          # SEND and RECEIVE start: the motor's bit read into MOTOR_HELD, whose caller's number is kept
+          # on the stack. The variables' base may not be in its register inside a routine, so the
+          # address is loaded whole.
+          def emit_hold_motor_bit
+            return unless @motor_shared
+
+            @emitter.emit(ASM.push(MOTOR_HELD))
+            @emitter.emit_number(MOTOR_HELD, @primitives.var_addr(Rumble::MOTOR_ON))
+            @emitter.emit(ASM.ldr(MOTOR_HELD, MOTOR_HELD))
+          end
+
+          # ...and they end, MOTOR_HELD given back.
+          def emit_return_from_routine
+            @emitter.emit(ASM.pop(MOTOR_HELD)) if @motor_shared
+            @emitter.emit(ASM.return)
+          end
+
+          # Send the byte in ACC, lowest bit first: each bit put on SIO with the clock low, then
           # the clock raised, which is when the chip takes it. The low half is written three times,
           # as the console's own games do, so a real chip has time to see it. Uses ACC, TMP and
           # BITS, with the pins' address in BASE.
           def emit_send_routine
             bit = @emitter.gensym
             @emitter.place_label(SEND)
+            emit_hold_motor_bit
             @emitter.emit(ASM.load_immediate(BITS, 8))
             @emitter.place_label(bit)
             @emitter.emit(ASM.and_imm(TMP, ACC, 1))
             @emitter.emit(ASM.lsl_imm(TMP, TMP, 1))           # the bit, on SIO
             @emitter.emit(ASM.orr_imm(TMP, TMP, CS))
+            @emitter.emit(ASM.orr_reg(TMP, TMP, MOTOR_HELD)) if @motor_shared
             3.times { @emitter.emit(ASM.store_halfword(TMP, BASE)) }
             @emitter.emit(ASM.orr_imm(TMP, TMP, SCK))
             @emitter.emit(ASM.store_halfword(TMP, BASE))
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 1))
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
-            @emitter.emit(ASM.return)
+            emit_return_from_routine
             @emitter.place_label(DerivedNames.routine_end(SEND))
           end
 
-          # TICK A BYTE BACK INTO ACC, lowest bit first: the clock lowered, which is when the chip
+          # Tick a byte back into ACC, lowest bit first: the clock lowered, which is when the chip
           # puts its next bit on SIO, then raised, and SIO read. Each bit goes in at the top and
           # moves down, so the first one sent ends at the bottom. The low half is written five
           # times, as the console's own games do when they read, so a real chip has its bit on SIO
@@ -529,12 +594,13 @@ module VBlank
           def emit_receive_routine
             bit = @emitter.gensym
             @emitter.place_label(RECEIVE)
+            emit_hold_motor_bit
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @emitter.emit(ASM.load_immediate(BITS, 8))
             @emitter.place_label(bit)
-            emit_pins(CS)
+            emit_routine_pins(CS)
             4.times { @emitter.emit(ASM.store_halfword(TMP, BASE)) }
-            emit_pins(CS | SCK)
+            emit_routine_pins(CS | SCK)
             @emitter.emit(ASM.load_halfword(TMP, BASE))
             @emitter.emit(ASM.lsr_imm(TMP, TMP, 1))
             @emitter.emit(ASM.and_imm(TMP, TMP, 1))           # SIO
@@ -542,7 +608,7 @@ module VBlank
             @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, TMP, 7))
             @emitter.emit(ASM.subs_imm(BITS, BITS, 1))
             @emitter.emit_branch(:bcond, bit, cond: :ne)
-            @emitter.emit(ASM.return)
+            emit_return_from_routine
             @emitter.place_label(DerivedNames.routine_end(RECEIVE))
           end
         end

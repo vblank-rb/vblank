@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         class Lowering
-          # SAVE MEMORY, lowered for a Super Nintendo: each save step a call into Runtime::Saving,
+          # Save memory, lowered for a Super Nintendo: each save step a call into Runtime::Saving,
           # with the places in save memory worked out by IR::SaveLayout, so the cartridge's
           # battery-backed RAM holds the bytes the interpreter's save memory holds. Mixed into
           # Lowering.

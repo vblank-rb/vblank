@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "made_up_original"
 
-# AN INSTRUMENT'S ENVELOPE READ FROM THE DATA PACK (Builder::PackScores#pack_envelope_value): four
+# An instrument's envelope read from the data pack (Builder::PackScores#pack_envelope_value): four
 # bytes of a slot, in the order an Audio::Envelope keeps them. Here because a recording's shape is
 # refused by the Color and the Genesis. The answer key is the same instrument given those four
 # numbers by hand.

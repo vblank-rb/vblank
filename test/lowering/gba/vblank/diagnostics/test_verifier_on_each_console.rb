@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# ONE READER PLAYS EVERY CONSOLE'S CARTRIDGE BACK (Verifier), asking that console's part of it
+# One reader plays every console's cartridge back (Verifier), asking that console's part of it
 # (Console::Kit#reading) for what only its way of keeping things can answer: the same test reads
 # an Advance cartridge and a Color one, and a question only one console's cartridges answer is
 # refused by name on the other's.
@@ -13,13 +13,11 @@ class TestVerifierOnEachConsole < Minitest::Test
     require_emulator!
   end
 
-  # The reader plays the two Game Boys' cartridges in libmgba and the Super Nintendo's in bsnes
-  # (SNESProbe) and the PlayStation's program in Beetle PSX (PS1Probe); a Genesis cartridge is read back
-  # by Genesis::HeadlessRun, in Genesis Plus GX, until the reader can sit on that core too.
-  NOT_READ_HERE = %i[genesis].freeze
-
+  # The reader plays the two Game Boys' cartridges in libmgba, the Super Nintendo's in bsnes
+  # (SNESProbe), the Genesis's in Genesis Plus GX (GenesisProbe) and the PlayStation's program in
+  # Beetle PSX (PS1Probe).
   def test_one_reader_reads_sprites_and_pixels_off_every_consoles_cartridge
-    VBlank::Console.kits.reject { |kit| NOT_READ_HERE.include?(kit.name) }.each do |kit|
+    VBlank::Console.kits.each do |kit|
       reader = VBlank::Diagnostics::Verifier.new(dot_game(kit.name), frames: 10)
 
       assert_equal kit.description.screen_size, [reader.screen_width, reader.screen_height], kit.title

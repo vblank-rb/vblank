@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# MORE SPRITES THAN THE CONSOLE HAS PLACES FOR, AS LONG AS NO MORE SHOW AT ONCE.
+# More sprites than the console has places for, as long as no more show at once.
 #
 # The console draws its sprites from a table of 128 places. A pool keeps a place for every thing
 # it can hold, so three pools of sixty need 180 places although a room shows a handful. Such a
@@ -69,7 +69,7 @@ class TestSpriteTableCopy < Minitest::Test
     assert_operator objects.free, :>, 0, "#{objects.used} places, and room to spare"
   end
 
-  # MORE SHOWING THAN THE CONSOLE HAS PLACES: the frontmost 128 are drawn, and the cartridge
+  # More showing than the console has places: the frontmost 128 are drawn, and the cartridge
   # counts the rest each frame, which a profile says. Fifty of each colour is 150: the blues and
   # the greens, in front, all show, and 28 of the reds do.
   def test_a_frame_with_more_showing_than_places_draws_the_front_128_and_counts_the_rest
@@ -103,10 +103,7 @@ class TestSpriteTableCopy < Minitest::Test
         t += 1
         where = 1 if t == 10
         where = 0 if t == 13
-        case_var(:where) do
-          when_val 0, :play
-          when_val 1, :rest
-        end
+        call({ 0 => :play, 1 => :rest }, number: :where)
       end
     end
     builder.finalize_program

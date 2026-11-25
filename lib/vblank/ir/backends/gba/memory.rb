@@ -4,13 +4,13 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # The IWRAM allocator, which hands memory out from BOTH ENDS.
+        # The IWRAM allocator, which hands memory out from both ends.
         #
         # Every variable, list, mixer buffer, row-bend table, and the block of moved
         # code itself claims its space here. There is no freeing, because nothing in a
         # running program ever gives its memory back.
         #
-        # WHY TWO ENDS RATHER THAN ONE, which is the whole point of this class. A
+        # Why two ends rather than one, which is the whole point of this class. A
         # variable is reached by naming the base of this memory and riding the distance
         # to it inside the load instruction — and that distance is twelve bits. So a
         # variable within 4096 bytes of the base is two instructions, and one past that
@@ -18,7 +18,7 @@ module VBlank
         # read and every write.
         #
         # With one pointer, who lands inside that window is decided by the order things
-        # are first NEEDED, which is not a decision anybody made. A game with a lot of
+        # are first needed, which is not a decision anybody made. A game with a lot of
         # state declares its lists and pools early, those claim the first few thousand
         # bytes, and the variables land past the line — so the games with the most going
         # on are exactly the ones that pay for every variable, which is the wrong way
@@ -34,7 +34,7 @@ module VBlank
         #
         # Everything is rounded up to a whole word, so both ends stay aligned however
         # odd a size is asked for — a list of bytes, say.
-        # AND THE OTHER MEMORY, which this hands out too because there should be one
+        # And the other memory, which this hands out too because there should be one
         # owner of both. The console has 256K more of it on a separate chip — eight times
         # the room, and about six times the wait on a read — and until this it was touched
         # by nothing but the audio mixer's two output buffers, through six private lines
@@ -65,8 +65,9 @@ module VBlank
             @far = address
           end
 
-          # Claim +bytes+ next to the base, for something that is cheaper to reach
-          # there. Only variables want this.
+          # Claim +bytes+ next to the base, for something that is cheaper to reach there:
+          # the variables, and the small lists read only at slots written in the program
+          # (Lists#near_list?).
           def alloc_near_base(bytes)
             addr = @near
             @near += whole_words(bytes)
@@ -112,7 +113,8 @@ module VBlank
           # How much of this memory is spoken for, both ends added together.
           def used = near_bytes + far_bytes
 
-          # How much the base end holds (the variables), and how much the far end (everything else).
+          # How much the base end holds (the variables and the small lists beside them), and how
+          # much the far end (everything else).
           def near_bytes = @near - @base
           def far_bytes = @ceiling - @far
 

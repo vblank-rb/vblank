@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A VARIABLE KEPT A BYTE OR TWO WIDE holds what a list's slot of that width holds: the low bits, read
+# A variable kept a byte or two wide holds what a list's slot of that width holds: the low bits, read
 # back with their sign. What it holds is the same on every lowering; only what a console pays for
 # it differs (test/lowering/gbc/vblank/ir/backends/gbc/test_gbc_variable_widths.rb).
 class TestVariableWidths < Minitest::Test
@@ -45,10 +45,10 @@ class TestVariableWidths < Minitest::Test
   # Every way of changing a variable, under an `if` and its `else` as well as at the top.
   def test_every_change_of_a_kept_variable_wraps
     run = played do
-      var :lowest, -128, width: :byte
-      negate! :lowest
-      var :other, -128, width: :byte
-      abs! :other
+      lowest = var :lowest, -128, width: :byte
+      lowest.flip!
+      other = var :other, -128, width: :byte
+      other.abs!
       taken = var :taken, -128, width: :byte
       n = var :n, 1
       if n == 1
@@ -112,7 +112,7 @@ class TestVariableWidths < Minitest::Test
       a = var :a, 5, width: :byte
       a = -a
       b = var :b, -300, width: :half
-      negate! :b
+      b.flip!
       c = var :c, 256, width: :half
       c = -c
       d = var :d, -128, width: :byte

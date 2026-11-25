@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # THE GAME'S OWN RECORDINGS (`play_sample`, `stop_sample`).
+          # The game's own recordings (`play_sample`, `stop_sample`).
           #
           # The Advance's processor adds every recording a game plays into one stream, sixteen of them
           # at most, and the interpreter does the same sums (Reference::Mixer). The S-DSP needs none of
@@ -16,7 +16,7 @@ module VBlank
           # the next on the first voice the game left free, and a recording in a place past
           # those is counted and not heard.
           #
-          # THE COUNT IS THE INTERPRETER'S. What the game can tell of a recording — the log saying it
+          # The count is the interpreter's. What the game can tell of a recording — the log saying it
           # came round again, its place coming free at its end — follows where it has got to, so each
           # place keeps that as the interpreter's mixer does: how far into the recording, in whole
           # samples and 65536ths, moved on once a frame by the samples a frame reads
@@ -27,7 +27,7 @@ module VBlank
           # its end (nought for one played once), how far it moves a frame, the number of its entry in
           # the sound log ([:sample, name]) and which recording it is.
           #
-          # A SONG'S RECORDED PART plays its notes in the same places (rt_recordings_note), taking one
+          # A song's recorded part plays its notes in the same places (rt_recordings_note), taking one
           # by the interpreter's rule (Reference::Mixer#start_music_note): the part's own, while it
           # still sounds a note; the first free; or the place of the lowest-ranked sound ranked below
           # the song — the game's own first, of those one that plays once before one that loops, and
@@ -114,7 +114,7 @@ module VBlank
             # level beside, in a table of its own.
             KEPT_BY_PASS = "rt recordings kept by pass"
             LEVELS_BY_PASS = "rt recordings levels by pass"
-            # WHAT COULD NOT BE PLAYED (Reference::Mixer#drops): how many plays and notes found every
+            # What could not be played (Reference::Mixer#drops): how many plays and notes found every
             # place busy, and the most places songs held at one of those moments.
             DROPS = "rt recordings drops"
             DROPS_MUSIC = "rt recordings drops music"
@@ -141,7 +141,7 @@ module VBlank
             # the glide names none of its own and keeps the note's (Lowering::Sound#recorded_note_row).
             KEPT = 0xFFFF
 
-            # THE SOUND CHIP'S OWN ENVELOPE. A recording can be given the three bytes the S-DSP shapes
+            # The sound chip's own envelope. A recording can be given the three bytes the S-DSP shapes
             # a voice by (Audio::SNESEnvelope: ADSR1, ADSR2, GAIN), and its voice is told them as
             # they are, so the chip shapes the note itself, as it did in the game they came from.
             #
@@ -159,7 +159,7 @@ module VBlank
             CHIP_ENVELOPE_BYTES = 4
             NO_CHIP_ENVELOPE = [DSPWrites::ADSR_OFF, 0, DSPWrites::FIXED_TOP, 0].freeze
 
-            # WHERE A NOTE SITS BETWEEN THE SPEAKERS (Audio::Pan). Each voice of the S-DSP has a volume
+            # Where a note sits between the speakers (Audio::Pan). Each voice of the S-DSP has a volume
             # for the left speaker and one for the right, so a recorded note off the middle is heard
             # there exactly: each side's register is the note's loudness times that side's share, out
             # of Audio::Pan::SHARE_FULL, to the nearest whole step, worked out by the console's own
@@ -200,7 +200,7 @@ module VBlank
               words
             end
 
-            # WALKING A RECORDING FORWARD is some twenty instructions a frame for each note sounding, and
+            # Walking a recording forward is some twenty instructions a frame for each note sounding, and
             # all it is for is noticing the end. A note of a song logs nothing as it comes round, so a
             # note that holds has no end to notice, and one played once ends a number of frames after
             # its start that the build can work out: the frames it takes +advance+ a frame, in 65536ths
@@ -759,7 +759,7 @@ module VBlank
               # rt_recordings_rescale_place(owner, volume, place): the note +owner+'s part sounds now, at
               # +volume+; A = 1, or nought when it has none (Reference::Mixer#rescale_music).
               #
-              # A MUSIC VOLUME FALLING tells every part this on one frame, and a walk over the places
+              # A music volume falling tells every part this on one frame, and a walk over the places
               # for each part is most of what that frame would cost. So the player keeps the +place+
               # the part's last note took, as its offset one up, and only that one is asked: a part has
               # one note sounding at most, since its next note either takes the same place or leaves
@@ -934,7 +934,7 @@ module VBlank
             # rt_recordings_volume: the voice of the place at PLACE (its registers at REGISTERS) told the
             # place's volume scaled by its level — the whole of it at full.
             #
-            # A NOTE'S LOUDNESS CHANGES EVERY FRAME while it climbs or falls, and a game with no time
+            # A note's loudness changes every frame while it climbs or falls, and a game with no time
             # to spare empties the sound queue slowly. Seven notes would add seven entries a frame, it
             # would fill, and the game would wait for room. One word waiting about a place is enough,
             # since it is worked out from the level when it reaches the front of the queue.
@@ -1111,7 +1111,7 @@ module VBlank
               emit_queued_entry(asm, at, Sound::NOTE_VOLUME)
             end
 
-            # THE TWO WALKS A CHORD MAKES MOST, written out a place at a time. Every note of a chord asks
+            # The two walks a chord makes most, written out a place at a time. Every note of a chord asks
             # after its part's place and then for a free one, and moving a counter on from place to
             # place takes longer than the look itself, so a chord of seven spends lines of the picture
             # on it. Read at each place's own address there is no counter to move. A game with sound

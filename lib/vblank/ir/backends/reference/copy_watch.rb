@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Reference
-        # WHICH KEPT COPIES DIFFERED FROM WHAT THEY WERE COPIED FROM, for Cartridge::Game#
+        # Which kept copies differed from what they were copied from, for Cartridge::Game#
         # copies_that_differed. A plain Ruby local set from a game value keeps the number of its
         # line in a hidden variable (DSL::PlainRuby::Steps.kept_answer), as Ruby's local does. A
         # game written while such a local followed its variable may lean on the old live read

@@ -5,10 +5,10 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # THE FRAME: waiting for the screen, the buttons, stopping, and going wrong.
+          # The frame: waiting for the screen, the buttons, stopping, and going wrong.
           #
           # The console draws the screen a line at a time, 144 of them, and then rests for ten more
-          # lines' worth of time — the VERTICAL BLANK — before it starts again. Only in that rest can
+          # lines' worth of time — the vertical blank — before it starts again. Only in that rest can
           # the picture be changed without the change showing half way down the screen, so a pass of
           # the game loop ends by waiting for it (rt_wait_vblank): the processor sleeps (HALT) until
           # the blank's interrupt wakes it. Then what the pass changed in the picture is copied to
@@ -52,7 +52,7 @@ module VBlank
             # (LoweringPlan#keeps_last_pass_number?), nought until it is written: a boundary ending a later pass
             # moves nothing on. Such a game can end two passes in one frame, the reader seeing neither.
             LAST_PASS = "rt last pass"
-            # HOW MANY FRAMES A PASS TOOK (IR::Frames). The screen's interrupt counts every frame it
+            # How many frames a pass took (IR::Frames). The screen's interrupt counts every frame it
             # draws (FRAMES, 32 bits, which a reader of the run reads too), whatever the game is
             # doing; where a pass's wait ends, the frames since the last wait ended are what that
             # pass answers for (STEP_TAKEN), held between one and IR::Frames::MOST.
@@ -86,7 +86,7 @@ module VBlank
             TOGETHER_NEXT = 8
             TOGETHER_BYTES = 10
 
-            # THE FRAMES THE SCREEN WAS OFF FOR, from power-on to the game's first frame, in a game that
+            # The frames the screen was off for, from power-on to the game's first frame, in a game that
             # reads `frames_since_power_on` (#emit_dark_start). The screen's interrupt counts every
             # frame it draws, and a screen that is off draws none; the timer counts on regardless.
             # Its counts come TIMER_COUNTS_A_FRAME to a frame — a frame is a whole number of them —
@@ -184,7 +184,7 @@ module VBlank
               # read, so a pass that spans several frames answers for each of them, as the
               # interpreter's does (Reference#advance_frame, #read_buttons).
               #
-              # THE MUSIC PLAYS A FRAME FOR EVERY FRAME DRAWN (Runtime::Music), but where the pass
+              # The music plays a frame for every frame drawn (Runtime::Music), but where the pass
               # that spans it ends. The interpreter plays a pass's frames of music after everything
               # the pass did, so a tune named, stopped or turned down half way through a pass that
               # spans three frames is named before all three; played here as they come, the frames
@@ -193,15 +193,24 @@ module VBlank
               # ends (rt_wait_vblank) — a game that keeps up is always waiting by then, and owes
               # nothing.
               #
-              # A RECORDING PLAYING (Runtime::Clips) WANTS A SAMPLE EVERY FEW HUNDRED CYCLES,
+              # A recording playing (Runtime::Clips) wants a sample every few hundred cycles,
               # and the processor takes no interrupt while it is in one, so the music and the buttons
               # would hold a clip's samples back until they were done, every frame: a buzz at the
               # frame's own rate. So in a game that plays one, the timer's interrupt alone is let in
               # while this one runs, and the switches are put back as it ends.
               asm.label("rt_vblank_interrupt")
               %i[af bc de hl].each { |pair| asm.push(pair) }
+              Strikes.emit_blank(asm, memory) if Strikes.any?(memory) # first: the lines the strikes are timed by
+              # A strike on the line match whose line went by unanswered, on a screen with bent rows, whose
+              # interrupt answers the strikes only on that line (Runtime::Picture): unless the game's side is
+              # changing the list, as this interrupt came.
+              if Strikes.line?(memory)
+                Strikes.emit_strikes_unless_busy(asm, memory, "rt_vblank_strikes_busy")
+                asm.call("rt_strikes_due")
+                asm.label("rt_vblank_strikes_busy")
+              end
               asm.call("rt_bar_sprites_back") if memory.reserved?(Picture::BAR_COVERS)
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.load_high(:a, h::IE)
                 asm.push(:af)
                 asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -232,7 +241,7 @@ module VBlank
               asm.call("rt_increment32")
               asm.load(:a, 1)
               asm.load_high(vblank, :a)
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.di
                 asm.pop(:af)
                 asm.load_high(h::IE, :a)
@@ -243,13 +252,13 @@ module VBlank
               # The end of a pass: count it, move on what keeps time by the frame, mark the game as
               # waiting, and wait for the screen.
               #
-              # WHAT KEEPS TIME BY THE FRAME (the game's timers, rt_frame_begins) MOVES ON HERE, in
+              # What keeps time by the frame (the game's timers, rt_frame_begins) moves on here, in
               # the wait and before the game is marked as waiting, because that is where the
               # interpreter moves it on: at the frame boundary, before anything is read of the frame
               # (Reference#advance_frame). So whoever reads the game while it waits reads it with
               # this boundary's ticks counted.
               #
-              # BEFORE THE SCAN that finds what to send, since a tick's handler can draw. A painted
+              # Before the scan that finds what to send, since a tick's handler can draw. A painted
               # screen on a Color is one page, tear-free or not (Console::Description's
               # painted_pages), so what a handler paints at the boundary is in the picture that
               # frame shows, as it is to the interpreter.
@@ -268,7 +277,7 @@ module VBlank
                 # with the interrupt held off so a frame drawn now is played after them. In a game that
                 # plays a recording, only the screen's is held off: a frame behind can owe several, and
                 # the timer's samples go on between them, as they do in the screen's interrupt.
-                if clips
+                if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                   asm.load_high(:a, h::IE)
                   asm.push(:af)
                   asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -290,7 +299,7 @@ module VBlank
                 asm.call("rt_rumble_tick") if rumble
                 asm.jump_relative("rt_wait_vblank_owed")
                 asm.label("rt_wait_vblank_paid")
-                if clips
+                if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                   asm.pop(:af)
                   asm.load_high(h::IE, :a)
                 else
@@ -326,7 +335,7 @@ module VBlank
               asm.load([memory[WAITING]], :a)
               asm.ret
 
-              # SLEEPING UNTIL THE BLANK. The processor sleeps until any interrupt, so it sleeps again
+              # Sleeping until the blank. The processor sleeps until any interrupt, so it sleeps again
               # until the screen's has signalled a blank began. A pass that ends late can find one begun
               # already, and that one is passed over for the next. Slept through, the next interrupt
               # to wake the game would be — in a game that bends rows — the display's own, as the
@@ -378,7 +387,7 @@ module VBlank
               asm.ret
 
               emit_dark_tick(asm, memory) if dark?(memory)
-              emit_timer_tick(asm, memory) if dark?(memory) && Clips.any?(memory)
+              emit_timer_tick(asm, memory) if dark?(memory) && (Clips.any?(memory) || Strikes.any?(memory))
               emit_increment(asm)
               emit_buttons(asm, memory)
               emit_stopping(asm, memory)
@@ -386,7 +395,7 @@ module VBlank
               emit_music_owed(asm, memory) if songs
             end
 
-            # THE WAIT IN A GAME WITH MUSIC, whose frames of it are all owed (rt_vblank_interrupt): those
+            # The wait in a game with music, whose frames of it are all owed (rt_vblank_interrupt): those
             # the pass spanned are played before the game sleeps, and the one it wakes for after the
             # blank's copies. A song's first frame reads every part's first note and writes the wave
             # voice's waveform, which takes longer than the blank leaves, and played first it pushed
@@ -422,7 +431,7 @@ module VBlank
               h = Console::GBCHardware
               clips = Clips.any?(memory)
               asm.label("rt_music_owed")
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.load_high(:a, h::IE)
                 asm.push(:af)
                 asm.and_a(h::INT_STAT) # a bent screen's lines go on being drawn
@@ -442,7 +451,7 @@ module VBlank
               asm.call("rt_rumble_tick") if Rumble.any?(memory)
               asm.jump_relative("rt_music_owed_next")
               asm.label("rt_music_owed_paid")
-              if clips
+              if clips || Strikes.any?(memory) # the timer's interrupt goes on: its samples, or the strikes
                 asm.pop(:af)
                 asm.load_high(h::IE, :a)
               else
@@ -451,14 +460,14 @@ module VBlank
               asm.ret
             end
 
-            # COUNTING THE FRAMES THE SCREEN IS OFF FOR STARTS AS THE BOOT DOES (Runtime::Boot#emit),
+            # Counting the frames the screen is off for starts as the boot does (Runtime::Boot#emit),
             # before it clears work memory and quick memory, which take frames of their own and would
             # clear a count kept there. So until they are cleared the count is kept in DE, which
             # nothing the boot runs touches: E the timer's interrupts since the last whole frame, D
             # the frames. The timer is told to interrupt every DARK_COUNTS of its counts, and its
             # interrupt alone is let in.
             #
-            # IT STARTS AS THE SCREEN GOES OFF, which is where a screen that is off starts counting
+            # It starts as the screen goes off, which is where a screen that is off starts counting
             # frames' time, in an emulator as on the console. Its first interrupt comes DARK_LEAD_COUNTS
             # early, so each of its frames ends a little before an emulator's: the instructions from
             # the screen going off to the timer starting, and some way more, which #emit_dark_end
@@ -532,7 +541,7 @@ module VBlank
               asm.reti
             end
 
-            # THE SCREEN ON FOR THE FIRST FRAME, after the first frame's copy of everything set up
+            # The screen on for the first frame, after the first frame's copy of everything set up
             # (rt_upload_whole): that copy runs with the screen off, and a frame that ends while it
             # runs is one of the frames spent setting up. PASSES is shown as the screen comes on; a
             # reader reads it with the count of frames set up, at a frame's end, and none comes
@@ -550,7 +559,7 @@ module VBlank
             # a clip the game played while it set up starts now (Runtime::Clips, rt_clip_start), as the
             # interpreter's mix starts it.
             #
-            # NEVER IN THE FIRST TICK OF THE COUNT'S FRAME. A screen that is off draws no frames, so the
+            # Never in the first tick of the count's frame. A screen that is off draws no frames, so the
             # count is the timer's, started as the screen went off (#emit_dark_start), and a frame
             # from power-on is then a frame's time. Where the timer's frames end and where an
             # emulator's do lie a little apart. The timer's end a few of its counts sooner, by design;
@@ -580,14 +589,17 @@ module VBlank
               asm.load_high(h::TAC, :a)
               asm.call("rt_display_on")
               asm.call("rt_shown_is_passes")
-              asm.load(:a, clips ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, (clips || Strikes.any?(memory) ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK) |
+                           (Strikes.line?(memory) ? h::INT_STAT : 0))
               asm.load_high(h::IE, :a)
               asm.load_high(:a, h::IF)
               asm.and_a(~h::INT_TIMER & 0xFF)
               asm.load_high(h::IF, :a)
-              if clips
+              if clips || Strikes.any?(memory)
                 asm.load(:a, DARK_OVER)
                 asm.load([memory[DARK_IN_MEMORY]], :a)
+              end
+              if clips
                 asm.load_high(:a, memory[Clips::PLAYING])
                 asm.and_a(:a)
                 asm.call(:nz, "rt_clip_start")
@@ -595,8 +607,8 @@ module VBlank
               asm.ei
             end
 
-            # THE TIMER'S INTERRUPT IN A GAME THAT BOTH COUNTS THE FRAMES ITS SCREEN IS OFF FOR AND PLAYS A
-            # RECORDING: a tick of the count until the first frame, a sample of the clip after it.
+            # The timer's interrupt in a game that both counts the frames its screen is off for and plays a
+            # recording: a tick of the count until the first frame, a sample of the clip after it.
             # Before work memory is cleared the place it asks holds the nought the count started with
             # (#emit_dark_start), and clearing it writes nought again.
             def emit_timer_tick(asm, memory)
@@ -609,7 +621,7 @@ module VBlank
               asm.jump("rt_dark_tick")
               asm.label("rt_timer_tick_sample")
               asm.pop(:af)
-              asm.jump("rt_clip_tick")
+              asm.jump(Clips.any?(memory) ? "rt_clip_tick" : "rt_strikes_alarm")
             end
 
             # ...and once the first frame boundary has come, the frames it was off for added to the
@@ -736,33 +748,7 @@ module VBlank
               asm.call("rt_buttons_now")
               asm.load([memory[HELD]], :a)
               asm.ret
-
-              # rt_held(button) and rt_pressed(button): 1 when it is down (or went down), -1 asking
-              # about any of them.
-              [["rt_held", HELD], ["rt_pressed", PRESSED]].each do |name, which|
-                asm.label(name)
-                asm.load_hl_sp(2)
-                asm.load(:a, [memory[which]])
-                asm.load(:d, :a)
-                asm.load(:a, [:hl])
-                asm.bit(7, :a)
-                asm.jump_relative(:nz, "#{name}_any")
-                asm.load(:e, :a)
-                asm.load(:a, :d)
-                asm.inc(:e)
-                asm.label("#{name}_shift")
-                asm.dec(:e)
-                asm.jump_relative(:z, "#{name}_bit")
-                asm.srl(:a)
-                asm.jump_relative("#{name}_shift")
-                asm.label("#{name}_bit")
-                asm.and_a(1)
-                asm.jump("rt_bool_of_nz")
-                asm.label("#{name}_any")
-                asm.load(:a, :d)
-                asm.and_a(:a)
-                asm.jump("rt_bool_of_nz")
-              end
+              # The game tests a bit of HELD or PRESSED where it asks (Lowering#emit_button_bits).
             end
 
             # What SHOWN holds once a stopped game's last picture is on the screen.
@@ -810,7 +796,7 @@ module VBlank
               # the pose it shows, noted for the end of the sprites (rt_picture_not_up_stop). The
               # reader of the run finds the sprite, the picture and the groups up by them.
               #
-              # NOTED, NOT STOPPED HERE, because the interpreter names the hindmost of the sprites
+              # Noted, not stopped here, because the interpreter names the hindmost of the sprites
               # that show a picture not up, and the sprites are placed front-most first: the last
               # noted is the one it names.
               asm.label("rt_picture_not_up")
@@ -836,7 +822,7 @@ module VBlank
               asm.jump("rt_fault")
             end
 
-            # TWO PICTURE GROUPS UP TOGETHER THAT up_together DOES NOT ALLOW stop the game, as
+            # Two picture groups up together that up_together does not allow stop the game, as
             # the interpreter stops it (Reference#refuse_groups_not_together!): the console may have
             # put their pictures in the same place in sprite memory (IR::PictureGroupPlaces), so one
             # copied in writes over the other's.

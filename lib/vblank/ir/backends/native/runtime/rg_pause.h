@@ -1,10 +1,11 @@
 /*
- * WHAT A PAUSED GAME'S WINDOW DOES WHILE IT WAITS. Nothing in a paused game moves, so the window
+ * What a paused game's window does while it waits. Nothing in a paused game moves, so the window
  * has nothing new to show until the player does something: it sleeps until the window has an event,
- * and the player's next key, click or mouse movement wakes it at once. Dear ImGui settles a hover or
- * a click over several frames, so a few frames are drawn after each event, one a frame while they
- * last. The sleep has a timeout so that a file still owed is written, and a pause with nothing to
- * write sleeps for a good while at a time: a paused game costs the computer next to nothing.
+ * and the player's next key, click or mouse movement wakes it at once. A few frames are drawn after
+ * each event, one a frame while they last, so a window being resized, uncovered or moved to another
+ * screen is drawn again as it settles. The sleep has a timeout so that a file still owed is
+ * written, and a pause with nothing to write sleeps for a good while at a time: a paused game costs
+ * the computer next to nothing.
  *
  * This is a file of its own, with nothing of SDL in it, so the policy can be tested as plain
  * arithmetic (test_native_pause.rb).

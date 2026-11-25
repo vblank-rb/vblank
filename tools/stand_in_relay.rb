@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# THE STAND-IN RELAY AS A PROGRAM, for something outside Ruby to play against: a node copy of a game, a
+# The stand-in relay as a program, for something outside Ruby to play against: a node copy of a game, a
 # desktop build, a person trying two windows. It listens on a WebSocket port, makes rooms with codes, and
 # hands each message to the others of its room, as the real relay does (docs/network/protocol.md). It never
 # runs the game.

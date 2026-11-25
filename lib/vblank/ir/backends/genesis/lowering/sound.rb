@@ -70,7 +70,7 @@ module VBlank
             # The label of the bytes a play of recording +name+ reads.
             def recording_label(name) = "recording #{recording_kept_as(name)}"
 
-            # THE RECORDING WHOSE BYTES THE CARTRIDGE KEEPS FOR +name+: the first one declared with the
+            # The recording whose bytes the cartridge keeps for +name+: the first one declared with the
             # same samples. A row of the table carries everything else about a play (how fast it is
             # read, where it goes back to, and which recording it is to the game), so recordings
             # declared under several names with the same samples read one copy of them.
@@ -92,7 +92,7 @@ module VBlank
             # Whether a song has a part that plays a recording.
             def recorded_parts? = @music.recorded_parts?
             
-            # THE ROW A NOTE OF A RECORDED PART PLAYS (Reference::Mixer#start_music_note): recording +name+ read at
+            # The row a note of a recorded part plays (Reference::Mixer#start_music_note): recording +name+ read at
             # +frequency+, from its start, back to where it holds from at its end. Nothing is logged as it comes
             # round. A Genesis plays a recording all or nothing, so a loudness is the log's alone, and a shape
             # is one thing it does not do yet. Its number in "recording_plays". +chip_envelope+ is
@@ -100,7 +100,7 @@ module VBlank
             # the note sits between the speakers: the sixth FM voice, which the DAC plays through, sounds from
             # the left, the right or both, so the nearest of the three (Audio::Pan.side_of). +walks+ asks for a
             # row whose place is walked a sample at a time, for a part with a note that glides: every place here is.
-            # A glide that names no side of its own (+keeps_side+) keeps the note's: its row's SIDE is
+            # A glide that names no side of its own (+keeps_side+) keeps the note's: its row's side is
             # Runtime::Recordings::SIDE_KEPT. A loudness is the log's alone here, kept or not (+keeps_loudness+).
             def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false,
                                   keeps_loudness: false, keeps_side: false)
@@ -235,12 +235,20 @@ module VBlank
               emit_sound_entry([:noise, hit])
             end
 
-            # +entry+'s chip writes, then its number into the cartridge's sound log.
+            # The log entries of the game's own sound, as against a song's or an effect's.
+            GAME_SOUND_ENTRIES = %i[beep noise wave stop_wave].freeze
+
+            # +entry+'s chip writes, then its number into the cartridge's sound log. The game's own sound, in a
+            # game that strikes its effects inside the frame, drops the listed writes it overtakes
+            # (Runtime::Strikes::GAME_SOUND).
             def emit_sound_entry(entry)
+              game_sound = GAME_SOUND_ENTRIES.include?(entry.first) && Runtime::Strikes.wanted?(@program)
+              runtime_call("rt_strikes_game_sound", [Build.int(1)]) if game_sound
               ChipWrites.for_entry(entry, sound_voicing).each do |write|
                 command, *numbers = Runtime::Sound.command_for(write)
                 runtime_call(Runtime::Sound::ROUTINES.fetch(command), numbers.map { |number| Build.int(number) })
               end
+              runtime_call("rt_strikes_game_sound", [Build.int(0)]) if game_sound
               runtime_call("rt_sound_log", [Build.int(sound_entry_number(entry))])
             end
 

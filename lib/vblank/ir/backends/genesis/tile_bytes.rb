@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Genesis
-        # A GENESIS TILE'S BYTES, from its pixels. Each of the 64 pixels is a place in a list of
+        # A Genesis tile's bytes, from its pixels. Each of the 64 pixels is a place in a list of
         # sixteen colours (0 to 15), row by row. The Genesis keeps a pixel in four bits, two to a
         # byte, the left pixel in the top four: 32 bytes, four a row.
         module TileBytes

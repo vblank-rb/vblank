@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A PROGRAM'S OWN SETTINGS ASK OF A CONSOLE (Console::Questions#program_question), asked of
+# What a program's own settings ask of a console (Console::Questions#program_question), asked of
 # every console's build at once, as test_refused_verbs.rb asks each refused verb.
 class TestQuestions < Minitest::Test
   # Every console's build but the Genesis's and DOS's writes the main volume to its sound chip
@@ -22,5 +22,46 @@ class TestQuestions < Minitest::Test
       end
     end
     assert_match(/main volume/, "#{printed.string} #{error.message}")
+  end
+
+  # A cell written now is refused by a console whose video memory is written only between frames. A
+  # plain background's refusal is in words about that background and the reason; only a status
+  # bar's is about a bar.
+  def test_a_background_cell_written_now_is_refused_in_words_about_the_background
+    { snes: VBlank::Console::SNESAnswers, genesis: VBlank::Console::GenesisAnswers }.each do |console, answers|
+      refusals = answers.refusals(program_for(console).walk, VBlank::Console.described(console)).map(&:words)
+      background = refusals.find { |words| words.include?("background :room") }
+
+      assert background, "#{console} refuses the background's cell: #{refusals.inspect}"
+      assert_match(/between frames/, background)
+      assert_match(/frame being drawn/, background)
+      refute_match(/bar/, background)
+    end
+  end
+
+  def test_a_status_bar_cell_written_now_is_still_refused_in_words_about_the_bar
+    { snes: VBlank::Console::SNESAnswers, genesis: VBlank::Console::GenesisAnswers }.each do |console, answers|
+      refusals = answers.refusals(program_for(console).walk, VBlank::Console.described(console)).map(&:words)
+
+      assert(refusals.any? { |words| words.include?("a bar's cell") }, "#{console} refuses the bar's cell: #{refusals.inspect}")
+    end
+  end
+
+  # A background :room and a status bar, each with a cell written now.
+  private def program_for(console)
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))
+    b.instance_eval do
+      screen :tiled
+      image(:wall, "#" => :red) { Minitest::Test::SOLID_TILE }
+      tiles :set, "#" => :wall, "g" => :wall
+      room = background :room, tiles: :set, map: ["####", "####"]
+      bar = status_bar :score, tiles: :set, map: ["####"], top: screen_height - 8
+      game_loop do
+        room.set_tile 1, 1, "g", now: true
+        bar.set_tile 1, 0, "g", now: true
+      end
+    end
+    b.finalize_program
+    b.program
   end
 end

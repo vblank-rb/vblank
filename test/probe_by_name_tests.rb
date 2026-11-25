@@ -2,7 +2,7 @@
 
 require "tmpdir"
 
-# A PROBE ON A CARTRIDGE VBLANK BUILT reads the game's variables, lists and pools by the names the
+# A probe on a cartridge VBLANK built reads the game's variables, lists and pools by the names the
 # game gave them, from the build's record, the way every other reader does: no address looked up,
 # no width or sign put back by hand. Played by each console whose cartridge a probe opens. The game
 # fills its list and pool on its first pass and then idles, so the frame the probe stops on does not

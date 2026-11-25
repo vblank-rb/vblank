@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BACKGROUND BENT ROW BY ROW, IN A GAME WHOSE PASS TAKES SEVERAL FRAMES. The Color bends a row by
+# A background bent row by row, in a game whose pass takes several frames. The Color bends a row by
 # moving the background along as the line before it ends, from an interrupt the display raises at
 # the end of every line.
 #

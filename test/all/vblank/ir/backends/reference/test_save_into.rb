@@ -3,7 +3,7 @@
 require "test_helper"
 require "first_pass_presses"
 
-# A TEST WRITES A SAVE INTO SAVE MEMORY, so a game starts from a save it chose rather than
+# A test writes a save into save memory, so a game starts from a save it chose rather than
 # being played until it saves one. The copy is the one the game itself would have written,
 # so the game treats it the same as its own: good, read by peek and load, saved over, erased
 # and copied like any other.

@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/pong_gbc").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong_gbc").to_s)
 
 # examples/pong_gbc.rb built for the desktop as the Color's game shows the interpreter's picture
 # pixel for pixel, frame by frame, over a recorded run: the tiled title and its menu, START, and a

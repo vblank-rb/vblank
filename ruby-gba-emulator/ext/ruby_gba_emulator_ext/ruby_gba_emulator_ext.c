@@ -176,6 +176,10 @@ struct counting_clock {
     uint8_t held[5];       /* ...what they are held at */
 };
 
+/* The bytes a GBA cartridge carries in its data to say it has a rumble motor (see
+ * GBA::Rumble::MARK in the framework). */
+#define MOTOR_MARK "VBLANK_RUMBLE_MOTOR_V1"
+
 /* A RUMBLE CARTRIDGE'S MOTOR. A Game Boy cartridge that says it has one (MBC5 with rumble)
  * turns it on and off with a bit of a register of its own, and mGBA tells whoever holds the
  * console's rumble that it did: this keeps how the motor stands, for Core#motor_on?. */
@@ -548,6 +552,25 @@ mgba_core_initialize(int argc, VALUE *argv, VALUE self)
     /* 8. Reset */
     core->reset(core);
 
+    /* 8a. A GBA cartridge that carries a rumble motor says so in its own data: the console's
+     * motor is on pin 3 of the cartridge's general-purpose port, and mGBA gives a port a
+     * motor only for the few real cartridges it knows by game code. A homebrew cartridge is on
+     * no such list, so the mark the framework puts in its data (MOTOR_MARK) is looked for here,
+     * after the reset so that it is not undone by it. */
+    if (core->platform(core) == mPLATFORM_GBA) {
+        struct GBA *gba = core->board;
+        const size_t mark_length = sizeof(MOTOR_MARK) - 1;
+        if (gba->memory.rom && gba->memory.romSize >= mark_length) {
+            const uint8_t *rom = (const uint8_t *)gba->memory.rom;
+            for (size_t at = 0; at + mark_length <= gba->memory.romSize; at++) {
+                if (rom[at] == (uint8_t)MOTOR_MARK[0] && memcmp(rom + at, MOTOR_MARK, mark_length) == 0) {
+                    GBAHardwareInitRumble(&gba->memory.hw);
+                    break;
+                }
+            }
+        }
+    }
+
     /* 8b. Re-query dimensions now that the ROM is loaded and the board
      * pointer is populated.  For GB/GBC, the pre-load query returns the
      * SGB frame size (256x224) because core->board is NULL at that point.
@@ -796,6 +819,56 @@ mgba_core_video_buffer_argb(VALUE self)
 /* Core#audio_buffer                                         */
 /* --------------------------------------------------------- */
 
+/* Keep the open steps of the sound in place across a read.
+ *
+ * The emulator hands its sound to blip_buf as steps (blip_add_delta), each at the moment it
+ * happened, and closes a stretch of them into samples ready to read every so many of the
+ * console's clocks (blip_end_frame): every 0x1000 on the Game Boy (CLOCKS_PER_BLIP_FRAME in
+ * mGBA's src/gb/audio.c), every 0x800 on the Advance (CLOCKS_PER_FRAME in src/gba/audio.c). A
+ * frame of the console ends wherever it ends inside such a stretch, so when a frame's sound is
+ * read, the steps of the stretch still open already sit in the buffer past the samples ready.
+ *
+ * blip_buf is written to be read only as a stretch closes. Reading takes the samples out and
+ * moves the buffer down behind them, but only BLIP_EXTRA_SAMPLES past them (remove_samples in
+ * blip_buf.c, buf_extra); a step further on stays at the place it was, which now stands a whole
+ * read later. A stretch on the Advance reaches a few samples, inside that. On the Game Boy it
+ * reaches several times further, so every step in the last part of it before a frame's end was
+ * heard a frame late: the wave voice playing a recording lost an edge of its wave whenever one
+ * fell there, and stood far taller for a frame and a half, until the edge came back a frame on.
+ *
+ * So after each read, the rest of the open stretch is moved down by as much as was read, where
+ * remove_samples left it. blip_t is blip_buf's own and not in mGBA's headers; BlipBuffer is its
+ * layout (blip_buf.c 1.1.0, which mGBA carries in src/third-party/blip_buf), with the buffer of
+ * ints straight after it, and it is checked against blip_samples_avail before it is trusted. */
+struct BlipBuffer {
+    unsigned long long factor;
+    unsigned long long offset;
+    int avail;
+    int size;
+    int integrator;
+};
+#define BLIP_EXTRA_SAMPLES 18   /* blip_buf.c's buf_extra: half_width * 2 + end_frame_extra */
+#define BLIP_OPEN_REACH 64      /* further than any open stretch reaches: the Game Boy's is under 60 */
+
+static void
+read_blip_keeping_open_steps(struct blip_t *blip, int16_t *out, int count)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    int laid_out = m->avail == blip_samples_avail(blip) && m->avail <= m->size && count <= m->avail;
+    int from = m->avail + BLIP_EXTRA_SAMPLES; /* the first place remove_samples leaves where it is */
+    int reach = laid_out ? m->size + BLIP_EXTRA_SAMPLES - from : 0;
+    if (reach > BLIP_OPEN_REACH) reach = BLIP_OPEN_REACH;
+
+    blip_read_samples(blip, out, count, 1);
+    if (reach <= 0 || count <= 0) return;
+
+    /* remove_samples cleared the places these move to; the places they leave are cleared here */
+    int *samples = (int *)(m + 1);
+    int left_behind = count < reach ? count : reach;
+    memmove(&samples[from - count], &samples[from], (size_t)reach * sizeof(int));
+    memset(&samples[from + reach - left_behind], 0, (size_t)left_behind * sizeof(int));
+}
+
 static VALUE
 mgba_core_audio_buffer(VALUE self)
 {
@@ -817,9 +890,9 @@ mgba_core_audio_buffer(VALUE self)
     VALUE str = rb_str_new(NULL, byte_size);
     int16_t *buf = (int16_t *)RSTRING_PTR(str);
 
-    /* stereo=1: write every other sample for interleaving */
-    blip_read_samples(left,  buf,     avail, 1);
-    blip_read_samples(right, buf + 1, avail, 1);
+    /* Every other sample, for interleaving */
+    read_blip_keeping_open_steps(left,  buf,     avail);
+    read_blip_keeping_open_steps(right, buf + 1, avail);
 
     return str;
 }
@@ -1086,6 +1159,209 @@ mgba_core_bus_write32(VALUE self, VALUE addr, VALUE value)
     return Qnil;
 }
 
+/* What an Advance's or a Game Boy's state leaves out of its sound, kept after the state in the file.
+ *
+ * Both are the Game Boy's four voices (the Advance carries them inside), and libmgba keeps both
+ * the same way, so what follows is told of the Advance and holds of the Game Boy as well, whose
+ * pitch registers NR13, NR14, NR23, NR24, NR33 and NR34 are written and not read (Pan Docs,
+ * "Audio Registers"). On the Game Boy it is the sound already made that shows: a load came back
+ * at the right loudness, with the frames' samples split at other places and a click first.
+ *
+ * ### The pitch of each tone voice
+ *
+ * A voice's pitch is written to a register a game cannot read back: the low eleven bits of
+ * SOUND1CNT_X, SOUND2CNT_H and SOUND3CNT_X are write-only (GBATEK, "GBA Sound Channel 1"). The
+ * libmgba this is built against keeps a register as it reads, so its state holds no pitch, and
+ * loading one writes those registers back with the pitch bits clear: every tone sounding as the
+ * state was saved comes back at the lowest note the voice has, and the wave voice's rate is 0.
+ * (The square voice's sweep keeps a copy, the wave and second square voices nothing.)
+ *
+ * The state leaves out more of each voice than its pitch: where the wave voice is in its 32 steps
+ * (its phase), each voice's level until its next step, and when each voice last stepped, which it
+ * keeps from before the console's clock is put back, so a square voice comes back out of phase.
+ * So each voice is kept whole, as the emulator holds it, with how long before the save each last
+ * stepped, and put back so, on the clock as loaded.
+ *
+ * ### The sound already made
+ *
+ * The mixer hands its sound to blip_buf as steps from the last level it gave (lastLeft,
+ * lastRight), and blip_buf turns them into samples through its own running sum, with steps of
+ * the stretch still open waiting in its buffer (see read_blip_keeping_open_steps). None of that is
+ * in the state, so a console put back carries on from the level, sum and open steps of whatever
+ * it played before the load: a click, and the first frame's samples are not the ones the console
+ * made. All of it is kept here and put back, so the sound after a load is the sound it made.
+ *
+ * ### Where it is kept
+ *
+ * After the state, as a trailer of the probe's own: each speaker's blip_buf buffer, its ints as
+ * they lie, then the SoundTrailer, which ends with a mark. A state file is a PNG, and a reader of
+ * one stops at its last chunk, so the trailer is invisible to mGBA and to any other reader. Loading
+ * puts these back after mGBA has put back the rest. A state with no trailer (from mGBA itself), or
+ * written by a build whose voices or buffers are of another size, loads as mGBA loads it. */
+static const char SOUND_TRAILER_MARK[8] = { 'V', 'B', 'S', 'O', 'U', 'N', 'D', '1' };
+struct BlipKept {
+    unsigned long long offset;
+    int avail;
+    int size;
+    int integrator;
+};
+struct SoundTrailer {
+    struct BlipKept left;
+    struct BlipKept right;
+    /* Each voice whole, as the emulator holds it: its pitch, its phase, its level now. */
+    struct GBAudioSquareChannel square1;
+    struct GBAudioSquareChannel square2;
+    struct GBAudioWaveChannel wave;
+    struct GBAudioNoiseChannel noise;
+    int32_t voices_bytes;   /* the size of the four, so another build of mGBA's are not read */
+    int32_t since[4];       /* how long before now each voice last stepped (the noise voice's last event) */
+    int32_t clock;
+    int16_t last_left;
+    int16_t last_right;
+    int32_t buffer_bytes;   /* of each speaker's buffer, written before this */
+    char mark[8];           /* last, so a reader finds it at the end of the file */
+};
+
+#define VOICES_BYTES ((int32_t)(2 * sizeof(struct GBAudioSquareChannel) + sizeof(struct GBAudioWaveChannel) + \
+                                sizeof(struct GBAudioNoiseChannel)))
+
+static size_t
+blip_buffer_bytes(struct blip_t *blip)
+{
+    return (size_t)(((struct BlipBuffer *)blip)->size + BLIP_EXTRA_SAMPLES) * sizeof(int);
+}
+
+static void
+keep_blip(struct blip_t *blip, struct BlipKept *kept)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    kept->offset = m->offset;
+    kept->avail = m->avail;
+    kept->size = m->size;
+    kept->integrator = m->integrator;
+}
+
+static void
+put_back_blip(struct blip_t *blip, const struct BlipKept *kept, const void *buffer)
+{
+    struct BlipBuffer *m = (struct BlipBuffer *)blip;
+    m->offset = kept->offset;
+    m->avail = kept->avail;
+    m->integrator = kept->integrator;
+    memcpy(m + 1, buffer, blip_buffer_bytes(blip));
+}
+
+/* Where the parts SoundTrailer keeps are, on an Advance or a Game Boy: the four voices (on the
+ * Advance, the Game Boy's chip inside it), the mixer's last level and its place in the stretch
+ * blip_buf has open, and the console's clock. False for another console. */
+struct SoundParts {
+    struct GBAudio *voices;
+    int16_t *last_left;
+    int16_t *last_right;
+    int *clock;
+    struct mTiming *timing;
+};
+
+static bool
+sound_parts(struct mCore *core, struct SoundParts *parts)
+{
+    switch (core->platform(core)) {
+    case mPLATFORM_GBA: {
+        struct GBA *gba = (struct GBA *)core->board;
+        *parts = (struct SoundParts){ &gba->audio.psg, &gba->audio.lastLeft, &gba->audio.lastRight,
+                                      &gba->audio.clock, &gba->timing };
+        return true;
+    }
+    case mPLATFORM_GB: {
+        struct GB *gb = (struct GB *)core->board;
+        *parts = (struct SoundParts){ &gb->audio, &gb->audio.lastLeft, &gb->audio.lastRight,
+                                      &gb->audio.clock, &gb->timing };
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+static void
+write_sound_trailer(struct mCore *core, struct VFile *vf)
+{
+    struct SoundParts parts;
+    if (!sound_parts(core, &parts)) return;
+    struct GBAudio *voices = parts.voices;
+    struct SoundTrailer trailer;
+    memset(&trailer, 0, sizeof(trailer));
+    keep_blip(voices->left, &trailer.left);
+    keep_blip(voices->right, &trailer.right);
+    trailer.square1 = voices->ch1;
+    trailer.square2 = voices->ch2;
+    trailer.wave = voices->ch3;
+    trailer.noise = voices->ch4;
+    trailer.voices_bytes = VOICES_BYTES;
+    int32_t now = mTimingCurrentTime(parts.timing);
+    trailer.since[0] = now - voices->ch1.lastUpdate;
+    trailer.since[1] = now - voices->ch2.lastUpdate;
+    trailer.since[2] = now - voices->ch3.nextUpdate;
+    trailer.since[3] = now - (int32_t)voices->ch4.lastEvent;
+    trailer.clock = *parts.clock;
+    trailer.last_left = *parts.last_left;
+    trailer.last_right = *parts.last_right;
+    trailer.buffer_bytes = (int32_t)blip_buffer_bytes(voices->left);
+    memcpy(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark));
+
+    vf->seek(vf, 0, SEEK_END);
+    vf->write(vf, (struct BlipBuffer *)voices->left + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, (struct BlipBuffer *)voices->right + 1, (size_t)trailer.buffer_bytes);
+    vf->write(vf, &trailer, sizeof(trailer));
+}
+
+static void
+read_sound_trailer(struct mCore *core, struct VFile *vf)
+{
+    struct SoundParts parts;
+    if (!sound_parts(core, &parts)) return;
+    struct GBAudio *voices = parts.voices;
+    struct SoundTrailer trailer;
+    ssize_t size = vf->size(vf);
+    if (size < (ssize_t)sizeof(trailer)) return;
+    if (vf->seek(vf, -(off_t)sizeof(trailer), SEEK_END) < 0) return;
+    if (vf->read(vf, &trailer, sizeof(trailer)) != (ssize_t)sizeof(trailer)) return;
+    if (memcmp(trailer.mark, SOUND_TRAILER_MARK, sizeof(trailer.mark)) != 0) return;
+
+    /* Every size is checked and both buffers read before anything is put back: a voice put back
+     * without the mix it was mixed into is a click of its own. */
+    size_t bytes = blip_buffer_bytes(voices->left);
+    if (trailer.voices_bytes != VOICES_BYTES) return;
+    if ((size_t)trailer.buffer_bytes != bytes) return;
+    if (trailer.left.size != ((struct BlipBuffer *)voices->left)->size) return;
+    if (trailer.right.size != ((struct BlipBuffer *)voices->right)->size) return;
+    if (blip_buffer_bytes(voices->right) != bytes) return;
+    if (size < (ssize_t)(sizeof(trailer) + 2 * bytes)) return;
+    void *left = malloc(bytes);
+    void *right = malloc(bytes);
+    bool read = left && right &&
+                vf->seek(vf, -(off_t)(sizeof(trailer) + 2 * bytes), SEEK_END) >= 0 &&
+                vf->read(vf, left, bytes) == (ssize_t)bytes && vf->read(vf, right, bytes) == (ssize_t)bytes;
+    if (read) {
+        voices->ch1 = trailer.square1;
+        voices->ch2 = trailer.square2;
+        voices->ch3 = trailer.wave;
+        voices->ch4 = trailer.noise;
+        int32_t now = mTimingCurrentTime(parts.timing);
+        voices->ch1.lastUpdate = now - trailer.since[0];
+        voices->ch2.lastUpdate = now - trailer.since[1];
+        voices->ch3.nextUpdate = now - trailer.since[2];
+        voices->ch4.lastEvent = (uint32_t)(now - trailer.since[3]);
+        put_back_blip(voices->left, &trailer.left, left);
+        put_back_blip(voices->right, &trailer.right, right);
+        *parts.clock = trailer.clock;
+        *parts.last_left = trailer.last_left;
+        *parts.last_right = trailer.last_right;
+    }
+    free(left);
+    free(right);
+}
+
 /* Core#save_state_to_file(path)                             */
 /* Save the complete emulator state to a file.               */
 /* Returns true on success, false on failure.                */
@@ -1098,12 +1374,13 @@ mgba_core_save_state_to_file(VALUE self, VALUE rb_path)
     Check_Type(rb_path, T_STRING);
     const char *path = StringValueCStr(rb_path);
 
-    struct VFile *vf = VFileOpen(path, O_CREAT | O_TRUNC | O_WRONLY);
+    struct VFile *vf = VFileOpen(path, O_CREAT | O_TRUNC | O_RDWR);
     if (!vf) {
         rb_raise(rb_eRuntimeError, "Cannot open state file for writing: %s", path);
     }
 
     bool ok = mCoreSaveStateNamed(mc->core, vf, SAVESTATE_ALL);
+    if (ok) write_sound_trailer(mc->core, vf);
     vf->close(vf);
     return ok ? Qtrue : Qfalse;
 }
@@ -1127,6 +1404,7 @@ mgba_core_load_state_from_file(VALUE self, VALUE rb_path)
     }
 
     bool ok = mCoreLoadStateNamed(mc->core, vf, SAVESTATE_ALL);
+    if (ok) read_sound_trailer(mc->core, vf);
     vf->close(vf);
     mc->feed_queue.known = 0; /* the sound queue is the state's now, and nothing says where its words came from */
     return ok ? Qtrue : Qfalse;
@@ -3335,6 +3613,25 @@ enum {
 /* The most passes one profile keeps: one a frame for longer than anybody profiles. */
 #define PROF_PASSES_MAX 4096
 
+/* The most runs of display writes one profile keeps from gaps that ran into the picture. A run is
+ * one part of the display written over and over in one pass (the whole sprite table is one), so a
+ * gap that runs late every frame for a second fills a few hundred. */
+#define GAP_WRITES_MAX 2048
+
+/* ONE RUN OF WRITES A GAP MADE TO ONE PART OF THE DISPLAY while the picture was being drawn: which
+ * pass, the lowest and highest address written, the first and last row the screen was drawing,
+ * and how many writes. The parts are the sprite table, the background colours, the sprite colours,
+ * and each display register on its own. */
+struct gap_write {
+    int      pass;
+    uint32_t part;
+    uint32_t first;
+    uint32_t last;
+    uint16_t first_row;
+    uint16_t last_row;
+    uint32_t count;
+};
+
 struct pc_tally {
     uint32_t *count[PROF_REGIONS];
     /* CYCLES each address took, beside how many times it ran. Not the same thing: a store that
@@ -3369,11 +3666,23 @@ struct pc_tally {
      * the breaks begun and the line then. +gap_overran_by+ keeps, for each pass, how many lines into
      * a break the gap ended (see lines_past_break), or -1 for a gap that ended before any. */
     uint32_t *gap_ends;
+    /* A gap end in a routine kept in a swapped set of the quick memory is a place only while that set
+     * is in: +gap_set+ is that set's number for such an end, or -1 for one that is always a place, and
+     * +gap_set_at+ the address of the word whose bit for each set number says it is in. */
+    int      *gap_set;
+    uint32_t *gap_set_at;
     long      gap_end_count;
     int       gap_reached;
     int       gap_breaks;
     int       gap_line;
     int      *gap_overran_by;
+    /* WHAT THE GAP WROTE TO THE DISPLAY WHILE THE PICTURE WAS BEING DRAWN. +gap_open+ is set while
+     * the game sleeps and cleared as the gap's end arrives, so it covers the wake and the gap after
+     * it, and never the tail of a pass the run began part way through. See gap_display_write. */
+    int       gap_open;
+    struct gap_write *gap_writes;
+    long      gap_write_count;
+    long      gap_writes_missed;
     uint64_t  samples;   /* instructions seen */
     uint64_t  halted;    /* CYCLES slept, not steps — see profile_one_frame */
     uint64_t  elsewhere; /* executing somewhere we have no room to count */
@@ -3425,8 +3734,15 @@ pc_tally_free(struct pc_tally *t)
     free(t->gap_overran_by);
     t->gap_overran_by = NULL;
     free(t->gap_ends);
+    free(t->gap_set);
+    free(t->gap_set_at);
     t->gap_ends = NULL;
+    t->gap_set = NULL;
+    t->gap_set_at = NULL;
     t->gap_end_count = 0;
+    free(t->gap_writes);
+    t->gap_writes = NULL;
+    t->gap_write_count = 0;
 }
 
 /* Flat arrays rather than a hash: an address maps straight to a slot, so the
@@ -3557,13 +3873,20 @@ lines_past_break(int breaks_began, int line)
     return into + 1 + (breaks_began - 1) * VIDEO_VERTICAL_TOTAL_PIXELS;
 }
 
-/* Is +pc+ one of the addresses that end the gap after a wait? A handful at most, so a walk. */
+/* Is +pc+ one of the addresses that end the gap after a wait? A handful at most, so a walk. An end kept
+ * in a swapped set counts only while the word that names the sets in says its set is: one bus read, and
+ * only when the address matched. */
 static inline int
-at_gap_end(const struct pc_tally *t, uint32_t pc)
+at_gap_end(const struct pc_tally *t, struct mCore *core, uint32_t pc)
 {
-    for (long i = 0; i < t->gap_end_count; ++i)
-        if (t->gap_ends[i] == pc)
+    for (long i = 0; i < t->gap_end_count; ++i) {
+        if (t->gap_ends[i] != pc)
+            continue;
+        if (t->gap_set[i] < 0)
             return 1;
+        if ((core->busRead32(core, t->gap_set_at[i]) >> t->gap_set[i]) & 1)
+            return 1;
+    }
     return 0;
 }
 
@@ -3611,8 +3934,9 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
             int games_code = gba->cpu->cpsr.priv != MODE_IRQ && pc >= SIZE_BIOS;
             /* The first arrival at the gap's end in a pass is where its gap ended: the breaks begun
              * so far, and the line, both as they stand before this instruction runs. */
-            if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, pc)) {
+            if (t->gap_end_count && !t->gap_reached && games_code && at_gap_end(t, core, pc)) {
                 t->gap_reached = 1;
+                t->gap_open = 0;
                 t->gap_breaks = t->breaks_began;
                 t->gap_line = gba->video.vcount;
             }
@@ -3659,6 +3983,12 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
         if (t->awake) {
             slept_this_frame = 1;
             int line = gba->video.vcount;
+            /* A pass that never reached a gap's end the caller named (one whose gap ends in code the
+             * caller left out) cannot say where its gap stopped, so what it wrote in the picture may
+             * be its own later work: dropped rather than blamed on the gap. */
+            if (!t->gap_reached)
+                while (t->gap_write_count && t->gap_writes[t->gap_write_count - 1].pass == (int)t->pass_count)
+                    t->gap_write_count--;
             /* A wake that ran only an interrupt's handler and went back to sleep — a timer going
              * off while the game waits for the screen — is not a pass of the game. */
             if (t->games_code_ran && t->pass_count < PROF_PASSES_MAX) {
@@ -3671,6 +4001,7 @@ profile_one_frame(struct mgba_core *mc, struct pc_tally *t)
             t->gap_reached = 0;
         }
         t->awake = 0;
+        t->gap_open = t->gap_writes != NULL; /* the wake from this sleep starts a gap */
 
         core->step(core);
         t->last_line = gba->video.vcount;
@@ -3746,6 +4077,7 @@ struct touch_tally {
     uint32_t *count[TOUCH_REGIONS];
     size_t    slots[TOUCH_REGIONS];
     struct ARMMemory wrapped; /* the functions the wrappers hand on to */
+    struct pc_tally *gap;     /* where a gap's late display writes go, or NULL when none is asked */
 };
 
 static GEMBA_PER_THREAD struct touch_tally *s_touching = NULL;
@@ -3766,23 +4098,156 @@ touch_word(uint32_t address)
     t->count[region][offset / TOUCH_GRAIN]++;
 }
 
+/* --------------------------------------------------------- */
+/* A WRITE MEANT FOR THE BREAK THAT LANDED IN THE PICTURE.    */
+/*                                                            */
+/* The screen draws each row from the sprite table (OAM), the */
+/* colours (palette memory) and the display registers as     */
+/* they stand when it reaches that row (GBATEK, "LCD I/O      */
+/* Display Control" and "LCD OBJ - OAM Attributes"). A game   */
+/* changes them in the break between pictures, 68 rows when   */
+/* nothing is drawn, so every row of the next picture sees    */
+/* the new values. A gap that runs on past the break changes  */
+/* them while the rows are being drawn: the rows above the    */
+/* write show the old values and the rows below it the new.   */
+/*                                                            */
+/* So, while a gap is open, each store to those parts made    */
+/* on a row of the picture is written down with the row. Left */
+/* out: a store made in an interrupt's handler, and one made  */
+/* by a copy the screen or the sound started — those are how  */
+/* a game changes the display row by row on purpose. Also     */
+/* left out are the registers that say when to interrupt      */
+/* (DISPSTAT) and the row being drawn (VCOUNT), which draw    */
+/* nothing.                                                   */
+/*                                                            */
+/* A store anywhere else costs one shift and a compare, and   */
+/* none at all is made unless the caller named a gap's end.   */
+/* --------------------------------------------------------- */
+
+/* The last display register a gap's write is kept for: BLDY, the fade's brightness. */
+#define GAP_REGISTERS_END 0x56
+
+/* Which part of the display +address+ is, or 0 for none a gap's writes are kept for. A colour or
+ * sprite address is folded onto its first mirror. +byte+ is a store of one byte, which the sprite
+ * table ignores (GBATEK, "LCD OBJ - OAM Attributes": OAM takes 16- and 32-bit writes only). */
+static inline uint32_t
+gap_display_part(uint32_t address, int byte, uint32_t *at)
+{
+    uint32_t offset;
+    switch (address >> BASE_OFFSET) {
+    case 0x4:
+        offset = address & 0x00FFFFFE;
+        if (offset >= GAP_REGISTERS_END || offset == 0x04 || offset == 0x06)
+            return 0;
+        *at = BASE_IO | offset;
+        return *at;
+    case 0x5:
+        *at = BASE_PALETTE_RAM | (address & 0x3FE);
+        return BASE_PALETTE_RAM | (address & 0x200); /* backgrounds' colours, then sprites' */
+    case 0x7:
+        if (byte)
+            return 0;
+        *at = BASE_OAM | (address & 0x3FE);
+        return BASE_OAM;
+    default:
+        return 0;
+    }
+}
+
+static void
+gap_display_write(struct ARMCore *cpu, uint32_t address, int byte)
+{
+    struct pc_tally *t = s_touching->gap;
+    struct GBA *gba;
+    struct gap_write *last;
+    uint32_t part, at;
+    uint16_t row;
+    int active;
+
+    /* Past the last pass the profile keeps there is no pass to tag a write with. */
+    if (!t->gap_open || cpu->cpsr.priv == MODE_IRQ || t->pass_count >= PROF_PASSES_MAX)
+        return;
+    part = gap_display_part(address, byte, &at);
+    if (!part)
+        return;
+    gba = (struct GBA *)cpu->master;
+    row = (uint16_t)gba->video.vcount;
+    if (row >= GBA_VIDEO_VERTICAL_PIXELS)
+        return;
+    active = gba->memory.activeDMA;
+    if (active >= 0 && GBADMARegisterGetTiming(gba->memory.dma[active].reg) != GBA_DMA_TIMING_NOW)
+        return;
+
+    last = t->gap_write_count ? &t->gap_writes[t->gap_write_count - 1] : NULL;
+    /* A row above the run's last is the next picture's: the gap ran through a break, and that is a
+     * run of its own, or the run's rows would go backwards. */
+    if (last && last->pass == (int)t->pass_count && last->part == part && row >= last->last_row) {
+        if (at < last->first) last->first = at;
+        if (at > last->last) last->last = at;
+        last->last_row = row;
+        last->count++;
+        return;
+    }
+    if (t->gap_write_count >= GAP_WRITES_MAX) {
+        t->gap_writes_missed++;
+        return;
+    }
+    last = &t->gap_writes[t->gap_write_count++];
+    last->pass = (int)t->pass_count;
+    last->part = part;
+    last->first = last->last = at;
+    last->first_row = last->last_row = row;
+    last->count = 1;
+}
+
+/* A store goes on to gap_display_write only when a gap was asked about and the store is to the
+ * display's memory at all, so every other store pays the one test. */
+static inline void
+watch_gap_store(struct ARMCore *cpu, uint32_t address, int byte)
+{
+    if (!s_touching->gap)
+        return;
+    switch (address >> BASE_OFFSET) {
+    case 0x4: case 0x5: case 0x7: /* the registers, the colours, the sprite table */
+        gap_display_write(cpu, address, byte);
+        break;
+    default:
+        break;
+    }
+}
+
 /* Each register a load or store of several moves is a word of its own, one after another up from
  * the lowest. Where that lowest word is depends on which way the instruction walks from its base,
  * and whether it steps before or after each word. */
+static uint32_t
+lowest_word(uint32_t base, int words, enum LSMDirection direction)
+{
+    uint32_t span = (uint32_t)(words * 4);
+    switch (direction) {
+    case LSM_IA: return base;
+    case LSM_IB: return base + 4;
+    case LSM_DA: return base - span + 4;
+    default:     return base - span; /* LSM_DB */
+    }
+}
+
 static void
 touch_words(uint32_t base, int mask, enum LSMDirection direction)
 {
     int words = __builtin_popcount((unsigned)mask & 0xFFFF);
-    uint32_t span = (uint32_t)(words * 4);
-    uint32_t lowest;
-    switch (direction) {
-    case LSM_IA: lowest = base;            break;
-    case LSM_IB: lowest = base + 4;        break;
-    case LSM_DA: lowest = base - span + 4; break;
-    default:     lowest = base - span;     break; /* LSM_DB */
-    }
+    uint32_t lowest = lowest_word(base, words, direction);
     for (int i = 0; i < words; ++i)
         touch_word(lowest + (uint32_t)(i * 4));
+}
+
+/* The same words as touch_words, for a gap's display writes. */
+static void
+watch_gap_words(struct ARMCore *cpu, uint32_t base, int mask, enum LSMDirection direction)
+{
+    int words = __builtin_popcount((unsigned)mask & 0xFFFF);
+    uint32_t lowest = lowest_word(base, words, direction);
+    for (int i = 0; i < words; ++i)
+        watch_gap_store(cpu, lowest + (uint32_t)(i * 4), 0);
 }
 
 static uint32_t
@@ -3810,6 +4275,7 @@ static void
 touch_store32(struct ARMCore *cpu, uint32_t address, int32_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 0);
     s_touching->wrapped.store32(cpu, address, value, cycles);
 }
 
@@ -3817,6 +4283,7 @@ static void
 touch_store16(struct ARMCore *cpu, uint32_t address, int16_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 0);
     s_touching->wrapped.store16(cpu, address, value, cycles);
 }
 
@@ -3824,6 +4291,7 @@ static void
 touch_store8(struct ARMCore *cpu, uint32_t address, int8_t value, int *cycles)
 {
     touch_word(address);
+    watch_gap_store(cpu, address, 1);
     s_touching->wrapped.store8(cpu, address, value, cycles);
 }
 
@@ -3838,6 +4306,8 @@ static uint32_t
 touch_store_multiple(struct ARMCore *cpu, uint32_t base, int mask, enum LSMDirection direction, int *cycles)
 {
     touch_words(base, mask, direction);
+    if (s_touching->gap)
+        watch_gap_words(cpu, base, mask, direction);
     return s_touching->wrapped.storeMultiple(cpu, base, mask, direction, cycles);
 }
 
@@ -3926,11 +4396,17 @@ touch_tally_hash(const struct touch_tally *t)
  *              — the second below nothing asleep inside a break it missed, the third -1
  *              for a gap that ended before any break began or was not seen
  *   :touches   { word address => reads and writes } in the two working memories
+ *   :gap_writes for each run of writes a gap made to one part of the display on a row of the
+ *              picture, [pass, lowest address, highest address, first row, last row, writes]
+ *              (see gap_display_write); the pass is counted from 0 as :passes is, and one past
+ *              the last is a pass the run ended inside. Empty unless +rb_gap_ends+ names any.
+ *   :gap_writes_missed how many runs there was no room left for
  *
  * +rb_gap_ends+ is an Array of the addresses whose arrival ends the gap after a wait
- * (see pc_tally), empty for none. The caller decides what has settled and what to
- * hold: run it after stepping past the boot frames, with whatever keys the measured
- * behaviour needs. GBA-only. */
+ * (see pc_tally), empty for none. An address in a routine kept in a swapped set is
+ * [address, set number, address of the word naming the sets in]. The caller decides
+ * what has settled and what to hold: run it after stepping past the boot frames, with
+ * whatever keys the measured behaviour needs. GBA-only. */
 static VALUE
 mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
 {
@@ -3943,8 +4419,21 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_raise(rb_eArgError, "frames must be positive, got %ld", frames);
     Check_Type(rb_gap_ends, T_ARRAY);
     long gap_end_count = RARRAY_LEN(rb_gap_ends);
-    for (long i = 0; i < gap_end_count; ++i)
-        NUM2UINT(rb_ary_entry(rb_gap_ends, i)); /* raise on a bad address before anything is allocated */
+    for (long i = 0; i < gap_end_count; ++i) {
+        /* raise on a bad address before anything is allocated: a number, or [address, set number, the
+         * address of the word that names the sets in] for an end kept in a swapped set */
+        VALUE end = rb_ary_entry(rb_gap_ends, i);
+        if (RB_TYPE_P(end, T_ARRAY)) {
+            if (RARRAY_LEN(end) != 3)
+                rb_raise(rb_eArgError, "a gap end kept in a set is [address, set number, address of the sets word]");
+            NUM2UINT(rb_ary_entry(end, 0));
+            if (NUM2INT(rb_ary_entry(end, 1)) < 0 || NUM2INT(rb_ary_entry(end, 1)) > 31)
+                rb_raise(rb_eArgError, "a set number is 0 to 31");
+            NUM2UINT(rb_ary_entry(end, 2));
+        } else {
+            NUM2UINT(end);
+        }
+    }
 
     struct mCore *core = mc->core;
     struct ARMCore *cpu = ((struct GBA *)core->board)->cpu;
@@ -3954,18 +4443,31 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
     if (gap_end_count) {
         tally.gap_ends = calloc((size_t)gap_end_count, sizeof(uint32_t));
-        if (!tally.gap_ends) {
+        tally.gap_set = calloc((size_t)gap_end_count, sizeof(int));
+        tally.gap_set_at = calloc((size_t)gap_end_count, sizeof(uint32_t));
+        tally.gap_writes = calloc(GAP_WRITES_MAX, sizeof(struct gap_write));
+        if (!tally.gap_ends || !tally.gap_set || !tally.gap_set_at || !tally.gap_writes) {
             pc_tally_free(&tally);
             rb_raise(rb_eNoMemError, "could not allocate the profile tally");
         }
-        for (long i = 0; i < gap_end_count; ++i)
-            tally.gap_ends[i] = NUM2UINT(rb_ary_entry(rb_gap_ends, i));
+        for (long i = 0; i < gap_end_count; ++i) {
+            VALUE end = rb_ary_entry(rb_gap_ends, i);
+            if (RB_TYPE_P(end, T_ARRAY)) {
+                tally.gap_ends[i] = NUM2UINT(rb_ary_entry(end, 0));
+                tally.gap_set[i] = NUM2INT(rb_ary_entry(end, 1));
+                tally.gap_set_at[i] = NUM2UINT(rb_ary_entry(end, 2));
+            } else {
+                tally.gap_ends[i] = NUM2UINT(end);
+                tally.gap_set[i] = -1;
+            }
+        }
         tally.gap_end_count = gap_end_count;
     }
     if (!touch_tally_init(&touched)) {
         pc_tally_free(&tally);
         rb_raise(rb_eNoMemError, "could not allocate the profile tally");
     }
+    touched.gap = tally.gap_writes ? &tally : NULL;
 
     if (!NIL_P(rb_keys))
         core->setKeys(core, (uint32_t)NUM2UINT(rb_keys));
@@ -3998,6 +4500,20 @@ mgba_core_profile(VALUE self, VALUE rb_frames, VALUE rb_keys, VALUE rb_gap_ends)
         rb_ary_push(passes, rb_ary_new_from_args(3, INT2NUM(tally.missed[i]), INT2NUM(tally.ended_before[i]),
                                                  INT2NUM(tally.gap_overran_by[i])));
     rb_hash_aset(out, ID2SYM(rb_intern("passes")), passes);
+    VALUE gap_writes = rb_ary_new_capa(tally.gap_write_count);
+    for (long i = 0; i < tally.gap_write_count; ++i) {
+        const struct gap_write *w = &tally.gap_writes[i];
+        VALUE row = rb_ary_new_capa(6);
+        rb_ary_push(row, INT2NUM(w->pass));
+        rb_ary_push(row, UINT2NUM(w->first));
+        rb_ary_push(row, UINT2NUM(w->last));
+        rb_ary_push(row, INT2NUM(w->first_row));
+        rb_ary_push(row, INT2NUM(w->last_row));
+        rb_ary_push(row, UINT2NUM(w->count));
+        rb_ary_push(gap_writes, row);
+    }
+    rb_hash_aset(out, ID2SYM(rb_intern("gap_writes")), gap_writes);
+    rb_hash_aset(out, ID2SYM(rb_intern("gap_writes_missed")), LONG2NUM(tally.gap_writes_missed));
     rb_hash_aset(out, ID2SYM(rb_intern("touches")), touch_tally_hash(&touched));
 
     pc_tally_free(&tally);
@@ -4731,6 +5247,14 @@ Init_ruby_gba_emulator_ext(void)
      * Frozen, so a Ractor may read it. */
     rb_define_const(mRubyGBAEmulator, "BUILT_FROM",
                     rb_obj_freeze(rb_str_new_cstr(RUBY_GBA_EMULATOR_BUILT_FROM)));
+
+    /* Which libmgba this extension is linked to, read from the library itself as it loads: its
+     * version and the commit it was built from. libmgba is the system's library, so it can be
+     * installed again under an extension that is not rebuilt; anything an emulator wrote that
+     * only the same emulator reads back as it was (a saved state) is kept under this. Frozen,
+     * so a Ractor may read it. */
+    rb_define_const(mRubyGBAEmulator, "MGBA_BUILD",
+                    rb_obj_freeze(rb_sprintf("%s %s", projectVersion, gitCommit)));
 
     /* RubyGBAEmulator::Core class */
     cCore = rb_define_class_under(mRubyGBAEmulator, "Core", rb_cObject);

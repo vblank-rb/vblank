@@ -38,6 +38,12 @@
 #endif
 #define RG_SCREEN_BORDERED (RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT)
 
+/* Whether the game was given a screen of its own size (`screen :bitmap, size:`), whose scenes may
+ * show a smaller one in the middle of the window (rg_screen_show_size). */
+#ifndef RG_SCREEN_OF_ITS_OWN
+#define RG_SCREEN_OF_ITS_OWN 0
+#endif
+
 /* How many of the window's pixels, across and down, each pixel of the picture is shown as at a scale
  * of 1: 2 for a game of big pixels (`screen :bitmap, pixel_size: 2`, Console::Description#pixel_size),
  * which plays a screen half the console's width and height. The window is sized from the picture as
@@ -145,7 +151,21 @@
  * a player's number. Every build writes it; this is the same number for a file of the runtime read
  * on its own, and a test holds it to the one every build writes. */
 #ifndef RG_ONE_PLAYERS_BUTTONS
-#define RG_ONE_PLAYERS_BUTTONS 8191
+#define RG_ONE_PLAYERS_BUTTONS 32767
+#endif
+
+/* How far L2 and R2 are pulled, kept above the buttons' bits in a player's number: RG_PULL_BITS bits
+ * a trigger, L2's from RG_PULL_SHIFT and R2's after it (IR::Buttons.pull_shift); and how far a
+ * trigger must be pulled, in percent, to count as held (IR::Buttons::HELD_FROM). Every build writes
+ * them; these are the same numbers for a file of the runtime read on its own. */
+#ifndef RG_PULL_SHIFT
+#define RG_PULL_SHIFT 16
+#endif
+#ifndef RG_PULL_BITS
+#define RG_PULL_BITS 7
+#endif
+#ifndef RG_TRIGGER_HELD_FROM
+#define RG_TRIGGER_HELD_FROM 12
 #endif
 
 /* The buttons the console has, a bit each in the same order (Computer::ConsoleNumbers): the ones
@@ -160,7 +180,7 @@
  * build). These are the same numbers, for a file of the runtime read on its own, as an editor's
  * checker reads it; a test holds them to StartFileNumbers.names.
  *
- * A FRAME OF A SPRITE IN THE FILE is a record of VBlank's own, one layout whatever the original.
+ * A frame of a sprite in the file is a record of VBlank's own, one layout whatever the original.
  * lib/vblank/original/frame_record.rb (Original::FrameRecord) is where that layout is written
  * down, and the RG_FRAME_ and RG_PIECE_ numbers are its own, written into every build from there.
  * Every number is low byte first. A frame is RG_FRAME_HEADER_BYTES, the pieces it holds and the
@@ -171,7 +191,7 @@
  * RG_PIECE_UPSIDE_DOWN; and, at RG_PIECE_BANK_AT, which bank of the original's colours it is drawn
  * from, two bytes. */
 #ifndef RG_TILE_BYTES_AT
-#define RG_FILL_POSE_HEADER_NUMBERS 18
+#define RG_FILL_POSE_HEADER_NUMBERS 20
 #define RG_CHOSEN_COLORS_HEADER_NUMBERS 6
 #define RG_FRAME_ENTRY_BYTES 4
 #define RG_FRAME_HEADER_BYTES 4
@@ -200,7 +220,7 @@
 #define RG_COLOR_CHANNEL_BITS_AT 4
 #define RG_COLOR_FORMAT_NUMBERS 5
 #define RG_FILL_RULES_HEADER_NUMBERS 14
-#define RG_FILL_BACKGROUND_HEADER_NUMBERS 25
+#define RG_FILL_BACKGROUND_HEADER_NUMBERS 34
 #define RG_MARKED_COLOR 32768
 #endif
 

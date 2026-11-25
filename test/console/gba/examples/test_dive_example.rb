@@ -4,7 +4,7 @@ require "test_helper"
 require "differential"
 
 require "stringio"
-require VBlank.root.join("examples/dive").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/dive").to_s)
 
 # The places and moments in the Dive example the tests read, kept once for this file and for the
 # test of the dive on the Advance's cartridge (test/lowering/gba/examples/test_dive_example_cartridge.rb).
@@ -37,7 +37,7 @@ end
 
 # The Dive example: a game whose layers and palette are load-bearing. A title screen in
 # the console's mixed arrangement (two scrolling layers beside one that turns), a play
-# screen in the four-scrolling one, water the diver swims BEHIND, an air gauge that
+# screen in the four-scrolling one, water the diver swims behind, an air gauge that
 # empties by changing cells, and a blackout that fades the world while the water goes on
 # blending. Each of those is a thing the framework only had tests for; here it is a game.
 #
@@ -105,7 +105,7 @@ class TestDiveExample < Minitest::Test
 
   # --- the shafts shimmer ---
 
-  # THE NEAR SHAFTS ADD LIGHT. They show all of what is behind them and three quarters of
+  # The near shafts add light. They show all of what is behind them and three quarters of
   # themselves on top, so where they cross the far sheet the water comes out brighter than
   # any colour the shafts are drawn in — which no layer drawn solid, and no glass that
   # splits one whole between itself and what is behind, can give. Read from the band above
@@ -136,9 +136,9 @@ class TestDiveExample < Minitest::Test
 
   # --- the water in front of the diver ---
 
-  # Scenery in FRONT of something that moves is the one arrangement a picture cannot fall
+  # Scenery in front of something that moves is the one arrangement a picture cannot fall
   # into by accident, and the water is see-through, so both halves show at once: the diver
-  # is visible, and it is visibly UNDER water rather than drawn plain over it.
+  # is visible, and it is visibly under water rather than drawn plain over it.
   def test_the_diver_swims_behind_the_water_and_shows_through_it
     i = swimming_down_for(START_AT + 30)
     drawn = i.sprites(:diver).first
@@ -159,7 +159,7 @@ class TestDiveExample < Minitest::Test
   end
 
   # The water's cells stop at the surface, so above that line there is nothing to see
-  # through and what is behind draws plain. Swim up until the head comes out and ONE
+  # through and what is behind draws plain. Swim up until the head comes out and one
   # sprite is half blended and half not — the head in its own colours, the suit below it
   # still under water. Nothing in the game says where that line is; the map says it.
   def test_the_divers_head_comes_out_of_the_water_at_the_top
@@ -177,11 +177,11 @@ class TestDiveExample < Minitest::Test
   # the same line of the game asking where the surface is, which is why neither one needs
   # a picture to prove it: a bubble that is still there is still being drawn.
   def test_no_bubbles_come_off_a_diver_whose_head_is_out
-    assert_empty surfaced.sprites(:bubble), "bubbles are still rising from a diver in the air"
+    assert_empty surfaced.sprites(:diver_bubbles), "bubbles are still rising from a diver in the air"
   end
 
   def test_bubbles_rise_from_a_diver_under_water
-    refute_empty swimming_down_for(START_AT + 30).sprites(:bubble), "no bubbles come off the diver at all"
+    refute_empty swimming_down_for(START_AT + 30).sprites(:diver_bubbles), "no bubbles come off the diver at all"
   end
 
   # --- the air gauge ---
@@ -198,7 +198,7 @@ class TestDiveExample < Minitest::Test
     (0...BARS).count { |which| screen.pixel(*bar_middle(which)) == Dive::Ink::AIR }
   end
 
-  # These pixels belong to a BACKGROUND, so the only thing that can change one is the
+  # These pixels belong to a background, so the only thing that can change one is the
   # cell under it changing — which is the whole point of the gauge being tiles rather
   # than ten of the 128 sprites the console draws at once.
   def test_the_air_gauge_empties_bar_by_bar_as_the_air_goes
@@ -223,7 +223,7 @@ class TestDiveExample < Minitest::Test
   # picture rather than six.
   def test_the_fish_wear_their_own_colours
     i = swimming_down_for(START_AT + 30)
-    seen = i.sprites(:fish).filter_map { |f| i.screen.pixel(f.x + FLANK_ACROSS, f.y + FLANK_DOWN) }
+    seen = i.sprites(:fish_shoal).filter_map { |f| i.screen.pixel(f.x + FLANK_ACROSS, f.y + FLANK_DOWN) }
 
     assert_operator seen.length, :>=, SPECIES, "not every fish is being drawn"
     assert_operator seen.uniq.length, :>=, SPECIES, "the fish are all drawn in the same colours"

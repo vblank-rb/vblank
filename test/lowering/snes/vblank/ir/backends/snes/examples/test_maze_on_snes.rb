@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/maze").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/maze").to_s)
 
 # examples/maze.rb on a Super Nintendo: a brick room and a hero the walls stop, held to the
 # interpreter — every variable and every pixel — after every pass.

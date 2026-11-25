@@ -4,10 +4,45 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # An error about a note in a song that the music can never reach. The message starts
+        # "<The part> of <the song>" and goes on in one of four ways. Two notes on one frame:
+        #
+        # > has two notes that start on the same frame, <time> into the song. The
+        # > music starts one note of a part on each frame, at most. So the second note never
+        # > plays. The part then stays silent until the song starts again. This error occurs
+        # > when a note is shorter than one frame (1/60 of a second). To fix this, make the
+        # > note longer, or make the tempo slower.
+        #
+        # Notes out of time order:
+        #
+        # > has a note <time> into the song, after a note at <time>. The
+        # > music plays the notes of a part in time order. So this note never plays. The part
+        # > then stays silent until the song starts again. To fix this, put the notes of the
+        # > part in time order.
+        #
+        # A note before the song starts:
+        #
+        # > has a note on frame <number>, before the song starts. The music plays a song from
+        # > frame 0. So this note never plays. The part then stays silent until the song starts
+        # > again. To fix this, start every note on frame 0 or later.
+        #
+        # A note after the song ends:
+        #
+        # > has a note that starts <time> into the song. The song is only <number>
+        # > seconds long. It starts again before that note, so that note never plays. This
+        # > error occurs when a note is shorter than one frame (1/60 of a second). To fix this,
+        # > make the note longer, or make the tempo slower.
+        #
+        # The music plays each part's notes in order, one at most on each frame. A note it
+        # cannot reach stops the part there, and the part stays silent until the song starts
+        # again. In a song block this happens when a fast tempo makes a note shorter than a
+        # frame.
+        #
+        #--
         # A note in a song that the music can never reach.
         #
         # Each part of a song is a list of notes, each on the frame it starts. The player keeps
-        # one place in each list and, every frame, looks at the ONE note there: due now, it
+        # one place in each list and, every frame, looks at the one note there: due now, it
         # plays and the place moves on; not due, nothing happens. That is what keeps a long
         # song as cheap as a short one — and it means a part's notes must each start on a later
         # frame than the one before, and before the song comes round again. A note that does
@@ -16,6 +51,7 @@ module VBlank
         # A song block makes one by a note shorter than a frame — a fast enough tempo rounds it
         # to nothing, so the next note starts on the same frame. A Score cannot: its notes are
         # put in order, one to a frame, before they reach here.
+        #++
         class NoteNeverPlays
           NAME = :note_never_plays
           PLAIN_NAME = "a song note that the music can never reach"

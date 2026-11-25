@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A POSE MAY BE ANOTHER POSE MIRRORED, storing no pixels of its own.
+# A pose may be another pose mirrored, storing no pixels of its own.
 #
 # "Left is the right one, backwards" is how nearly every 2D game faces a character, and
 # saying it used to mean keeping both sets of pixels. The console draws an object
@@ -22,7 +22,7 @@ class TestSpriteMirror < Minitest::Test
   EDGE = VBlank::Graphics::Color.rgb(0, 31, 10)
   CLEAR = VBlank::Graphics::Color.rgb(0, 0, 1)
 
-  # A pose that is deliberately NOT symmetric and NOT centred: a block at (+ox+, +oy+)
+  # A pose that is deliberately not symmetric and not centred: a block at (+ox+, +oy+)
   # with its left column a different colour, so a mirror that is drawn in the wrong
   # place — or the right place but the wrong way round — shows up as different pixels.
   private def lopsided(ox, oy, w = 10, h = 12)
@@ -75,7 +75,7 @@ class TestSpriteMirror < Minitest::Test
     rom.built.video_memory.sprites.used
   end
 
-  # THE PICTURE IS THE WHOLE POINT. The interpreter has no sprite hardware and draws
+  # The picture is the whole point. The interpreter has no sprite hardware and draws
   # the mirrored picture itself, so the console matching it over a played cycle is what
   # says the mirror landed in the right place, the right way round.
   def test_a_mirrored_pose_draws_as_the_mirror_image
@@ -95,7 +95,7 @@ class TestSpriteMirror < Minitest::Test
     assert_backends_agree(program(walk, mirror_of: [0, 1, 2]), frames: 24)
   end
 
-  # A MIRRORED POSE COSTS NO SPRITE MEMORY, which is the reason for all of it. Six poses
+  # A mirrored pose costs no sprite memory, which is the reason for all of it. Six poses
   # made of three pictures and their mirrors must cost what the three cost.
   def test_a_mirrored_pose_stores_no_pixels_of_its_own
     walk = [lopsided(6, 4), lopsided(8, 5, 12, 10), lopsided(5, 6, 9, 14)]
@@ -104,9 +104,9 @@ class TestSpriteMirror < Minitest::Test
                  "three pictures and their mirrors should cost what the three pictures cost"
   end
 
-  # NOBODY HAS TO SAY SO: art drawn both ways by hand is noticed and stored once, the
+  # Nobody has to say so: art drawn both ways by hand is noticed and stored once, the
   # same way two sprites showing the same picture already share it. Measured against a
-  # pair of pictures that are NOT mirrors and cover the same box, so the comparison is
+  # pair of pictures that are not mirrors and cover the same box, so the comparison is
   # about the sharing rather than about how much each pose trims to.
   def test_art_that_is_already_a_mirror_is_noticed_without_being_declared
     right = lopsided(6, 4)
@@ -152,7 +152,7 @@ class TestSpriteMirror < Minitest::Test
     refute_equal turned.first, turned.last
   end
 
-  # A POOL TAKES IT TOO, and is the case that most wants it: every slot is a sprite of
+  # A pool takes it too, and is the case that most wants it: every slot is a sprite of
   # its own, so a flock facing two ways used to be two sets of pixels shared across all
   # of them. `mirror` reads the same beside `facing:` here as beside a sprite's.
   def test_a_pool_can_face_both_ways_from_one_set_of_pictures

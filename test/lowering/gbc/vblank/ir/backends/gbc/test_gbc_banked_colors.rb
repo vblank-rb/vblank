@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A BACKGROUND FADED THROUGH MANY LISTS OF COLOURS keeps a table for every step it can show: what
+# A background faded through many lists of colours keeps a table for every step it can show: what
 # each of its palettes holds there, for every screen that says `draw_with`. Screens of
 # eight palettes stepped through forty lists come to more than the part of a
 # Color cartridge always in view holds beside the game's code. Such a game is built with those
@@ -38,7 +38,7 @@ class TestGBCBankedColors < Minitest::Test
       game_loop do
         step = (step + 1) % STEPS
         state = (state + 1) % PLACES if step == 0
-        case_var(:state) { PLACES.times { |place| when_val place, :"screen#{place}" } }
+        call PLACES.times.to_h { |place| [place, :"screen#{place}"] }, number: :state
       end
     end
     b.finalize_program

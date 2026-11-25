@@ -2,7 +2,7 @@
 
 require "stringio"
 
-# WHAT A SPRITE NOT SHOWING COSTS A FRAME, for each console's own cost test: a game of many sprites
+# What a sprite not showing costs a frame, for each console's own cost test: a game of many sprites
 # declared and four showing, each of the four moving, against the same game with only the four
 # declared; and a pool of many places holding four things, against a pool of four. A game keeps
 # sprites declared for what may show later — the actors of a scene, the places of a pool — and
@@ -43,6 +43,22 @@ module SpriteCountCostGames
     end
   end
 
+  # +pools+ pools of +capacity+ places each for +console+, four things in the first and none in the
+  # rest, each thing moving down a pixel a pass; with +ordered+, every pool in one draw_in_order. A
+  # game keeps a pool for each kind of thing a room can hold, sized for the busiest room, so most of
+  # an order's places are empty in most rooms.
+  def self.pools_game(console, pools, capacity, ordered: false)
+    block = BLOCK
+    VBlank.game("POOLS COUNT", consoles: [console]) do
+      screen :tiled
+      image(:block, "#" => :red) { block }
+      crowds = Array.new(pools) { |n| pool :"crowd_#{n}", x: 0, y: 0, capacity: capacity, image: :block }
+      draw_in_order(*crowds) if ordered
+      SHOWING.times { |i| crowds.first.spawn(x: (i * 13) % 200, y: (i * 37) % 120) }
+      game_loop { crowds.first.each { |thing| thing.y = (thing.y + 1) & 127 } }
+    end
+  end
+
   # The profile of +game+ on +console+ over twenty passes.
   def self.profile(console, game)
     game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
@@ -58,5 +74,28 @@ module SpriteCountCostGames
   def self.order_sort_bytes(console, game)
     rom = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
     rom.built.routines.fetch(VBlank::Messages::MadeNames.make(:draw_order, number: 1, part: :sort)).size
+  end
+
+  # How many bytes of code each place of an order adds, on +console+: what putting +declared+ places
+  # in an order adds to the game's code, less what putting four in one adds, a place each. +kind+ is
+  # :pool or :sprites. Each console keeps its sort its own way (a routine of its own, or written
+  # where the game loop sorts), so the whole game's code is compared with and without the order.
+  def self.order_bytes_a_place(console, kind, declared)
+    added = [SHOWING, declared].map do |count|
+      game = ->(ordered) { kind == :pool ? pool_game(console, count, ordered: ordered) : sprites_game(console, count, ordered: ordered) }
+      code_bytes(console, game.call(true)) - code_bytes(console, game.call(false))
+    end
+    (added.last - added.first).fdiv(declared - SHOWING)
+  end
+
+  # How many bytes of code +game+ built for +console+ holds: every routine of a build that keeps a map
+  # of them, or the code part of one that only counts it.
+  def self.code_bytes(console, game)
+    built = game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false).built
+    routines = built.respond_to?(:routines) ? built.routines : nil
+    return built.bytes.fetch(:code) if routines.nil?
+    return routines.sum { |_, span| span.size } if routines.is_a?(Hash)
+
+    routines.sum { |routine| routine.addresses.size }
   end
 end

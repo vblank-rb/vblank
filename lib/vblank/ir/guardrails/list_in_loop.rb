@@ -4,6 +4,21 @@ module VBlank
   module IR
     module Guardrails
       module Checks
+        # A warning about a `list` declared where it runs again every frame:
+        #
+        # > The list :<name> is declared inside <your game loop>. So it is re-created empty
+        # > every frame. Whatever you push onto it is lost on the next frame, and its length
+        # > never grows. You declare a list one time. To fix this, declare it in setup, above
+        # > the loop or outside the scene. Then push to it and read it inside the loop.
+        #
+        # Where the list is can also read "a repeat loop", "an every(...) timer", "the scene
+        # :<name>" or "the :<name> routine (it runs every frame)".
+        #
+        # The game does not crash, but the list never fills. Move the `list` line above the
+        # loop. A list declared only when something happens (inside an `if`) is not warned
+        # about, and pushing to a list or reading it inside the loop is normal.
+        #
+        #--
         # A one-time-setup footgun, sibling to {SeedInLoop}. `list :name, capacity:`
         # DECLARES a list — you set it up once. Written directly inside a per-frame
         # context (the game loop, a scene, a repeat/every timer) the declaration
@@ -12,15 +27,25 @@ module VBlank
         # grows past what a single frame adds. There's no crash — just a collection
         # that mysteriously refuses to fill.
         #
-        # Like the other setup footguns, only an UNCONDITIONAL declaration — a direct
+        # Like the other setup footguns, only an unconditional declaration — a direct
         # statement of the per-frame body — is flagged, so a list created inside a
         # condition (a deliberate reset) is left alone. Reading or changing a list in
         # the loop (push/pop/get) is normal and not a declaration, so it isn't touched.
+        #++
         class ListInLoop
           include PerFrameScope
 
           NAME = :list_in_loop
           PLAIN_NAME = "a list declared every frame"
+
+          # +arrays+ are the lists a plain Ruby Array made, by name, with the local the game wrote
+          # (Guardrails::BuildFacts), so the warning names the Array and not a `list` line.
+          def initialize(arrays: {})
+            @arrays = arrays
+          end
+
+          # The same check, knowing which lists are Arrays the game wrote.
+          def told_of(facts) = ListInLoop.new(arrays: facts.collections_from_arrays)
 
           def detect(program)
             per_frame = per_frame_func_names(program)
@@ -40,10 +65,20 @@ module VBlank
           private
 
           def message_for(node, container)
+            local = @arrays[node.name]
+            return array_message(local, container) if local
+
             "The list :#{node.name} is declared inside #{per_frame_place(container)}. So it is " \
               "re-created empty every frame. Whatever you push onto it is lost on the next frame, and " \
               "its length never grows. You declare a list one time. To fix this, declare it in setup, " \
               "above the loop or outside the scene. Then push to it and read it inside the loop."
+          end
+
+          def array_message(local, container)
+            "The Array `#{local}` is made inside #{per_frame_place(container)}. So it is made again, empty, " \
+              "every frame. What you add to it is lost on the next frame, and its size never grows. To fix " \
+              "this, make the Array above the loop or outside the scene. Then add to it and read it inside " \
+              "the loop."
           end
         end
       end

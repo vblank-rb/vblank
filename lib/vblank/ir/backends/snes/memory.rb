@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHERE EVERYTHING THE GAME KEEPS LIVES WHILE IT RUNS.
+        # Where everything the game keeps lives while it runs.
         #
         # A Super Nintendo has 128K of work RAM. Its first 8K is in view from every bank the
         # cartridge's code runs in, at addresses $0000 to $1FFF, so an instruction reaches it with
@@ -170,7 +170,7 @@ module VBlank
           # there.
           def scratch_free = @direct_low - @next_scratch
 
-          # THE GAME'S VARIABLES ON THE DIRECT PAGE. An instruction naming a direct page byte is a
+          # The game's variables on the direct page. An instruction naming a direct page byte is a
           # byte shorter and a cycle quicker than one naming a 16-bit address (the WDC 65816 data
           # sheet's cycle table; fullsnes, "CPU Timings"), so what room the page has past the
           # runtime's scratch goes to the variables the game names most. They are placed from the
@@ -232,7 +232,7 @@ module VBlank
           # How many bytes of the first 8K are in use.
           def used = @next - FIRST
 
-          # THE WORK RAM ANYTHING WAS PLACED IN, as ranges of long addresses: the first 8K whole (the
+          # The work RAM anything was placed in, as ranges of long addresses: the first 8K whole (the
           # direct pages, the runtime, the variables and the stack), the far places after it, and the
           # last bank's, where any were asked for. Asked once everything has its place.
           def placed_ranges

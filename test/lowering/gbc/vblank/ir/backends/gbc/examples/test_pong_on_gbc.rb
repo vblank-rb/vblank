@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pong_gbc").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pong_gbc").to_s)
 
 # examples/pong_gbc.rb, Pong for the Game Boy Color: a cartridge that boots and plays in the
 # emulator, held to the interpreter — every variable and every pixel — after every pass of
@@ -16,7 +16,7 @@ class TestPongOnGBC < Minitest::Test
     assert_operator run[:player_score] + run[:cpu_score], :>=, 1, "and a point scored"
   end
 
-  # Down to the LEVEL row, into the difficulty screen — a painted one — and NORMAL picked there.
+  # Down to the level row, into the difficulty screen — a painted one — and normal picked there.
   # A pass takes more than one frame on the Color in places — the title's second, every pass of
   # the painted difficulty screen — and the buttons are read on every frame, so each button is held
   # for six frames, a whole pass however long it takes, and let go for twelve; and the first waits

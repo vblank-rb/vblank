@@ -6,7 +6,7 @@ require "power_on_frame_games"
 # `frames_since_power_on` on the PlayStation's program, read back in Beetle PSX. The games and what
 # every console's cartridge is held to are in test/power_on_frame_games.rb.
 #
-# A PROGRAM IS COPIED IN BEFORE IT STARTS. A PlayStation program is loaded into RAM before its first
+# A program is copied in before it starts. A PlayStation program is loaded into RAM before its first
 # instruction runs: by the BIOS from a disc on a console, which takes seconds, and by Beetle's own
 # loader here, which reads it from the expansion port, a longer program taking longer. Those frames
 # are before the program and no program can count them, so frames from power-on are no PlayStation

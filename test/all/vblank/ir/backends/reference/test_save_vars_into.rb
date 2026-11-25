@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A TEST WRITES A save_var's NUMBER INTO SAVE MEMORY, so a game starts with a high score it
+# A test writes a save_var's number into save memory, so a game starts with a high score it
 # chose rather than being played until it reaches one. The game's own code writes it, so the
 # game reads it back as its own.
 #

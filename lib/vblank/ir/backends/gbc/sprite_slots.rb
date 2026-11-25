@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # WHICH SLOT OF A SPRITE PALETTE EACH COLOUR OF A PICTURE TAKES, worked out once for the whole
+        # Which slot of a sprite palette each colour of a picture takes, worked out once for the whole
         # game before any sprite picture is cut into tiles.
         #
         # A Color sprite palette is four colours: see-through, then three. A pixel of a sprite's tile
@@ -24,11 +24,11 @@ module VBlank
         # costs more depends on whether the game's palettes run out, so the layout is made one of two
         # ways (::layout_for), and is used only where it helps:
         #
-        # - PALETTES TO SPARE. Every picture in its own order needs no more than the eight. A palette
+        # - Palettes to spare. Every picture in its own order needs no more than the eight. A palette
         #   freed then buys the game nothing, so the layout is the one cutting the fewest tiles first
         #   and the fewest palettes after, and is used only where it makes fewer palettes and cuts no
         #   more tiles than the pictures' own orders: nothing is lost, so it is taken.
-        # - PALETTES RUN OUT. In their own orders the pictures need more than the eight, and the
+        # - Palettes run out. In their own orders the pictures need more than the eight, and the
         #   build would lend them (Art::TooManySpriteLists), the slower way, a palette borrowed as
         #   each sprite is placed. Then a palette is weighed as the tiles it is the same share of
         #   (TILES_PER_PALETTE: one of eight, against 32 of 256), so a few tiles buy a palette fewer
@@ -42,7 +42,7 @@ module VBlank
         #
         # The pictures that keep their own order take some of the eight too: those the game paints
         # or loads the tiles of (Art#painted_sprite_palette), and those whose tiles are shared with no
-        # other picture (Lowering::Picture#sprite_slots). Their palettes are RESERVED, counted against
+        # other picture (Lowering::Picture#sprite_slots). Their palettes are reserved, counted against
         # the eight and never laid out.
         #
         # A picture is drawn in its own colours and in every list a sprite showing it is drawn with
@@ -57,7 +57,7 @@ module VBlank
         # Nothing changes a sprite palette while the game runs but the lending: the Color's build
         # refuses a sprite following a list the game changes.
         #
-        # A GAME THAT LENDS THE EIGHT (Art::TooManySpriteLists) is not laid out at all
+        # A game that lends the eight (Art::TooManySpriteLists) is not laid out at all
         # (Lowering::Picture#sprite_slots). There what counts is the lists on the screen at once, not
         # how many there are, and a list a second sprite wears is no longer one sprite's own to step
         # through (Art#lent_family): a sprite fading through lists of its own, one of them joined to

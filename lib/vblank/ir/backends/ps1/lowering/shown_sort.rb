@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # A DRAW ORDER'S SORT THAT LEAVES OUT WHAT IS NOT SHOWING (IR ListSort's +shown+). Mixed into
+          # A draw order's sort that leaves out what is not showing (IR ListSort's +shown+). Mixed into
           # Lowering, whose sort written in place (Lowering#emit_fixed_front_sort) it starts past the
           # things not showing.
           #
@@ -106,28 +106,70 @@ module VBlank
             # Each place asked whether it shows, its flag kept up to date, the count of places not showing
             # with it, and +changed+ set where one came or went; then the list moved round if one did. A
             # place known to show always is not asked: its flag stays as it started.
+            #
+            # What a place does with its answer is written once (#emit_flag_marking), and each place
+            # calls it with the answer in a0: five instructions a place, where the whole of it written
+            # out at every place was near thirty. The sort is straight code run once a pass, so every
+            # byte of it is fetched from main RAM through the processor's 4 KB instruction cache each
+            # pass (psx-spx, "Memory Map": the cache holds 4 KB of code in lines of 16 bytes): bytes
+            # are time here as well as room, and a call that keeps an order a third shorter is cheaper
+            # to run than the work written out.
             def emit_shown_marked(node, kept, list)
+              marking = fresh_label("sort_flag_marking")
+              marked_all = fresh_label("sort_places_marked")
+              emit_push(:ra) # each place's call below sets ra
               node.shown.each_with_index do |showing, place|
                 next emit_sort_key_set(kept, place) unless kept.asked.fetch(place)
 
-                emit_place_marked(showing, place, kept)
+                emit_place_marked(showing, place, kept, marking)
               end
+              emit_pop(:ra)
+              @asm.b(marked_all)
+              emit_flag_marking(kept, marking)
+              @asm.label(marked_all)
               unchanged = fresh_label("sort_none_came_or_went")
               jump_unless(Build.var_ref(kept.changed), unchanged)
               emit_shown_partition(kept, list)
               @asm.label(unchanged)
             end
 
-            def emit_place_marked(showing, place, kept)
+            # +place+ asked whether it shows, its number written where it does, and #emit_flag_marking
+            # called with a0 its answer: the place twice over, plus 1 where it shows.
+            def emit_place_marked(showing, place, kept, marking)
               hidden = fresh_label("sort_place_hidden")
-              marked = fresh_label("sort_place_marked")
+              answered = fresh_label("sort_place_answered")
               emit_jump_unless_showing(showing, hidden)
               emit_sort_key_set(kept, place)
-              emit_flag_turned(kept, place, marked, was: 0, step: -1)
-              @asm.b(marked)
+              @asm.b(answered) { @asm.li(:a0, (place * 2) + 1) }
               @asm.label(hidden)
-              emit_flag_turned(kept, place, marked, was: 1, step: 1)
-              @asm.label(marked)
+              @asm.li(:a0, place * 2)
+              @asm.label(answered)
+              @asm.jal(marking)
+            end
+
+            # The code each place calls, at +label+, with a0 its answer. Back at once where the place's
+            # flag already says so; otherwise the flag turned over, the count of places not showing
+            # moved by one, and +changed+ set. v0, v1 and t9 are worked with, and whatever setting a
+            # number of the lowering's own works with.
+            def emit_flag_marking(kept, label)
+              same = fresh_label("sort_flag_same")
+              gone = fresh_label("sort_flag_gone")
+              @asm.label(label)
+              @asm.andi(:v1, :a0, 1)                     # 1 where it shows
+              @asm.srl(:a0, :a0, 1)                      # the place
+              @asm.li(:t9, kept.flags)
+              @asm.addu(:t9, :t9, :a0)
+              @asm.lbu(:v0, 0, :t9)
+              @asm.beq(:v0, :v1, same)
+              @asm.sb(:v1, 0, :t9)
+              emit_store_number(kept.changed, 1)
+              @asm.beq(:v1, :zero, gone)
+              statement(Build.set(kept.hidden, Build.binop(:-, Build.var_ref(kept.hidden), Build.int(1))))
+              @asm.jr(:ra)
+              @asm.label(gone)
+              statement(Build.set(kept.hidden, Build.binop(:+, Build.var_ref(kept.hidden), Build.int(1))))
+              @asm.label(same)
+              @asm.jr(:ra)
             end
 
             # On to +hidden+ unless +showing+ is 1, each test of it asked on its own where it is a product
@@ -141,19 +183,6 @@ module VBlank
               shown.tests.each { |test| jump_unless(test, hidden) }
             end
 
-            # On to +marked+ unless the flag of +place+ is +was+; otherwise the flag turned over, the count
-            # of places not showing moved by +step+, and +changed+ set.
-            def emit_flag_turned(kept, place, marked, was:, step:)
-              @asm.li(:t9, kept.flags)
-              @asm.load(:lbu, :v0, place, :t9)
-              @asm.addiu(:v0, :v0, -was)
-              @asm.bne(:v0, :zero, marked)
-              @asm.li(:v0, 1 - was)
-              @asm.store(:sb, :v0, place, :t9)
-              emit_store_number(kept.changed, 1)
-              statement(Build.set(kept.hidden, Build.binop(:+, Build.var_ref(kept.hidden), Build.int(step))))
-            end
-
             # The program's write of the number of +place+, where the sort makes it.
             def emit_sort_key_set(kept, place)
               write = kept.keys&.fetch(place, nil) or return
@@ -164,7 +193,7 @@ module VBlank
               @setting_sort_keys = false
             end
 
-            # THE LIST MOVED ROUND, on a pass where a place came or went: copied aside, then the entries not
+            # The list moved round, on a pass where a place came or went: copied aside, then the entries not
             # showing written back from the front in the order they stood, then the entries showing after
             # them in theirs. t0 reads, t1 writes, t2 counts, t3 is the entry, t4 the flags.
             def emit_shown_partition(kept, list)

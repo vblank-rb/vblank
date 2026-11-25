@@ -3,7 +3,7 @@
 require "test_helper"
 
 # A fill by the console's copying engine reads its colour from one word of memory, and the
-# engine is told that word's ADDRESS each time — as a number, built by instructions. How many
+# engine is told that word's address each time — as a number, built by instructions. How many
 # depends on the address's bits: the first address of the quick memory is the one the chip
 # builds in a single instruction, and most others take two or three.
 #

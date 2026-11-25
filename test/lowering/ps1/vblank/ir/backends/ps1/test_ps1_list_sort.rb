@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# A LIST PUT IN ORDER BY THE NUMBERS ANOTHER LIST HOLDS (IR list_sort), on the PlayStation, held to the
+# A list put in order by the numbers another list holds (IR list_sort), on the PlayStation, held to the
 # interpreter pass for pass (PS1::CheckedRun). The lowering sorts a list whose first item stays in its
 # first slot with code written where the sort is, and any other through the runtime, which finds each
 # item round the ring of slots; both ways are played here, rising and falling, with level numbers, a

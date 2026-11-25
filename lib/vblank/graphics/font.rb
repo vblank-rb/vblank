@@ -11,7 +11,7 @@ module VBlank
     # A font knows how to walk the set pixels of a string (`each_pixel`), how wide a
     # string is (`text_width`), and how many pixels a glyph lights (`glyph_pixels`,
     # used by the draw-cost model). Height is fixed for the whole font, but each glyph
-    # carries its OWN width — a proportional font packs an +i+ tighter than an +m+ —
+    # carries its own width — a proportional font packs an +i+ tighter than an +m+ —
     # so layout advances by the glyph in front of it, not a fixed grid. A fixed-width
     # font is just the special case where every glyph is the same width.
     class Font
@@ -44,7 +44,7 @@ module VBlank
         { glyphs: @glyphs, widths: @widths, height: @height, spacing: @spacing, fold: @fold }
       end
 
-      # TWO FONTS ARE THE SAME FONT WHEN THEY DRAW THE SAME LETTERS. A font is a value —
+      # Two fonts are the same font when they draw the same letters. A font is a value —
       # some pictures of characters and how they are spaced — so nothing about it depends
       # on which one of them you happen to be holding. It is compared for real because a
       # font now travels inside a program, and comparing two programs (which is how the
@@ -177,7 +177,7 @@ module VBlank
       # small bitmap, where a lit pixel is the +on+ character (default "#") and anything
       # else is blank.
       #
-      # Or as a PICTURE, for a font that already exists — sliced out of an image, or
+      # Or as a picture, for a font that already exists — sliced out of an image, or
       # decoded from a game's own data. `picture "A", rows, blank: 0` takes rows of pixel
       # values, and a pixel that is not +blank+ is lit. Nobody is going to retype an
       # alphabet as hashes and dots.
@@ -204,7 +204,7 @@ module VBlank
 
         # Add a glyph for +char+ from a small picture: rows of pixel values, where a pixel
         # equal to +blank+ is not drawn and every other value is. A font is one colour, so
-        # what a lit pixel's value IS never matters — only that it is not the background.
+        # what a lit pixel's value is never matters — only that it is not the background.
         def picture(char, rows, blank: 0)
           rows = rows.to_a.map(&:to_a)
           raise ArgumentError, "font :#{@name} glyph #{char.inspect} has no pixels" if rows.empty?
@@ -312,7 +312,7 @@ module VBlank
       })
 
       # A compact 3x5 numeric font — half the footprint, for a tight HUD. Each row is
-      # 3 bits (bit 2 = leftmost). Digits only; a different SIZE than the default, so
+      # 3 bits (bit 2 = leftmost). Digits only; a different size than the default, so
       # picking it visibly changes a number's box (and its draw cost).
       TINY_GLYPHS = Ractor.make_shareable({
         "0" => [0b111, 0b101, 0b101, 0b101, 0b111],

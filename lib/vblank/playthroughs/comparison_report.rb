@@ -5,7 +5,7 @@ require "fileutils" # here and not where it is used: see the note at the top of 
 module VBlank
   module Playthroughs
     class Comparison
-      # A DRIFT, WRITTEN DOWN FOR SOMEBODY TO LOOK AT: one folder, holding what it takes to
+      # A drift, written down for somebody to look at: one folder, holding what it takes to
       # see what went wrong and to get back to it.
       #
       #   first.png, second.png   the two screens where the two drifted
@@ -16,11 +16,11 @@ module VBlank
       #                           presses, what was compared and how alike it had to be
       #   a tape, or two          every press up to there
       #
-      # WHY A TAPE AND NOT ONLY A PICTURE. A picture shows what the two screens were. A tape
+      # Why a tape and not only a PICTURE. A picture shows what the two screens were. A tape
       # plays a cartridge to that exact place again, with a debugger on it or a script that
-      # asks it things — which is where finding out WHY starts.
+      # asks it things — which is where finding out why starts.
       #
-      # THERE ARE TWO KINDS, for the two ways a comparison is made, and this is what they
+      # There are two kinds, for the two ways a comparison is made, and this is what they
       # share. A DriftReport is of a drift on a frame both cartridges were on, played on
       # one tape. A MomentReport is of a drift at a named moment each cartridge reached in
       # its own time. Each gives what its folder is called, which tapes go in it, and the
@@ -32,7 +32,7 @@ module VBlank
         SIDE_BY_SIDE = "side-by-side.png"
         TEXT = "report.txt"
 
-        # A SECOND OF PLAY, in frames: how far back the report says what was down.
+        # A second of play, in frames: how far back the report says what was down.
         ONE_SECOND = 60
 
         # The two cartridges as a report names them, in order.
@@ -42,7 +42,7 @@ module VBlank
         WHAT_IS_NOT_A_READING = { PICTURE => "the picture", FRAMES_APART => "how many frames each cartridge took" }.freeze
         private_constant :ONE_SECOND, :SIDES, :WHAT_IS_NOT_A_READING
 
-        # THE PLACE REPORTS GO, as its path, or nil for nowhere. It is looked at before a
+        # The place reports go, as its path, or nil for nowhere. It is looked at before a
         # frame is played, and nothing is made there: a comparison that finds no drift
         # leaves no folder behind. So what can be known without making it is checked — that
         # it is a path, and that the nearest folder above it that is already there is a

@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A BACKGROUND THAT WALKS BETWEEN AREAS, DRAWN FOR A WHILE WITH ANOTHER LIST OF COLOURS. Each
+# A background that walks between areas, drawn for a while with another list of colours. Each
 # area has its own tiles and its own list, and the game borrows another list for the area that
 # is up: a room loaded under the last area's colours, a cave gone dark, a flash. `draw_with` names
 # the area's own list and the list it borrows, and `draw_with :own` gives the area its colours back.

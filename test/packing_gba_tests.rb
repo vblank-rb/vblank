@@ -5,7 +5,7 @@ require "tmpdir"
 require "made_up_original"
 require "m4a_answers"
 
-# THE GAME BOY ADVANCE BIOS'S FORMATS AS BUILDING BLOCKS OF AN UNPACKING ROUTINE
+# The Game Boy Advance BIOS's formats as building blocks of an unpacking routine
 # (Original::Packing::GBA): `copy.unpack_lz77` and `copy.unpack_rle`, played where an unpacking
 # routine runs (CopyReaderTests says where, and which files include this). Their answer key is
 # BiosCompress, the packer the GBA lowering uses.
@@ -46,11 +46,11 @@ module PackingGBATests
     end
   end
 
-  # THE ADVANCE'S COMMON SOUND DRIVER (Packing::M4A), whose answer key is M4AAnswers: a made-up song
+  # The Advance's common sound driver (Packing::M4A), whose answer key is M4AAnswers: a made-up song
   # whose tracks use every command the reader reads, and one that ends, each track's notes, the
   # songs' lengths and loops, and a recording and its voice's settings. The song of every command
   # never comes round whole (its first track counts its rounds in the driver's memory), so it is
-  # written to its third time round (Packing::M4A, A SONG COMES ROUND).
+  # written to its third time round (Packing::M4A, a song comes round).
   M4A_NOTES = 176
 
   private def m4a_unpacking(folder, &fill)
@@ -100,7 +100,7 @@ module PackingGBATests
     end
   end
 
-  # THE CONSOLE VOICES' OWN SETTINGS: each track's notes voiced, the squares' duty, the first
+  # The console voices' own settings: each track's notes voiced, the squares' duty, the first
   # square's slide and each square's and the noise's envelope as the driver sets the voice up,
   # and the wave voice's pattern.
   def test_each_tracks_console_voices_take_their_settings_from_the_voice_group
@@ -118,7 +118,7 @@ module PackingGBATests
     end
   end
 
-  # A RECORDING'S NOTE, VOICED: where it sits between the speakers, a pitch between keys, and each
+  # A recording's note, voiced: where it sits between the speakers, a pitch between keys, and each
   # bend, VOL or PAN while it sounds a record that glides, as the driver moves a sounding note.
   def test_each_recorded_note_voiced_keeps_its_side_and_its_bends
     song = M4AAnswers::BENDING_SONG_AT
@@ -183,7 +183,7 @@ module PackingGBATests
     end
   end
 
-  # A SONG WHOSE TRACKS COME ROUND AT DIFFERENT POINTS (M4AAnswers::ROUNDS_TRACKS), its second
+  # A song whose tracks come round at different points (M4AAnswers::ROUNDS_TRACKS), its second
   # round a frame later in the tempo's count than its first and its first track's rounds counted
   # in the driver's memory: written until the two come round together, and its length the frames
   # to there.
@@ -202,19 +202,19 @@ module PackingGBATests
     end
   end
 
-  # SONGS WHOSE TRACKS LOOP APART, each one's length and loop frame worked out by hand as A SONG
-  # COMES ROUND says (Packing::M4A): it repeats from the latest tick a track repeats from, every
+  # Songs whose tracks loop apart, each one's length and loop frame worked out by hand as a song
+  # comes round says (Packing::M4A): it repeats from the latest tick a track repeats from, every
   # time round the least span all the loops fit, and ends where a time round starts with the tempo's
   # count as an earlier one did, or else at the third, coming round to the second.
   #
-  # A PART THAT COMES IN LATE (M4AAnswers::LATE_TRACKS), a tick a frame: the second track first
+  # A part that comes in late (M4AAnswers::LATE_TRACKS), a tick a frame: the second track first
   # sounds on tick 96 and goes round every 12, the first every 6 from 0. It repeats from 96, every
   # 12 ticks, and the count is the same at each: 108 frames long, back to 96.
   def test_a_song_whose_part_comes_in_late_repeats_from_where_that_part_does
     assert_song_comes_round(M4AAnswers::LATE_SONG_AT, length: 108, loop_frame: 96, late_from: 96)
   end
 
-  # THE SAME AT A TEMPO WHOSE COUNT DRIFTS (M4AAnswers::DRIFT_TRACKS): 82 added a frame, so tick n
+  # The same at a tempo whose count drifts (M4AAnswers::DRIFT_TRACKS): 82 added a frame, so tick n
   # (from 1) plays on frame ceil(150n / 82) and leaves 82 times that less 150n. The second track
   # first sounds on tick 192, frame 352, and goes round every 48 ticks; the first every 6. So the
   # song repeats from tick 192, every 48: ticks 192, 240, 288, 336, 384, 432 leave 64, 80, 14, 30, 46
@@ -224,10 +224,30 @@ module PackingGBATests
     assert_song_comes_round(M4AAnswers::DRIFT_SONG_AT, length: 527, loop_frame: 440, late_from: 352)
   end
 
-  # LOOPS THAT DO NOT DIVIDE EACH OTHER (M4AAnswers::APART_TRACKS), a tick a frame: every 6 ticks
+  # Loops that do not divide each other (M4AAnswers::APART_TRACKS), a tick a frame: every 6 ticks
   # from 0 and every 9 from 12. It repeats from 12, every 18: 30 frames long, back to 12.
   def test_a_song_whose_loops_do_not_divide_comes_round_where_both_do
     assert_song_comes_round(M4AAnswers::APART_SONG_AT, length: 30, loop_frame: 12, late_from: 12)
+  end
+
+  # Ties let go by EOT at a tempo not a tick a frame (M4AAnswers::TIES_TRACKS). Tick 0 plays on frame
+  # 0, then 500 is added a frame, so tick 96 plays on frame 29 and leaves 100; from there 152 a frame,
+  # so tick n plays on frame 29 + ceil((150(n - 96) - 100) / 152). The tie on tick 108 (frame 41) is
+  # let go by an EOT naming no key on tick 214 (frame 145): 104 frames. The tie on tick 216 (frame
+  # 147) is let go by an EOT naming its key on tick 264 (frame 195): 48 frames.
+  def test_a_tie_is_held_the_frames_to_the_eot_that_lets_it_go
+    song = M4AAnswers::TIES_SONG_AT
+    Dir.mktmpdir do |folder|
+      slots = m4a_slots(folder) do |copy, pack|
+        2.times { |track| copy.unpack_m4a_track at: song, into: pack[:"track_#{track}"], track: track }
+      end
+
+      ties = VBlank::Original::PackNote.list_in(slots.fetch(:track_1)).first(2).map { |note| [note.at, note.length] }
+      assert_equal [[41, 104], [147, 48]], ties
+      2.times do |track|
+        assert_equal M4AAnswers.track_bytes(song, track, count: M4A_NOTES), slots.fetch(:"track_#{track}"), "track #{track}"
+      end
+    end
   end
 
   # The two-track song at +song+ read: its +length+ and +loop_frame+, its second track's notes from

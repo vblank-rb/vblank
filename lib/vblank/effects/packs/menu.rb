@@ -3,50 +3,80 @@
 module VBlank
   module Effects
     module Packs
+      # Menus
+      #
+      # Nearly every game has a menu: a title screen, a pause screen, a shop, a jukebox. `menu` is
+      # an ordered list of items, one of them picked, with up and down moving the pick and wrapping
+      # at both ends, and a button running the picked item's block. Which colour is which, what the
+      # cursor looks like and how far apart the rows are are named by the game.
+      #
+      # ```ruby picture=still
+      # VBlank.game "TITLE", consoles: %i[gba] do
+      #   screen :tiled, backdrop: rgb(3, 4, 7)
+      #   draw_text "SPACE TRIP", 90, 56, :yellow
+      #   started = false
+      #   game_loop do
+      #     menu :main, at: [96, 74], color: :gray,
+      #                 picked: :cyan do |m|
+      #       m.item("NEW GAME") { started = true }
+      #       # drawn dim; the cursor steps over it
+      #       m.item("CONTINUE", enabled: false) {}
+      #       m.item("SOUND") {}
+      #     end
+      #   end
+      # end
+      # ```
+      #
+      # ```ruby
+      # menu :main, at: [80, 60] do |m|
+      #   m.item("NEW GAME") { state = PLAYING }
+      #   m.item("SOUND")    { state = SOUND }
+      # end
+      # ```
+      #--
       # A menu: a list of things to pick from, a selector that moves, and what each one
       # does. Nearly every game has one — a title screen, a pause screen, a shop, a
       # jukebox — and until now this framework had no word for it.
       #
-      # WHAT A GAME WROTE INSTEAD, and it is the same thirty lines every time: a variable
+      # What a game wrote instead, and it is the same thirty lines every time: a variable
       # holding which row is picked, two button tests that add and subtract with the
       # wrapping done by hand, a pass that draws every row in the dull colour, a second
       # pass that redraws the picked one in the bright colour, a cursor drawn beside it,
       # and a test for the button that acts. That is a lot of bookkeeping around three
       # lines of intent, and every game gets a slightly different bit of it wrong.
       #
-      # SAID ONCE, a menu is: an ordered list of items, one of them picked, up and down
+      # Said once, a menu is: an ordered list of items, one of them picked, up and down
       # moving the pick and wrapping at both ends, and a button running the picked item's
       # block. Everything else — which colour is which, what the cursor looks like, how
-      # far apart the rows are — is decoration the game NAMES rather than builds.
+      # far apart the rows are — is decoration the game names rather than builds.
       #
       # This is a pack, so every line below is written in public DSL verbs — `var`,
       # `held`, `pressed`, `if`, `draw_text`. Nothing here is new capability, which is
       # exactly why it is a pack and not part of the library proper (see {Effects}).
+      #++
       module Menus
-        # How long a held button waits before it walks to the next row. Copied from
-        # Wolfenstein 3D, which waits 20 tics: a tap always moves exactly one row, and
-        # holding walks at about three rows a second — fast enough to feel responsive,
-        # slow enough that you can stop where you meant to.
-        HELD_REPEAT_FRAMES = 20
+        # How long a held button waits before it walks to the next row: a tap always moves
+        # exactly one row, and holding walks at about three rows a second — fast enough to
+        # feel responsive, slow enough that you can stop where you meant to.
+        HELD_REPEAT_FRAMES = 20  # :nodoc:
 
         # What is drawn beside the row the cursor is on.
-        CURSOR = ">"
+        CURSOR = ">"  # :nodoc:
 
         # A row that cannot be picked. Dim enough to read as "not for you now", light
         # enough to still be readable — the point of a greyed row is that you can see
         # what you are missing.
-        DISABLED_COLOR = "#404040"
+        DISABLED_COLOR = "#404040"  # :nodoc:
 
         # The gap between the bottom of one row and the top of the next, when the game
-        # does not set one. With the built-in 7px font that puts rows 13 pixels apart, which
-        # is what Wolfenstein's menus use.
-        ROW_GAP = 6
+        # does not set one. With the built-in 7px font that puts rows 13 pixels apart.
+        ROW_GAP = 6  # :nodoc:
 
         # One row of a menu: what it can say, whether it can be picked, the colours it
         # overrides, and what it does when it is chosen. `labels` is always a list,
         # because a settings row says a different thing depending on the setting, and
         # `showing` is the value that picks which of them is on screen.
-        Item = Data.define(:labels, :enabled, :color, :picked, :showing, :action)
+        Item = Data.define(:labels, :enabled, :color, :picked, :showing, :action)  # :nodoc:
 
         # Collects the rows of one menu. Handed to the `menu` block as its argument
         # rather than being the block's `self`, so a bare DSL verb written inside an
@@ -65,7 +95,7 @@ module VBlank
           #   m.item("LOAD GAME", enabled: false) { }
           #   m.item("ODE TO JOY", picked: :yellow)
           #
-          # A SETTINGS ROW SAYS A DIFFERENT THING depending on the setting, so give it the
+          # A settings row says a different thing depending on the setting, so give it the
           # list of things it can say and the variable that decides which:
           #
           #   m.item(["MUSIC: OFF", "MUSIC: ON"], showing: music) { music = 1 - music }
@@ -76,7 +106,7 @@ module VBlank
           # `draw_text` of the value beside it, the value would sit outside the row and
           # stay whatever colour it was drawn in.
           #
-          # A ROW THAT CAN BE PICKED ONLY SOME OF THE TIME — Continue while there is a save,
+          # A row that can be picked only some of the time — Continue while there is a save,
           # Resume while a game is running — takes a test the game works out, or a variable
           # that holds 0 or 1, instead of true or false:
           #
@@ -154,72 +184,61 @@ module VBlank
           end
         end
 
-        # Declare a menu: a list of rows, a cursor that moves between them, and a block
-        # per row saying what picking it does.
+        # Declares a menu: a list of rows, a cursor that moves between them, and a block for each row
+        # saying what picking it does.
         #
-        #   menu :main, at: [80, 60] do |m|
-        #     m.item("NEW GAME")                  { state = PLAYING }
-        #     m.item("LOAD GAME", enabled: false) { state = LOADING }
-        #     m.item("SOUND")                     { state = SOUND }
-        #   end
+        # ```ruby
+        # menu :main, at: [80, 60] do |m|
+        #   m.item("NEW GAME")                  { state = PLAYING }
+        #   m.item("LOAD GAME", enabled: false) { state = LOADING }
+        #   m.item("SOUND")                     { state = SOUND }
+        # end
+        # ```
         #
-        # Up and down move the cursor and WRAP at both ends. A row that cannot be picked
-        # is stepped over rather than landed on, and is drawn in its own dim colour.
-        # Holding a button walks the list instead of moving one row and stopping. The
-        # button named by `press:` runs the picked row's block.
+        # Up and down move the cursor and wrap at both ends. A row that cannot be picked is stepped
+        # over and not landed on, and is drawn in its own dim colour. Holding a button walks the list
+        # instead of moving one row and stopping. The button named by `press:` runs the picked row's
+        # block.
         #
-        # Call it where your frame's work goes — inside your `game_loop`, or inside a
-        # `scene`. A menu reads the buttons and draws itself again on every frame, so a
-        # menu written above the loop would run one time and then never again. That rule
-        # is the same on both screens, which is the whole point of it being a verb: the
-        # menu owns its own drawing, so nothing about where it goes changes with the
-        # screen the way a bare `draw_text` does.
+        # Write it where your frame's work goes, inside your `game_loop` or inside a `scene`. A menu
+        # reads the buttons and draws itself again on every frame, so a menu written above the loop
+        # would run one time and then never again. That is the same on both kinds of screen, because
+        # the menu owns its own drawing.
         #
-        # WHAT IT COSTS DEPENDS ON THE SCREEN, and it is worth knowing before you write a
-        # long one. On `screen :bitmap` the rows are painted into the picture, so they
-        # cost drawing time and no sprites. On `screen :tiled` the console composites the
-        # text for you, and every character is one little sprite of its own — out of the
-        # same table of 128 the game's own sprites come from. So reckon about ONE sprite
-        # for each character of a label, and none at all for a space. Eight rows of ten
-        # characters is about 72; twelve rows of twelve does not fit, and says so.
+        # Which row is picked survives leaving and coming back, so a submenu you back out of opens
+        # where you left it. The cursor starts on the first row that can be picked, unless
+        # `starts_on:` names another. A difficulty screen wants that: its rows run from gentlest to
+        # hardest, and the one the game recommends is usually not the first, so a player who presses
+        # the button straight through gets the game the author meant. It applies only when the game
+        # starts.
         #
-        # A row lights up by CHANGING COLOUR rather than by being drawn twice, which is
-        # what keeps that number at one and not two — see draw_text's `showing:`. The
-        # cursor is the only per-row extra, because it is shown or not shown rather than
-        # recoloured.
+        # A row lights up by changing colour and not by being drawn twice. On `screen :bitmap` the
+        # rows are painted into the picture, so they cost drawing time and no sprites. On `screen
+        # :tiled` every character is one little sprite of its own, out of the same table of 128 the
+        # game's own sprites come from. Reckon about one sprite for each character of a label, and
+        # none for a space. Eight rows of ten characters is about 72, and twelve rows of twelve does
+        # not fit, and says so.
         #
-        # WHICH ROW IS PICKED SURVIVES leaving and coming back, so a submenu you back out
-        # of opens where you left it. That is free: the pick is a variable, and a
-        # variable's starting value is applied once, at power-on.
+        # * `name` - a name for this menu, as a symbol, so that two menus keep their own pick.
+        # * `at:` - where the first row's label starts, as `[x, y]`.
+        # * `spacing:` - pixels from one row to the next.
+        # * `color:` - the colour of a row the cursor is not on.
+        # * `picked:` - the colour of the row the cursor is on.
+        # * `disabled:` - the colour of a row that cannot be picked.
+        # * `cursor:` - what is drawn to the left of the picked row. `""` for none.
+        # * `font:` - a font made with `font`.
+        # * `press:` - the button that runs the picked row's block. The default is `:a`.
+        # * `repeat_every:` - frames between rows while a button is held.
+        # * `starts_on:` - which row the cursor is on when the game starts, counting from 0.
         #
-        # WHERE THE CURSOR STARTS is the first row that can be picked, unless `starts_on:`
-        # names another. A difficulty screen is what wants it: its rows run from gentlest
-        # to hardest, and the one the game RECOMMENDS is usually not the first — so a
-        # player who presses the button straight through gets the game the author meant
-        # rather than the easiest one. That is a real difference in how hard the game is,
-        # not a cosmetic one, and it is a number the menu is given rather than an order
-        # the rows have to be written in. It applies at power-on only: the cursor moves
-        # from there like any other, and a menu you back out of still opens where you
-        # left it.
-        #
-        # THE COLOURS come in three, and any of them can be set per row:
-        #
-        #   color:     a row the cursor is not on
-        #   picked:    the row the cursor is on
-        #   disabled:  a row that cannot be picked
-        #
-        # @param name [Symbol] a name for this menu, so two menus keep their own pick
-        # @param at [Array(Integer, Integer)] where the first row's label starts
-        # @param spacing [Integer, nil] pixels from one row to the next
-        # @param color [Symbol, String, Integer] an unpicked row
-        # @param picked [Symbol, String, Integer] the picked row
-        # @param disabled [Symbol, String, Integer] a row that cannot be picked
-        # @param cursor [String] drawn to the left of the picked row ("" for none)
-        # @param font [Symbol] a font registered by {Builder::Text#font}
-        # @param press [Symbol] the button that runs the picked row's block
-        # @param repeat_every [Integer] frames between rows while a button is held
-        # @param starts_on [Integer, nil] which row the cursor is on at power-on
-        # @return [Menu] a handle: `.picked`, `.moved`, `.length`
+        # Returns a handle that answers `picked`, `moved` and `length`.
+        #--
+        # The cost of a row: a row lights up by CHANGING COLOUR rather than by being drawn twice,
+        # which is what keeps the sprite count at one and not two (see draw_text's `showing:`). The
+        # cursor is the only per-row extra, because it is shown or not shown rather than recoloured.
+        # The pick is a variable, and a variable's starting value is applied once, at power-on,
+        # which is why it survives leaving and coming back.
+        #++
         def menu(name, at:, spacing: nil, color: :gray, picked: :white,
                  disabled: DISABLED_COLOR, cursor: CURSOR, font: :default,
                  press: :a, repeat_every: HELD_REPEAT_FRAMES, starts_on: nil, &block)
@@ -259,23 +278,32 @@ module VBlank
         # have, for the same reason, so it reads the same way.
         def self.checks = CHECKS
 
-        # A menu with no frames to happen on.
+        # A warning about a game that declares a menu and has no `game_loop`:
         #
+        # > This game declares a menu, but it has no `game_loop`. A menu reads the buttons and
+        # > draws itself again on every frame, so it needs frames to run on. With no game loop
+        # > there are none: the rows are drawn one time, and the cursor never moves. To fix this,
+        # > put the game in a `game_loop`.
+        #
+        # Without a game loop the menu's rows show, the cursor never moves, and no button does
+        # anything. Put the game's frames in a `game_loop`, with the menu inside it.
+        #
+        #--
         # A menu is a button read and a redraw made on every frame, so it only exists
-        # over time. With no game loop there are no frames: the rows are drawn once, the
-        # cursor never moves, and no button does anything.
+        # over time.
+        #++
         class NeedsGameLoop
-          NAME = :menu_needs_game_loop
-          PLAIN_NAME = "a menu with no frames to run on"
+          NAME = :menu_needs_game_loop  # :nodoc:
+          PLAIN_NAME = "a menu with no frames to run on"  # :nodoc:
 
-          MESSAGE =
+          MESSAGE =  # :nodoc:
             "This game declares a menu, but it has no `game_loop`. A menu reads the " \
             "buttons and draws itself again on every frame, so it needs frames to run " \
             "on. With no game loop there are none: the rows are drawn one time, and the " \
             "cursor never moves. To fix this, put the game in a `game_loop`."
 
           # Every menu's pick variable is named for the menu it belongs to.
-          PICK_PREFIX = "__menu_"
+          PICK_PREFIX = "__menu_"  # :nodoc:
 
           def detect(program)
             pick = menu_pick(program)
@@ -323,12 +351,12 @@ module VBlank
 
         # One step of the cursor, wrapping at the end it walked off.
         #
-        # A row that cannot be picked is stepped OVER rather than landed on. Which rows
+        # A row that cannot be picked is stepped over rather than landed on. Which rows
         # those are is settled as the program is built, so each one costs a single test:
         # land on it, and go straight on to the next row that can be picked. A menu with
         # nothing disabled emits none of these tests at all.
         #
-        # A ROW THE GAME OPENS AND SHUTS cannot be settled that way, because which rows can
+        # A row the game opens and shuts cannot be settled that way, because which rows can
         # be picked is only known as the game runs. Then the step is a walk: move one row,
         # and keep moving while the row landed on cannot be picked — never more than once
         # round the list, so a menu whose every row is shut right now leaves the cursor
@@ -407,7 +435,7 @@ module VBlank
         # How a menu draws: where its column is, the three colours, the cursor and the
         # font. Carried as one thing so the drawing below reads as drawing rather than as
         # an argument list threaded through it.
-        Style = Data.define(:x, :cursor_x, :font, :color, :picked, :disabled, :cursor)
+        Style = Data.define(:x, :cursor_x, :font, :color, :picked, :disabled, :cursor)  # :nodoc:
 
         # Draw the rows. A row that cannot be picked is drawn dim and never any other
         # way, so its test is settled at build time and costs nothing at run time.
@@ -436,7 +464,7 @@ module VBlank
         # rather than a test because a test belongs to one place in the tree, and a row
         # that can say several things asks the same question once for each of them.
         #
-        # The words are ONE draw in a pair of colours rather than two draws under a test.
+        # The words are one draw in a pair of colours rather than two draws under a test.
         # It says the same thing and paints the same pixels; what it saves is on a tiled
         # screen, where two draws would be two sprites for every character with one of
         # them always hidden. The cursor is still a test, because it is shown or not
@@ -500,7 +528,7 @@ module VBlank
           end
         end
 
-        # What `enabled:` set, kept as true, false, or a VARIABLE that is 1 while the row can
+        # What `enabled:` set, kept as true, false, or a variable that is 1 while the row can
         # be picked. A test is turned into one here, at the top of the menu's frame: it is asked
         # in several places — stepping, choosing, drawing — and a test belongs to one place in
         # the program, where a variable can be read as often as anybody likes.
@@ -650,7 +678,7 @@ module VBlank
         def menu_site_phrase(at, which) = at ? "At #{at}" : "In the #{which} place"
 
         # Down here because the check classes it names are declared above it.
-        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])
+        CHECKS = Ractor.make_shareable([NeedsGameLoop.new])  # :nodoc:
       end
     end
   end

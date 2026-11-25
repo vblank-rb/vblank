@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# WHAT A PICTURE IS MADE OF: colours, letters, and the images themselves — including the
+# What a picture is made of: colours, letters, and the images themselves — including the
 # readers that take art in the shape somebody else's tool left it, and the writer that puts a
 # picture out as a file a person can open.
 

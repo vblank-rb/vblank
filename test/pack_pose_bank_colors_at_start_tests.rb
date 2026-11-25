@@ -3,7 +3,7 @@
 require "tmpdir"
 require "all/vblank/builder/test_pack_pose_bank_colors"
 
-# A POSE IN THE BANK ITS FRAME NAMES, ITS PACK LEFT OUT: what the games of PackPoseBankColorGames
+# A pose in the bank its frame names, its pack left out: what the games of PackPoseBankColorGames
 # (test/all/vblank/builder/test_pack_pose_bank_colors.rb) do built with `pack_at_start: true` beyond
 # what the registry holds alike (PackGames::PosesInBankColors, test/pack_games.rb): a frame whose
 # pieces name two banks, which the build that holds the pack refuses, and one sprite facing frames of
@@ -17,7 +17,7 @@ module PackPoseBankColorsAtStartTests
 
   LEFT_OUT = VBlank::Cartridge::Options.new(for_computer: true, pack_at_start: true)
 
-  # THE FILE IS THE PLAYER'S, so a frame whose pieces name two banks does not stop the game: the
+  # The file is the player's, so a frame whose pieces name two banks does not stop the game: the
   # pose is drawn whole in the bank its front piece names, here bank 1.
   def test_a_frame_of_two_banks_is_drawn_in_its_front_pieces_bank_with_the_pack_left_out
     Dir.mktmpdir do |folder|
@@ -40,6 +40,46 @@ module PackPoseBankColorsAtStartTests
           assert_equal BANKS[1].fetch(place), screen.pixel(at_x + (at % 8), 40 + (at / 8)), "tile #{tile}, pixel #{at}"
         end
       end
+    end
+  end
+
+  # A pose told its banks (`banks:`) keeps each piece in its own bank's colours with the pack left
+  # out, and a piece of a bank it was not told, which the build that holds the pack refuses, is not
+  # painted: here the frame's piece of bank 3, beside the piece of bank 1.
+  def test_a_pose_told_its_banks_paints_the_pieces_of_those_banks_alone_with_the_pack_left_out
+    Dir.mktmpdir do |folder|
+      _, file = game_and_file_of(folder) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 3]
+      end
+      program, = game_and_file_of(folder, options: LEFT_OUT) do |pack|
+        image :mixed, tiles: pack[:video], frame: pack[:frames].frame(IN_TWO_BANKS, layout: FRAME), origin: ORIGIN,
+                      colors: pack[:palette], banks: [1, 2], size: [16, 8]
+        sprite :mixed, at: [40, 40]
+      end
+      screen = game_player.hand_file(file).run(program, frames: 4).screen
+
+      TILES.fetch(0).each_with_index do |place, at|
+        assert_equal BANKS[1].fetch(place), screen.pixel(40 + (at % 8), 40 + (at / 8)), "the piece of bank 1, pixel #{at}"
+      end
+      backdrop = screen.pixel(0, 0)
+      64.times { |at| assert_equal backdrop, screen.pixel(48 + (at % 8), 40 + (at / 8)), "the piece of bank 3, pixel #{at}" }
+    end
+  end
+
+  # A piece's bank counted from the thing's, read by the game's reader as the pack is unpacked: the
+  # record the unpacking writes holds the bank that comes out, and the pose paints each piece in it.
+  def test_a_pose_whose_pieces_add_their_bank_to_the_things_paints_each_in_that_bank_with_the_pack_left_out
+    test = self
+    Dir.mktmpdir do |folder|
+      _, file = game_and_file_of(folder) { |pack| test.declare_relative_bank_pose_for(self, pack) }
+      program, = game_and_file_of(folder, options: LEFT_OUT) do |pack|
+        test.declare_relative_bank_pose_for(self, pack, size: [24, 8])
+        sprite :sword, at: [40, 40]
+      end
+      screen = game_player.hand_file(file).run(program, frames: 4).screen
+
+      assert_relative_bank_pieces_drawn(screen)
     end
   end
 

@@ -72,7 +72,7 @@ module PackBackdropGames
     b.program
   end
 
-  # THREE SCENES UNDER A TINT. The logos say their backdrop is the pack's first colour, the title
+  # Three scenes under a tint. The logos say their backdrop is the pack's first colour, the title
   # that it is the second bank's, and the menu says none, so it shows the game's, black. A tint
   # toward red starts full and lifts by a tenth each pass, as a game fades its first screen in;
   # the title arrives on pass +TITLE_PASS+ while the tint is still in force, and the menu on pass
@@ -136,11 +136,7 @@ module PackBackdropGames
         instance_exec(level, &each_pass)
         state = 1 if tick == TITLE_PASS
         state = 2 if tick == MENU_PASS
-        case_var(:state) do
-          when_val 0, :logos
-          when_val 1, :title
-          when_val 2, :menu
-        end
+        call({ 0 => :logos, 1 => :title, 2 => :menu }, number: :state)
       end
     end
     b.finalize_program
@@ -160,7 +156,7 @@ module PackBackdropGames
   def pack_cell_of(builder, pack, name) = pack_cell(builder, pack, name)
 end
 
-# A SCREEN'S BACKDROP TAKEN FROM THE DATA PACK (`screen :tiled, backdrop: pack[:palette]`). A retail
+# A screen's backdrop taken from the data pack (`screen :tiled, backdrop: pack[:palette]`). A retail
 # game's screen shows, wherever none of its tiles draws, the first colour of the colours it loaded,
 # and that colour is data of the player's copy. So a port says the backdrop is the slot's first
 # colour, or a bank's, or another place of either.

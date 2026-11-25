@@ -28,7 +28,7 @@ module RecolorSeveralListsGames
     own.each_with_index.map { |color, place| place.zero? ? color : color ^ (step + 1) << 12 }
   end
 
-  # WHICH SET EACH LIST HOLDS ON EACH PASS, counting passes from 1: 3 is its own colours. The
+  # Which set each list holds on each pass, counting passes from 1: 3 is its own colours. The
   # lists change on different passes, all three change on pass 7, and :sign goes back to its
   # own on pass 9 while the others stay.
   STEPS = Ractor.make_shareable({ sign: [3, 3, 0, 0, 1, 1, 1, 2, 2, 3, 3],
@@ -41,7 +41,7 @@ module RecolorSeveralListsGames
                                         plain: [[25, 1], [29, 1]] })
   SPRITE_PIXELS = Ractor.make_shareable({ sign: [[41, 41], [45, 41]], words: [[61, 41], [65, 41]], trim: [[81, 41], [85, 41]] })
 
-  # ONE BACKGROUND WHOSE TILES ARE DRAWN FROM FOUR LISTS, three of which the game changes, each
+  # One background whose tiles are drawn from four lists, three of which the game changes, each
   # through its own three sets by its own number, and a sprite drawn with each of the three. Each
   # picture is 8x8, its left half its list's first colour after place 0 and its right half the next.
   # +following+ is what the background is told to draw with, the three lists by default. A block
@@ -80,7 +80,7 @@ module RecolorSeveralListsGames
   end
 end
 
-# A BACKGROUND DRAWN FROM SEVERAL LISTS THE GAME CHANGES follows each of them: a tile shows what
+# A background drawn from several lists the game changes follows each of them: a tile shows what
 # its own list holds, as a sprite drawn with that list does, so a screen whose lists all walk to
 # black fades whole.
 class TestRecolorSeveralLists < Minitest::Test

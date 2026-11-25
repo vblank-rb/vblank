@@ -10,7 +10,7 @@ module VBlank
         # how often it overflows — that's the rate the DSL asks for.
         #
         # A timer's raw counter races along too fast to read meaningfully, so to answer
-        # "how many times has it overflowed?" we chain a second timer in CASCADE mode: a
+        # "how many times has it overflowed?" we chain a second timer in cascade mode: a
         # cascade timer ticks once each time the timer below it overflows. So a logical
         # timer whose overflow count is read reserves a PAIR — the rate timer, plus the
         # cascade timer immediately after it that counts its overflows — and reading the
@@ -58,9 +58,9 @@ module VBlank
 
           NUM_HW_TIMERS = 4
 
-          # THE CYCLES IN ONE DISPLAYED FRAME: 228 scanlines of 308 dots, four cycles a dot.
+          # The cycles in one displayed frame: 228 scanlines of 308 dots, four cycles a dot.
           #
-          # The console does NOT run at 60 frames a second. It runs at CPU_CLOCK_HZ divided
+          # The console does not run at 60 frames a second. It runs at CPU_CLOCK_HZ divided
           # by this, which is 59.7275, and the difference is small enough to look like a
           # rounding detail and much too big to treat as one — see Console::SampleClock.
           FRAME_CYCLES = Console::ADVANCE.cycles_a_frame
@@ -76,6 +76,11 @@ module VBlank
           SampleClock = Console::SampleClock
 
           def self.sample_clock(hz) = Console::ADVANCE.sample_clock(hz)
+
+          # A named timer's hardware: +rate+ the index of the timer that runs it, +count+ the index of the
+          # one that counts its overflows (nil when its ticks are never read), +handler+ its on_tick
+          # statements (nil for none) and +hz+ the rate the program first asked for.
+          HardwareTimer = Data.define(:rate, :count, :handler, :hz)
 
           def initialize(emitter:)
             @emitter = emitter
@@ -93,6 +98,14 @@ module VBlank
             @reserved_because = because
           end
 
+          # Take the next hardware timer nobody holds, for the build's own use, once the game's own
+          # timers have theirs (#register_timers): its index, or nil when all four are held.
+          def claim_spare
+            return nil if @next_hw_timer >= NUM_HW_TIMERS
+
+            (@next_hw_timer += 1) - 1
+          end
+
           # Assign each named timer its hardware timer index (0-3) up front, so a
           # timer_start/timer_stop/timer_ticks anywhere in the tree already knows which
           # registers to touch. A timer whose overflow count is read also gets a cascade
@@ -105,7 +118,7 @@ module VBlank
             end
           end
 
-          # +hz+ is the rate the program ASKED for, kept because a profile holds the ticks that
+          # +hz+ is the rate the program asked for, kept because a profile holds the ticks that
           # really arrived against it. A timer restarted at a different rate keeps the first,
           # the same way the registry keeps the first of everything else about it.
           def register_timer(name, counted, handler, hz = nil)
@@ -120,13 +133,13 @@ module VBlank
                     "#{"#{@reserved_because} " if @reserved_because}Reading a timer's ticks costs two " \
                     "timers: one to run it, and one to count its overflows. To fix this, use fewer timers."
             end
-            @timers[name] = { rate: rate, count: count, handler: handler, hz: hz }
+            @timers[name] = HardwareTimer.new(rate: rate, count: count, handler: handler, hz: hz)
           end
 
           # The timers with an on_tick handler, each [name, info], in hardware-timer order —
           # each one raises an interrupt the dispatcher services.
           def irq_timers
-            @timers.select { |_, info| info[:handler] }.sort_by { |_, info| info[:rate] }
+            @timers.select { |_, timer| timer.handler }.sort_by { |_, timer| timer.rate }
           end
 
           # Start (or restart) a timer at its requested rate. We disable it first so the
@@ -139,30 +152,30 @@ module VBlank
             # A timer with an on_tick handler also raises an interrupt on each overflow,
             # which the dispatcher services.
             rate_ctrl = TIMER_ENABLE | prescaler
-            rate_ctrl |= TIMER_IRQ if info[:handler]
-            @emitter.write_reg16(timer_reg_h(info[:rate]), 0)             # off
-            @emitter.write_reg16(timer_reg_l(info[:rate]), reload)        # reload value
-            @emitter.write_reg16(timer_reg_h(info[:rate]), rate_ctrl)     # on
-            return unless info[:count]
+            rate_ctrl |= TIMER_IRQ if info.handler
+            @emitter.write_reg16(timer_reg_h(info.rate), 0)             # off
+            @emitter.write_reg16(timer_reg_l(info.rate), reload)        # reload value
+            @emitter.write_reg16(timer_reg_h(info.rate), rate_ctrl)     # on
+            return unless info.count
 
-            @emitter.write_reg16(timer_reg_h(info[:count]), 0)                     # off
-            @emitter.write_reg16(timer_reg_l(info[:count]), 0)                     # count up from zero
-            @emitter.write_reg16(timer_reg_h(info[:count]), TIMER_ENABLE | TIMER_CASCADE)
+            @emitter.write_reg16(timer_reg_h(info.count), 0)                     # off
+            @emitter.write_reg16(timer_reg_l(info.count), 0)                     # count up from zero
+            @emitter.write_reg16(timer_reg_h(info.count), TIMER_ENABLE | TIMER_CASCADE)
           end
 
           # Stop a timer (and its cascade partner): clear the enable bit; the counter
           # freezes at its current value.
           def emit_timer_stop(node)
             info = timer_info(node.name)
-            @emitter.write_reg16(timer_reg_h(info[:rate]), 0)
-            @emitter.write_reg16(timer_reg_h(info[:count]), 0) if info[:count]
+            @emitter.write_reg16(timer_reg_h(info.rate), 0)
+            @emitter.write_reg16(timer_reg_h(info.count), 0) if info.count
           end
 
           # Read a timer's overflow count into the accumulator — the cascade partner's
           # live counter (a 16-bit halfword load, like reading any hardware register).
           def eval_timer_ticks(node)
             info = timer_info(node.name)
-            @emitter.emit_number(TMP, timer_reg_l(info[:count]))
+            @emitter.emit_number(TMP, timer_reg_l(info.count))
             @emitter.emit(ASM.load_halfword(ACC, TMP))
           end
 

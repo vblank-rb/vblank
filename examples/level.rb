@@ -28,9 +28,9 @@ module Level
 
   TILES = "assets/tiles.png" # a 2-cell tile sheet (brick is tile 1, floor is tile 2)
   HERO  = "assets/hero.png"  # a 4-frame walk-cycle sprite sheet
-  MAP   = Ractor.make_shareable("assets/level.csv") # a 30x20 tilemap exported as CSV (1 = brick, 2 = floor)
+  MAP   = "assets/level.csv" # a 30x20 tilemap exported as CSV (1 = brick, 2 = floor)
 
-  GAME = VBlank.game("LEVEL", consoles: %i[gba snes genesis]) do
+  GAME = VBlank.game("LEVEL", consoles: %i[gba snes genesis gbc]) do
     screen :tiled # tile mode: a background room + a hardware sprite over it
 
     # Import the whole tile sheet as numbered tiles, then read the CSV level straight

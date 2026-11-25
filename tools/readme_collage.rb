@@ -13,7 +13,7 @@ require_relative "../lib/vblank"
 # It needs the emulator and ffmpeg. Each game runs on a real Advance cartridge in the emulator,
 # which is the point: this is what somebody who builds the example gets.
 #
-# Nobody is at the controls, so each game has an AUTOPILOT: a few presses to get past its start
+# Nobody is at the controls, so each game has an autopilot: a few presses to get past its start
 # screen, then a small block asked before every frame which buttons are down. The block is
 # handed the running game and how many frames it has played, so it can follow the ball or just
 # walk a route. A game whose variables or screens change can stop making sense to its

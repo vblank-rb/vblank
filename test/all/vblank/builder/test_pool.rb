@@ -18,7 +18,7 @@ class TestPool < Minitest::Test
 
   # spawn several instances with distinct fields; each draws every live one at its own
   # (x, y). Proves spawn, each, per-instance field reads, and that fields stay paired
-  # (each instance draws at ITS own x AND y, never a crossed pair).
+  # (each instance draws at its own x AND y, never a crossed pair).
   def test_spawn_and_each_draw_each_live_instance_at_its_own_fields
     b = Builder.new
     b.instance_eval do
@@ -222,7 +222,7 @@ class TestPool < Minitest::Test
 
   # --- baked guardrails (build-time, friendly errors) ---
 
-  # A POOL TOO BIG TO SHARE THE QUICK MEMORY. The console has 32K of quick memory, which the
+  # A pool too big to share the quick memory. The console has 32K of quick memory, which the
   # game's hot code lives in too, and 256K of roomier memory. A pool over the ceiling is kept
   # in the roomier one, where it fits: it is refused only when the game insists on the quick
   # one, and a capacity too big for both memories is the whole-program check's to refuse.
@@ -283,7 +283,7 @@ class TestPool < Minitest::Test
     assert_match(/pool :flock/, err.string, "the pool is named as what takes the sprites")
   end
 
-  # THE COUNT IS OF THE POOL AS IT IS BUILT. A pool is a list per field and a few of its
+  # The count is of the pool as it is built. A pool is a list per field and a few of its
   # own, each exactly `capacity` slots long and each as wide as it was declared — so that is
   # what is counted. Counting it bigger refuses a pool that fits. These insist on the quick
   # memory, which is what holds a pool to the ceiling.

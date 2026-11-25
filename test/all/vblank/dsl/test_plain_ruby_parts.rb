@@ -6,8 +6,12 @@ VBlank.require_game_file "../../../fixtures/game_with_two_parts/first"
 VBlank.require_game_file "../../../plain_ruby_game_parts"
 VBlank.require_game_file "../../../plain_ruby_loop_parts"
 VBlank.require_game_file "../../../plain_ruby_named_parts"
+VBlank.require_game_file "../../../plain_ruby_split_counts_named"
+VBlank.require_game_file "../../../plain_ruby_split_counts_changed"
 VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "../../../plain_ruby_secret_lift_parts"
+VBlank.require_game_file "../../../plain_ruby_kept_part_hooks"
+VBlank.require_game_file "../../../plain_ruby_name_list_parts"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -29,7 +33,7 @@ class TestPlainRubyParts < Minitest::Test
     player
   end
 
-  # GAME VARIABLES A PART NAMES. Each part keeping its state in instance variables it names with
+  # Game variables a part names. Each part keeping its state in instance variables it names with
   # `game_variables` (test/plain_ruby_game_parts.rb) has a twin keeping the same state in `var`,
   # which is the answer key: both played the same, and the number the twin leaves is given too.
 
@@ -83,26 +87,23 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [3, 5], [player[:lamp_ons], player[:lamp_glow]]
   end
 
-  def test_an_unnamed_instance_variable_game_code_tests_then_changes_is_refused_at_the_change
+  # Unnamed instance variables the source shows game code changing are game numbers, as if named.
+
+  def test_an_unnamed_instance_variable_game_code_counts_then_tests_plays_as_a_var
+    assert_equal 1, played(UnnamedCountPart, :unnamed_count_tick)[:unnamed_count_late]
+  end
+
+  def test_an_unnamed_instance_variable_one_routine_sets_and_another_tests_plays_as_a_var
+    assert_equal 2, played(UnnamedAcrossRoutinesPart, :across_routines_test, :across_routines_set)[:across_routines_seen]
+  end
+
+  # `@busy = 1` in a method a routine calls, tested above it: nothing in the source shows the method
+  # is game code, so the build stops at the change, naming the fix.
+  def test_an_unnamed_instance_variable_a_method_sets_outright_after_game_code_tests_it_is_refused
     error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedTiltPart, :unnamed_tilt_handle) }
 
     assert_match(/`@busy` is changed while the game plays.*\(changed at plain_ruby_game_parts\.rb:\d+\)/m, error.message)
     assert_match(/game_variables :busy` to UnnamedTiltPart/, error.message)
-  end
-
-  def test_an_unnamed_instance_variable_game_code_counts_then_tests_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(UnnamedCountPart, :unnamed_count_tick) }
-
-    assert_match(/`@frames` is changed while the game plays/, error.message)
-    assert_match(/game_variables :frames` to UnnamedCountPart/, error.message)
-  end
-
-  def test_an_unnamed_instance_variable_one_routine_sets_and_another_tests_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
-      played(UnnamedAcrossRoutinesPart, :across_routines_test, :across_routines_set)
-    end
-
-    assert_match(/game_variables :mode` to UnnamedAcrossRoutinesPart/, error.message)
   end
 
   def test_a_module_names_its_own_instance_variable_for_the_class_taking_it_in
@@ -117,7 +118,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal 6, played(ScrollPart, :scroll_part_make, :scroll_part_tick)[:scroll_part_shown]
   end
 
-  # A NAMED VALUE IS THE GAME'S FROM ITS FIRST NUMBER ON (test/plain_ruby_named_parts.rb), each
+  # A named value is the game's from its first number on (test/plain_ruby_named_parts.rb), each
   # held to its twin written with `var`.
 
   def test_a_named_value_read_in_a_block_another_part_calls_and_set_back_elsewhere_plays_as_a_var
@@ -237,16 +238,15 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [8, 5], [player[:copied_level_part_level], player[:copied_level_source]]
   end
 
-  def test_an_unnamed_value_sharing_a_variable_given_another_is_refused_naming_game_variables
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(HandedHeldPart, :handed_held_tick) }
+  def test_an_unnamed_value_handed_a_variable_then_given_another_copies_its_number
+    player = played(HandedHeldPart, :handed_held_tick)
 
-    assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
+    assert_equal [0, 1, 1], [player[:handed_held_0], player[:handed_held_1], player[:handed_held_part_seen]]
   end
 
-  # A HOLDER HANDED A VARIABLE (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
-  # holds it for a while, and in Ruby a line giving the holder a number leaves the slot as it was;
-  # the build cannot copy into a variable the holder does not have, so it stops at the line,
-  # naming `game_variables`. One handed whole to a part is that part's to change.
+  # A holder handed a variable (test/plain_ruby_game_parts.rb): a slot of a Hash, an argument, or
+  # another part's attribute. As in Ruby, a line of game code giving the holder a number gives it
+  # a number of its own, and the place it was handed keeps its number.
   private def played_with_cursor(holder, routine)
     builder = Builder.new
     holder.new(builder, HandedCursor.new)
@@ -255,19 +255,20 @@ class TestPlainRubyParts < Minitest::Test
     game_player.tap { |player| player.run(builder.program, frames: 3) }
   end
 
-  private def assert_slot_holder_refused(holder, routine, variable)
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(holder, routine) }
+  def test_an_unnamed_value_handed_a_slot_of_a_hash_given_a_number_keeps_its_own
+    player = played(HandedHeldNumberPart, :handed_held_number_tick)
 
-    assert_match(/`@held` holds the game variable :#{variable}.*`game_variables :held` to #{holder.name}/m, error.message)
-    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+    assert_equal [0, 5], [player[:handed_held_number_0], player[:handed_held_number_part_seen]]
   end
 
-  def test_an_unnamed_value_sharing_a_slot_of_a_hash_given_a_number_is_refused
-    assert_slot_holder_refused(HandedHeldNumberPart, :handed_held_number_tick, :handed_held_number_0)
-  end
+  # 2, 3, 4: the holder counts up from the slot's 1, and the slot keeps it.
+  def test_an_unnamed_value_handed_a_slot_of_a_named_hash_counted_up_keeps_its_own
+    seen = (1..3).map do |frames|
+      player = played(NamedStatesHeldPart, :named_states_held_tick, frames: frames)
+      [player[:named_states_held_part_states_0], player[:named_states_held_part_seen]]
+    end
 
-  def test_an_unnamed_value_sharing_a_slot_of_a_named_hash_counted_up_is_refused
-    assert_slot_holder_refused(NamedStatesHeldPart, :named_states_held_tick, :named_states_held_part_states_0)
+    assert_equal [[1, 2], [1, 3], [1, 4]], seen
   end
 
   # 1, 2, then set back to 0 and counted to 1.
@@ -275,14 +276,14 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [1, 2, 1], (1..3).map { |frames| played(MadeByMethodPart, :made_by_method_tick, frames: frames)[:made_by_method_count] }
   end
 
-  def test_a_value_handed_a_variable_whole_as_an_argument_changes_it
+  def test_a_value_handed_a_variable_whole_as_an_argument_leaves_it
     player = played_with_cursor(HandedArgumentMakerPart, :handed_argument_tick)
 
-    assert_equal 5, player[:handed_cursor_selection]
+    assert_equal 3, player[:handed_cursor_selection]
   end
 
-  def test_a_value_handed_a_slot_whole_as_an_argument_changes_it
-    assert_equal 5, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
+  def test_a_value_handed_a_slot_whole_as_an_argument_leaves_it
+    assert_equal 1, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
   end
 
   def test_a_named_value_handed_another_parts_variable_keeps_a_number_of_its_own
@@ -334,8 +335,40 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/variable name :lit_held, and another variable of the game has that name/, error.message)
   end
 
-  def test_a_named_array_of_numbers_at_an_index_the_game_works_out_is_refused
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByNumberPart, :counts_by_number_tick) }
+  # The index is a game variable holding 1, so each pass counts up the second item. The list is
+  # named as the variable for each key would be: the part's name, then the instance variable's.
+  def test_a_named_array_of_numbers_at_an_index_the_game_works_out_plays_as_a_list
+    player = played(CountsByNumberPart, :counts_by_number_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:counts_by_number_part_counts)
+  end
+
+  # The class names the Array in one file and changes it at a worked-out index in another,
+  # reopened there. It plays as the one-file part above.
+  def test_a_named_array_changed_at_a_worked_out_index_in_another_file_plays_as_a_list
+    player = played(SplitCountsPart, :split_counts_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:split_counts_part_counts)
+  end
+
+  # A subclass in another file changes the Array its parent names: the subclass's object keeps a
+  # list, named by the subclass.
+  def test_a_subclass_in_another_file_changes_its_parents_named_array_as_a_list
+    player = played(SplitCountsChildPart, :split_counts_child_tick, frames: 3)
+
+    assert_equal [0, 3], player.list(:split_counts_child_part_counts)
+  end
+
+  # Read in the other file only at an index known while building: a variable for each index.
+  def test_a_named_array_read_in_another_file_at_known_indexes_stays_a_variable_for_each
+    player = played(SplitKnownCountsPart, :split_known_counts_tick, frames: 3)
+
+    assert_equal [0, 3], [player[:split_known_counts_part_counts_0], player[:split_known_counts_part_counts_1]]
+  end
+
+  # A named Hash has no list to be, so a key the game works out is still refused.
+  def test_a_named_hash_of_numbers_at_a_key_the_game_works_out_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(CountsByKeyPart, :counts_by_key_tick) }
 
     assert_match(/worked out as the game plays/, error.message)
   end
@@ -367,7 +400,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/`game_variables`.*body/, error.message)
   end
 
-  # BUILD-TIME RUBY STAYS RUBY'S. Planned: 2 loads that do not fit, 12 by each, 6 by to_h, 6 by
+  # Build-time Ruby stays Ruby's. Planned: 2 loads that do not fit, 12 by each, 6 by to_h, 6 by
   # times, 15 + 3 filled in, 2 by a lambda, 2 in a Struct, 6 of its own, 15 in the buffer; written
   # to the list on every pass.
   def test_build_time_ruby_in_a_part_made_inside_a_routine_stays_ruby
@@ -391,7 +424,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_match(/`@aim` is a game variable, and it holds `nil`/, error.message)
   end
 
-  # A NAMED VALUE ONLY SOME BUILDS HAVE (test/plain_ruby_secret_lift_parts.rb): set only under a
+  # A named value only some builds have (test/plain_ruby_secret_lift_parts.rb): set only under a
   # test decided while building, and skipped with the lines naming it by a build that has no use
   # for it.
 
@@ -476,7 +509,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [4, 2], [player[:ticks], player[:ticks_2]]
   end
 
-  # A METHOD CALLED ON EVERY PASS SETS ITS NAMES ON EVERY PASS. Each of LoopCountPart's methods
+  # A method called on every pass sets its names on every pass. Each of LoopCountPart's methods
   # (test/plain_ruby_loop_parts.rb) starts a count at 0 and counts in a block or a loop. The game
   # keeps the answer of each pass, so a count that carried on from the pass before shows as a
   # bigger number on a later one. +count+ is handed the part and three, a number the game keeps.
@@ -794,7 +827,7 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [4, 4], [player[:unpacked_first], player[:unpacked_second]]
   end
 
-  # A NAME SET FROM A BYTE READ AT A PLACE HOLDS THAT BYTE once the place moves on, in a game file
+  # A name set from a byte read at a place holds that byte once the place moves on, in a game file
   # (test/plain_ruby_flagged_bytes_part.rb) as in a game block: `flags = packed[at]`, then
   # `at += 1`, then `flags` used. Read again where it is used, it would be the next byte.
   def test_a_name_set_from_a_byte_read_in_a_game_files_routine_holds_that_byte
@@ -816,5 +849,45 @@ class TestPlainRubyParts < Minitest::Test
     player = played_game(frames: 2) { flagged_byte_held_across_calls_game(self) }
 
     assert_equal [FlaggedBytes::PACKED[0]] * 2, [player[:by_method], player[:by_routine]]
+  end
+
+  # A part kept with `||=` in a scene is made once, so what its `initialize` hands another part
+  # goes into that part's plain Ruby Array once, while the game is built, as Ruby does
+  # (test/plain_ruby_kept_part_hooks.rb). The block handed over runs on every pass after.
+  def test_a_kept_part_hands_another_part_a_block_as_it_is_made
+    counts = (1..3).map { |frames| hook_play(frames)[:hook_counted_count] }
+
+    assert_equal [1, 2, 3], counts
+  end
+
+  # CostumeJump starts from the names worn once it has added its two, and counts a jump a pass.
+  def test_a_kept_part_adds_names_to_another_parts_array_as_it_is_made
+    assert_equal 5, hook_play(3)[:costume_jump_jumps]
+  end
+
+  # The same push from the scene's own code runs on every pass in Ruby, and the game cannot.
+  def test_a_push_into_another_parts_array_from_code_run_every_pass_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played_game do
+        hook_play_each_pass_game(self)
+      end
+    end
+
+    assert_match(/`@asked` with `<<`.*plain Ruby Array/m, error.message)
+  end
+
+  private def hook_play(frames)
+    played_game(frames: frames) do
+      hook_play_game(self)
+    end
+  end
+
+  # A list of Symbols a part fills while it is set up, and game code never changes, stays Ruby's
+  # (test/plain_ruby_name_list_parts.rb): `@used.intersect?(AIMS)` is answered while building, so
+  # the count goes up by one a pass and never by ten.
+  def test_a_list_of_names_filled_while_setting_up_is_asked_as_ruby
+    player = played_game(frames: 3) { name_list_game(self) }
+
+    assert_equal 3, player[:name_list_runner_count]
   end
 end

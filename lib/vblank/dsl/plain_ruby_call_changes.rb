@@ -2,8 +2,8 @@
 
 module VBlank
   module DSL
-    module PlainRuby
-      # WHAT A CALL OF GAME CODE CAN CHANGE, for LocalNames#copy_kept, as a second file of
+    module PlainRuby # :nodoc: all
+      # What a call of game code can change, for Promotion#kept_copy, as a second file of
       # LocalNames: it reads the names LocalNames found. A local set from a game value keeps its
       # number in a copy unless nothing can change it before it is read. Each copy costs a
       # variable, so the proof is worth making narrow: a call counts only as a change of what the
@@ -18,7 +18,7 @@ module VBlank
       #   what it is handed, and whatever an object was handed as it was made.
       #
       # Code this source does not show (a method of another file called on nothing, `call` of a
-      # routine made elsewhere, `case_var`, `start_over`) can change anything, so it counts as a
+      # routine made elsewhere, `start_over`) can change anything, so it counts as a
       # change of every name.
       module CallChanges
         # What one call can change: +names+, each as #names_read_by keys it (a local, an instance
@@ -65,7 +65,7 @@ module VBlank
           def after?(write) = offset > write.location.end_offset && (statement.nil? || write.location.start_offset >= statement)
 
           # Does it come before +read+? A side apart counts only where the block says it does for
-          # the local read (LocalNames#side_apart_holds?).
+          # the local read (Promotion#side_apart_holds?).
           def reaches?(read)
             at = read.location.start_offset
             at >= offset && apart.none? { |side| at.between?(side.from, side.to) && yield(side) }
@@ -116,9 +116,9 @@ module VBlank
           return found.keys if found.key?(mod)
 
           found[mod] = true
+          # The library registers no autoloads, so every constant here is loaded. Asking autoload? from a
+          # Ractor while another loads a file can crash Ruby (https://bugs.ruby-lang.org/issues/22622).
           mod.constants(false).each do |name|
-            next if mod.autoload?(name)
-
             inner = constant_in(mod, name)
             vblank_modules(inner, found) if inner.is_a?(Module) && inner.name&.start_with?("VBlank::")
           end
@@ -237,7 +237,7 @@ module VBlank
           names.reject { |name| name.is_a?(LocalNames::Local) && holds_number?(name) }
         end
 
-        def holds_number?(local) = local.plain_name? && !local.parameter? && local.starts_as_number?
+        def holds_number?(local) = promotion.plain_number?(local)
 
         def whole_name(key) = key.is_a?(Array) ? key.first : key
 

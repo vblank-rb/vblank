@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHAT A RUN OF A PROGRAM CAN REACH (IR::Reach): the routines it calls, however deep, and the
+# What a run of a program can reach (IR::Reach): the routines it calls, however deep, and the
 # variables it keeps. Every lowering asks, so each makes the same routines and keeps the same
 # variables, and a routine nothing calls is made by none of them.
 class TestReach < Minitest::Test

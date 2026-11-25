@@ -2,7 +2,7 @@
 
 require "test_helper"
 require "native_comparison"
-require VBlank.root.join("examples/pixels").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pixels").to_s)
 
 # examples/pixels.rb built for the desktop shows the interpreter's picture pixel for pixel: a
 # flag, three dots and the four corner markers, drawn once by a program with no game loop that
@@ -11,7 +11,7 @@ class TestPixelsPicture < Minitest::Test
   include NativeComparison
 
   def test_pixels_matches_the_interpreter
-    program = Native.new.checked_program(Pixels, err: nil)
+    program = Native.new.checked_program(Pixels::GAME, err: nil)
 
     last = assert_native_matches_reference(program)
 

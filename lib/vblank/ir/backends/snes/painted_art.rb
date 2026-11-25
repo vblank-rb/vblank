@@ -4,28 +4,28 @@ module VBlank
   module IR
     module Backends
       class SNES
-        # WHAT A PAINTED SCREEN'S GAME PAINTS WITH, worked out while the game is built: its colours,
+        # What a painted screen's game paints with, worked out while the game is built: its colours,
         # its pictures and text in the form Runtime::Paint copies them onto the screen, and the
         # rows it clears the screen with.
         #
-        # THE COLOURS. A painted screen is one background of tiles whose pixels are eight bits each
+        # The colours. A painted screen is one background of tiles whose pixels are eight bits each
         # (Runtime::Paint), so every pixel is one of 256 colours from one list, the console's colour
         # memory (CGRAM). Every colour the game can paint is known before it runs — each drawing
         # names its colours — so the list is made here, and the game paints a colour's place in it.
         # Place 0 is black: a pixel of place 0 is see-through on the console, and shows the colour
         # behind every layer, which is set to black too, the colour the screen starts in.
         #
-        # A PICTURE is kept row by row, and each row as the tiles' rows it paints: a COLUMN of ten
+        # A picture is kept row by row, and each row as the tiles' rows it paints: a column of ten
         # bytes for every tile across it reaches — which of the tile's eight pixels the picture
-        # draws (its MASK), twice, then the eight bits of their colours' places (its PLANES) in the
+        # draws (its MASK), twice, then the eight bits of their colours' places (its planes) in the
         # pairs a tile keeps them in (planes 0 and 1, 2 and 3...), leftmost pixel in the top bit, as
         # a tile of the console's keeps its pixels. So Runtime::Paint reads each 16-bit word ready to
         # write into a tile's row: the mask, then each pair of planes. A picture painted at a place
         # across that is not a multiple of eight falls across one tile more than its width, its
         # pixels shifted along; each row is kept already shifted for each place across modulo eight
-        # it can be painted at, one RUN after the other, so the painting never shifts anything.
+        # it can be painted at, one run after the other, so the painting never shifts anything.
         #
-        # THE RUNS KEPT. Eight runs a row is eight times the picture, so a picture keeps only the
+        # The runs kept. Eight runs a row is eight times the picture, so a picture keeps only the
         # runs for the places the game can paint it at (#paint_at, worked out by
         # Lowering::Paint.shifts_reachable): text written at one place keeps one run, a picture
         # whose place is worked out as the game runs keeps all eight. Each picture has a table of
@@ -55,6 +55,7 @@ module VBlank
           def initialize
             @colors = [BLACK]
             @places = { BLACK => 0 }
+            @kept = {} # a list of colours kept for sprites: its first place -> its colours (#keep_places)
             @pictures = []
             @numbered = {}
             @shifts = {} # a picture's number -> the places across modulo eight it is painted at
@@ -89,20 +90,49 @@ module VBlank
           # The place of +color+ (15-bit) in the colour list, added there the first time.
           def place_of(color)
             @places[color] ||= begin
-              refuse_too_many_colors! if @colors.length >= COLORS
+              next_free_place
               @colors << color
               @colors.length - 1
             end
           end
 
+          # Sprites over the picture draw from the second half of the colour memory, a list of sixteen
+          # places for each set of colours a sprite uses (Art#sprite_palette_at), so those places hold
+          # the sprites' colours, +colors+ from +first+ on, and the painting never paints in them,
+          # even where a colour is the same: a sprite's list can change as the game runs. Kept
+          # before the game paints anything, so the painting's places go round them.
+          def keep_places(first, colors)
+            raise ArgumentError, "places from #{first} are given out already" if first < @colors.length
+
+            @kept[first] = colors.dup.freeze
+          end
+
+          # Places the next colour added goes after: past the lists kept for sprites it has reached,
+          # and refused where the colour list is full.
+          private def next_free_place
+            while (kept = @kept[@colors.length])
+              @colors.concat(kept)
+            end
+            refuse_too_many_colors! if @colors.length >= COLORS
+          end
+
           # A place taken by the chip's black (place_never_nought) is not a colour of the game's, so a
-          # game refused only for that place is told so.
+          # game refused only for that place is told so. With sprites over the picture, their colours
+          # are named as the ones that share the list.
           def refuse_too_many_colors!
             refuse_no_place_for_chip_black! if @black_twin && @colors.length == COLORS
+            unless @kept.empty?
+              raise TooMuch, "This game paints more colours than a Super Nintendo can show beside its sprites. A " \
+                             "painted screen shows #{COLORS} colours, and the sprites over the picture take " \
+                             "#{kept_places} of them. To fix this, use fewer colours in the picture or in the sprites."
+            end
 
             raise TooMuch, "This game paints more than #{COLORS} different colours. A Super Nintendo shows " \
                            "#{COLORS} colours on a painted screen. To fix this, use fewer colours."
           end
+
+          # How many places the sprites' lists take.
+          def kept_places = @kept.each_value.sum(&:length)
 
           # The place of +color+ where place 0 may not stand for it: black, which is place 0, gets a
           # place of its own besides, the same black. The Super FX's PLOT leaves a pixel of place 0
@@ -117,6 +147,7 @@ module VBlank
 
             @black_twin ||= begin
               refuse_no_place_for_chip_black! if @colors.length >= COLORS
+              next_free_place
               @colors << BLACK
               @colors.length - 1
             end
@@ -150,7 +181,7 @@ module VBlank
 
           # A new place of the colour list, holding +color+ (15-bit) at power-on.
           def ink(color)
-            refuse_too_many_colors! if @colors.length >= COLORS
+            next_free_place
             @colors << color
             Ink.new(place: @colors.length - 1)
           end
@@ -158,16 +189,19 @@ module VBlank
           # The places that hold black, of those the game paints in.
           def black_places = @colors.each_index.select { |place| @colors[place] == BLACK }
 
-          # How many places are left in the colour list.
-          def places_left = COLORS - @colors.length
+          # How many places are left in the colour list: those not given out, less the sprites'.
+          def places_left = COLORS - @colors.length - @kept.sum { |first, colors| first >= @colors.length ? colors.length : 0 }
 
           # How many of the colour memory's colours the game paints in, from colour 0: the rest are
           # black and never painted with.
           def colors_painted = @colors.length
 
-          # The colour list as the console's colour memory takes it: 256 colours, two bytes each.
+          # The colour list as the console's colour memory takes it: 256 colours, two bytes each,
+          # the sprites' lists among them.
           def cgram
-            @colors.dup.fill(BLACK, @colors.length...COLORS).pack("v*")
+            all = @colors.dup.fill(BLACK, @colors.length...COLORS)
+            @kept.each { |first, colors| all[first, colors.length] = colors }
+            all.pack("v*")
           end
 
           private

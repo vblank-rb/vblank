@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# NOTES THAT CHANGE AS THEY PLAY, IN A GAME WITH SOUND EFFECTS, on the voices the two share. Played
+# Notes that change as they play, in a game with sound effects, on the voices the two share. Played
 # through `game_player`, so every run's build is held to the interpreter's sound log frame by frame.
 class TestChangingNotesBesideEffects < Minitest::Test
   Score = VBlank::Audio::Score

@@ -160,7 +160,7 @@ class TestDOSScenery < Minitest::Test
       test.tilesets(self)
       background :under, tiles: :colors, map: test.stripes(20, 20)
       top = background :top, tiles: :colors, map: test.stripes(32, 8), above_row: 40
-      game_loop { top.rotate 20 }
+      game_loop { top.rotate! 20 }
     end
   end
 
@@ -180,10 +180,7 @@ class TestDOSScenery < Minitest::Test
         tick += 1
         state = 1 if tick == 5
         state = 0 if tick == 8
-        case_var(:state) do
-          when_val 0, :one
-          when_val 1, :two
-        end
+        call({ 0 => :one, 1 => :two }, number: :state)
       end
     end
   end
@@ -222,7 +219,7 @@ class TestDOSScenery < Minitest::Test
       game_loop do
         size += 1
         angle += 7
-        top.rotate angle
+        top.rotate! angle
         pixelate size
       end
     end

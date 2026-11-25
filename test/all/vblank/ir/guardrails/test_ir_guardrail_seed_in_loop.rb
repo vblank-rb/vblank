@@ -39,8 +39,8 @@ class TestIRGuardrailSeedInLoop < Minitest::Test
     assert_match(/randomize/i, finding.message, "the fix points at randomize for stirring")
   end
 
-  # The real-world shape: a seed inside a scene func (dispatched every frame by
-  # case_var) — flagged, and the message names the scene.
+  # The real-world shape: a seed inside a scene func (picked every frame by the
+  # scene dispatch) — flagged, and the message names the scene.
   def test_a_seed_inside_a_scene_is_flagged_and_names_the_scene
     prog = program(
       screen(:bitmap),
@@ -108,7 +108,7 @@ class TestIRGuardrailSeedInLoop < Minitest::Test
       end
       game_loop do
         wait_vblank
-        case_var(:state) { when_val 0, :play }
+        call({ 0 => :play }, number: :state)
       end
     end
     assert_match(/seed/i, err.string)

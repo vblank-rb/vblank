@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# A GAME OF SCENES WHOSE SPRITE PICTURES ARE MORE THAN A CONSOLE HOLDS TOGETHER, AND FEW ENOUGH ALONE.
+# A game of scenes whose sprite pictures are more than a console holds together, and few enough alone
 # Three scenes take turns, each with a sprite of its own stepping through 22 pictures of 16×16, a
 # picture a frame: four tiles of 8×8 a picture, 88 a scene, 264 between the three. A sprite every
 # scene shows stands beside them. A Game Boy Color holds 256 sprite tiles at once, so each scene
@@ -72,9 +72,7 @@ module SceneSpritePictures
         tick += 1
         seen = frames_since_power_on if seen
         state = (tick / PASSES_A_SCENE) % scenes.length
-        case_var(:state) do
-          scenes.each_with_index { |scene, s| when_val s, scene }
-        end
+        call scenes.each_with_index.to_h { |scene, s| [s, scene] }, number: :state
       end
     end
   end

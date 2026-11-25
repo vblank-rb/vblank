@@ -4,44 +4,44 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # WHICH OF THE TWO WAYS A ROW-BY-ROW BEND IS LOWERED, decided from the program alone.
+        # Which of the two ways a row-by-row bend is lowered, decided from the program alone.
         #
-        # WHERE THE OFFSETS COME FROM IS THE SAME EITHER WAY. The block is run for all 160 rows
+        # Where the offsets come from is the same either way. The block is run for all 160 rows
         # in the gap between frames, into a table. That is where everything else about a frame
         # is settled too — the sprites' positions, a background's scroll — so a bend shows the
         # frame that moved it at the same moment they do. Working the rows out while the
         # picture is being drawn instead would show a bend a frame ahead of the sprite standing
         # on it, and would race the display down the screen besides.
         #
-        # What the two ways differ in is WHO MOVES a row's number out of that table and into
+        # What the two ways differ in is who moves a row's number out of that table and into
         # the scroll register, once per line, as the display asks for it.
         #
-        # THE COPIER is the cheap one, and the usual one. One of the console's copying engines
+        # The copier is the cheap one, and the usual one. One of the console's copying engines
         # can be told "move one number into this register at the end of every line", and from
         # then on it feeds the register itself with the CPU untouched. The per-line cost goes
         # to nothing at all, so a bend costs only the table.
         #
-        # ONE ENGINE PER BENDING LAYER, since an engine feeds one register. Three of the four
+        # One engine per bending layer, since an engine feeds one register. Three of the four
         # can be lent out, which is where the ceiling comes from.
         #
-        # THE INTERRUPT is the fallback, for when there is no engine left. The display
+        # The interrupt is the fallback, for when there is no engine left. The display
         # announces the end of every line it draws, the console stops the game, and the
         # handler reads that line's number out of the table and writes it. It does the same
         # work the engine would, so the picture is the same — it just costs being stopped and
         # restarted 228 times a frame, most of which is the console's own doing on the way in
         # and out and nothing we write reaches.
         #
-        # A PROGRAM WITH NO FRAME has nowhere to fill a table, and then the interrupt runs the
+        # A program with no frame has nowhere to fill a table, and then the interrupt runs the
         # block itself, line by line. Nothing is paced in such a program, so there is nothing
         # for the bend to be in step with.
         #
-        # THIS ANSWER IS ASKED FOR IN TWO PLACES, here where the bend is emitted and in the
+        # This answer is asked for in two places, here where the bend is emitted and in the
         # cost estimate, which has to charge for the lowering that will really run. It lives in
         # one place so the two cannot drift apart — the same reason {LoopForm} does.
         module BendForm
           module_function
 
-          # THE ENGINES A BEND CAN RIDE, in the order they are handed out. There are four in
+          # The engines a bend can ride, in the order they are handed out. There are four in
           # the console. The last is the general copier every fill and upload uses, so it can
           # never be given away; the other three can, but only while nothing else wants them.
           #
@@ -53,7 +53,7 @@ module VBlank
           # ...and the pair sampled sound is entitled to. It feeds a stream of PCM to the
           # sound hardware continuously, which is exactly the standing claim on an engine a
           # bend makes, so the two cannot share. Measured on the emulator, they do not fail
-          # halfway: hand a bend the engine the sound was using and the game goes SILENT,
+          # halfway: hand a bend the engine the sound was using and the game goes silent,
           # with the picture none the wiser.
           #
           # Today the mixer sums everything into one voice and takes only the first of these.
@@ -74,15 +74,13 @@ module VBlank
             FREE_ENGINES - SOUND_ENGINES
           end
 
-          def scroll_rows_nodes(program)
-            program.walk.select { |node| node.kind == :scroll_rows }
-          end
-
-          # EVERYTHING FED TO THE DISPLAY A ROW AT A TIME: each bending layer, and the light
+          # Everything fed to the display a row at a time: each bending layer, and the light
           # (a spotlight's window edges are a number a row exactly as a bend's scroll is, and
-          # take an engine the same way). The light is one however often it is declared.
+          # take an engine the same way). The light is one however often it is declared, and a
+          # bend one for each background it bends (RowBends): one replaced by a later bend of the
+          # same background, or written for a name the game never declares, takes no engine.
           def row_feeds(program)
-            fed = scroll_rows_nodes(program)
+            fed = RowBends.new(program).nodes
             light = program.walk.find { |node| node.kind == :shade_outside }
             light ? fed + [light] : fed
           end
@@ -109,7 +107,7 @@ module VBlank
             !fed.empty? && interrupt_reason_for(program, fed).nil?
           end
 
-          # WHY THE INTERRUPT WAS KEPT, in the words an author would use, or nil when the
+          # Why the interrupt was kept, in the words an author would use, or nil when the
           # copier took it. Read off the same test the answer comes from, so "it did not" and
           # "here is why" can never disagree.
           def kept_interrupt_reason(program)

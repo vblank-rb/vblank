@@ -88,11 +88,9 @@ class TestSceneHandoverScenariosOnTheAdvance < Minitest::Test
         game_loop do
           tick += 1
           yield tick if block_given?
-          case_var(:state) do
-            when_val 0, :tiled_screen
-            when_val 1, :bitmap_screen
-            when_val 2, third if third
-          end
+          screens = { 0 => :tiled_screen, 1 => :bitmap_screen }
+          screens[2] = third if third
+          call screens, number: :state
         end
       end
     end
@@ -107,7 +105,7 @@ class TestSceneHandoverScenariosOnTheAdvance < Minitest::Test
       red_and_blue_art
       tiles :set, "#" => :red_art, "o" => :blue_art
       field = background :field, tiles: :set, map: Array.new(16) { ("#" * 8) + ("o" * 8) }
-      across_a_bitmap_screen { |tick| field.rotate 180 if tick == 2 }
+      across_a_bitmap_screen { |tick| field.rotate! 180 if tick == 2 }
     end
   end
 end

@@ -3,14 +3,14 @@
 require "test_helper"
 require "pack_pose_read_by_the_game_games"
 
-# POSES WHOSE FRAMES THE GAME READS WITH A FEW LINES OF ITS OWN (Original::FrameLayout's piece:),
+# Poses whose frames the game reads with a few lines of its own (Original::FrameLayout's piece:),
 # each given its object's block of sprite memory by the pose (PackPoseReadByTheGameGames). The
 # answer key is the same pieces painted by hand, their tiles taken from the original's table of
 # where each block starts. The registry of pack games plays the same game with the pack left out.
 class TestPackPosesReadByTheGame < Minitest::Test
   include PackPoseReadByTheGameGames
 
-  # THE SAME PIECES PAINTED BY HAND for an object in block +block+, one tile of 8x8 at a time. A
+  # The same pieces painted by hand for an object in block +block+, one tile of 8x8 at a time. A
   # big piece is four tiles: its first, the next, and the two a row of sprite memory (16) on. A
   # mirrored piece shows its last column first, each tile back to front; one upside down shows its
   # last row first, each tile's rows in reverse. Public: the game block calls it back.

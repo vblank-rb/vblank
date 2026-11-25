@@ -4,12 +4,35 @@ module VBlank
   module IR
     module Guardrails
       module Checks
-        # A scene picks its screen AS IT TAKES OVER, and that is read off the top of its block:
+        # An error about a `screen` written somewhere a scene cannot use it: under a test inside
+        # the scene, or in a routine. Inside a scene the message is
+        #
+        # > The scene :<scene> has `screen :<kind>` inside a test. A scene changes the screen as it
+        # > takes over, before it puts up its scenery. A `screen` that is not at the top of the scene
+        # > changes the screen after that, and the scenery is lost. To fix this, move
+        # > `screen :<kind>` to the top of the scene :<scene>. If the game shows another screen, give
+        # > that screen a scene of its own.
+        #
+        # and in a routine it is
+        #
+        # > The routine :<routine> has `screen :<kind>`. A scene changes the screen as it takes over,
+        # > before it puts up its scenery. A `screen` in a routine changes the screen after that, and
+        # > the scenery is lost. To fix this, move `screen :<kind>` to the top of the scene that
+        # > calls :<routine>.
+        #
+        # Changing the kind of screen wipes whatever was on it. A scene picks its screen first and
+        # then puts up its scenery, so a `screen` that comes later wipes that scenery and the scene
+        # shows nothing. Write `screen` as one of the first lines of the scene. A game that needs
+        # two kinds of screen gives each one a scene of its own.
+        #
+        #--
+        # A scene picks its screen as it takes over, and that is read off the top of its block:
         # the console switches the display before the scene's scenery goes up, because changing
         # the kind of screen wipes whatever was up (see IR::SceneHandover). A `screen` anywhere
         # else in a scene — under a test, or in a routine it calls — would change the screen
         # part way through, after the scenery was put up, and the scene would show nothing of
         # it. So it is refused, and the way round it is a scene of its own for the other screen.
+        #++
         class ScreenInsideScene
           NAME = :screen_inside_scene
           PLAIN_NAME = "a screen change part way through a scene"

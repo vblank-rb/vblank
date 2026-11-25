@@ -10,7 +10,7 @@ module VBlank
   module IR
     module Backends
       class JS
-        # THE GAME IN A BROWSER TAB, BUILT AGAIN ON EVERY RELOAD: `vblank preview game.rb`. Edit
+        # The game in a browser tab, built again on every reload: `vblank preview game.rb`. Edit
         # the game, reload the page, and the game starts again as the file now has it — no cartridge
         # built, no emulator started.
         #
@@ -25,6 +25,10 @@ module VBlank
         # files are read afresh every time, and a build that stops — a guardrail's error, a Ruby
         # mistake — is shown in the page in its own words instead of a game.
         class Preview
+          # The Ruby each build is run by: the one running now, read once as the library loads,
+          # since only the main Ractor may read RbConfig.
+          RUBY_PROGRAM = RbConfig.ruby.freeze
+
           # +game_file+ is the game; +settings+ are what `--set` hands its build; +template+ is the
           # template every page is written from, nil for the default; +console+ the one the page
           # plays the game as, nil for the first the game names; +port+ is the one to serve on,
@@ -42,7 +46,7 @@ module VBlank
           def url = "http://#{@server.addr[3]}:#{@server.addr[1]}/"
 
           # Answers one browser after another until stopped (Ctrl-C, or #stop from another thread).
-          # CTRL-C IS LEFT TO ARRIVE AS RUBY RAISES IT, wherever the program is, and is caught here:
+          # CTRL-C is left to arrive as Ruby raises it, wherever the program is, and is caught here:
           # a signal handler runs on the thread sitting in `accept`, and closing the server from
           # there takes the lock that `accept` holds. What was going cleans up on the way out
           # (see #run_build), and a second Ctrl-C during that lands here too.
@@ -96,14 +100,14 @@ module VBlank
             end
           end
 
-          # WHAT THE BUILD SAYS REACHES THE TERMINAL AS IT SAYS IT, because a big game takes a while
+          # What the build says reaches the terminal as it says it, because a big game takes a while
           # and somebody is watching a browser tab spin. Through a pipe its progress is one finished
           # line for each phase, with nothing redrawn (Messages::Progress::Printed), so every line
           # can go on to the terminal and into the page if the build stops. Gives back all it said
           # and how it ended. Its last word names the folder this build happened in, which is of no
           # use to anybody: #page says "Built" itself.
           def run_build(path)
-            Open3.popen2e(RbConfig.ruby, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
+            Open3.popen2e(RUBY_PROGRAM, VBlank.root.join("bin", "vblank").to_s, "build", @game_file,
                           "--format", "web", "-o", path, *(["--template", @template] if @template),
                           *(["--console", @console] if @console), *settings_arguments) do |input, output, ended|
               input.close

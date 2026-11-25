@@ -3,7 +3,7 @@
 require "test_helper"
 require "network_exchanges"
 
-# THE STAND-IN RELAY HELD TO THE EXAMPLE EXCHANGES (docs/network/exchanges.json), which the real relay
+# The stand-in relay held to the example exchanges (docs/network/exchanges.json), which the real relay
 # and every other implementation of the format are held to as well.
 class TestStandInRelay < Minitest::Test
   StandInRelay = VBlank::Network::StandInRelay

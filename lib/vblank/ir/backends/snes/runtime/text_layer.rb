@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # TEXT AS A LAYER OF ITS OWN over a painted screen, as the console's own games keep their
+          # Text as a layer of its own over a painted screen, as the console's own games keep their
           # text (SNES::TextLayerArt says why, and draws the tiles).
           #
           # Mode 3 has a second background, four bits a pixel, which the painted screen does not
@@ -25,10 +25,10 @@ module VBlank
           #   $7400-$77FF  the text layer's map
           #   $78A0-$7FFF  the text layer's tiles, from tile 138 (its tiles count from $7000)
           #
-          # IN FRONT MEANS LAST. A text on the layer shows over everything painted, so it is right
+          # In front means last. A text on the layer shows over everything painted, so it is right
           # only while nothing painted after it covers it. A painting that would touch a tile a text
           # covers takes that text off the layer first and paints it, where it was drawn among the
-          # paintings (DEMOTED): with PaintLog its entry in the log becomes a picture painted there,
+          # paintings (demoted): with PaintLog its entry in the log becomes a picture painted there,
           # so a pass's paintings still come out in the order the game drew them. Painting a text
           # rather than showing it on the layer gives the same pixels, so taking one off is always
           # right; only leaving one on needs nothing over it. A pass that paints at once (with no

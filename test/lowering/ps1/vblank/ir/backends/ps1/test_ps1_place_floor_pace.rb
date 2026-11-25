@@ -63,7 +63,7 @@ class TestPS1PlaceFloorPace < Minitest::Test
     end
   end
 
-  # THE PROCESSOR KEEPS THE LAST 4 KB OF CODE IT RAN by address, a line of it for each place the low twelve
+  # The processor keeps the last 4 KB of code it ran by address, a line of it for each place the low twelve
   # bits of an address name, so two routines 4 KB apart, or any multiple of it, push each other out. The
   # floor's hot code, the runtime's face routines and the place's face drawing, is about the size of
   # that cache, so where the two land against each other once cost the floor a frame a pass. Code and

@@ -1,9 +1,9 @@
 # The driver with no window: what the tests run a game against.
 #
-#   ruby game.rb FRAMES [options] < buttons
+#   ruby game.rb frames [options] < buttons
 #
-# plays FRAMES frames and stops at the start of the next one, the way the interpreter's
-# run(program, frames: FRAMES) does. Each line of standard input is the buttons held during one
+# plays frames frames and stops at the start of the next one, the way the interpreter's
+# run(program, frames: frames) does. Each line of standard input is the buttons held during one
 # frame, as a number with a bit per button (bit 0 is a, in IR::Buttons::NAMES's order); a
 # missing line holds nothing.
 #
@@ -27,30 +27,30 @@
 # The options:
 #
 #   --every-picture             the whole picture at every frame, not only a check number
-#   --picture-out FILE          the picture of every moment written to FILE, over the one before:
+#   --picture-out FILE          the picture of every moment written to file, over the one before:
 #                               every pixel as shown and then as stored, row by row, each two
 #                               bytes with the low byte first, there before "buttons?" is asked
 #   --held-from-power-on MASK   the buttons in MASK are down before the game's first statement
-#   --clock-at SECONDS TICKS SET  the cartridge has a clock, reading SECONDS from the start of
-#                               1970 and TICKS cycles of the console's clock more at power-on,
+#   --clock-at seconds ticks set  the cartridge has a clock, reading seconds from the start of
+#                               1970 and ticks cycles of the console's clock more at power-on,
 #                               set when SET is 1; without it the cartridge has no clock
-#   --save FILE                 the game starts with the save memory FILE holds (the bytes of a
+#   --save FILE                 the game starts with the save memory file holds (the bytes of a
 #                               .sav file, as many as the game has), and when the run ends its
-#                               save memory is written back to FILE, whole; no file there yet is a
-#                               new cartridge, and a game with no save memory leaves FILE alone
+#                               save memory is written back to file, whole; no file there yet is a
+#                               new cartridge, and a game with no save memory leaves file alone
 #   --save-cut-after N          the power goes off N steps into the game's saving, which ends the
 #                               run there, as it does in the interpreter
-#   --sound-out FILE            the sound of every frame played written to FILE as it is made: one
+#   --sound-out FILE            the sound of every frame played written to file as it is made: one
 #                               speaker's worth, RG_SOUND_RATE numbers a second, each two bytes
 #                               with the low byte first
 #   --sound-voice N             only voice N is in it (1 and 2 the square voices, 3 the wave voice,
 #                               4 the noise voice), which is how a test hears one voice at a time
-#   --state-out FILE            the whole state (rg_state.rb) written to FILE at the frame boundary
+#   --state-out FILE            the whole state (rg_state.rb) written to file at the frame boundary
 #   --state-out-after N         after frame N, before the next frame begins
-#   --state-in FILE             the state FILE holds is read in at the first frame boundary, so the
+#   --state-in FILE             the state file holds is read in at the first frame boundary, so the
 #                               run goes on from there: its frame 1 is the frame after the one the
 #                               state was written at
-#   --start-file FILE           the game is handed FILE as it starts: the data pack of a game built
+#   --start-file FILE           the game is handed file as it starts: the data pack of a game built
 #                               with its pack left out, or the copy its unpacking reads
 
 require "zlib"
@@ -231,7 +231,7 @@ end
 def rg_headless_write_picture(shown)
   @rg_picture_out.rewind
   @rg_picture_out.write(shown.pack("v*"), rg_screen_stored.pack("v*"))
-  @rg_picture_out.write(rg_screen_framed.pack("v*")) if rg_screen_bordered? # rg_headless.c's write_picture
+  @rg_picture_out.write(rg_screen_framed.pack("v*")) if rg_screen_bordered? || RG_SCREEN_OF_ITS_OWN # rg_headless.c's write_picture
   @rg_picture_out.flush
 end
 
@@ -239,6 +239,7 @@ def rg_headless_finish
   rg_headless_print_moment("end", !@rg_picture_out)
   rg_headless_print_pixels("stored", rg_screen_stored) unless @rg_picture_out
   $stdout.write("repaints #{rg_screen_repaints_painted}\n")
+  $stdout.write("drawn-tiles-set-up #{rg_screen_drawn_tiles_set_up}\n")
   $stdout.write("pages #{rg_screen_two_pages != 0 ? 2 : 1}\n")
   $stdout.flush
   @rg_picture_out&.close

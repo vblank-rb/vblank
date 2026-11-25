@@ -5,7 +5,7 @@ require "differential"
 
 # The tests of test/all/vblank/builder/test_layer_stacking.rb whose games show two backgrounds at
 # once, which a Game Boy Color's hardware cannot do, so they play on the Advance's runs alone. As
-# there, each game is built so declaration order and layer order DISAGREE.
+# there, each game is built so declaration order and layer order disagree.
 class TestLayerStackingOnTheAdvance < Minitest::Test
   include Differential
 

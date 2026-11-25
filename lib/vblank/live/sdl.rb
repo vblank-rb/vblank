@@ -2,7 +2,7 @@
 
 module VBlank
   module Live
-    # A WINDOW TO PLAY A GAME IN: the device Session shows a game on when a person is playing it.
+    # A window to play a game in: the device Session shows a game on when a person is playing it.
     # The window, the keyboard and the clock are SDL3's, a C library every desktop has a build of,
     # reached through Fiddle, Ruby's own way of calling a C library: no C of this library's to
     # compile.
@@ -24,15 +24,16 @@ module VBlank
     # is open; so does the key above Tab, and on a gamepad the guide button, or Back and Start
     # together. Escape, or closing the window, stops the play.
     #
-    # THE MENU is drawn over the picture in the window's own pixels, not the game's: the picture is
+    # The menu is drawn over the picture in the window's own pixels, not the game's: the picture is
     # the console's few pixels made big and square, and the menu over it is as sharp as the screen
     # can show, a Retina screen's two pixels a point included (the window asks SDL for them). Menu
     # gives where each box and word goes; the boxes are drawn here as triangles with their edges
-    # faded over a pixel, as Dear ImGui draws them, and each letter is copied out of the menu
+    # faded over a pixel, so a round corner is not jagged, and each letter is copied out of the menu
     # font's picture (Graphics::MenuFont), which is put on the screen's card when the window
-    # opens.
+    # opens. What could not be used in the settings file is said over the picture as well as on the
+    # terminal, and what a shell tells the player (#tell_in_box) at the foot, until a button is pressed.
     #
-    # THE SOUND goes to the computer's speaker through an SDL audio stream, a queue the speaker
+    # The sound goes to the computer's speaker through an SDL audio stream, a queue the speaker
     # plays from at its own steady rate while the game puts a frame's samples in at the end of
     # each pass. The window reports how much is waiting (#sound_waiting), and the session paces the
     # play by it, so the game keeps the speaker's time and the queue holds steady at a few frames:
@@ -49,10 +50,36 @@ module VBlank
 
       # Where SDL3 is looked for when neither +library:+ nor VBLANK_SDL3 names it: the names each
       # system's loader finds by itself, then the folders Homebrew installs into on a Mac.
-      LIBRARIES = Ractor.make_shareable(%w[libSDL3.dylib libSDL3.0.dylib libSDL3.so.0 libSDL3.so SDL3.dll
-                                           /opt/homebrew/lib/libSDL3.dylib /usr/local/lib/libSDL3.dylib])
+      # On Windows, the bare name, which the loader looks for beside Ruby and on path, and then the
+      # folder RubyInstaller's build tools (MSYS2) install their libraries into, where
+      # `ridk exec pacman -S mingw-w64-ucrt-x86_64-sdl3` puts it.
+      def self.libraries(windows: Gem.win_platform?)
+        return %w[libSDL3.dylib libSDL3.0.dylib libSDL3.so.0 libSDL3.so /opt/homebrew/lib/libSDL3.dylib
+                  /usr/local/lib/libSDL3.dylib] unless windows
 
-      INSTALL_LINE = "On macOS, run `brew install sdl3`. On Debian or Ubuntu, run `apt install libsdl3-dev`."
+        ["SDL3.dll", *msys2_sdl3]
+      end
+
+      # SDL3.dll in RubyInstaller's MSYS2, when this Ruby is a RubyInstaller one with it installed.
+      def self.msys2_sdl3
+        return [] unless defined?(RubyInstaller::Runtime)
+
+        [File.join(RubyInstaller::Runtime.msys2_installation.msys_path, "ucrt64", "bin", "SDL3.dll")]
+      rescue StandardError
+        [] # no MSYS2 set up for this Ruby
+      end
+
+      # How to install SDL3 on the system asking.
+      def self.install_line(windows: Gem.win_platform?)
+        return "On macOS, run `brew install sdl3`. On Debian or Ubuntu, run `apt install libsdl3-dev`." unless windows
+
+        "On Windows, run `ridk exec pacman -S mingw-w64-ucrt-x86_64-sdl3`. Or download " \
+          "SDL3-<version>-win32-x64.zip from https://github.com/libsdl-org/SDL/releases and set VBLANK_SDL3 to " \
+          "the path of the SDL3.dll in it."
+      end
+
+      LIBRARIES = Ractor.make_shareable(libraries)
+      INSTALL_LINE = install_line.freeze
 
       # SDL's own numbers, from its headers.
       INIT_VIDEO = 0x20
@@ -90,6 +117,9 @@ module VBlank
       # the speaker may still be playing what it took last, and silence put in then is a gap.
       SOUND_BEHIND_FRAMES = 6
 
+      # How long a line for the player (#notice) is shown, in seconds: long enough to read twice.
+      NOTICE_SECONDS = 5
+
       # Keys are SDL's scancodes, which name a place on the keyboard rather than a letter, so the
       # layout of the keyboard does not move them. Which key is each console button, and which is
       # each of the window's own (pause, fast forward, the menu...), is the player's settings
@@ -110,7 +140,7 @@ module VBlank
                                            SCANCODES_BY_KEY_NAME.fetch(WindowMenu::QUICK_LOAD_KEY) => :load })
       KEY_CODES = Ractor.make_shareable({ up: 82, down: 81, left: 80, right: 79, enter: 40 })
 
-      # A GAMEPAD'S BUTTONS, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
+      # A gamepad's buttons, by SDL's numbers for them (each one's place in Settings::PAD_BUTTONS),
       # and the console's button each is: the settings' (pad.a = east), and to begin with the
       # console's own layout, as the desktop build has it — A on the right (SDL's "east"), B below
       # it ("south"), the back and start buttons, the shoulders, the D-pad.
@@ -130,8 +160,16 @@ module VBlank
       # How far the stick goes each way is a number up to 32767. A stick at rest seldom reads
       # nought, so it moves the game only once pushed past this, about a third of the way.
       STICK_DEAD_ZONE = 10_000
+      # The triggers: SDL's axes for them, by the windows' own numbers for them as gamepad buttons
+      # (Settings::PAD_BUTTONS), and how far SDL reads one pulled all the way.
+      TRIGGER_AXES = Ractor.make_shareable({ Settings::PAD_BUTTONS.index(:left_trigger) => 4,
+                                             Settings::PAD_BUTTONS.index(:right_trigger) => 5 })
+      TRIGGER_FULL = 32_767
       INIT_GAMEPAD = 0x2000
-      EVENT_PAD_BUTTON_DOWN = 0x651 # (0x650 is a stick moving)
+      EVENT_PAD_AXIS = 0x650 # A stick or a trigger moving
+      PAD_AXIS_AT = 20 # Where in an axis's event the axis is (1 byte)...
+      PAD_AXIS_VALUE_AT = 24 # ...and how far it is (2 bytes, with a sign)
+      EVENT_PAD_BUTTON_DOWN = 0x651
       EVENT_PAD_BUTTON_UP = 0x652
       EVENT_GAMEPAD_ADDED = 0x653
       EVENT_GAMEPAD_REMOVED = 0x654
@@ -221,17 +259,11 @@ module VBlank
         @sdl = self.class.binding_for(library)
         @title = title
         @config_dir = config_dir
-        @width = width
-        @height = height
-        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
-        @shown_height = height * pixel_size
+        @settings_file_asked = settings_file
         @closed = false
         @has_menu = menu
-        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
-        @console_buttons = buttons # the ones read, of player 2's keys too
-        @settings_file = settings_file && SettingsFile.new(title: title, folder_of: ->(name) { settings_folder(name) },
-                                                           asked: (settings_file unless settings_file == :usual))
-        @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
+        take_picture_size(width, height, pixel_size)
+        read_player_settings(game_controls, buttons)
         scale ||= @player_settings.window.scale
         @kept_from_game = [] # keys pressed for the menu, kept from the game until they come up
         @pads = {} # the gamepads plugged in, by SDL's number for each
@@ -242,19 +274,42 @@ module VBlank
         @shown_this_second = 0
         @second_began = now
         @frame_rate = 0 # pictures shown in the last whole second
+        @work_this_second = 0.0 # seconds of the game's own work in the passes of this second
+        @worked_this_second = 0 # ...and how many passes those were
+        @frame_work = nil # the game's work a pass over the last whole second, in milliseconds, as words
+        @caption = caption || title
+        @notice = nil # the line #notice shows, until @notice_ends on #now's clock
+        self.picture_limit = nil
         begin
-          open_window(caption || title, scale)
+          open_window(@caption, scale)
         rescue Failed
           close
           raise
         end
         @states = states_in(state_folder_name) if menu && state_folder_name
         @save_file = save_file_in(state_folder_name) if state_folder_name
-        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
-                         controls: @player_settings,
-                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
-        @settings = @menu.settings # as the window last made them so
+        make_menu(scale)
         @sdl.SDL_SetWindowFullscreen(@window, 1) if @settings.fullscreen
+      end
+
+      # The window fitted to the game it will play, once it is known: a window opened before its game
+      # was built (vblank run opens it at once, at the console's size, while a helper process builds
+      # the game) takes the game's picture size and its own keys here (#initialize's +width+,
+      # +height+, +pixel_size+, +game_controls+ and +buttons+). The settings file is read again with
+      # the game's keys, so what it says about them is used; the size the window is played at is
+      # kept. Gives back #settings_problems_message for the file as read now.
+      def fit_game(width:, height:, pixel_size: 1, game_controls: nil, buttons: WindowMenu::ADVANCE_BUTTONS)
+        write_settings if @player_settings.unwritten?
+        scale = @settings.scale
+        if [width, height, pixel_size] != [@width, @height, @shown_width / @width]
+          take_picture_size(width, height, pixel_size)
+          @sdl.SDL_DestroyTexture(@texture)
+          make_picture_texture
+          @sdl.SDL_SetWindowSize(@window, @shown_width * scale, @shown_height * scale)
+        end
+        read_player_settings(game_controls, buttons)
+        make_menu(scale)
+        settings_problems_message
       end
 
       # --- save states (Session says when they are taken) ---
@@ -340,6 +395,27 @@ module VBlank
         count_frame_rate
         @sdl.SDL_UpdateTexture(@texture, nil, pixels.pack("v*"), @width * 2)
         redraw_window
+        @pictures_shown += 1
+      end
+
+      # Lines of words over black in place of a picture, while the game this window will play is
+      # built in another process (BuildWatch), with whatever SDL has heard from the window since.
+      def show_waiting(lines)
+        read_events
+        write_settings_when_due
+        grow_window_for_messages
+        @sdl.SDL_SetRenderDrawColor(@renderer, 0, 0, 0, 255)
+        @sdl.SDL_RenderClear(@renderer)
+        upload_menu_letters
+        width, height = output_size
+        @sdl.SDL_SetRenderLogicalPresentation(@renderer, 0, 0, LOGICAL_PRESENTATION_DISABLED)
+        begin
+          @menu.waiting_drawing(lines, width: width, height: height, density: pixel_density).each { |words| draw_words(words) }
+        ensure
+          @sdl.SDL_SetRenderLogicalPresentation(@renderer, @shown_width, @shown_height, LOGICAL_PRESENTATION_LETTERBOX)
+        end
+        draw_menu_and_status
+        @sdl.SDL_RenderPresent(@renderer)
       end
 
       # True while what is shown is the picture before, so the frame rate leaves it out, where something
@@ -348,6 +424,19 @@ module VBlank
 
       # How many new pictures went up in the last whole second, the number the menu can put up.
       attr_reader :frame_rate
+
+      # How long the game's own work took in a pass that has just been played, in seconds, which
+      # Session tells after each pass: the frame time, the developer's reading, is the average of a second's.
+      def frame_worked(seconds)
+        @work_this_second += seconds
+        @worked_this_second += 1
+      end
+
+      # The game whose variables the window of them shows (LiveGame, answering +vars+), which Session
+      # tells before the first pass.
+      def read_variables_from(game)
+        @variables_game = game
+      end
 
       # The console's buttons whose keys are down now, as SDL last heard them (#show reads what
       # SDL has heard). The keyboard is read when it is asked, whichever pass it is asked for. A
@@ -368,8 +457,8 @@ module VBlank
         (from_keys + second + from_pads).uniq
       end
 
-      # The game seats +most_players+ (0 for none named), told by the Session before the first pass.
-      def seat_players(most_players) = @several_players = Seats.several_players?(most_players)
+      # The game seats +max_players+ (0 for none named), told by the Session before the first pass.
+      def seat_players(max_players) = @several_players = Seats.several_players?(max_players)
 
       # Whether key +code+ is nobody's: no button of player 1's and no hotkey.
       private def key_free?(code) = @player_settings.button_of_key(code).nil? && @player_settings.hotkey_of_key(code).nil?
@@ -410,15 +499,102 @@ module VBlank
         @sdl.SDL_GetAudioStreamQueued(@speaker) / MOMENT_BYTES / @speaker_rate.to_f
       end
 
-      # A line about the match (a player left) goes in the window's title, after the game's own, where it is
-      # seen without anything drawn over the picture.
-      def notice(words) = @sdl.SDL_SetWindowTitle(@window, "#{@title} - #{words}")
+      # A line for the player (a player left the match, a state saved) goes after the window's own title, and
+      # in the corner over the picture, where a player in fullscreen sees it, who has no title bar. It stays
+      # NOTICE_SECONDS, and a second line takes the first's place.
+      def notice(words)
+        @notice = words
+        @notice_ends = now + NOTICE_SECONDS
+        @sdl.SDL_SetWindowTitle(@window, "#{@caption} - #{words}")
+      end
+
+      # The line #notice is showing, or nil once its time is up. The window says only its own title again
+      # then.
+      def notice_shown
+        return nil unless @notice
+        return @notice if now < @notice_ends
+
+        @notice = nil
+        @sdl.SDL_SetWindowTitle(@window, @caption)
+        nil
+      end
+
+      # What the title bar says now, as SDL reports it.
+      def window_title = @sdl.SDL_GetWindowTitle(@window).to_s
+
+      # What a shell tells the player (a file that is no copy the game reads), in a box at the foot of
+      # the window until a button is pressed, as the desktop build shows it.
+      def tell_in_box(words) = @menu.tell(words)
+
+      # Why the play ended (a save file that is not the game's, a game that stopped on a fault), in a
+      # box titled +title+ over the last picture, as the desktop build tells it: nothing plays under
+      # it, the speaker is emptied, and the window waits on its events, drawn again after each, until
+      # a button answers the box as its OK does, or the window is closed or Escape pressed. Never a
+      # box of the system's, which a Mac has been seen not to answer. Gives back once it is answered.
+      # Public for test_sdl.rb's test of the wait: #tell_why_play_ended waits only where a person can
+      # see the window, which SDL's stand-in display is not.
+      def tell_until_answered(words, title:)
+        @menu.tell(words, title: title)
+        empty_speaker
+        redraw_window
+        until !@menu.messages_shown? || @closed
+          read_event if @sdl.SDL_WaitEventTimeout(@event, 100) != 0
+          redraw_window
+        end
+      end
+
+      # What stopped a play, +error+, told in that box where a person can see the window: a save file
+      # that is not the game's (SaveFile::NotThisGamesSave), or a game that went wrong
+      # (IR::ProgramError). Anything else is not the game's to tell, and is left to the terminal.
+      def tell_why_play_ended(error)
+        title = case error
+                when SaveFile::NotThisGamesSave then "The save file"
+                when IR::ProgramError then "The game stopped"
+                end
+        tell_until_answered(error.message, title: title) if title && watched?
+      end
+
+      # Whether a person can see the window: false on SDL's stand-in for a display, which makes
+      # windows nobody sees, where waiting for a person to answer a box would wait for ever.
+      private def watched?
+        driver = @sdl.SDL_GetCurrentVideoDriver
+        live?(driver) && driver.to_s != "dummy"
+      end
 
       # The window was closed, or Escape went down and was not taken for a key being chosen
       # (#read_key_down), as SDL last told it (#show reads what SDL has told, and Session shows each
       # picture before it asks). Escape's press is read, not whether it is down now: Escape giving up
       # a choice is still down as the next picture is shown, and must not stop the play then.
-      def stop? = @closed
+      def stop? = @closed || @menu.match_request_pending? || (!@picture_limit.nil? && @pictures_shown >= @picture_limit)
+
+      # The most pictures a play shows (vblank run's --pictures), nil for no limit, told by the Session as
+      # it begins, and the count started again. A picture drawn while the game is held (paused, or the
+      # menu open) is a picture shown too, so a play with a limit ends however long it is held, as a play
+      # with nobody at the window must.
+      def picture_limit=(most)
+        @picture_limit = most
+        @pictures_shown = 0
+      end
+
+      # Offers a match from the menu, for a game that takes up to +most_players+ (WindowMenu::MATCH_HEADING);
+      # nil takes the offer away, as inside a match.
+      def offer_match(most_players)
+        @menu.match_players = most_players
+      end
+
+      # Whether the play stopped because Escape was pressed, not because the window was closed; if so, the
+      # window plays on (#stop? is false again). Escape while a match chosen in the menu is waited for gives
+      # up the wait, and the game plays again on its own.
+      def take_escape
+        return false unless @escaped && @closed
+
+        @escaped = @closed = false
+        true
+      end
+
+      # The match the player chose in the menu (a WindowMenu::MatchRequest), once, or nil. While one is
+      # waiting to be taken the play stops (#stop?), so the game can start again as the match.
+      def take_match_request = @menu.take_match_request
 
       # The speed the menu sets while Tab is held, as SDL last heard it (#show reads what SDL has
       # heard), and 1 while it is not, whichever pass it is asked for.
@@ -438,6 +614,7 @@ module VBlank
           read_event if @sdl.SDL_WaitEventTimeout(@event, wait_milliseconds) != 0
           write_settings_when_due
           redraw_window
+          @pictures_shown += 1
         end
         resume_speaker
         true
@@ -511,7 +688,7 @@ module VBlank
         @sdl.SDL_Quit
       end
 
-      # THE BINDING: SDL3's functions as Ruby methods, made the first time a window is asked for
+      # The binding: SDL3's functions as Ruby methods, made the first time a window is asked for
       # and kept for each library file, one set for each Ractor (Fiddle's handles are its own).
       def self.binding_for(library)
         require_fiddle!
@@ -560,10 +737,13 @@ module VBlank
           extern "char SDL_Init(unsigned int)"
           extern "void SDL_Quit()"
           extern "const char* SDL_GetError()"
+          extern "const char* SDL_GetCurrentVideoDriver()"
           extern "void* SDL_CreateWindow(const char*, int, int, unsigned long long)"
           extern "void SDL_DestroyWindow(void*)"
           extern "char SDL_SetWindowTitle(void*, const char*)"
+          extern "const char* SDL_GetWindowTitle(void*)"
           extern "char SDL_SetWindowSize(void*, int, int)"
+          extern "char SDL_SyncWindow(void*)"
           extern "char SDL_GetWindowSize(void*, void*, void*)"
           extern "char SDL_SetWindowFullscreen(void*, char)"
           extern "void* SDL_CreateRenderer(void*, const char*)"
@@ -627,6 +807,16 @@ module VBlank
         raise_failed!("open the window") if @window.null?
         @renderer = @sdl.SDL_CreateRenderer(@window, nil)
         raise_failed!("draw in the window") if @renderer.null?
+        make_picture_texture
+        @sdl.SDL_SetRenderDrawBlendMode(@renderer, BLENDMODE_BLEND) # the menu's boxes are see-through
+        @event = Fiddle::Pointer.malloc(EVENT_BYTES, Fiddle::RUBY_FREE)
+        upload_menu_letters
+        # Gamepads, where SDL can read them: a computer where it cannot plays with the keyboard alone.
+        @sdl.SDL_InitSubSystem(INIT_GAMEPAD)
+      end
+
+      # The card the game's picture is put on, its size, and the window's logical size to match.
+      def make_picture_texture
         # The picture is drawn over the whole of the logical size, so a picture of big pixels is
         # stretched to it, each pixel the same whole number of the window's.
         raise_failed!("keep the picture's shape") if @sdl.SDL_SetRenderLogicalPresentation(
@@ -635,11 +825,35 @@ module VBlank
         @texture = @sdl.SDL_CreateTexture(@renderer, PIXELFORMAT_XBGR1555, TEXTUREACCESS_STREAMING, @width, @height)
         raise_failed!("make the picture") if @texture.null?
         raise_failed!("keep the pixels sharp") if @sdl.SDL_SetTextureScaleMode(@texture, SCALEMODE_NEAREST).zero?
-        @sdl.SDL_SetRenderDrawBlendMode(@renderer, BLENDMODE_BLEND) # the menu's boxes are see-through
-        @event = Fiddle::Pointer.malloc(EVENT_BYTES, Fiddle::RUBY_FREE)
-        upload_menu_letters
-        # Gamepads, where SDL can read them: a computer where it cannot plays with the keyboard alone.
-        @sdl.SDL_InitSubSystem(INIT_GAMEPAD)
+      end
+
+      # The picture the window shows: +width+ by +height+ pixels, each +pixel_size+ of the window's
+      # at a scale of 1.
+      def take_picture_size(width, height, pixel_size)
+        @width = width
+        @height = height
+        @shown_width = width * pixel_size # the picture as the window shows it at a scale of 1
+        @shown_height = height * pixel_size
+      end
+
+      # The player's settings, with the game's own keys (+game_controls+) and the console's
+      # +buttons+, read from the settings file where there is one (#initialize's +settings_file+).
+      def read_player_settings(game_controls, buttons)
+        @player_settings = Settings.new(key_names: KeyNames.new(@sdl), game_controls: game_controls, buttons: buttons)
+        @console_buttons = buttons # the ones read, of player 2's keys too
+        asked = @settings_file_asked
+        @settings_file = asked && SettingsFile.new(title: @title, folder_of: ->(name) { settings_folder(name) },
+                                                   asked: (asked unless asked == :usual))
+        @settings_problems = @settings_file ? @settings_file.load(@player_settings) : []
+      end
+
+      # The menu over the picture, the window at +scale+.
+      def make_menu(scale)
+        @menu = Menu.new(settings: @player_settings.window.with(scale: scale), picture: [@shown_width, @shown_height],
+                         controls: @player_settings,
+                         scales: WindowMenu::SCALES.min..[largest_scale_that_fits, scale].max, states: @states)
+        @menu.problems = @settings_problems.join("\n") # said over the picture too, until a button is pressed
+        @settings = @menu.settings # as the window last made them so
       end
 
       # The menu font's picture of every letter at the screen's density, on the screen's card (an
@@ -706,6 +920,46 @@ module VBlank
         [[wide / @shown_width, high / @shown_height].min, WindowMenu::SCALES.max].min
       end
 
+      # A box too big for the window makes the window bigger, as the desktop build's does
+      # (rg_sdl.c's grow_window_for_messages): while a box is shown that does not fit
+      # (Menu#messages_fit?), the window is made the smallest whole number of times the picture that
+      # holds it, no bigger than the screen has room for, and goes back to the size the settings set
+      # once every box is answered. The settings keep the player's size. Fullscreen has room already.
+      def grow_window_for_messages
+        return if @settings.fullscreen
+        return shrink_window_after_messages unless @menu.messages_shown?
+
+        width, height = output_size
+        density = pixel_density
+        return if @menu.messages_fit?(width: width, height: height, density: density)
+
+        scale = [@settings.scale, @grown_to_scale || 0].max
+        chosen = scale
+        while chosen < largest_scale_that_fits
+          chosen += 1
+          break if @menu.messages_fit?(width: (@shown_width * chosen * density).to_i,
+                                       height: (@shown_height * chosen * density).to_i, density: density)
+        end
+        return if chosen == scale
+
+        @grown_to_scale = chosen
+        resize_to_scale(chosen)
+      end
+
+      def shrink_window_after_messages
+        return unless @grown_to_scale
+
+        @grown_to_scale = nil
+        resize_to_scale(@settings.scale)
+      end
+
+      # The window made +scale+ times the picture, waiting for the system to make it so: the next
+      # drawing measures the window, and measuring the old size would grow it again.
+      def resize_to_scale(scale)
+        @sdl.SDL_SetWindowSize(@window, @shown_width * scale, @shown_height * scale)
+        @sdl.SDL_SyncWindow(@window)
+      end
+
       def live?(pointer) = pointer && !pointer.null?
 
       # The speaker, opened at +rate+ the first time and the same one every time after: two
@@ -743,6 +997,7 @@ module VBlank
       # The picture last put in the window, drawn into it again, with the menu and what the window
       # is doing over it (Menu#drawing).
       def redraw_window
+        grow_window_for_messages
         @sdl.SDL_SetRenderDrawColor(@renderer, 0, 0, 0, 255)
         @sdl.SDL_RenderClear(@renderer)
         @sdl.SDL_RenderTexture(@renderer, @texture, nil, nil)
@@ -754,11 +1009,15 @@ module VBlank
       # game's own size (the logical presentation, which scales it by a whole number with bars where
       # the window is the wrong shape), which is put aside while the menu draws and put back after.
       def draw_menu_and_status
-        return unless held? || @fast_forward || @settings.frame_rate
+        notice = notice_shown
+        return unless held? || @fast_forward || @settings.frame_rate || @settings.frame_time || @menu.variables_open? ||
+                      @menu.messages_shown? || notice
 
-        drawing = @menu.drawing(width: output_size.first, density: pixel_density, held: held?,
+        width, height = output_size
+        drawing = @menu.drawing(width: width, height: height, density: pixel_density, held: held?,
                                 fast_forward: (@settings.fast_forward_speed if @fast_forward && !held?),
-                                frame_rate: (@frame_rate if @settings.frame_rate))
+                                frame_rate: (@frame_rate if @settings.frame_rate),
+                                frame_work: (@frame_work if @settings.frame_time), variables: game_variables, notice: notice)
         upload_menu_letters
         @sdl.SDL_SetRenderLogicalPresentation(@renderer, 0, 0, LOGICAL_PRESENTATION_DISABLED)
         begin
@@ -832,13 +1091,24 @@ module VBlank
         end
       end
 
-      # New pictures shown in the last whole second, for the frame rate the menu can put up.
+      # The game's variables as name and value pairs, read from it while the window of them is open
+      # (#read_variables_from), and none while it is shut, so a game nobody is watching pays nothing.
+      def game_variables
+        return [] unless @menu.variables_open? && @variables_game
+
+        @variables_game.vars.to_a
+      end
+
+      # New pictures shown in the last whole second, for the frame rate the menu can put up, and the
+      # game's work a frame over the same second, for the frame time.
       def count_frame_rate
         @shown_this_second += 1 unless @repeating_picture
         return if now - @second_began < 1
 
         @frame_rate = @shown_this_second
-        @shown_this_second = 0
+        @frame_work = format("%.2f", @work_this_second * 1000 / @worked_this_second) if @worked_this_second.positive?
+        @shown_this_second = @worked_this_second = 0
+        @work_this_second = 0.0
         @second_began = now
       end
 
@@ -884,7 +1154,16 @@ module VBlank
 
       # How long the wait for the next thing to happen to a held window may be, in milliseconds:
       # until the settings are due to be written, or for ever (-1).
-      def wait_milliseconds = @write_settings_at ? [((@write_settings_at - now) * 1000).ceil, 0].max : -1
+      def wait_milliseconds
+        settings = @write_settings_at ? [((@write_settings_at - now) * 1000).ceil, 0].max : -1
+        return settings unless @picture_limit # a play with a limit draws a picture a frame while held
+
+        settings.negative? ? HELD_PICTURE_MILLISECONDS : [settings, HELD_PICTURE_MILLISECONDS].min
+      end
+
+      # How often a held window with a picture limit draws, in milliseconds: a frame of a screen that
+      # refreshes 60 times a second.
+      HELD_PICTURE_MILLISECONDS = 16
 
       def set_speaker_volume
         return unless live?(@speaker)
@@ -917,9 +1196,18 @@ module VBlank
       # gamepad's buttons work the menu too (#read_pad_button).
       def read_event
         type = @event[0, 4].unpack1("L")
-        @closed = true if type == EVENT_QUIT || type == EVENT_WINDOW_CLOSE_REQUESTED
+        if type == EVENT_QUIT || type == EVENT_WINDOW_CLOSE_REQUESTED
+          @closed = true
+          @escaped = false # a window closed is closed, Escape before it or not
+        end
         return open_or_close_pad(type) if type == EVENT_GAMEPAD_ADDED || type == EVENT_GAMEPAD_REMOVED
-        return read_pad_button(type == EVENT_PAD_BUTTON_DOWN) if type == EVENT_PAD_BUTTON_DOWN || type == EVENT_PAD_BUTTON_UP
+        return read_trigger if type == EVENT_PAD_AXIS
+        if type == EVENT_PAD_BUTTON_DOWN || type == EVENT_PAD_BUTTON_UP
+          # Past SDL's standard fifteen, the windows' numbers are the triggers' (TRIGGER_AXES).
+          return read_pad_button(type == EVENT_PAD_BUTTON_DOWN) if @event[PAD_BUTTON_AT, 1].unpack1("C") < TRIGGER_AXES.keys.min
+
+          return
+        end
         return unless type == EVENT_KEY_DOWN || type == EVENT_KEY_UP
 
         scancode = @event[KEY_SCANCODE_AT, 4].unpack1("L")
@@ -948,21 +1236,44 @@ module VBlank
         end
       end
 
-      # The console's buttons one gamepad holds now.
+      # The console's buttons one gamepad holds now. A trigger is down from IR::Buttons::HELD_FROM,
+      # and L2 and R2 keep how far theirs is pulled, as a part pull among the buttons
+      # (IR::Buttons.pulls), which reaches the game above their bits.
       def pad_held(pad)
         pads = @player_settings.pad_map
-        down = (pads.keys - @pad_kept).select { |button| @sdl.SDL_GetGamepadButton(pad, button) != 0 }
-        self.class.pad_buttons(down: down, stick_x: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_X),
-                               stick_y: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_Y), pads: pads)
+        unkept = pads.keys - @pad_kept
+        pulls = unkept.select { |button| TRIGGER_AXES.key?(button) }.to_h { |button| [button, trigger_percent(pad, button)] }
+        down = (unkept - pulls.keys).select { |button| @sdl.SDL_GetGamepadButton(pad, button) != 0 }
+        down += pulls.select { |_, percent| percent >= IR::Buttons::HELD_FROM }.keys
+        held = self.class.pad_buttons(down: down, stick_x: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_X),
+                                      stick_y: @sdl.SDL_GetGamepadAxis(pad, PAD_LEFT_Y), pads: pads)
+        part = pulls.filter_map do |button, percent|
+          [pads[button], percent] if percent.positive? && IR::Buttons::PULLED_BUTTONS.include?(pads[button])
+        end
+        part.empty? ? held : held + [part.to_h]
+      end
+
+      # How far trigger +button+ (Settings::PAD_BUTTONS's number) of +pad+ is pulled, in percent.
+      def trigger_percent(pad, button)
+        value = @sdl.SDL_GetGamepadAxis(pad, TRIGGER_AXES.fetch(button))
+        value.positive? ? value * 100 / TRIGGER_FULL : 0
+      end
+
+      # A trigger moved: crossing IR::Buttons::HELD_FROM it goes down or comes up as a gamepad button
+      # of the windows' own number does, so the menu can give it to a button (rg_sdl.c's trigger_moved).
+      def read_trigger
+        button = TRIGGER_AXES.key(@event[PAD_AXIS_AT, 1].unpack1("C")) or return
+        id = @event[PAD_ID_AT, 4].unpack1("L")
+        value = @event[PAD_AXIS_VALUE_AT, 2].unpack1("s")
+        down = (value.positive? ? value * 100 / TRIGGER_FULL : 0) >= IR::Buttons::HELD_FROM
+        read_pad_button(down, id: id, button: button) unless down == @pad_down[id].include?(button)
       end
 
       # A gamepad's button went down, or came up. The guide button, or Back and Start together,
       # opens or closes the menu, and while it is open the D-pad, A and B work it. Back and Start
       # each come as an event of their own, and only the second of them, with the first still
       # down, opens it. A button pressed for the menu is kept from the game until it comes up.
-      def read_pad_button(down)
-        id = @event[PAD_ID_AT, 4].unpack1("L")
-        button = @event[PAD_BUTTON_AT, 1].unpack1("C")
+      def read_pad_button(down, id: @event[PAD_ID_AT, 4].unpack1("L"), button: @event[PAD_BUTTON_AT, 1].unpack1("C"))
         unless down
           @pad_down[id].delete(button)
           return @pad_kept.delete(button)
@@ -973,6 +1284,7 @@ module VBlank
           @pad_kept << button
           return write_settings_soon
         end
+        @menu.answer_messages if @player_settings.pad_map.key?(button)
         return unless @has_menu
 
         if PAD_OPENERS.include?(button) || pad_openers_together?(id, button)
@@ -981,6 +1293,8 @@ module VBlank
         elsif @menu.open? && PAD_MENU_KEYS.key?(button)
           @pad_kept << button
           press_menu(PAD_MENU_KEYS[button])
+        elsif PAD_MENU_KEYS.key?(button) && @menu.press_on_variables(PAD_MENU_KEYS[button])
+          @pad_kept << button # the D-pad's up and down scroll the window of variables, and B shuts it
         end
       end
 
@@ -1006,7 +1320,9 @@ module VBlank
           @kept_from_game << scancode
           return write_settings_soon
         end
-        return @closed = true if scancode == ESCAPE && !repeat
+        return if read_typed_key(scancode, repeat)
+        return @escaped = @closed = true if scancode == ESCAPE && !repeat
+        return if read_variables_key(scancode, repeat)
 
         hotkey = @player_settings.hotkey_of_key(scancode)
         if menu_opener?(scancode, hotkey) && @has_menu
@@ -1026,7 +1342,34 @@ module VBlank
           switch = SWITCHED[hotkey]
           @menu.settings = @menu.settings.with(switch => !@menu.settings.setting(switch))
           apply_menu_settings
+        elsif !repeat && @player_settings.button_of_key(scancode)
+          @menu.answer_messages # a console button answers what the window says, as its OK does
         end
+      end
+
+      # The window of the game's variables, open with the menu shut, has the arrows that scroll it and
+      # the keys that type a name (Menu#type_key), held ones too for the arrows and Backspace; the
+      # game plays on with the rest. Gives whether the key was the window's.
+      def read_variables_key(scancode, repeat)
+        moves = MENU_KEYS[scancode]
+        taken = if %i[up down].include?(moves) then @menu.press_on_variables(moves)
+                elsif !repeat || scancode == WindowMenu::BACKSPACE_KEY then @menu.type_key(scancode)
+                end
+        @kept_from_game << scancode if taken
+        taken
+      end
+
+      # While an address or room code is typed in the menu (Menu#typing?), the keys that type it are the
+      # menu's, held Backspace too, and Escape gives up the typing rather than closing the window. The
+      # arrows and Enter still work the menu. Gives whether the key was taken.
+      def read_typed_key(scancode, repeat)
+        return false unless @menu.typing?
+
+        taken = if scancode == ESCAPE then !repeat && @menu.cancel_typing
+                elsif !repeat || scancode == WindowMenu::BACKSPACE_KEY then @menu.type_key(scancode)
+                end
+        @kept_from_game << scancode if taken
+        taken
       end
 
       # The window settings a hotkey switches on and off.

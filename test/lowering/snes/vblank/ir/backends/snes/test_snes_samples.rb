@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# RECORDINGS ON A SUPER NINTENDO. The Advance's processor mixes every recording a game plays into
+# Recordings on a Super Nintendo. The Advance's processor mixes every recording a game plays into
 # one stream; the S-DSP plays each on a voice of its own, reading it from the sound unit's memory
 # in BRR, its own packing of four bits a sample (fullsnes, "SNES APU DSP BRR Samples"). The
 # cartridge keeps the interpreter's count of where each recording has got to, so it logs a loop

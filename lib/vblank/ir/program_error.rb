@@ -7,7 +7,7 @@ module VBlank
     # plays a program raises this one error for it, carrying its own sentence about what
     # happened, so a game's test asserts one thing whichever backend played the game.
     #
-    # It is the GAME going wrong, and only that. A backend failing in its own right — a
+    # It is the game going wrong, and only that. A backend failing in its own right — a
     # compiler that is missing, a program that crashed — raises an error of that backend's.
     class ProgramError < StandardError; end
   end

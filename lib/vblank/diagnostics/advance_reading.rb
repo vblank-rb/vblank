@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHAT A READER OVER A RUNNING GAME BOY ADVANCE CARTRIDGE CAN BE ASKED that only the Advance's
+    # What a reader over a running Game Boy Advance cartridge can be asked that only the Advance's
     # way of keeping things answers: which sprite in the console's table is whose, how many passes
     # of the game loop it finished, what its mixer of recordings is playing, and the processor
     # itself — the registers, where each routine starts, the wave voice's pitch, the button reads.
@@ -13,12 +13,12 @@ module VBlank
     # every console and is the Verifier's own. A reader over another console's cartridge never has
     # these: it is not asked the processor's registers and then refused, it has no such question.
     module AdvanceReading
-      # HOW THE CONSOLE'S 512 COLOURS ARE LAID OUT: the backgrounds' 256 first, then the
+      # How the console's 512 COLOURS ARE LAID OUT: the backgrounds' 256 first, then the
       # sprites'. Each half is sixteen groups of sixteen, and a sprite is told which group it
       # draws from — so these are what turns "group 4" into a place in the table.
       PALETTE = Verifier::PaletteLayout.new(half: 256, group: 16)
 
-      # THE SOUND CHIP'S REGISTERS, a byte at a time, for Verifier#watch_sound: the four voices'
+      # The sound chip's registers, a byte at a time, for Verifier#watch_sound: the four voices'
       # settings and the mixer's, SOUND1CNT_L at 0x0400_0060 to SOUNDBIAS at 0x0400_0088. The wave
       # voice's own memory (from 0x0400_0090) and the recorded sound's FIFOs (from 0x0400_00A0) are
       # left out: the FIFOs are written thousands of times a second and start no note.
@@ -28,7 +28,7 @@ module VBlank
       # address with the sixteen bits written (the emulator hands them over widened to 32 with the sign).
       def sound_write_mask = 0xFFFF
 
-      # THE VIDEO REGISTERS THAT CAN BE READ BACK, by the manual's names: which layers and mode
+      # The video registers that can be read back, by the manual's names: which layers and mode
       # are on, each background's settings, the windows, and the blending. The scroll registers
       # cannot be read back on the console, so the scroll is a memory of its own below, read from
       # what the emulator kept.
@@ -41,7 +41,7 @@ module VBlank
       SPRITE_TABLE = 0x0700_0000
       SPRITE_TABLE_BYTES = 1024
 
-      # WHAT THE CONSOLE MAKES ITS PICTURE FROM, other than the tiles' pictures: each memory a
+      # What the console makes its picture from, other than the tiles' pictures: each memory a
       # list of what is at each place in it, by where (Comparison::VideoDifference names the
       # first place two cartridges differ). +colors+ is the 512 colours by their number,
       # +sprite_table+ the table of sprites as halfwords by their byte in it, +scroll+ each
@@ -58,12 +58,12 @@ module VBlank
           registers: VIDEO_REGISTERS.transform_values { |address| mem16(address) } }
       end
 
-      # THE SPRITE TABLE AS BOXES (SpriteBox), one for each entry switched on that reaches the
+      # The sprite table as boxes (SpriteBox), one for each entry switched on that reaches the
       # screen, in the table's order. Nothing here needs a build record, so it is how a cartridge
       # with none shows where its sprites are. Across wraps at 512 and down at 256, as the console
       # wraps them.
       #
-      # A TURNED ENTRY AT DOUBLE SIZE IS THE BOX IT IS DRAWN IN, twice its picture's width and
+      # A turned entry at double size is the box it is drawn in, twice its picture's width and
       # height. A sprite the console turns or resizes may be given a box that size to swing its
       # corners through (VBlank's own always are), and the table's position is that box's corner,
       # with the picture in its middle. A box of the picture's size at that corner would be neither
@@ -105,7 +105,8 @@ module VBlank
       private def kept_list_items(place, _slot = nil)
         front = place.head_at ? var_at(place.head_at) : 0
         Array.new(var_at(place.length_at)) do |i|
-          little_slot(place.base + (((front + i) % place.slots) * place.stride), place.bytes) / place.scale
+          at = place.base + (((front + i) % place.slots) * place.stride)
+          (place.unsigned ? mem16(at) : little_slot(at, place.bytes)) / place.scale # an unsigned slot is two bytes
         end
       end
 
@@ -113,12 +114,12 @@ module VBlank
       # that never sleeps.
       RUN_UNTIL_LIMIT = 2_000_000
 
-      # WHERE THE SAVE CHIP ENDS IN THE FILE THE EMULATOR KEEPS IT IN. A cartridge given a clock has
+      # Where the save chip ends in the file the emulator keeps it in. A cartridge given a clock has
       # mGBA write 16 bytes of the clock's own state after the chip (its time and settings, and when
       # it wrote them), and a save chip is a whole number of kilobytes.
       SAVE_FILE = Verifier::SaveFileLayout.new(whole: 1024, clock_bytes: 16)
 
-      # HOW MANY TIMES ROUND THE GAME LOOP THE CONSOLE GOT, in the frames it ran (see
+      # How many times round the game loop the console got, in the frames it ran (see
       # Verifier for what a pass is and why it is not the frame count). Build the Verifier with
       # `count_passes: true` to ask for it.
       #
@@ -127,24 +128,44 @@ module VBlank
       # program, and one extra instruction can tip a routine out of the console's quick memory
       # and change the timing being measured.
       #
-      # PASSES FINISHED, not passes begun. A run stops at a frame boundary, where the game is
+      # Passes finished, not passes begun. A run stops at a frame boundary, where the game is
       # part-way through a pass — it has asked for the next frame and is waiting for it — so
       # the pass in flight is not counted. A program with no game loop has no passes and gets
       # nil, which is a different answer from none.
       #
-      # WHICH INSTRUCTION IS WATCHED depends on where the build put the loop, and the two
+      # Which instruction is watched depends on where the build put the loop, and the two
       # answers are chosen so that neither has to guess where the game is when the run stops.
       #
-      # A loop the build kept in the console's quick memory is a routine the loop CALLS, so its
+      # A loop the build kept in the console's quick memory is a routine the loop calls, so its
       # first instruction runs once at the START of every pass — the one in flight included, and
       # there is always one in flight. Passes finished is then one fewer than the arrivals.
       #
       # A loop left in the cartridge is written out in place, and the instruction that makes it
       # a loop is the branch back to the top. That runs once at the END of every pass that
-      # finished, and never for the one in flight, so the arrivals ARE the passes finished. Its
+      # finished, and never for the one in flight, so the arrivals are the passes finished. Its
       # first instruction cannot be used instead: for a loop that waits for the screen, that is
       # the instruction asking the console to sleep, and the console's own startup can enter
       # that one twice.
+      # What stopped the game, in the interpreter's words, or nil while nothing has. A cartridge that
+      # can stop on a full list keeps what went wrong where its build record says
+      # (IR::Backends::GBA::FaultStops); one that cannot keeps nothing, and nothing goes wrong in it.
+      def went_wrong
+        refuse_missing_build_record!("where it keeps what went wrong")
+        at = @rom.built.runtime[IR::Backends::GBA::Runtime::Frame::FAULT] or return nil
+
+        ensure_rendered!
+        code, place, first, second = (0...4).map { |k| IR::Int32.wrap(mem32(at + (k * 4))) }
+        return nil if code.zero?
+
+        list = @rom.built.lists.find { |_, kept| kept.base == place }&.first
+        case code
+        when IR::Backends::CartridgeFaults::LIST_FULL then IR::Faults.list_full(list, first)
+        when IR::Backends::CartridgeFaults::INDEX_OUT_OF_RANGE then IR::Faults.index_out_of_range(list, first, second)
+        when IR::Backends::CartridgeFaults::STOP_FULL then IR::Nodes::StopFull.words(@rom.source_program, second, first)
+        else "the game went wrong (#{code})"
+        end
+      end
+
       def passes
         refuse_missing_build_record!("where its game loop is, so its passes cannot be counted")
         unless @count_passes
@@ -158,7 +179,7 @@ module VBlank
         [@probe.arrivals - @pass_in_flight, 0].max
       end
 
-      # THE SPRITES THE CONSOLE IS DRAWING, each knowing which one the game declared it for.
+      # The sprites the console is drawing, each knowing which one the game declared it for.
       #
       # One SpriteRow per sprite being drawn, off the console's own table — +name+, +x+, +y+,
       # +slot+, +tile+, +palette+, +color_count+, +colors+, +priority+, +shape+, +size+,
@@ -169,8 +190,8 @@ module VBlank
       # arithmetic, and right for a picture stored either of the two ways (see #colors_drawn_from,
       # and +color_count+, which marks which way).
       #
-      # +x+ AND +y+ ARE WHERE THE PICTURE STARTS — the corner of the canvas the art was drawn
-      # on, which is where the game put the sprite. That is NOT the number the console carries,
+      # +x+ and +y+ are where the picture starts — the corner of the canvas the art was drawn
+      # on, which is where the game put the sprite. That is not the number the console carries,
       # and the difference is worth saying because it is invisible: a pose is stored trimmed to
       # what it actually draws and the sprite stands that much further along to compensate, and a
       # pose drawn backwards is trimmed from the other side and stands a different amount further
@@ -187,7 +208,7 @@ module VBlank
       # background, or from one a pixel off the edge. A sprite the game has switched off is left
       # out, which is the answer a test wants.
       #
-      # WHAT THE NAME SAVES is the guessing. The console's table holds which of its 128 places a
+      # What the name saves is the guessing. The console's table holds which of its 128 places a
       # sprite is in and nothing else, so a test with a cast otherwise picks its hero by a place
       # number (which moves the day the game declares something earlier), by position (which
       # needs the game to keep its own position in a variable, and is a pixel or two out exactly
@@ -195,7 +216,7 @@ module VBlank
       # whose colours are being swapped). The build gave out the places and the cartridge carries
       # that, so the rows can name whose they are.
       #
-      # A PICTURE TOO BIG for the console to draw in one go is several rows with the same name,
+      # A picture too big for the console to draw in one go is several rows with the same name,
       # not one merged row: which piece is which is the framework's business, and a test asking
       # where something is wants all of it.
       #
@@ -215,7 +236,7 @@ module VBlank
         rows.select { |row| row.name == name }
       end
 
-      # WHAT THE CONSOLE IS PLAYING, as values — one per sounding voice, in the order the
+      # What the console is playing, as values — one per sounding voice, in the order the
       # mixer holds them (see IR::Backends::GBA::Mixer::Voice for what each carries). Read off
       # the running console at the final frame boundary, so it is what the lowering really did
       # rather than what anything says it should have.
@@ -228,6 +249,19 @@ module VBlank
         table ? table.read { |address| mem32(address) } : []
       end
 
+      # The frame of sound the mix wrote last, a signed sample each, read out of the console's
+      # memory: the cartridge's own sound, byte for byte, which the interpreter's
+      # Reference#mixed_sound gives a frame at a time too. Not what the emulator's speaker hands
+      # over (#last_frame_samples), which is this resampled at moments the emulator's timing
+      # settles, and which a game's own transfers into video memory move a little: two builds of
+      # one game that mix byte for byte alike are heard a little apart where one of them copies
+      # more. So two builds' sound is held alike with this, a frame at a time. Empty for a
+      # program that plays no samples.
+      def last_frame_mix
+        table = voice_table!
+        table ? table.newest_mix { |address| mem8(address) } : []
+      end
+
       # Just the names of the samples sounding, in the mixer's order — directly comparable with
       # the interpreter's Reference#active_samples, which is what lets a test check the two
       # backends agree about sound with one equality.
@@ -238,7 +272,7 @@ module VBlank
       # what pitch a voice is playing at needs it. Nil for a program that plays no samples.
       def sample_clock = voice_table!&.clock
 
-      # WHAT THE CONSOLE COULD NOT PLAY: how many plays found every voice busy and were dropped,
+      # What the console could not play: how many plays found every voice busy and were dropped,
       # and how the voices were being split at the worst of them. Counted since the cartridge
       # booted, so a test reads it at the end of a run. Directly comparable with the
       # interpreter's Reference#sound_drops — the same shape, so the two backends' answers meet
@@ -249,7 +283,7 @@ module VBlank
         table ? table.read { |address| mem32(address) } : SoundDrops::Reading.unmeasured
       end
 
-      # WHICH SONG IS PLAYING NOW, by its name, or nil for none (Reference#music_playing): the
+      # Which song is playing now, by its name, or nil for none (Reference#music_playing): the
       # number the player is on (GBA::Audio::MUSIC_PLAYING) turned back into the tune it numbered,
       # as the frames played so far left it: a song the game named in the frame just played starts
       # at the player's next step, so is read from the frame after. A game that plays no tune keeps
@@ -263,14 +297,59 @@ module VBlank
         number.zero? ? nil : IR::Backends::GBA::Audio.tunes_in_order(read_program).fetch(number - 1)
       end
 
-      # HOW MANY TIMES A SPRITE WENT WITHOUT ITS COLOURS since the cartridge booted: drawn with a
+      # How many times a sprite went without its colours since the cartridge booted: drawn with a
       # list of its own (`draw_with`), it borrows a group of the console's colours for the frame,
       # and this counts each time every group was taken already, so it showed its own colours
       # instead. 0 for a game that draws no sprite with another list, which borrows none.
       def borrowed_colors_missed
         refuse_missing_build_record!("where it counts the colours it went without")
-        address = @rom.built.colors_short_at
-        address ? IR::Int32.wrap(mem32(address)) : 0
+        short = @rom.built.colors_short
+        short ? IR::Int32.wrap(mem32(short.count_at)) : 0
+      end
+
+      # The words for a sprite drawn in colours not its own (see #borrowed_colors_missed), naming
+      # the sprites and pools that wear the last list that found no group; nil while none has.
+      # Whatever plays the cartridge logs them once for each list (#warn_of_losses), since this is
+      # a wrong picture with no other sign, and only the running game can know it happened: the
+      # build cannot tell how many lists will be on the screen at once.
+      def colors_short_message
+        short = @rom.built&.colors_short or return nil
+        ensure_rendered!
+        missed = IR::Int32.wrap(mem32(short.count_at))
+        return nil unless missed.positive?
+
+        names = short.wearers_of(mem32(short.list_at)).map { |name| wearer_words(name) }.uniq
+        wearer = names.empty? ? "A sprite" : names.join(" or ").then { |words| words[0].upcase + words[1..] }
+        "#{wearer} was drawn in colors that are not its own. All the spare groups of sprite colors were " \
+          "in use by other lists of colors on the screen. Until now, sprites found no free group " \
+          "#{missed} #{missed == 1 ? 'time' : 'times'}. To fix this, show fewer sprites with different " \
+          "lists of colors at the same time."
+      end
+
+      # A sprite by the name the game gave it: a thing of a pool by its pool's, since the build
+      # makes each of a pool's places a sprite of its own name (Messages::MadeNames, :pool_part).
+      private def wearer_words(name)
+        kind, parts = Messages::MadeNames.read(name)
+        kind == :pool_part ? "a sprite of pool :#{parts[:pool]}" : "sprite :#{name}"
+      end
+
+      # Log #colors_short_message once for each list that found no group, as this reader sees it.
+      # Called by the Verifier after each run of frames it plays (Verifier#warn_of_losses): one
+      # read of the cartridge's memory for a game that lends groups, a second only when the count
+      # has grown, and none for a game that lends none. The cartridge keeps only the last list
+      # that missed, so of several lists missing within one run of frames the last is named, and
+      # the others are named when they are last in a later run.
+      private def warn_of_losses
+        short = @rom.built&.colors_short or return
+        missed = IR::Int32.wrap(mem32(short.count_at))
+        return if missed <= (@colors_short_count ||= 0)
+
+        @colors_short_count = missed
+        list = mem32(short.list_at)
+        return if (@colors_short_lists ||= []).include?(list)
+
+        @colors_short_lists << list
+        VBlank.logger.warn("sprites") { colors_short_message }
       end
 
       # --- the processor ---
@@ -291,7 +370,7 @@ module VBlank
         @probe.run_until(address, limit: limit)
         self
       rescue RuntimeError
-        # The emulator says which ADDRESS it failed to reach, which is the only thing it knows.
+        # The emulator says which address it failed to reach, which is the only thing it knows.
         # Only the build can turn that back into the name the program gave the routine, and the
         # name is the whole reason anybody asked for it here.
         raise RuntimeError, format("The routine %p (at 0x%08X) did not run within %d instructions.",
@@ -324,7 +403,7 @@ module VBlank
 
       private
 
-      # WATCH FOR ARRIVALS AT THE GAME LOOP, before any frame runs, when the run counts passes. A
+      # Watch for arrivals at the game loop, before any frame runs, when the run counts passes. A
       # program with no game loop has no such routine, and that is an answer rather than an error
       # — see {#passes}.
       def watch_passes!
@@ -357,6 +436,8 @@ module VBlank
           slots.each { |slot| by_slot[slot] = name }
         end
         moved = @rom.built.sprite_offsets
+        pictures = @rom.built.sprite_pictures
+        choices = @rom.built.sprite_pose_choices || {}
         rooms = @rom.built.streamed_sprite_pose_vars
         # A run drawn in an order the game works out moves its sprites' rows about, so a row is
         # taken back to the sprite's own place before anything is looked up by place.
@@ -377,19 +458,46 @@ module VBlank
           slot = held ? held.row_in_copy(row[:slot] - border_rows) { |address| mem16(address) } : row[:slot]
           home = own.fetch(slot, slot)
           name = whose[home]
-          dx, dy = moved.dig(home, pose_key(row, rooms, home)) || [0, 0]
+          key = pose_key(row, rooms, home)
+          dx, dy = moved.dig(home, key) || [0, 0]
+          shown = pictures.dig(home, key)
+          either = choices[home]
           # A place several scenes' sprites take turns at is the sprite of the scene the table
           # was last written for.
           if (turn = turns.fetch(home, []).find { |each_turn| var_at(each_turn.at) == each_turn.value })
             name = turn.name
-            dx, dy = turn.offsets[turn_pose_key(row, turn)] || [0, 0]
+            key = turn_pose_key(row, turn)
+            dx, dy = turn.offsets[key] || [0, 0]
+            shown = turn.pictures[key]
+            either = turn.choices
           end
+          if (sharing = either&.keys&.[](key))
+            picked = pose_picked_for_row(either.pose_from)
+            choice = sharing.find { |each_choice| each_choice.pose == picked }
+            next ambiguous_sprite_row(row, name, sharing, shown, table) unless choice
+
+            dx = choice.dx
+            dy = choice.dy
+            shown &&= choice.picture
+          end
+
           # Back into the ranges the console keeps these in, so a sprite half off the left edge
           # reads the way its own place reads rather than going negative.
-          SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y],
+          SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: shown,
                         x: (row[:x] - dx) & 0x1FF, y: (row[:y] - dy) & 0xFF,
                         colors: colors_drawn_from(row, table))
         end
+      end
+
+      # A row that could be holding any of several poses (BuildRecord#sprite_pose_choices): no
+      # +x+ or +y+, since each pose puts the canvas somewhere else, and on a sprite's first place
+      # an AmbiguousPicture giving each reading, where the row would otherwise have named one.
+      def ambiguous_sprite_row(row, name, choices, shown, table)
+        picture = shown && AmbiguousPicture.new(candidates: choices.uniq { |choice| [choice.dx, choice.dy] }.map do |choice|
+          PictureCandidate.new(picture: choice.picture, x: (row[:x] - choice.dx) & 0x1FF, y: (row[:y] - choice.dy) & 0xFF)
+        end)
+        SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: picture, x: nil, y: nil,
+                      colors: colors_drawn_from(row, table))
       end
 
       # How many of the console's first sprite rows a game shown in a border keeps for the border,
@@ -402,11 +510,11 @@ module VBlank
         [IR::Backends::GBA::BorderSprites::BORDER_ROWS, *console.border_corner]
       end
 
-      # THE COLOURS A ROW IS DRAWING FROM, which is the question the row's +palette+ field looks
+      # The colours a row is drawing from, which is the question the row's +palette+ field looks
       # like an answer to and is not.
       #
       # A picture is stored one of two ways, and the console picks by how many colours the art
-      # uses: half a byte a pixel, picking out of a GROUP of sixteen colours, or a whole byte
+      # uses: half a byte a pixel, picking out of a group of sixteen colours, or a whole byte
       # picking out of all 256. +palette+ names the group, so it is the answer for the first kind
       # and means nothing for the second — and the two look identical from outside, which is why
       # handing over "the sixteen at that group" would be quietly wrong for a sprite drawn from
@@ -419,14 +527,14 @@ module VBlank
         table[from, row[:color_count]]
       end
 
-      # WHICH POSE A ROW IS HOLDING, given the way the build wrote that place's trims down (see
+      # Which pose a row is holding, given the way the build wrote that place's trims down (see
       # IR::Backends::GBA#pose_key, the other end of this).
       #
       # Nearly every sprite keeps all its pictures in sprite memory at once, and then the row tells
       # its own poses apart: the tiles it draws and whether it is drawn backwards differ for every
       # pose, so those two are the answer.
       #
-      # A sprite with more pictures than fit keeps ONE of them there at a time, and then the row
+      # A sprite with more pictures than fit keeps one of them there at a time, and then the row
       # cannot: every pose is copied into the same room, so it shows that one place whichever pose
       # is in it. The cartridge keeps the pose number in a variable of its own for exactly that
       # reason — it is how it knows whether the frame already in the room is still the right one —
@@ -437,7 +545,7 @@ module VBlank
       def pose_key(row, rooms, home = row[:slot])
         address = rooms[home] or return [row[:tile], row[:mirrored_across], row[:mirrored_down]]
 
-        var_at(address)
+        pose_in_room(address)
       end
 
       # ...the same, for a sprite taking its turn at a place (see BuildRecord#sprite_turns),
@@ -445,7 +553,121 @@ module VBlank
       def turn_pose_key(row, turn)
         return [row[:tile], row[:mirrored_across], row[:mirrored_down]] if turn.pose_var.nil?
 
-        var_at(turn.pose_var)
+        pose_in_room(turn.pose_var)
+      end
+
+      # The pose whose pictures are in a room, by the variable at +address+ that the cartridge
+      # writes as it copies one in.
+      #
+      # ### Why the variable alone is not always the answer
+      #
+      # The cartridge also writes "nothing is here" to that variable without touching the room:
+      # as a scene takes over, so that the scene's next drawing copies its frame in again. Its
+      # sprites are drawn in the gap after a pass, and the scene takes over during the pass after
+      # that, so for the scene up at power-on the order is: the gap before the first pass copies
+      # the first pose in and draws it, then the first pass marks the room empty, and the frame
+      # is read with the row still showing the room's pictures. The console shows that first pose,
+      # and the variable no longer says which it is.
+      #
+      # So a reader that watches the sprites (#watch_sprite_rooms) keeps the last pose each room
+      # was given, and that is the answer while the room is marked empty. A room marked empty
+      # whose row is still drawn has had nothing else written into it: a scene's art goes in
+      # beside its own rooms, never over them, and another scene's rows are hidden before the
+      # next frame is drawn.
+      def pose_in_room(address)
+        pose = var_at(address)
+        return pose unless pose == ROOM_EMPTY && @poses_copied
+
+        @poses_copied.fetch(address, pose)
+      end
+
+
+      # The pose +pose+ (BuildRecord::PoseChoices#pose_from) worked out when the row being read
+      # was written, or nil where nothing says (no such node, or no reading a frame ago).
+      #
+      # ### Why a variable is the frame before's
+      #
+      # The cartridge writes the sprites' rows in the gap after each frame, from the variables as
+      # they stand then, and a frame is read as that gap begins. So the rows read now were written
+      # in the gap before this frame, from what the variables held as the frame before was read,
+      # and the game may have picked another pose since. The reader keeps that reading
+      # (#keep_picked_poses), playing a frame at a time to have it. A list's slot here is a pool's
+      # copy, which the cartridge itself writes in that gap with the rows, so it is read as it
+      # stands.
+      def pose_picked_for_row(pose)
+        return nil if pose.nil?
+
+        earlier = @picked_poses&.[](@played - 1) || {}
+        return nil unless pose_variables_in(pose).all? { |name| earlier.key?(name) }
+
+        pose_worked_out(pose, earlier, {})
+      end
+
+      # The names of the variables +pose+ reads.
+      def pose_variables_in(pose)
+        names = []
+        pose.walk { |node| names << node.name if node.kind == :var_ref }
+        names
+      end
+
+      # +node+ worked out as IR::Int32 does, its variables from +variables+ and its lists' slots
+      # read now (+lists+ keeping each list read once).
+      def pose_worked_out(node, variables, lists)
+        case node.kind
+        when :int then node.value
+        when :var_ref then variables.fetch(node.name)
+        when :list_get then (lists[node.name] ||= list_items(node.name) || [])[node.index.value]
+        when :binop
+          left = pose_worked_out(node.lhs, variables, lists)
+          right = pose_worked_out(node.rhs, variables, lists)
+          return nil if left.nil? || right.nil?
+
+          case node.op
+          when :+ then IR::Int32.add(left, right)
+          when :- then IR::Int32.sub(left, right)
+          when :* then IR::Int32.mul(left, right)
+          end
+        end
+      end
+
+      # The variables the poses of sprites whose rows cannot tell them apart are worked out from
+      # (BuildRecord#sprite_pose_choices), read as each frame ends.
+      def pose_variables
+        @pose_variables ||= begin
+          record = @rom.built
+          places = record ? (record.sprite_pose_choices || {}).values : []
+          turns = record ? (record.sprite_turns || {}).values.flatten.filter_map(&:choices) : []
+          (places + turns).filter_map(&:pose_from).flat_map { |pose| pose_variables_in(pose) }.uniq
+        end
+      end
+
+      def picks_poses_each_frame? = !pose_variables.empty?
+
+      # Read each variable a sprite's pose is worked out from (#pose_picked_for_row) as this
+      # frame ends, keeping this frame's and the one before.
+      def keep_picked_poses
+        return unless picks_poses_each_frame?
+
+        @picked_poses ||= {}
+        @picked_poses[@played] = pose_variables.to_h { |name| [name, raw_var(name)] }
+        @picked_poses.delete_if { |frame, _| frame < @played - 1 }
+      end
+
+      # What the cartridge writes to a room's pose when nothing is in it, read back as a number.
+      ROOM_EMPTY = IR::Int32.wrap(IR::Backends::GBA::SpriteDrawing::NO_FRAME)
+
+      # Watch each room's pose from the first frame, keeping the last pose copied into it (see
+      # #pose_in_room). Only a game with a sprite that keeps one frame at a time has one.
+      def watch_sprite_rooms
+        rooms = @rom.built.streamed_sprite_pose_vars.values
+        turns = (@rom.built.sprite_turns || {}).values.flatten.filter_map(&:pose_var)
+        @poses_copied = {}
+        (rooms + turns).uniq.each do |address|
+          @probe.watch(address) do |change|
+            pose = IR::Int32.wrap(change.now)
+            @poses_copied[address] = pose unless pose == ROOM_EMPTY
+          end
+        end
       end
 
       # Which places the build gave each declared sprite. A cartridge with no build record

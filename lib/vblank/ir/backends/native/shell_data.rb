@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class Native
-        # WHAT A SHELL KNOWS, AS C (runtime/rg_shell.c reads it): Original::ShellFacts, the one record
+        # What a shell knows, as C (runtime/rg_shell.c reads it): Original::ShellFacts, the one record
         # every runtime is made from, as the nodes of the C tree for the struct runtime/rg_shell.h
         # declares, every sentence a file is refused in among them. Printer writes them. A build that
         # is no shell (and each part of a shell) gets a file whose facts are NULL.
@@ -25,6 +25,16 @@ module VBlank
           # The name of the file of an Original::Shell::Part under PARTS_FOLDER (the game's is the
           # folder's own name, beside it).
           def part_name(part) = { menu: "menu", unpacking: "unpack-#{part.number}" }.fetch(part.role)
+
+          # The files to write beside the runtime's for +shell+ (an Original::Shell), or for none, by
+          # name: FILE, and the file each big table of bytes in it is embedded from
+          # (Printer#embedded). A shell whose data pack names many pieces has a long header after
+          # its SHA-1, kept in a file of its own, and the compiler stops on an embed whose file is
+          # not beside it.
+          def source_files(shell = nil)
+            printer = Printer.new
+            { FILE => printer.print_file(items(shell)), **printer.embedded }
+          end
 
           # The top level of the file for +shell+ (an Original::Shell), or for none.
           def items(shell = nil)

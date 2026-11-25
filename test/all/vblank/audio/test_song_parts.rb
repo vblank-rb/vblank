@@ -4,7 +4,7 @@ require "test_helper"
 
 require "stringio"
 
-# A SONG OF MANY PARTS. The console has two square-wave voices for music, and a song's other
+# A song of many parts. The console has two square-wave voices for music, and a song's other
 # parts play recorded instruments through the mixer — so a tune is not held to two parts, it is
 # held to two square-wave parts and as many recorded ones as the mixer has voices. The music a
 # game being built on the framework reads out of a retail cartridge wants seven to nine, and

@@ -4,7 +4,7 @@ require "test_helper"
 
 require "date"
 
-# THE CALENDAR A CARTRIDGE ADDS A TIME THE GAME SET WITH (IR::ClockCalendar), written as the
+# The calendar a cartridge adds a time the game set with (IR::ClockCalendar), written as the
 # program's own statements. Played on the interpreter here, which runs those statements exactly
 # as each cartridge's lowering of them does, and held to Ruby's own calendar: the first and last
 # days of every month, across the century turns where the leap years change.

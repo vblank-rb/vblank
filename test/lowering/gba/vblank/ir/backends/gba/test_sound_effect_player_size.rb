@@ -3,7 +3,7 @@
 require "test_helper"
 require "stringio"
 
-# WHAT A SOUND EFFECT'S VOICES COST THE ROUTINE THE SCREEN'S INTERRUPT RUNS. That routine is
+# What a sound effect's voices cost the routine the screen's interrupt runs. That routine is
 # weighed for the console's quick memory against everything else a frame runs, and kept there
 # first, so every byte it grows by is a byte some routine of the game's own no longer has.
 #
@@ -54,7 +54,7 @@ class TestSoundEffectPlayerSize < Minitest::Test
     backend.func_sizes.fetch(GBA::Placement::IRQ_ROUTINE)
   end
 
-  # THE SONG'S WAVE LANE STILL REACHES WHAT PUTS A WAVEFORM IN PLACE. The effects' notes and the
+  # The song's wave lane still reaches what puts a waveform in place. The effects' notes and the
   # song's both call it, so it stays inside the interrupt's routine while the effects' step moves
   # out — and a cartridge whose interrupt runs from the quick memory builds, rather than a plain
   # jump from the copy landing in whatever the quick memory holds where the routine used to be.

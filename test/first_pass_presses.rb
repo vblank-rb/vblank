@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# PRESSES COUNTED FROM THE GAME'S FIRST PASS, for a test whose game sets up save records before
+# Presses counted from the game's first pass, for a test whose game sets up save records before
 # it listens. Setting up counts frames too, and a console slower than the Advance can spend
 # several placing its save records before its first pass, so a press numbered from power-on
 # would fall before the game was listening. Shared by test/all/vblank/builder/test_save_data.rb and

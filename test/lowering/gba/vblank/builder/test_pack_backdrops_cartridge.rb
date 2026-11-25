@@ -3,7 +3,7 @@
 require "test_helper"
 require "all/vblank/builder/test_pack_backdrops"
 
-# A BACKDROP TAKEN FROM THE DATA PACK IS THE BACKDROP THAT COLOUR WRITTEN OUT WOULD BE, so the
+# A backdrop taken from the data pack is the backdrop that colour written out would be, so the
 # Advance's cartridge of a game taking its backdrops from the pack is, byte for byte, the cartridge
 # of the same game with the colours written in it: on the game's own `screen` line, and on each
 # scene's under a tint, where the build keeps the backdrops in a table of their own

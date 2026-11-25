@@ -6,11 +6,13 @@ require "folder_original"
 
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
 VBlank.require_game_file "fixtures/name_search/name_search_part"
+VBlank.require_game_file "fixtures/stepped_count/stepped_count_part"
+VBlank.require_game_file "fixtures/stepped_count/stepped_cell_part"
 VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "pair_runs_format"
 VBlank.require_game_file "back_copies_format"
 
-# A PORT'S UNPACKING ROUTINE, PLAYED (Original::CopyReader, Original::Unpacking): the routine a
+# A port's unpacking routine, played (Original::CopyReader, Original::Unpacking): the routine a
 # port writes in `slots.fill_from_copy`, built as a program of its own and played by `game_player`.
 # It runs in two places only: on the interpreter as a build makes its pack, and in a shell, which
 # is a computer program. So these play on the run whose player is the interpreter and on the
@@ -31,7 +33,44 @@ module CopyReaderTests
     assert_equal({ palette: PALETTE.pack("v*"), walls: TILE_BYTES, heights: HEIGHTS.pack("C*") }, unpacking.slot_bytes_in(played))
   end
 
-  # A READ OF ONE FILE AT A PLACE THE ROUTINE WORKS OUT AS IT RUNS is held to that file, as a place
+  # A number kept in a slot of halves and stepped in place reads back each count: the right-hand side
+  # is worked out once, as Ruby does, and not again for each byte it is written over (it would read
+  # the low byte already written, and 255 would read back as 511). The answer key is Ruby's own count.
+  STEPPED_ROUNDS = 600
+
+  def test_a_half_slot_stepped_in_place_reads_back_each_count
+    unpacking = VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
+      slots.numbers :written, count: 2, width: :half, signed: false
+      slots.numbers :seen, count: STEPPED_ROUNDS, width: :half, signed: false
+      slots.fill_from_copy do |_copy, pack|
+        SteppedCountPart.new(pack[:written], pack[:seen]).count_up(STEPPED_ROUNDS)
+      end
+    end.unpacking
+    played = unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 20_000))
+
+    assert_equal (0...STEPPED_ROUNDS).to_a, played[:seen].unpack("v*")
+    assert_equal [STEPPED_ROUNDS, 0], played[:written].unpack("v*")
+  end
+
+  # A map cell's tile stepped in place, read from the cell's own bytes, reads back each count: the tile
+  # is worked out once, and not again for its high byte after its low byte is written.
+  STEPPED_CELL_ROUNDS = 300
+
+  def test_a_map_cell_stepped_in_place_reads_back_each_tile
+    unpacking = VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
+      slots.map_cells :cells, count: 1
+      slots.numbers :seen, count: STEPPED_CELL_ROUNDS, width: :half, signed: false
+      slots.fill_from_copy do |_copy, pack|
+        SteppedCellPart.new(pack[:cells], pack[:seen]).count_up(STEPPED_CELL_ROUNDS)
+      end
+    end.unpacking
+    played = unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 20_000))
+
+    assert_equal (0...STEPPED_CELL_ROUNDS).to_a, played[:seen].unpack("v*")
+    assert_equal STEPPED_CELL_ROUNDS, played[:cells].unpack1("v")
+  end
+
+  # A read of one file at a place the routine works out as it runs is held to that file, as a place
   # written in the program is: past DATA.MU1's 154 bytes it is a fault naming the file (1, the
   # release's second) and the first byte read outside it, counted from the file's start, and not a
   # read of whatever file comes next. The answer key is the release's file sizes (FolderOriginal).
@@ -111,7 +150,7 @@ module CopyReaderTests
     end
   end
 
-  # A FORMAT'S ROUTINE IN NORMAL RUBY (test/back_copies_format.rb): seven counters, each a local set
+  # A format's routine in normal Ruby (test/back_copies_format.rb): seven counters, each a local set
   # with `=` and moved on with `+=` in loops inside loops and on both sides of the routine's tests,
   # one set from the copy's bytes before the place it read them moves on. It unpacks what the Ruby
   # answer key does, and so does the same format with each counter a `block.variable`.
@@ -171,7 +210,7 @@ module CopyReaderTests
     end
   end
 
-  # A PACK BIGGER THAN A CARTRIDGE'S WORK MEMORY UNPACKS on each run that plays this file, as every
+  # A pack bigger than a cartridge's work memory unpacks on each run that plays this file, as every
   # console, the Color's 8 KB among them. An unpacking runs only on a computer, in a shell, so no
   # build holds it to the console's memory, and a run's player does not either (Testing::BuildChecks).
   def test_a_pack_bigger_than_a_cartridges_work_memory_unpacks
@@ -184,6 +223,52 @@ module CopyReaderTests
 
       assert unpacking.finished_in?(played), "the unpacking got to its end"
       assert_equal raw, unpacking.slot_bytes_in(played)[:big]
+    end
+  end
+
+  # Steps asked for from a Ruby loop, each at places written in the program, are rows of a table
+  # that one loop of the routine reads (CopyReader#fold_constant_steps!), not a copy of the step
+  # each: the routine is the same size for forty steps as for four. A step at a place the routine
+  # works out as it runs is written as it is, and ends a run of rows. Each step still waits a
+  # frame after its block, so the routine ends on the same frame: SCATTERED_BYTES copies, the one
+  # placed by a read, then RLE_COPIES blocks of heights, a frame each.
+  SCATTERED_BYTES = 40
+  RLE_COPIES = 6
+  STEPS_FROM_LOOPS = SCATTERED_BYTES + 1 + RLE_COPIES
+
+  private def steps_from_loops(folder)
+    VBlank::Builder.new.data_pack(from: original(folder), version: "1") do |slots|
+      slots.numbers :scattered, count: SCATTERED_BYTES, width: :byte, signed: false
+      slots.numbers :pointed, count: 1, width: :byte, signed: false
+      slots.numbers :heights, count: HEIGHTS.length * RLE_COPIES, width: :byte, signed: false
+      slots.fill_from_copy do |copy, pack|
+        SCATTERED_BYTES.times { |n| copy.copy_bytes at: (n * 13) % COPY_SIZE, count: 1, into: pack[:scattered], start: n }
+        copy.copy_bytes at: copy.byte(SPEEDS_AT), count: 1, into: pack[:pointed]
+        RLE_COPIES.times { |n| copy.unpack_rle at: RLE_AT, into: pack[:heights], start: n * HEIGHTS.length }
+      end
+    end.unpacking
+  end
+
+  # How many calls the routine makes of the block routine named +part+.
+  private def block_calls(program, part)
+    target = VBlank::Messages::MadeNames.make(:unpacking_part, part: part)
+    program.walk.count { |node| node.kind == :call && node.target == target }
+  end
+
+  def test_steps_asked_for_from_a_loop_unpack_as_written_out_from_one_loop_of_the_routine
+    Dir.mktmpdir do |folder|
+      unpacking = steps_from_loops(folder)
+      played = unpacking.run_on(game_player, frames: STEPS_FROM_LOOPS)
+      one_frame_short = unpacking.run_on(game_player, frames: STEPS_FROM_LOOPS - 1)
+
+      assert_equal({ scattered: Array.new(SCATTERED_BYTES) { |n| COPY.getbyte((n * 13) % COPY_SIZE) }.pack("C*"),
+                     pointed: COPY.byteslice(COPY.getbyte(SPEEDS_AT), 1), heights: (HEIGHTS * RLE_COPIES).pack("C*") },
+                   unpacking.slot_bytes_in(played))
+      assert unpacking.finished_in?(played), "a frame for each step, and the routine ends"
+      refute unpacking.finished_in?(one_frame_short), "...and not a frame sooner"
+      # The forty copies are one call in a loop, the copy placed by a read one more; the six blocks of
+      # heights one call in a loop.
+      assert_equal [2, 1], [block_calls(unpacking.program, :copy), block_calls(unpacking.program, :unpack_rle)]
     end
   end
 
@@ -231,7 +316,7 @@ module CopyReaderTests
     end
   end
 
-  # READS PLACED BY THE ANSWERS OF READS: a byte, a half high byte first and a word, each at the
+  # Reads placed by the answers of reads: a byte, a half high byte first and a word, each at the
   # place the read before it gave, round after round. Each such place is kept where its read is
   # written (BlockKitInternals#emit_held_place), and what is read is what Ruby reads from the copy.
   CHAINED_ROUNDS = 6
@@ -269,7 +354,7 @@ module CopyReaderTests
     end
   end
 
-  # A LOOP WHOSE TEST READS THE COPY at a place the loop moves on reads the new place each time
+  # A loop whose test reads the copy at a place the loop moves on reads the new place each time
   # round: a place the routine keeps in a variable is read where the answer is used, not held.
   def test_a_loop_whose_test_reads_the_copy_reads_each_new_place
     Dir.mktmpdir do |folder|
@@ -340,7 +425,7 @@ module CopyReaderTests
     end
   end
 
-  # A LOOP BOUNDED BY A COUNT AND BY A MARKER OF THE COPY, joined with `&&`, stops at whichever
+  # A loop bounded by a count and by a marker of the copy, joined with `&&`, stops at whichever
   # comes first, as Ruby's does: pieces of four bytes, a piece whose first byte is 0x80 ending each
   # frame. The second frame is longer than the bound, so the bound stops it.
   PIECE_BYTES = 4
@@ -415,7 +500,7 @@ module CopyReaderTests
     end
   end
 
-  # A LOOP'S TEST READ PAST THE COPY'S END ON A LATER ROUND stops the routine there with the plain
+  # A loop's test read past the copy's end on a later round stops the routine there with the plain
   # refusal, on every run's build of it. The copy holds two bytes and no 0, so the third round
   # reads byte 2: in `stop_when:`, and in a `while` with no bound of its own, which a read past
   # the end must end. The answer key is the copy's length.
@@ -476,7 +561,7 @@ module CopyReaderTests
     end
   end
 
-  # A LIST WALKED UNTIL A RECORD SAYS IT IS THE LAST, as an original walks a group of pictures:
+  # A list walked until a record says it is the last, as an original walks a group of pictures:
   # records of four words (where from, where to, how many, another follows), two of them here.
   RECORDS_AT = 100
   RECORDS = VBlank::Testing::InRactors.shareable([[1000, 0, 300, 1], [2000, 600, 200, 0]])
@@ -518,7 +603,7 @@ module CopyReaderTests
     end
   end
 
-  # AN ARCHIVE SEARCHED FOR ONE FILE BY ITS NAME, as an original keeps its pictures and levels:
+  # An archive searched for one file by its name, as an original keeps its pictures and levels:
   # NameSearchPart (test/fixtures/name_search) says the layout. The file looked for is the third,
   # after one whose name differs in every letter and one that differs in a single letter, so a
   # count of differing letters that is not set back to 0 each round never finds it. The archive
@@ -574,7 +659,7 @@ module CopyReaderTests
     assert_archive_file_found { |part, _copy, letters| part.start_moved_on_in_else(letters) }
   end
 
-  # A ROUTINE WRITTEN IN A GAME FILE (test/plain_ruby_flagged_bytes_part.rb) sets `flags` and
+  # A routine written in a game file (test/plain_ruby_flagged_bytes_part.rb) sets `flags` and
   # `byte` from the slot it reads, then moves `at` on before it uses them: each holds the byte read
   # before the move, in the routine's own lines and in a method of the file it calls. The answer
   # is FlaggedBytes.unpacked, in Ruby.
@@ -591,7 +676,7 @@ module CopyReaderTests
     end
   end
 
-  # A READER WRITTEN IN A GAME FILE (FlaggedByteReader, test/plain_ruby_flagged_bytes_part.rb)
+  # A reader written in a game file (FlaggedByteReader, test/plain_ruby_flagged_bytes_part.rb)
   # sets `at` from a place kept in a list, moves the place on, then reads the copy at `at`; and sets
   # `high` from one such read before the next. Each holds what it was set to: the first byte, 5,
   # then 10 and 20 joined. Read late, `at` would be the moved place and `high` the byte after.
@@ -606,7 +691,7 @@ module CopyReaderTests
     end
   end
 
-  # A MADE-UP FORMAT NO BUILDING BLOCK KNOWS, decoded by the game's own code as a port writes it:
+  # A made-up format no building block knows, decoded by the game's own code as a port writes it:
   # pairs of a count and a byte, the byte written that many times, until a count of 0. The
   # decoder says what it wrote with `count_written`, so the count of bytes done moves on, and the
   # routine waits for the next frame as the building blocks do.

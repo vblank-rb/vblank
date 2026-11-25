@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # WHAT EVERY VERB DOES ON A SUPER NINTENDO (Console::Answers says what an answer is).
+    # What every verb does on a Super Nintendo (Console::Answers says what an answer is).
     #
     # The Super Nintendo came out a decade before the Advance and is in many ways the bigger machine:
     # a 256×224 screen, 128 sprites, backgrounds of up to sixteen colours a tile from eight lists,
@@ -10,7 +10,7 @@ module VBlank
     # the Advance's painted screen (every picture is tiles), a sprite that turns or resizes, more
     # than one layer that turns, and the Advance's square, wave and noise voices.
     #
-    # A GAME NAMES WHICH CONSOLES IT IS FOR (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
+    # A game names which consoles it is for (`VBlank.game "PONG", consoles: %i[gba snes]`), and is
     # laid out from `screen_width` and `screen_height` rather than from 240 and 160, so the same
     # game fills each screen.
     #
@@ -40,6 +40,7 @@ module VBlank
                       "in each pass shows sooner. With `pixel_size: 2` the rows are rows of the small " \
                       "picture."),
         setting: works,
+        feature?: works,
         built_for_computer?: works("false on a cartridge."),
         built_for?: works("true when asked about :snes."),
         screen_width: works("256 on a Super Nintendo. 128 with `pixel_size: 2`."),
@@ -61,7 +62,6 @@ module VBlank
         # --- drawing on a painted screen ---
         pixel: works,
         fill_rect: works,
-        dma_fill_rect: works,
         draw_rect_at: works,
         draw_column_at: works,
         place: works("a place is data in the cartridge. To draw it is refused: see `draw_place`."),
@@ -78,7 +78,8 @@ module VBlank
                       "black past the picture's edge. To move over a bigger world, use a tiled " \
                       "background and `scroll_to`. On a tiled screen the camera moves the backgrounds " \
                       "and the sprites together."),
-        keep_showing: works("a painted screen is always shown whole, so a picture kept showing never tears."),
+        redraw_on_change: works("a painted screen is always shown whole, so a picture painted only on a change " \
+                                "never tears."),
 
         # --- fades, tints and screen effects ---
         fade: works("`fade` to black is the display's own brightness, in sixteen levels, and costs no time. " \
@@ -149,9 +150,11 @@ module VBlank
                       "build names the pictures that do not and the rows they add. It does not count " \
                       "pools or letters of text. `scale`, `face_angle` and `turn` are refused: a Super " \
                       "Nintendo cannot turn or resize a sprite. Draw the turns as poses. A sprite with " \
-                      "`over_picture: true` on a painted screen is not made yet: the build refuses it and says " \
-                      "so. That painted screen uses nearly all the video memory and all 256 colours, and the " \
-                      "sprites need some of both."),
+                      "`over_picture: true` shows over a painted screen. The painted screen uses most of the " \
+                      "video memory, so those sprites have room for 124 different 8×8 squares of picture. Each " \
+                      "list of colours that they use takes 16 of the 256 colours of the painted screen. If the " \
+                      "game paints too many colours or its sprites use too many squares, the build stops and " \
+                      "says so. The build refuses such a sprite on a Super FX cartridge: it does not make that yet."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works,
@@ -170,10 +173,16 @@ module VBlank
                           "pixels show the backdrop. With `alone: :without_sprites`, the console shows only that " \
                           "background above the row, and no sprite. Beside two other " \
                           "backgrounds, the held background shows alone above its row, in tiles of 3 colours and " \
-                          "see-through. Without `alone:`, it must be in front of the other backgrounds. Its " \
+                          "see-through. It can change its colours with `draw_with`. Then each place of a list " \
+                          "that its tiles use takes one colour of the layer's 8 lists of 3. Only one " \
+                          "background on that layer can use `draw_with`. " \
+                          "Without `alone:`, it must be in front of the other backgrounds. Its " \
                           "tiles must have no see-through pixel. Each cell of its map that can show must have " \
-                          "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` is " \
-                          "refused: this build does not make it yet. `rotate` and " \
+                          "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` " \
+                          "uses the console's windows, one for each of the two layers, and takes no processor time " \
+                          "as the screen is drawn. `hide` and `show` use the same windows as a box with nothing in " \
+                          "it. A background held to a box beside a see-through layer, or on the " \
+                          "third layer, is refused: this build does not make it yet. `rotate` and " \
                           "`scale` are refused: the build does not use the one layer a Super Nintendo can turn. " \
                           "A background can be drawn from 16×16 tiles, which the console draws itself, as well as 8×8. " \
                           "A cell of its map is then one 16×16 tile. A `scroll_each_row` block runs for all 224 rows " \
@@ -189,7 +198,7 @@ module VBlank
                           "That layer has tiles of four colours. Then each " \
                           "tile of the bar must show 3 colours or fewer, and all its tiles together use 8 lists " \
                           "of 3 colours or fewer. The game then has room for 960 background tiles, not 1024. " \
-                          "On the third layer, a bar drawn with other colours (`draw_with`), a bar of 16×16 tiles " \
+                          "On the third layer, a bar of 16×16 tiles " \
                           "and a bar of tiles painted from a list are refused: this build does not make them yet. " \
                           "`set_tile` with `now: true` is refused: " \
                           "a Super Nintendo writes its video memory only between frames, so a change " \
@@ -231,18 +240,12 @@ module VBlank
         clock: refused("a Super Nintendo cartridge built here has no clock chip. Ask the player for the time " \
                        "on a screen of the game's own, if the game needs it."),
         saves_keep_everything: works,
-        set: works, add: works, add_var: works,
-        sub: works, sub_var: works, copy: works,
-        negate: works, negate!: works, flip: works, flip!: works, abs: works, abs!: works,
-        negate_abs: works, negate_abs!: works, clamp: works, clamp!: works,
-        approach: works, approach!: works,
         list: works,
         func: works("`fast:` means nothing on a Super Nintendo, which runs all of its code alike. `on_chip: true` " \
                     "runs the routine on a Super FX cartridge's chip (sums, fractions, `if`, loops, tables, lists " \
                     "and a copy from a table into one, and calls of other `on_chip` routines; any other step is refused)."),
         call: works,
         scene: works("see `func` for `fast:`."),
-        case_var: works,
         uses: works("a pack's verbs are verbs of the game's own, and each one has its answer here."),
         data_pack: works("the cartridge holds what each slot holds, as if the game had written it."),
         shell_screen: works("the cartridge holds nothing of it. Only a build as a shell shows a first screen."),
@@ -252,17 +255,21 @@ module VBlank
 
         # --- input ---
         held: works("the ten buttons the Advance has, and `:x` and `:y`: a Super Nintendo controller has " \
-                    "twelve. `player: 2` reads the second controller, and `player: :any` reads either. " \
-                    "`player: 3` or more is refused, and `players:` more than 2 is refused too: this build reads two " \
-                    "controllers, and does not read a Multitap yet."),
+                    "twelve. `player: 2` reads the second controller. `player: 3` and `player: 4` read the " \
+                    "controllers in a Super Multitap in the second port. `player: :any` reads all of them. The " \
+                    "build refuses `player: 5` or more, and `players:` more than 4, because it reads four " \
+                    "controllers. If no Multitap is connected, players 3 and 4 hold no buttons."),
         pressed: works("see `held`."),
-        most_players: works,
+        pulled: works("0 or 100. Each button of a Super Nintendo controller is on or off, so a button reads 100 " \
+                      "while it is held and 0 when it is not. It has no `:l2` or `:r2`, and the build refuses them as " \
+                      "`held` does."),
+        max_players: works,
         drawing_for_local_player: works("the player is always 1: a cartridge is played by one person."),
         mark: works("the mark is one more of the console's sprites, shown over the sprite it marks."),
-        players_connected: works("a build for a computer answers it. The cartridge build does not make it yet: " \
-                                 "it refuses it and says so, because it cannot yet tell if the second controller " \
-                                 "is connected. A controller that is not connected holds no buttons, so a " \
-                                 "cartridge can wait for a button on it instead, like `pressed(:start, player: 2)`."),
+        players_connected: works("1 at the start. A player is connected from the first frame that one of their " \
+                                 "buttons is down. Then the player stays connected. Players 3 and 4 can connect " \
+                                 "only through a Super Multitap in the second port. If no Multitap is connected, " \
+                                 "the count is 1 or 2."),
         rumble: works("nothing is felt. A Super Nintendo cartridge has no rumble motor, so the game plays " \
                       "the same without it."),
         computer_keys: works(Answers::COMPUTER_ONLY), computer_gamepad: works(Answers::COMPUTER_ONLY),
@@ -317,7 +324,7 @@ module VBlank
         instrument: works("see `sample`.")
       })
 
-      # WHAT .claude/dsl/super-nintendo.md SAYS: every answer, in the order ANSWERS gives them, and
+      # What .claude/dsl/super-nintendo.md says: every answer, in the order ANSWERS gives them, and
       # what the Super Nintendo's build does not make yet — +not_yet+, the lowering's own list of the
       # program's kinds it refuses for now, by what they are part of (Kit#answers_page).
       def self.reference(not_yet: {})

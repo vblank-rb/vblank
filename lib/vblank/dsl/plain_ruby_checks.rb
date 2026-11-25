@@ -2,20 +2,20 @@
 
 module VBlank
   module DSL
-    module PlainRuby
+    module PlainRuby # :nodoc: all
       # Refuses what a game block cannot use, before any of it runs.
       #
-      # NOTHING HERE LISTS WHAT IS BANNED, except a few calls that have no constant to look at.
+      # Nothing here lists what is banned, except a few calls that have no constant to look at.
       # There is no end of gems and libraries, so a name in the block is refused unless it is
       # known to be the game's own, VBlank's, or a harmless piece of Ruby. These checks catch
       # mistakes. They are not a wall: the game's own helper in another file can call anything.
       #
-      # THE CALLS ARE CHECKED AS THE GAME IS DECLARED, from the source alone. The constants wait
+      # The calls are checked as the game is declared, from the source alone. The constants wait
       # until the game is built, since one defined lower down the author's file is not there
       # yet, so what they need goes into the rewritten block as plain data (see #constant_check).
       class BlockChecks
         # Ruby's values and the modules that work on them, which reach nothing outside the game.
-        RUBY_VALUES = %i[Array Comparable Float Hash Integer Math Range Rational String Symbol].freeze
+        RUBY_VALUES = %i[Array Comparable Data Float Hash Integer Math Range Rational String Struct Symbol].freeze
         # Ruby's own errors, which reach nothing outside the game either: a game raises one to stop
         # its build with words of its own (`raise ArgumentError, "A speed is from 1 to 8."`).
         RUBY_ERRORS = %i[ArgumentError FrozenError IndexError KeyError NameError NoMethodError
@@ -91,7 +91,7 @@ module VBlank
           node.compact_child_nodes.each { |child| refuse_outside_calls!(child) }
         end
 
-        # A WHOLE FILE OF A GAME (DSL::PlainRuby.rewritten_file). What its methods and blocks do is
+        # A whole file of a game (DSL::PlainRuby.rewritten_file). What its methods and blocks do is
         # game code, checked as a game block is. Its other lines run once as the file is loaded,
         # setting up as the lines above a game block do (bringing in files, making constants with
         # `Ractor.make_shareable`), so they are plain Ruby. A plain file it loads that holds game
@@ -217,11 +217,36 @@ module VBlank
                          "`VBlank.require_game_file \"#{name}\"`. (at #{File.basename(from)}:#{line})"
         end
 
+        # The constants the block reads, but not one it gives a class of its own made with
+        # `Struct.new(...)` or `Data.define(...)`, which is the game's. What such a line reads to
+        # make the class is checked as any other line is.
         def constants_named(node = @block_node)
+          own = constants_given_classes(@block_node)
+          constants_read(node).reject { |name, _| own.include?(name) }
+        end
+
+        def constants_given_classes(node)
+          own = node.is_a?(Prism::ConstantWriteNode) && self.class.makes_class?(node.value) ? [node.name] : []
+          own + node.compact_child_nodes.flat_map { |child| constants_given_classes(child) }
+        end
+
+        # Is +node+ `Struct.new(...)` or `Data.define(...)`, a class with fields?
+        def self.makes_class?(node)
+          return false unless node.is_a?(Prism::CallNode)
+
+          receiver = node.receiver
+          named = case receiver
+                  when Prism::ConstantReadNode then receiver.name
+                  when Prism::ConstantPathNode then receiver.parent.nil? ? receiver.name : nil
+                  end
+          (named == :Struct && node.name == :new) || (named == :Data && node.name == :define)
+        end
+
+        def constants_read(node)
           case node
           when Prism::ConstantReadNode then [[node.name, node.location.start_line]]
           when Prism::ConstantPathNode then constants_named_by_path(node)
-          else node.compact_child_nodes.flat_map { |child| constants_named(child) }
+          else node.compact_child_nodes.flat_map { |child| constants_read(child) }
           end
         end
 
@@ -234,7 +259,7 @@ module VBlank
           case path.parent
           when nil then [[path.name, path.location.start_line]]
           when Prism::ConstantReadNode then [[path.parent.name, path.location.start_line]]
-          else constants_named(path.parent)
+          else constants_read(path.parent)
           end
         end
 

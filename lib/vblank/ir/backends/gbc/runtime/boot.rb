@@ -5,13 +5,13 @@ module VBlank
     module Backends
       class GBC
         module Runtime
-          # FROM POWER-ON TO THE GAME'S FIRST LINE.
+          # From power-on to the game's first line.
           #
           # The console's own start-up program checks the cartridge's logo and header and then jumps
           # to 0x0100, where the header's first four bytes jump on to here. From here the console is
           # ours, and it is in no known state, so everything is set up before the game runs:
           #
-          # - the processor is put in DOUBLE SPEED, which only a Color has: twice the instructions
+          # - the processor is put in double speed, which only a Color has: twice the instructions
           #   in every frame, and a game's 32-bit arithmetic needs them;
           # - the display is switched off, which is the only time video memory can be written
           #   freely, and stays off — showing white — until the game's first frame is ready, as the
@@ -34,7 +34,7 @@ module VBlank
             # plays a sample of a recording in a game that plays one (+clips+, Runtime::Clips), and
             # counts the frames the screen is off for in a game that counts them (+dark+,
             # Runtime::Frame#emit_dark_tick).
-            def vector_sections(clips: false, dark: false)
+            def vector_sections(clips: false, dark: false, strikes: false)
               vectors = SM83.new("vectors", home: 0)
               8.times { vectors.bytes_of([0xC9] + ([0x00] * 7)) } # each RST: a return
               vectors.label("rt_vblank_vector") # 0x40
@@ -43,8 +43,9 @@ module VBlank
               vectors.jump("rt_hblank_interrupt") # 0x48: the display's, raised as a line ends
               [0x50, 0x58, 0x60].each do |at|
                 vectors.bytes_of(Array.new(at - vectors.here, 0x00))
-                next vectors.jump("rt_timer_tick") if clips && dark && at == Console::GBCHardware::TIMER_VECTOR
+                next vectors.jump("rt_timer_tick") if (clips || strikes) && dark && at == Console::GBCHardware::TIMER_VECTOR
                 next vectors.jump("rt_clip_tick") if clips && at == Console::GBCHardware::TIMER_VECTOR
+                next vectors.jump("rt_strikes_alarm") if strikes && at == Console::GBCHardware::TIMER_VECTOR
                 next vectors.jump("rt_dark_tick") if dark && at == Console::GBCHardware::TIMER_VECTOR
 
                 vectors.reti
@@ -63,10 +64,11 @@ module VBlank
             def emit(asm, main:, clips: false, backdrop: Art::BACKDROP, memory: nil)
               h = Console::GBCHardware
               dark = memory && Frame.dark?(memory)
+              strikes = memory && Strikes.any?(memory) # the timer is the strikes' alarm (Runtime::Strikes)
               asm.label("rt_boot")
               asm.di
               asm.load(:sp, Memory::STACK_TOP)
-              # Double speed: ask for it, then STOP, which is when the processor changes speed.
+              # Double speed: ask for it, then stop, which is when the processor changes speed.
               asm.load_high(:a, h::KEY1)
               asm.bit(7, :a)
               asm.jump_relative(:nz, "rt_boot_fast")
@@ -123,7 +125,8 @@ module VBlank
               end
               asm.load_high(h::TAC, :a) if clips && !dark # a timer counting the dark frames counts on
               asm.load_high(h::IF, :a)
-              asm.load(:a, clips || dark ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK)
+              asm.load(:a, (clips || dark || strikes ? h::INT_VBLANK | h::INT_TIMER : h::INT_VBLANK) |
+                           (memory && Strikes.line?(memory) ? h::INT_STAT : 0))
               asm.load_high(h::IE, :a)
               asm.ei
               asm.call("rt_start")
@@ -134,7 +137,7 @@ module VBlank
             # Bytes of work memory one turn of the clearing loop writes nought to.
             WORK_CLEARED_A_TURN = 16
 
-            # WORK MEMORY CLEARED: the always-there half, and bank 1 for a game that keeps anything
+            # Work memory cleared: the always-there half, and bank 1 for a game that keeps anything
             # there. The stack is in the first half, so this is done here and not by a call, whose
             # return address it would clear. A store that moves on (LD (HL+),A) takes two machine
             # cycles, the least any store to work memory takes (Pan Docs, CPU instruction set), so
@@ -155,7 +158,7 @@ module VBlank
               asm.jump_relative(:nz, "rt_boot_clear_half")
             end
 
-            # VIDEO MEMORY CLEARED, both banks, by the console's own copy (general-purpose DMA, HDMA1
+            # Video memory cleared, both banks, by the console's own copy (general-purpose DMA, HDMA1
             # to HDMA5) from the start of work memory, which is nought by now. The copy moves sixteen
             # bytes in 32 of the screen's cycles, which at double speed is sixteen of the
             # processor's, a cycle a byte, where a loop storing a byte at a time takes six (Pan Docs,
@@ -189,7 +192,7 @@ module VBlank
               end
             end
 
-            # THE SCREEN BEFORE THE GAME'S FIRST FRAME. The screen stays off until the first frame is
+            # The screen before the game's first frame. The screen stays off until the first frame is
             # ready (#emit), and the emulator the tests play in shows a screen that is off in the
             # first colour of the first background list, whatever it holds at the moment each frame
             # ends. The art's lists put the backdrop there once they are copied in (Picture#emit_start),

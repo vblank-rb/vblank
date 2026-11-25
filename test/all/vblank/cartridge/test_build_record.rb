@@ -59,7 +59,7 @@ class TestBuildRecord < Minitest::Test
     assert_equal({ fast_cartridge: true, fast_code: true, stack_room: nil }, rom.build_options)
   end
 
-  # ...including what it was TOLD, because measuring a cartridge means building it again the
+  # ...including what it was told, because measuring a cartridge means building it again the
   # same way, and a ROM built with different settings has a frame rate the shipped one does not.
   def test_a_built_cartridge_remembers_the_options_it_was_built_with
     rom = VBlank.build("SLOW", console: :gba, code: "ZSLW", maker: "01", fast_code: false, fast_cartridge: false, stack_room: 512,

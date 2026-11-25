@@ -4,12 +4,12 @@ require "tmpdir"
 
 module VBlank
   module Original
-    # A FILE THAT CANNOT BE READ AS A DATA PACK: it is not one, it is cut short, or it is written in
+    # A file that cannot be read as a data pack: it is not one, it is cut short, or it is written in
     # a format this build of VBlank does not know. A pack can always be made again from the copy,
     # so the words say that.
     class WrongPack < CopyError; end
 
-    # THE DATA PACK: everything a port reads from the original, in one file, made from the player's
+    # The data pack: everything a port reads from the original, in one file, made from the player's
     # copy. The port's code holds none of the original's data; it reads each piece from a slot of
     # this pack (Slot), by name.
     #
@@ -78,7 +78,7 @@ module VBlank
         header_bytes(sha1: checked.rom_sha1, build_version: checked.build_version, sizes: sizes)
       end
 
-      # WHERE EVERYTHING IS IN THE FILE of a pack of +slots+ (Original::Slot), made for
+      # Where everything is in the file of a pack of +slots+ (Original::Slot), made for
       # +build_version+, worked out from the slots' names, shapes and sizes alone: a game built with
       # its pack left out knows this much and no more. +size+ is the file's up to the end of its last
       # slot, which is where its frame records start (the game adds their size as it names frames,

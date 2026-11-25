@@ -3,7 +3,7 @@
 require "test_helper"
 require "vblank/live"
 
-# THE WINDOW MENU, AS THE DESKTOP BUILD HAS IT (runtime/rg_window_menu.c), held to the Ruby copy
+# The window menu, as the desktop build has it (runtime/rg_window_menu.c), held to the Ruby copy
 # vblank run draws (Live::Menu): the same keys are played through both, and what each draws after
 # every key is compared, box by box and letter by letter, at the densities of an ordinary screen,
 # a Retina one and two in between. The C is driven through a small program (menu_harness.c), at
@@ -23,10 +23,16 @@ class TestNativeWindowMenu < Minitest::Test
 
   HARNESS = Ractor.make_shareable(File.expand_path("menu_harness.c", __dir__))
 
-  # How the window is drawn after each key, taken in turn: its width in pixels, its density, whether
-  # the game is held, fast forward's speed, and the frame rate and the frame time, as words.
-  DRAWS = [[720, 1.0, false, nil, "60.0", nil], [1440, 2.0, true, nil, "59.9", "4.25"], [1080, 1.5, false, 4, nil, nil],
-           [900, 1.25, true, nil, nil, "0.50"]].freeze
+  # How the window is drawn after each key, taken in turn: its width and height in pixels, its
+  # density, whether the game is held, fast forward's speed, and the frame rate and the frame time,
+  # as words.
+  DRAWS = [[720, 480, 1.0, false, nil, "60.0", nil], [1440, 960, 2.0, true, nil, "59.9", "4.25"],
+           [1080, 720, 1.5, false, 4, nil, nil], [900, 600, 1.25, true, nil, nil, "0.50"]].freeze
+
+  # The game's variables as the window reads them, by "watch NAME VALUE" after "watch_begin".
+  WATCHED = [["score", 120], ["lives", 3], ["ball_x", -4], ["ball_y", 77], ["paddle_x", 100], ["frames", 9000],
+             ["speed", 2], ["level", 5], ["best_score", 4000], ["timer", 30], ["state", 1], ["hits", 12],
+             ["misses", 0], ["a_rather_long_name_for_a_variable", -2_147_483_648]].freeze
 
   # Every heading, every line, both ends of every slider, each check on and off, and the ways out.
   WALK = [
@@ -95,6 +101,56 @@ class TestNativeWindowMenu < Minitest::Test
   end
 
 
+  # Developer: the window of the game's variables opened, filled, scrolled past its end and back,
+  # found by typed letters (S, C, O, an underscore, a digit, Backspace and a key that types nothing),
+  # read again with fewer variables, the menu opened over it, and shut by B and by its line; then
+  # Show frame time switched on and off.
+  def test_the_variables_window_and_the_frame_time_draw_the_same
+    to_developer = ["toggle", "press left", "press down"]
+    watch = ["watch_begin", *WATCHED.map { |name, value| "watch #{name} #{value}" }]
+    assert_same_drawing([*to_developer, "press enter", *watch, *["variables down"] * 4, "variables up", "type_key 22",
+                         "type_key 6", "type_key 18", "type_key 42", "type_key 42", "type_key 45", "type_key 30",
+                         "type_key 40", "type_key 42", "type_key 42", "watch_begin", "watch lives 2", "toggle", "type_key 22",
+                         "toggle", "variables close", *to_developer, "press enter", *to_developer, "press enter",
+                         "toggle", "press left", "press down", "press down", "press enter", "press enter"], most_scale: 6)
+  end
+
+  # What the window says until a button answers it: the settings file's problems in the middle, a
+  # word too wide for the box on a line of its own, an empty line and line breaks at the end; what a
+  # shell tells at the foot; both at once, with the menu and the window of variables under them; and
+  # a narrow window, where the box is as wide as the window has room for.
+  def test_what_the_window_says_until_a_button_answers_draws_the_same
+    problems = "problems /home/player/.config/vblank/(all games)/settings.txt:|Line 2: volume is a whole number from 0 " \
+               "to 100.||Line 3: \"Nonesuch\" is not a key's name. #{'Averyveryverylongwordwithnospaces' * 3} ends it.||"
+    told = "tell That file is not a copy of the game. It is 4 bytes, and a copy is 16777216 bytes. Choose another file."
+    assert_same_drawing([problems, "answer", told, "toggle", problems, "press left", "press down", "press enter", "answer",
+                         problems, "answer"], most_scale: 6)
+    assert_same_drawing([problems, told], most_scale: 2, draws: [[300, 200, 1.0, false, nil, nil, nil], [500, 300, 2.0, false, nil, nil, nil]])
+    fault = "tell_titled The_game_stopped The game went wrong: list q is full (8 items), so push cannot add to it."
+    assert_same_drawing([fault, "answer", told, fault], most_scale: 6)
+  end
+
+  # In the smallest window, a Color game's 160 by 144, a file's path wider than the box is cut into
+  # pieces that fit, and what answers the box goes under its OK. Whether the boxes fit a window is
+  # the same answer in both copies, which is what makes a frontend grow its window.
+  def test_a_box_in_a_small_window_cuts_long_words_and_says_whether_it_fits
+    path = "tell_titled The_save_file The file at /home/player/.local/share/vblank/STOPPER/save.sav is not a save " \
+           "of this game, whose save is 32768 bytes. Move the file away, and the game starts a new one."
+    problems = "problems /home/player/.config/vblank/(all games)/settings.txt:|Line 2: volume is a whole number."
+    assert_same_drawing([path, problems], most_scale: 1, picture: [160, 144],
+                                          draws: [[160, 144, 1.0, false, nil, nil, nil], [320, 288, 1.0, false, nil, nil, nil]])
+
+    sizes = [[160, 144, 1.0], [320, 288, 1.0], [480, 432, 1.0], [320, 288, 2.0], [720, 480, 1.0]]
+    menu = Menu.new(picture: [160, 144], scales: 1..1)
+    [path, problems].each { |step| play_in_ruby(menu, step, Slots.new, []) }
+    expected = sizes.map { |width, height, density| "fits #{menu.messages_fit?(width: width, height: height, density: density) ? 1 : 0}" }
+    said = ask("picture 160 144", path, problems, *sizes.map { |size| "fits #{size.join(' ')}" })
+
+    assert_equal expected, said
+    assert_equal "fits 0", said.first, "the smallest window is too small for these"
+    assert_equal "fits 1", said.last
+  end
+
   # A shell's parts keep no states, so their window has no Save or Load, and no F5 or F9.
   def test_a_window_with_no_states_has_no_save_or_load_heading
     with, without = [true, false].map { |states| Native::MenuData.source(states: states) }
@@ -123,17 +179,19 @@ class TestNativeWindowMenu < Minitest::Test
 
   # Plays +walk+ through both copies, drawing after each step, and fails at the first line that
   # differs, saying which key it came after.
-  def assert_same_drawing(walk, most_scale:, picture: [240, 160])
+  def assert_same_drawing(walk, most_scale:, picture: [240, 160], draws: DRAWS)
     menu = Menu.new(picture: picture, scales: 1..most_scale, states: slots = Slots.new)
     commands = ["picture #{picture.join(' ')}", "most_scale #{most_scale}"]
     expected = []
+    watched = []
     (["start"] + walk).each_with_index do |step, index|
-      play_in_ruby(menu, step, slots) unless step == "start"
+      play_in_ruby(menu, step, slots, watched) unless step == "start"
       commands << step unless step == "start"
-      width, density, held, fast, rate, work = DRAWS[index % DRAWS.size]
-      commands << "draw #{width} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
-      expected << [step, drawing_lines(menu.drawing(width: width, density: density, held: held, fast_forward: fast,
-                                                    frame_rate: rate, frame_work: work))]
+      width, height, density, held, fast, rate, work = draws[index % draws.size]
+      commands << "draw #{width} #{height} #{density} #{held ? 1 : 0} #{fast || 0} #{rate || '-'} #{work || '-'}"
+      expected << [step, drawing_lines(menu.drawing(width: width, height: height, density: density, held: held,
+                                                    fast_forward: fast, frame_rate: rate, frame_work: work,
+                                                    variables: watched))]
     end
     said = ask(*commands).slice_after("end").to_a
     expected.each_with_index do |(step, lines), index|
@@ -146,10 +204,18 @@ class TestNativeWindowMenu < Minitest::Test
     end
   end
 
-  def play_in_ruby(menu, step, slots)
-    command, name = step.split
+  def play_in_ruby(menu, step, slots, watched)
+    command, name, value = step.split
     case command
     when "slot" then slots.set(name.to_i, step.split(" ", 3).last)
+    when "watch_begin" then watched.clear
+    when "watch" then watched << [name, value.to_i]
+    when "type_key" then menu.type_key(name.to_i)
+    when "problems" then menu.problems = step.split(" ", 2).last.tr("|", "\n")
+    when "tell" then menu.tell(step.split(" ", 2).last.tr("|", "\n"))
+    when "tell_titled" then menu.tell(step.split(" ", 3).last.tr("|", "\n"), title: name.tr("_", " "))
+    when "answer" then menu.answer_messages
+    when "variables" then menu.press_on_variables(name.to_sym)
     when "toggle" then menu.toggle
     when "press" then menu.press(name.to_sym)
     when "capture_key" then menu.controls.capture_key(name.to_i)
@@ -190,11 +256,19 @@ class TestNativeWindowMenu < Minitest::Test
   end
 
   # The menu's description and letters as C, where the compiler can read it: in a folder named for
-  # what it holds, so a build is kept and found again by what is in it.
+  # what it holds, so a build is kept and found again by what is in it. The folder is touched when it
+  # is found again, as a build touches what it uses: the folder is shared with the kept programs,
+  # whose pruning removes one nothing has touched for hours (Zig.prune_compiled_programs), and a
+  # folder made by an earlier run was once removed between being found here and being compiled.
   def menu_data
     text = Native::MenuData.source
     path = File.join(Dir.tmpdir, "vblank-native", "menu-#{Digest::SHA256.hexdigest(text)[0, 24]}", Native::MenuData::FILE)
-    return path if File.exist?(path)
+    begin
+      File.utime(Time.now, Time.now, File.dirname(path))
+      return path if File.exist?(path)
+    rescue Errno::ENOENT
+      nil # not made yet, or pruned: made below
+    end
 
     FileUtils.mkdir_p(File.dirname(path))
     writing = "#{path}.#{Process.pid}.#{rand(1 << 30)}"

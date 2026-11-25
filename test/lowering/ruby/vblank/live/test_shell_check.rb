@@ -7,7 +7,7 @@ require "shell_tests"
 require "all/vblank/builder/test_pack_tile_poses"
 require "all/vblank/dsl/test_pack_background_set_cell"
 
-# THE CHECK EVERY PORT RUNS ON ITS SHELL (Live::ShellCheck), on the made-up port the shell tests
+# The check every port runs on its shell (Live::ShellCheck), on the made-up port the shell tests
 # share. The answer key is the port's all-in-one build: its pack, and its play over the tape.
 # On the Ruby run alone: the check plays the shell as Ruby whatever run it is in, so another run
 # would play the same thing again.
@@ -16,7 +16,7 @@ class TestShellCheck < Minitest::Test
 
   ShellCheck = VBlank::Live::ShellCheck
 
-  private def check(game, said = [], tape: nil) = ShellCheck.new(game, tape: tape, say: ->(line) { said << line }).run
+  private def check(game, said = [], tape: nil, **options) = ShellCheck.new(game, tape: tape, say: ->(line) { said << line }, **options).run
 
   def test_a_port_whose_shell_plays_as_its_all_in_one_build_passes_every_step
     Dir.mktmpdir do |folder|
@@ -79,7 +79,30 @@ class TestShellCheck < Minitest::Test
       said = []
       check(port(original(folder)), said, tape: tape)
 
-      assert_match "Playing 25 passes", said.join("\n")
+      assert_match "Comparing 25 passes", said.join("\n")
+    end
+  end
+
+  # A port's tape grows with the game, and the check holds the shell's own workings: it plays the
+  # tape's first stretch alone, however long the tape is.
+  def test_the_check_plays_a_short_stretch_of_a_long_tape
+    Dir.mktmpdir do |folder|
+      tape = VBlank::Playthroughs::Tape.parse("vblank tape 1\nrecorded on: MADE UP 0x00000000\nstarts from: power-on\n\n" \
+                                              "1000 -\n1000 right\n")
+      said = []
+      check(port(original(folder)), said, tape: tape)
+
+      assert_match "Comparing #{ShellCheck::STRETCH_PASSES} passes", said.join("\n")
+      assert_operator ShellCheck::STRETCH_PASSES, :<, 2000
+    end
+  end
+
+  def test_a_port_can_name_how_long_a_stretch_the_check_plays
+    Dir.mktmpdir do |folder|
+      said = []
+      check(port(original(folder)), said, passes: 40)
+
+      assert_match "Comparing 40 passes", said.join("\n")
     end
   end
 
@@ -94,10 +117,38 @@ class TestShellCheck < Minitest::Test
         end
         game_loop { wait_vblank }
       end
-      failed = assert_raises(ShellCheck::Failed) { check(game) }
+      said = []
+      failed = assert_raises(ShellCheck::Failed) { check(game, said) }
 
       assert_match "not the all-in-one build's pack", failed.message
       assert_match "first at byte", failed.message
+      # Named before a second start, which would refuse the wrong pack in other words.
+      assert_empty said.grep(/Second start/)
+    end
+  end
+
+  # A port whose code looks at the copy as it is built, as one that tells its colours apart by what
+  # they hold does: with the copy hidden every colour reads the same. Its shell's pack is the
+  # all-in-one build's, and the two play alike over the stretch, since what differs is drawn only
+  # once the play is past it; the shell's game is still another program.
+  def test_a_shell_whose_game_is_built_from_the_copy_fails_naming_what_differs
+    Dir.mktmpdir do |folder|
+      from = original(folder)
+      game = VBlank.game("MADE UP", consoles: %i[gba]) do
+        screen :bitmap
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: PALETTE_AT, count: 16 }
+        spots = table :late_spots, [from.copy_if_set ? 10 : 50]
+        pass = var :pass, 0
+        game_loop do
+          clear_screen :black
+          (pass > ShellCheck::STRETCH_PASSES).record_branch { draw_rect_at spots[0], 40, 4, 4, :white }
+          pass += 1
+        end
+      end
+      failed = assert_raises(ShellCheck::Failed) { check(game) }
+
+      assert_match "table :late_spots", failed.message
+      assert_match "built with the copy", failed.message
     end
   end
 

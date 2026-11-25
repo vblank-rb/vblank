@@ -2,7 +2,7 @@
 
 module VBlank
   module Console
-    # THE SUPER NINTENDO'S HARDWARE, NAMED: where its memory is, and the addresses and flags of the
+    # The Super Nintendo's hardware, named: where its memory is, and the addresses and flags of the
     # registers that drive its picture, its buttons, its copying engine and its arithmetic units.
     # Names follow the ones every Super Nintendo document uses (fullsnes, the SNESdev wiki), so
     # anyone who has read one recognises them.
@@ -50,6 +50,13 @@ module VBlank
       # --- the picture chip (PPU) ---
       INIDISP = 0x2100 # Bit 7 forced blank (the screen off); bits 0-3 brightness
       OBSEL = 0x2101 # Sprite sizes and where their tiles are in video RAM
+      # The two sizes a sprite comes in, small then large, each [width, height], for each setting of
+      # OBSEL's top three bits (fullsnes, "SNES PPU Sprites (OBJs)"). An entry's bit in the upper
+      # table of the sprite table picks one of the two.
+      OBSEL_SPRITE_SIZES = Ractor.make_shareable([[[8, 8], [16, 16]], [[8, 8], [32, 32]], [[8, 8], [64, 64]],
+                                                  [[16, 16], [32, 32]], [[16, 16], [64, 64]], [[32, 32], [64, 64]],
+                                                  [[16, 32], [32, 64]], [[16, 32], [32, 32]]])
+      OBSEL_SIZE_SHIFT = 5
       OAMADDL = 0x2102
       OAMADDH = 0x2103
       OAMDATA = 0x2104
@@ -121,9 +128,13 @@ module VBlank
       WMDATA = 0x2180
       WMADDL = 0x2181
 
+      # --- the controller ports, read a bit at a time ---
+      JOYSER0 = 0x4016 # Bit 0 written: the latch for both ports; read: the first port's next bit
+      JOYSER1 = 0x4017 # Read: the second port's next bit on each of its two lines, bits 0 and 1
+
       # --- the processor's own registers ---
       NMITIMEN = 0x4200 # Bit 7: the vertical blank's interrupt; bit 0: read the buttons for us
-      WRIO = 0x4201
+      WRIO = 0x4201 # Bit 7 drives the second port's I/O line, which picks a Super Multitap's plugs
       WRMPYA = 0x4202 # The 8×8 multiplier: write one byte here
       WRMPYB = 0x4203 # Write the other byte here; 16 bits come out at RDMPYL, eight cycles later
       WRDIVL = 0x4204 # The 16÷8 divider: write the 16-bit number here
@@ -146,6 +157,10 @@ module VBlank
       RDMPYH = 0x4217
       JOY1L = 0x4218 # The first controller's buttons, as the console read them in the blank
       JOY1H = 0x4219
+      JOY2L = 0x421A # The second controller's, the same way
+      JOY2H = 0x421B
+      JOY4L = 0x421E # The second port's other line: a Super Multitap's second plug
+      JOY4H = 0x421F
 
       # The copying engine: eight channels, each sixteen registers from $4300 + $10 × channel.
       DMA_BASE = 0x4300
@@ -158,11 +173,13 @@ module VBlank
       DASH = 0x6
 
       # DMAP's ways of copying: to one port each byte, to two ports by turns (VMDATAL and VMDATAH),
-      # to one port written twice in a row (CGDATA, OAMDATA); and the source left where it is
-      # (a fill from one byte) rather than moving on.
+      # to one port written twice in a row (CGDATA, OAMDATA), to four ports one after another
+      # (VMADDL, VMADDH, VMDATAL, VMDATAH: an address and its word); and the source left where it
+      # is (a fill from one byte) rather than moving on.
       DMA_TO_ONE_PORT = 0x00
       DMA_TO_TWO_PORTS = 0x01
       DMA_TO_ONE_PORT_TWICE = 0x02
+      DMA_TO_FOUR_PORTS = 0x04
       DMA_FIXED_SOURCE = 0x08
 
       # --- flags ---
@@ -226,7 +243,7 @@ module VBlank
       # LoROM read at the slow speed: a board whose ROM cannot keep up with the faster one.
       LOROM_SLOW = 0x20
 
-      # THE OTHER USUAL LAYOUT, HiROM, which VBlank never builds but about half the console's
+      # The other usual layout, HiROM, which VBlank never builds but about half the console's
       # retail cartridges use. Its banks are 64K: the processor sees the top half of each, $8000-
       # $FFFF of banks $00-$3F, as the file from bank * $10000 + $8000. So $00:FFC0, where the
       # header always is, is offset $FFC0 of the file, $8000 further in than a LoROM file's. Its

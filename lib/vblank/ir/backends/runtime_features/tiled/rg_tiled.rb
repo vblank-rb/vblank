@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# SCENERY DRAWN FROM TILES (Reference @bg_shown and the rest): backgrounds and status bars, the
+# Scenery drawn from tiles (Reference @bg_shown and the rest): backgrounds and status bars, the
 # maps they show and the cells the game changes, their scroll, turn, bends and boxes, the order a
 # stack of layers puts them in, and a scene's scenery coming down. A runtime feature
 # (backends/runtime_features.rb), joined into the runtime's class after rg_screen.rb for a game
@@ -50,7 +50,11 @@ RG_BG_BAR_TOP = 20
 RG_BG_ABOVE_ROW = 21
 RG_BG_ALONE = 22
 RG_BG_FRONT = 23
-RG_BG_FIELDS = 24
+RG_BG_PLACES = 24
+RG_BG_TABLES = 25
+RG_BG_FIELDS = 26
+# RG_BG_PLACES and RG_BG_TABLES of a background whose map is not read from the start file.
+RG_NOT_READ_AT_START = -1
 # RG_BG_FRONT of a background with no cells in front of the sprites (rg_tiled.h).
 RG_NOT_IN_FRONT = -1
 
@@ -148,7 +152,7 @@ end
 # Where a cell of the map is among its cells, which are kept row after row.
 def rg_cell_place(background, row, col) = (row * rg_map_cols(background)) + col
 
-# Reference#map_of: what a cell holds NOW, in the run's own copy where there is one. Below nought
+# Reference#map_of: what a cell holds now, in the run's own copy where there is one. Below nought
 # where it holds no tile.
 def rg_map_cell(background, row, col)
   return RG_CELL_EMPTY unless rg_in_map?(background, row, col)
@@ -178,25 +182,56 @@ end
 # declared, so the cells the game changed of its name are forgotten before anything is painted.
 def rg_background_forget_cells(background) = rg_forget_own_cells(background)
 
+# One pixel of tile +which+ of the run +run+ the game paints, in its run's colors as the background
+# is drawn with them now (rg_tiled.c's run_pixel).
+def rg_run_pixel(background, run, which, tx, ty)
+  # A big tile is kept as four squares, left to right and then down.
+  if rg_background_field(background, RG_BG_TILE_W) == 2 * RG_RUN_TILE_SIDE
+    which = (which * 4) + ((ty / RG_RUN_TILE_SIDE) * 2) + (tx / RG_RUN_TILE_SIDE)
+    tx %= RG_RUN_TILE_SIDE
+    ty %= RG_RUN_TILE_SIDE
+  end
+  place = rg_painted_places[rg_run_field(run, RG_RUN_PLACES) + (which * RG_RUN_TILE_PIXELS) + (ty * RG_RUN_TILE_SIDE) + tx]
+  set = (rg_tile_set_now(background) * @rg_game_picture_sizes[RG_SIZE_RUNS]) + run
+  @rg_game_run_colors[rg_background_field(background, RG_BG_RUN_COLORS) + (set * RG_PLACES_IN_RUN_COLORS) + place]
+end
+
+# Where the tables of colours of a background read from the start file start in the tile pixels, in
+# the set of colors it is drawn with now (rg_tiled.c's tables_now).
+def rg_tables_now(background)
+  tiles = rg_background_field(background, RG_BG_TILES)
+  rg_background_field(background, RG_BG_TILES_START) +
+    (((rg_tile_set_now(background) * tiles) + rg_background_field(background, RG_BG_TABLES)) * RG_RUN_TILE_PIXELS)
+end
+
+# One pixel of the tile as drawn +drawn+ (rg_tiled.c's drawn_pixel): its place, turned as it says,
+# looked up in its table; or a pixel of the run it shows.
+def rg_drawn_pixel(background, drawn, tx, ty)
+  places = drawn & RG_DRAWN_PLACES_MASK
+  table = (drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK
+  return rg_run_pixel(background, places, table, tx, ty) if drawn.anybits?(RG_DRAWN_RUN)
+
+  x = drawn.anybits?(RG_DRAWN_MIRRORED) ? RG_RUN_TILE_SIDE - 1 - tx : tx
+  y = drawn.anybits?(RG_DRAWN_UPSIDE_DOWN) ? RG_RUN_TILE_SIDE - 1 - ty : ty
+  place = @rg_game_tile_pixels[rg_background_field(background, RG_BG_PLACES) + (places * RG_RUN_TILE_PIXELS) + (y * RG_RUN_TILE_SIDE) + x]
+  @rg_game_tile_pixels[rg_tables_now(background) + (table * RG_RUN_TILE_PIXELS) + place]
+end
+
 # One pixel of a cell's tile, or RG_SEE_THROUGH (Reference#background_pixel), in the colors the
 # background is drawn with now (Reference#tile_colors): its tiles as drawn with each step come one
 # whole set after another. A tile the game paints is read from what it last copied in, and shown in
 # its run's colors as the background is drawn with them now.
 def rg_tile_pixel(background, cell, tx, ty)
+  tiles = rg_background_field(background, RG_BG_TILES)
+  # A cell numbered past the tiles is only ever written by rg_start_file_fill_background, which keeps
+  # its record (rg_drawn_tiles); rg_background_set_tile writes no tile past RG_BG_TILES.
+  return rg_drawn_pixel(background, rg_drawn_tiles(background)[cell - tiles], tx, ty) if cell >= tiles
+
   painted = rg_background_field(background, RG_BG_PAINTED)
   if painted != RG_NOT_PAINTED && @rg_game_painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
-    run = @rg_game_painted_tiles[painted + (2 * cell)]
-    which = @rg_game_painted_tiles[painted + (2 * cell) + 1]
-    # A big tile is kept as four squares, left to right and then down.
-    if rg_background_field(background, RG_BG_TILE_W) == 2 * RG_RUN_TILE_SIDE
-      which = (which * 4) + ((ty / RG_RUN_TILE_SIDE) * 2) + (tx / RG_RUN_TILE_SIDE)
-      tx %= RG_RUN_TILE_SIDE
-      ty %= RG_RUN_TILE_SIDE
-    end
-    place = rg_painted_places[rg_run_field(run, RG_RUN_PLACES) + (which * RG_RUN_TILE_PIXELS) + (ty * RG_RUN_TILE_SIDE) + tx]
-    set = (rg_tile_set_now(background) * @rg_game_picture_sizes[RG_SIZE_RUNS]) + run
-    return @rg_game_run_colors[rg_background_field(background, RG_BG_RUN_COLORS) + (set * RG_PLACES_IN_RUN_COLORS) + place]
+    return rg_run_pixel(background, @rg_game_painted_tiles[painted + (2 * cell)], @rg_game_painted_tiles[painted + (2 * cell) + 1], tx, ty)
   end
+
   tile_w = rg_background_field(background, RG_BG_TILE_W)
   tile_h = rg_background_field(background, RG_BG_TILE_H)
   tile = (rg_tile_set_now(background) * rg_background_field(background, RG_BG_TILES)) + cell
@@ -259,7 +294,7 @@ end
 # background) only the ones a named layer puts in front of it.
 def rg_in_order_asked?(entry, over) = over < 0 || rg_behind?(over, entry)
 
-# Where the LAST entry for +background+ lands once the entries asked for are put in the order the
+# Where the last entry for +background+ lands once the entries asked for are put in the order the
 # stack asks for (IR::Stacking.order_by_stack), counting from 0 among them, or -1 when it has no
 # entry. An entry that named no layer stays where it is. The ones that did are sorted by how far
 # forward their layers are — two in one layer keeping the order they came in — and handed, in that
@@ -321,7 +356,7 @@ def rg_stamp_in_stack_order(over)
 end
 
 # Reference#put_up_background. A stamp only covers where it has solid pixels, so a background a
-# named layer puts BEHIND one already up would land in front of it; the ones it belongs behind are
+# named layer puts behind one already up would land in front of it; the ones it belongs behind are
 # stamped again over it. A turned background is painted through its turn at the next rebuild.
 def rg_background_put_up(background)
   # A change still waiting to this background's name was made to cells put up again now; the
@@ -570,7 +605,11 @@ def rg_background_follow(rules, set)
     @rg_game_tile_pixels.put_entry_bytes(to, wanted)
     changed = true
   end
-  rg_request_repaint if changed
+  return unless changed
+
+  # The tables of colours of a background read from the start file are kept read (rg_drawn_tables).
+  @rg_drawn_tables[background] = nil if @rg_drawn_tables
+  rg_request_repaint
 end
 
 # Framebuffer#paint_row, a cell at a time: one color of scenery laid on the picture at (px, py),
@@ -644,7 +683,7 @@ def rg_paint_window_without_wrapping(background)
   end
 end
 
-# ONE ROW OF THE SCREEN FROM ONE ROW OF A BACKGROUND'S MAP (Reference#paint_background_window, a row
+# One row of the screen from one row of a background's map (Reference#paint_background_window, a row
 # at a time): the screen's pixel px shows map column off_x + px, taken round at +wrap_w+ where the
 # map wraps, or not at all (nil) where it does not. +my+ is not below nought. Where the map has no
 # cell or no tile, or the tile is see-through, what is behind stays.
@@ -695,6 +734,12 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
   # painted (rg_paint_cells_in_front), or nil while every tile is.
   front = @rg_tiles_painted_only
   in_front = @rg_game_tiles_in_front
+  # A background read from the start file: its cells numbered past its tiles are tiles as drawn, each
+  # a tile of places, turned, and a table of colours (rg_drawn_pixel).
+  tiles = rg_background_field(background, RG_BG_TILES)
+  places_start = rg_background_field(background, RG_BG_PLACES)
+  drawn_tiles = places_start == RG_NOT_READ_AT_START ? nil : rg_drawn_tiles(background)
+  tables = drawn_tiles ? rg_drawn_tables(background) : nil
   cached_cell = RG_CELL_EMPTY # the cell whose tile starts at tile_at in cache
   tile_at = 0
   cache = nil
@@ -725,8 +770,17 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
     run = tile_w - tx
     run = past - px if run > past - px
     cell = col < cols ? cells[first + col] : RG_CELL_EMPTY
-    if cell >= 0 && (front.nil? || in_front[front + cell] == 1)
-      slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
+    if drawn_tiles && cell >= tiles
+      drawn = drawn_tiles[cell - tiles]
+      if (front.nil? || drawn.anybits?(RG_DRAWN_IN_FRONT)) && !drawn.anybits?(RG_DRAWN_RUN)
+        rg_paint_drawn_row(drawn, tables, places_start, tx, ty, run, sheet_row + px, plain, sheet, picture, mixed_cells, without_sprites, py)
+        px += run
+        next
+      end
+      next px += run unless front.nil? || drawn.anybits?(RG_DRAWN_IN_FRONT)
+    end
+    if cell >= 0 && (front.nil? || cell >= tiles || in_front[front + cell] == 1)
+      slow = cell >= tiles || (painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED)
       # The tile's pixels read from the Array they are cached in (RgHalves#cached_at): reading each
       # from the table's bytes was most of what painting a background cost. The same tile as the
       # one before it is where it was.
@@ -759,6 +813,53 @@ def rg_paint_map_row(background, my, off_x, wrap_w, py)
     end
     px += run
   end
+end
+
+# +run+ pixels of the row +ty+ of the tile as drawn +drawn+ from its column +tx+, laid from +at+ in
+# the picture as rg_paint_map_row lays a tile's: each its place, read from the tile of places as
+# they are cached (RgHalves#cached_at) and turned as the record says, looked up in +tables+, the
+# background's tables of colours in the set it is drawn in now (#rg_drawn_tables).
+def rg_paint_drawn_row(drawn, tables, places_start, tx, ty, run, at, plain, sheet, picture, mixed_cells, without_sprites, py)
+  pixels = @rg_game_tile_pixels
+  @rg_drawn_tiles_set_up += 1
+  y = drawn.anybits?(RG_DRAWN_UPSIDE_DOWN) ? RG_RUN_TILE_SIDE - 1 - ty : ty
+  places_at = pixels.cached_at(places_start + ((drawn & RG_DRAWN_PLACES_MASK) * RG_RUN_TILE_PIXELS), RG_RUN_TILE_PIXELS) +
+              (y * RG_RUN_TILE_SIDE)
+  places = pixels.cache
+  table = ((drawn >> RG_DRAWN_TABLE_SHIFT) & RG_DRAWN_TABLE_MASK) * RG_RUN_TILE_PIXELS
+  mirrored = drawn.anybits?(RG_DRAWN_MIRRORED)
+  i = 0
+  while i < run
+    x = tx + i
+    color = tables[table + places[places_at + (mirrored ? RG_RUN_TILE_SIDE - 1 - x : x)]]
+    if color != RG_SEE_THROUGH
+      if sheet
+        sheet[at + i] = color
+      elsif plain
+        color &= 0xFFFF
+        picture[at + i] = color
+        mixed_cells[at + i] = 0
+        without_sprites[at + i] = color if without_sprites
+      else
+        rg_lay_scenery(at + i - (py * RG_SCREEN_WIDTH), py, color)
+      end
+    end
+    i += 1
+  end
+end
+
+# The tables of colours of a background read from the start file, in the set of colours it is drawn
+# with now, as an Array read once from the tile pixels and kept until the set changes or a list it
+# follows is copied over them (rg_background_follow).
+def rg_drawn_tables(background)
+  set = rg_tile_set_now(background)
+  kept = (@rg_drawn_tables ||= [])[background]
+  return kept[1] if kept && kept[0] == set
+
+  count = (rg_background_field(background, RG_BG_TILES) - rg_background_field(background, RG_BG_TABLES)) * RG_RUN_TILE_PIXELS
+  tables = @rg_game_tile_pixels.entries(rg_tables_now(background), count)
+  @rg_drawn_tables[background] = [set, tables]
+  tables
 end
 
 # Reference#paint_background_window, for a background never turned: the window sits where the
@@ -811,6 +912,7 @@ def rg_paint_turned_window(background)
               (rg_tile_set_now(background) * rg_background_field(background, RG_BG_TILES) * tile_size)
   painted = rg_background_field(background, RG_BG_PAINTED)
   painted_tiles = @rg_game_painted_tiles
+  tiles = rg_background_field(background, RG_BG_TILES)
   pixels = @rg_game_tile_pixels
   sheet = @rg_onto_sheet ? @rg_sheet : nil
   rows_painted = rg_scenery_rows
@@ -840,7 +942,8 @@ def rg_paint_turned_window(background)
         last_col = col
         cell = row < rows && col < cols ? cells[first + (row * cols) + col] : RG_CELL_EMPTY
         if cell >= 0
-          slow = painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED
+          # A tile as drawn of a background read from the start file is read through rg_tile_pixel.
+          slow = cell >= tiles || (painted != RG_NOT_PAINTED && painted_tiles[painted + (2 * cell)] != RG_NOT_PAINTED)
           start = slow ? 0 : pixels.cached_at(set_start + (cell * tile_size), tile_size) # as rg_paint_map_row reads it
           cache = pixels.cache
         end
@@ -874,7 +977,7 @@ def rg_paint_background(background)
   end
 end
 
-# Reference#paint_scenery_in_blocks: ONE BACKGROUND IN BLOCKS of +block+ pixels each way, by the
+# Reference#paint_scenery_in_blocks: one background in blocks of +block+ pixels each way, by the
 # display's own rule, while the picture is shown in them (rg_hook_block_size).
 #
 # The blocks are fixed to the screen, and each shows the color the background has at the block's
@@ -882,7 +985,7 @@ end
 # corner that is see-through leaves the whole block see-through.
 #
 # Down and across are done apart, because a display draws a row at a time. Down: every row of a
-# block is drawn from the map row its top row shows, and still placed by its OWN bend, so a
+# block is drawn from the map row its top row shows, and still placed by its own bend, so a
 # background bent row by row keeps each row's bend and a block of it is a sheared one. Across:
 # each pixel of a row then takes the one at the start of its block in that same row. So the
 # background goes onto the sheet rows first, and is laid on the picture through the blocks, with
@@ -987,7 +1090,7 @@ def rg_tiled_setup
   # painted straight onto the picture (rg_paint_scenery_in_box); nil otherwise.
   @rg_clip = nil
   @rg_shown_backgrounds = []
-  # What the game does to a background, kept by the entry that keeps its NAME (rg_keeper_of): the
+  # What the game does to a background, kept by the entry that keeps its name (rg_keeper_of): the
   # map its cells hold now, the run's own copy of them and the entry whose map that is (Reference
   # @bg_maps, kept as [which, cells, of]), its scroll (@bg_scroll), whether it is shown from its
   # corner this pass (@bg_from_corner), the step of colors the game last named for it, from which

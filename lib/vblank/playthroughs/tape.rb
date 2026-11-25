@@ -4,11 +4,11 @@ require "zlib"
 
 module VBlank
   module Playthroughs
-    # THE PRESSES OF A PLAYTHROUGH, WRITTEN DOWN: which buttons were down on each frame, and
+    # The presses of a playthrough, written down: which buttons were down on each frame, and
     # the frame each named moment fell on.
     #
     # A script sets out what to do; a tape records what was done. The difference matters the moment
-    # a script watches the game: "walk right until the door" is as many frames as THIS game
+    # a script watches the game: "walk right until the door" is as many frames as this game
     # took to reach the door, and the tape holds that number. So a tape is the same presses
     # on the same frames whatever it is played on — which is what lets two cartridges be
     # given exactly the same game to play, and their pictures laid side by side.
@@ -17,7 +17,7 @@ module VBlank
     #   tape.write("walk.tape")
     #   Tape.read("walk.tape").play(another_cartridge) { |moment, game| ... }
     #
-    # IT IS PLAIN TEXT, a line for each stretch of frames with the same buttons down, so a
+    # It is plain text, a line for each stretch of frames with the same buttons down, so a
     # person can read one and a change to one shows as a change to a few lines:
     #
     #   vblank tape 1
@@ -34,33 +34,44 @@ module VBlank
     # buttons down for that many frames, `-` for none; and a moment on a line of its own,
     # naming the frame the line before it ended on.
     #
-    # WHAT IT WAS RECORDED ON IS FOR A PERSON. The cartridge's title and a checksum of its
+    # What it was recorded on is for a person. The cartridge's title and a checksum of its
     # bytes show which game and which build the tape came from. Nothing checks them against
     # the cartridge it is played on: playing a tape on a different cartridge is the point.
     #
-    # WHERE IT STARTED IS HELD TO. The third line reads `power-on`, or `a save` for a
+    # Where it started is held to. The third line reads `power-on`, or `a save` for a
     # cartridge that held one when the console was switched on, and either can end
     # ` after a lead-in`. The same presses from anywhere else are a different game, so a
     # tape recorded from a save is played from one, and one recorded after a lead-in
     # after one.
     #
-    # +steps+ are the lines in order — each a Hold or a Moment, the same steps a script is
-    # made of, so a tape is played by the same playing a script is.
+    # +steps+ are the lines in order — each a Hold, a Moment or, on a tape of passes, an Until: the
+    # same steps a script is made of, so a tape is played by the same playing a script is.
     #
-    # A TAPE CAN COUNT PASSES OF THE GAME LOOP IN PLACE OF FRAMES (+in_passes+, and see
+    # A tape can count passes of the game loop in place of frames (+in_passes+, and see
     # PassStepper), and then a line's count is passes and a moment names a pass. One extra
     # line of heading marks it, `counts: passes`, or `counts: variable steps` for a variable of the
     # game. Such a tape plays the same game at any speed on any way of running it, where a tape of
     # frames holds its presses to one cartridge's timing. A tape of frames does not have the line.
     #
-    # A TAPE OF A MATCH played by several machines (Network::Lockstep#tape) holds the match as well
+    # A tape of passes can wait on the game, for a stretch its count does not move on (a title, a fade,
+    # a tally): a line `until screen is 3: 1 start, 1 -` repeats the presses after the colon, counted
+    # in frames, until the variable reads the number (Playthrough::Until). It is the same line on any
+    # build, however long that build's stretch, so it is kept as it is. A tape of frames has no such
+    # line: what it holds is the frames the step took.
+    #
+    # A tape of a match played by several machines (Network::Lockstep#tape) holds the match as well
     # (+match+, a Match), on a line of heading after the counts: `match: 2 players, seed 1234567`.
     # Every machine of a match sees all its players connected from the first pass that reads
     # buttons, whoever has pressed one, and adds the host's seed to the game's random numbers once the
     # game has set itself up; the same presses without either are another game. Only the interpreter
     # plays a game as a match (Reference#play_as_match), so a tape of one plays there and is refused
     # anywhere else. A tape with no such line, every tape written before matches kept theirs, has none.
-    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes, :match)
+    #
+    # A tape of a playing given a seed of its own (Playthrough#play's `seed:`) holds it (+seed+), on a
+    # line of heading after the match's: `seed: 4`. The seed is added to the game's random numbers once
+    # the game has set itself up, so the same presses without it are another game: such a tape plays
+    # with its seed, on the ways that take one (Playthrough::SEEDED_WAYS), and is refused anywhere else.
+    Tape = Data.define(:title, :checksum, :starts_from, :steps, :in_passes, :match, :seed)
 
     class Tape
       # What a tape's file opens with: what it is, and which way of writing one this is.
@@ -74,6 +85,15 @@ module VBlank
       COUNTS_PASSES = "passes"
       COUNTS_VARIABLE = "variable "
 
+      # The word a line of a tape of passes starts with when it waits on the game (Playthrough::Until),
+      # and the line as a whole: `until screen is 3 within 600: 1 start, 1 -`, where the within and the
+      # presses after the colon can each be left out.
+      UNTIL_WORD = "until"
+      UNTIL_LINE = /\Auntil (\S+) is (-?\d+)(?: within ([1-9]\d*))?(?::(.*))?\z/
+
+      # What a variable of the game can be called, as a tape names it.
+      VARIABLE_NAME = /\A[A-Za-z_][A-Za-z0-9_]*\z/
+
       # The match a tape replays: how many players it had, and the seed the host picked.
       Match = Data.define(:players, :seed) do
         def heading_line = "#{MATCH_LINE}#{players} players, seed #{seed}"
@@ -86,6 +106,10 @@ module VBlank
       # The way of running a game that plays it as a match, which a tape of a match plays on.
       MATCH_WAY = "interpreter"
 
+      # The line of heading a tape of a seeded playing has, and what follows it.
+      SEED_LINE = "seed: "
+      SEED_SAID = /\A-?\d+\z/
+
       # Where a playthrough starts, as the tape records it: the console switched on with a
       # cartridge nobody has played, or with one holding a save. A save is recorded with a
       # checksum of its bytes, like the cartridge's, for a person to tell which save the
@@ -93,7 +117,7 @@ module VBlank
       # played on another cartridge it wants that one's own.
       #
       # And it records whether a lead-in was played first, with ` after a lead-in` on the
-      # end of either. The lead-in's presses are not on the tape — a lead-in is how THIS
+      # end of either. The lead-in's presses are not on the tape — a lead-in is how this
       # cartridge gets to where the playing begins, and another cartridge has its own —
       # so all the tape can record is that there was one.
       POWER_ON = "power-on"
@@ -104,11 +128,12 @@ module VBlank
       # title in the cartridge's own header and a checksum of every byte of it. +save+ is
       # the save memory the cartridge held when the console was switched on, or nil, and
       # +led_in+ whether a lead-in was played before the first of the steps. +in_passes+ is
-      # what the tape counts, nil for frames, and +match+ the Match it replays, nil for none.
-      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil, match: nil)
+      # what the tape counts, nil for frames, +match+ the Match it replays, nil for none, and +seed+ the
+      # playing's own seed, nil for none.
+      def self.recorded_on(cartridge, steps, save:, led_in: false, in_passes: nil, match: nil, seed: nil)
         title, checksum = title_and_checksum_of(cartridge)
         new(title: title, checksum: checksum, starts_from: start_said(save: save, led_in: led_in), steps: steps,
-            in_passes: in_passes, match: match)
+            in_passes: in_passes, match: match, seed: seed)
       end
 
       # Where a playing started, as a tape records it. +save+ is the save memory the
@@ -164,9 +189,19 @@ module VBlank
 
       # A tape holds nothing but names and numbers, and is made so that every core can read
       # it: it can be kept in a constant, and handed from one Ractor to another.
-      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil, match: nil)
+      def initialize(title:, checksum:, starts_from:, steps:, in_passes: nil, match: nil, seed: nil)
         super(**Ractor.make_shareable({ title: title.dup, checksum: checksum, starts_from: starts_from.dup, steps: steps.dup,
-                                        in_passes: in_passes, match: match }))
+                                        in_passes: in_passes, match: match, seed: seed }))
+      end
+
+      # A tape of a seeded playing plays only where the seed is added, which nothing that plays a
+      # cartridge frame by frame does. +what+ names what was asked, in the middle of a sentence.
+      def refuse_seed_frame_by_frame!(what)
+        return if seed.nil?
+
+        raise ArgumentError, "This tape starts the random numbers at seed #{seed}, and #{what} plays a cartridge, which " \
+                             "cannot add a seed. To fix this, record the tape with no seed, on a cartridge built " \
+                             "with the seed it needs."
       end
 
       # Play the tape on +cartridge+, exactly as a playthrough plays its script: the block is
@@ -175,14 +210,74 @@ module VBlank
       # A tape recorded from a save is played from one, and one recorded after a lead-in
       # is played after one: from anywhere else it would be the same presses on a
       # different game.
-      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil,
-               progress: Messages::Progress.silent, &at_each_moment)
+      #
+      # +starting_after+ is a frame of the tape, by its number or by the name of one of its moments,
+      # that the playing starts after: the cartridge is brought to that frame without being looked
+      # at, and played on from the frame after. With +snapshots+ (a SnapshotCache) it is put there
+      # from a snapshot of its console, made the first time and loaded every time after, so a
+      # playing of a moment deep in a tape costs the frames after it; without, it is played there
+      # from power-on. The tape, the moments and the game at the end are the same as from power-on.
+      # A moment at or before the start is on the tape that comes back, and its block is not handed
+      # the game, which is not there yet; it has no picture either. Only the cartridge in its
+      # emulator starts so, from power-on or a save, with no lead-in and no window.
+      def play(cartridge, save: nil, lead_in: nil, pictures_in: nil, on: nil, window: nil, starting_after: nil,
+               snapshots: nil, progress: Messages::Progress.silent, &at_each_moment)
         refuse_missing_save!(save)
         refuse_missing_lead_in!(lead_in)
         refuse_match_elsewhere!(on)
+        start = start_for_playing(starting_after, snapshots, lead_in: lead_in, on: on, window: window)
         Playthrough::Playing.play(title, steps, cartridge, save: save, lead_in: lead_in, pictures_in: pictures_in, on: on,
-                                                           window: window, in_passes: in_passes, match: match,
-                                                           progress: progress, &at_each_moment)
+                                                           window: window, in_passes: in_passes, match: match, seed: seed,
+                                                           start: start, progress: progress, &at_each_moment)
+      end
+
+      # A start a tape can give is a frame of it, a whole number 1 or more, or a moment's name; nil is
+      # none. What a comparison, a probe, a playing and a film side each take as `starting_after:`.
+      def self.refuse_unusable_start!(starting_after)
+        return if starting_after.nil? || starting_after.is_a?(Symbol) || (starting_after.is_a?(Integer) && starting_after >= 1)
+
+        raise ArgumentError, "`starting_after:` was #{starting_after.inspect}. It must be a frame of the tape, a whole " \
+                             "number 1 or more, or the name of one of its moments."
+      end
+
+      # The frame +starting_after+ names on this tape: a number, or the frame of the moment it names;
+      # 0 for nil, which is power-on. +last_allowed+ is the last frame a start can be.
+      def start_frame(starting_after, last_allowed: frames)
+        Tape.refuse_unusable_start!(starting_after)
+        return 0 if starting_after.nil?
+
+        frame = if starting_after.is_a?(Symbol)
+                  moments.fetch(starting_after) do
+                    raise ArgumentError, "`starting_after:` names the moment #{starting_after.inspect}, and the tape has " \
+                                         "no moment of that name. Its moments are #{moments.keys.map(&:inspect).join(', ')}."
+                  end
+                else
+                  starting_after
+                end
+        return frame if frame <= last_allowed
+
+        left = last_allowed < frames ? " Nothing is left to play after the tape's last." : ""
+        raise ArgumentError, "`starting_after:` is frame #{frame}, and the tape plays #{frames} frames.#{left} " \
+                             "To fix this, give a frame of the tape, #{last_allowed} or less."
+      end
+
+      # Where a playing of this tape starts (a Playthrough::StartAfter), or nil for power-on.
+      private def start_for_playing(starting_after, snapshots, lead_in:, on:, window:)
+        Playthrough.refuse_unusable_start!(starting_after, snapshots, what: "The playing")
+        return nil if starting_after.nil?
+
+        said = []
+        said << "`lead_in:`" if lead_in
+        said << "`on: #{on.inspect}`" if on && on != LoweredGame::EMULATOR
+        said << "`window:`" if window
+        said << "a tape that counts passes" if in_passes
+        unless said.empty?
+          raise ArgumentError, "The playing was given `starting_after:` and #{said.join(' and ')}. A playing that starts " \
+                               "after a frame plays the cartridge in its emulator, from power-on or a save. Remove " \
+                               "#{said.size == 1 ? 'it' : 'them'}, or remove `starting_after:`."
+        end
+        frame = start_frame(starting_after)
+        Playthrough::StartAfter.new(frame: frame, presses: SnapshotCache.presses_up_to(self, frame), snapshots: snapshots)
       end
 
       # A tape of a match plays the same game only where the game is played as that match.
@@ -202,6 +297,7 @@ module VBlank
       # A tape recorded from a save is compared from one (`save:`), and one recorded after
       # a lead-in with a lead-in for each cartridge (`lead_ins:`).
       def compare(first, second, **settings)
+        refuse_seed_frame_by_frame!("a comparison")
         refuse_compare_of_passes!
         refuse_missing_save!(save_for_both(settings), "tape.compare(first, second, save: ...)")
         refuse_missing_lead_in!(Array(settings[:lead_ins]).compact.first, "tape.compare(first, second, lead_ins: [..., ...])")
@@ -209,7 +305,7 @@ module VBlank
         Comparison.new(first, second, moments.keys, **settings).run(self)
       end
 
-      # WRITE ONE PICTURE OF ONE FRAME ON TWO CARTRIDGES at +path+: the tape played on
+      # Write one picture of one frame on two cartridges at +path+: the tape played on
       # +first+ and on +second+ as far as the frame +at+, and their two screens there side
       # by side with the difference between them (see Comparison::PictureRequest). +at+ is
       # the frame, by its number or by the name of a moment, and +difference+ whether the
@@ -219,6 +315,7 @@ module VBlank
       # A tape recorded from a save or after a lead-in is given them here, as it is for a
       # comparison.
       def write_side_by_side_picture(first, second, path, at: nil, difference: true, **settings)
+        refuse_seed_frame_by_frame!("a picture of two cartridges")
         refuse_compare_of_passes!
         refuse_missing_save!(save_for_both(settings),
                              "tape.write_side_by_side_picture(first, second, path, at: ..., save: ...)")
@@ -237,10 +334,11 @@ module VBlank
                              "two cartridges, use a tape of frames, or `same: :script` on the playthrough."
       end
 
-      # THE SAME GAME AS A TAPE OF FRAMES, for +cartridge+ alone: a tape of passes played once on it,
+      # The same game as a tape of frames, for +cartridge+ alone: a tape of passes played once on it,
       # with each line holding the frames its passes took there. A tape of frames comes back as it
       # is. What comes back is as strict as any tape of frames, and this tape stays the master.
       def in_frames_on(cartridge)
+        refuse_seed_frame_by_frame!("writing it as frames")
         return self unless in_passes
 
         cartridge = Playthrough.cartridge_from(cartridge)
@@ -250,9 +348,25 @@ module VBlank
         running = Playthrough.power_on(cartridge, count_passes: in_passes == true)
         stepper = PassStepper.new(running, in_passes)
         taping = Taping.new
-        steps.each { |step| step.frames.zero? ? taping.moment(step.name) : hold_on(stepper, step, taping) }
+        steps.each do |step|
+          case step
+          when Playthrough::Moment then taping.moment(step.name)
+          when Playthrough::Until then repeat_until_on(running, step, taping)
+          else hold_on(stepper, step, taping)
+          end
+        end
         Tape.recorded_on(cartridge, taping.steps, save: nil)
       end
+
+      # A step that waits on the game, played a frame at a time, its frames on the tape of frames.
+      private def repeat_until_on(running, step, taping)
+        held = step.play_pattern(running, running) { |buttons| taping.hold(buttons, 1) }
+        raise step.gave_up(title: title, frame: taping.frames, game: running) unless held
+      end
+
+      # Whether a line of the tape waits on the game (Playthrough::Until), which only a playing that reads
+      # the game can play.
+      def waits_on_game? = steps.any?(Playthrough::Until)
 
       private def hold_on(stepper, step, taping)
         before = stepper.frames_played
@@ -260,7 +374,7 @@ module VBlank
         taping.hold(step.buttons, stepper.frames_played - before)
       end
 
-      # WRITE THE TAPE AS A SCRIPT FOR mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+
+      # Write the tape as a script for mGBA at +path+ (see TapeExport), for +cartridge+. +pictures_in+
       # is a folder for mGBA to write the screen at each moment into, to lay beside the pictures
       # here. The path is handed back.
       def write_mgba_script(cartridge, path, pictures_in: nil)
@@ -268,7 +382,7 @@ module VBlank
         path
       end
 
-      # WRITE THE TAPE AS A BIZHAWK MOVIE at +path+ (see TapeExport), for +cartridge+. The path is
+      # Write the tape as a BizHawk movie at +path+ (see TapeExport), for +cartridge+. The path is
       # handed back.
       def write_bizhawk_movie(cartridge, path)
         cartridge = Playthrough.cartridge_from(cartridge)
@@ -336,7 +450,7 @@ module VBlank
                              "presses start in a different place. Give the lead-in to play first: `#{how}`."
       end
 
-      # THE TAPE AS FAR AS +frame+ AND NO FURTHER: the same presses, ending on that frame. It
+      # The tape as far as +frame+ and no further: the same presses, ending on that frame. It
       # is how a moment part way through is got back to — play this, and the cartridge is
       # on that frame. A hold the frame falls inside is cut short there. A moment is kept
       # when the frame it names was played, the last frame included. A frame past the end
@@ -372,7 +486,7 @@ module VBlank
       # counted from 1, and +buttons+ what was down.
       Stretch = Data.define(:frames, :buttons)
 
-      # WHAT WAS DOWN ON EACH OF THE FRAMES +frames+, a range of frame numbers: one
+      # What was down on each of the frames +frames+, a range of frame numbers: one
       # Stretch for each run of them with the same buttons down, in order. A moment
       # between two lines of the same buttons does not split a run, since a moment is
       # no frames long; and a run that reaches outside the range is cut to it.
@@ -406,7 +520,7 @@ module VBlank
       # The tape as the text of a file.
       def to_s
         heading = [FIRST_LINE, "recorded on: #{recorded_on_label}", "starts from: #{starts_from}", *counts_line,
-                   *match&.heading_line, ""]
+                   *match&.heading_line, *("#{SEED_LINE}#{seed}" if seed), ""]
         (heading + steps.map(&:tape_line)).join("\n") << "\n"
       end
 
@@ -423,7 +537,7 @@ module VBlank
         path
       end
 
-      # A TAPE BEING MADE, a line at a time — by a playing as it plays, and by a file as it
+      # A tape being made, a line at a time — by a playing as it plays, and by a file as it
       # is read. Frames with the same buttons down run on from the ones before, so a wait
       # that watched the game for ninety frames is one line of ninety and not ninety of one;
       # and the buttons of a line are in the console's own order, so the same presses are
@@ -445,6 +559,12 @@ module VBlank
 
         def moment(name) = @steps << Playthrough::Moment.new(name: name)
 
+        # A step that waits on the game, for a tape of passes, where it is a line of its own.
+        def add_until(step) = @steps << step
+
+        # Whether a line that plays has been written: a moment needs one before it.
+        def any_played? = @frames.positive? || @steps.any?(Playthrough::Until)
+
         # Every moment named so far.
         def names = @steps.flat_map(&:names)
 
@@ -454,7 +574,7 @@ module VBlank
         end
       end
 
-      # ONE READING OF A TAPE'S TEXT. A tape is written by a program and read back by one, but
+      # One reading of a tape's text. A tape is written by a program and read back by one, but
       # it is also a file a person can open and change, so every line that cannot be read is
       # an error saying which line, what is on it, and what a line there has to look like.
       class Reader
@@ -469,11 +589,12 @@ module VBlank
           title, checksum = read_recorded_on
           starts_from = read_starts_from
           @heading_lines = HEADING_LINES
-          in_passes = read_counts
+          in_passes = @in_passes = read_counts
           match = read_match
+          seed = read_seed
           @lines.each_with_index.drop(@heading_lines).each { |line, at| read_step(line, at + 1) }
           Tape.new(title: title, checksum: checksum, starts_from: starts_from, steps: @taping.steps, in_passes: in_passes,
-                   match: match)
+                   match: match, seed: seed)
         end
 
         private
@@ -532,16 +653,67 @@ module VBlank
                                                  "like `#{Match.new(players: 2, seed: 1_234_567).heading_line}`.")
         end
 
+        # The playing's own seed, from the optional line after the match's, or nil for none.
+        def read_seed
+          line = @lines[@heading_lines].to_s
+          return unless line.start_with?(SEED_LINE)
+
+          @heading_lines += 1
+          said = line.delete_prefix(SEED_LINE)
+          return said.to_i if SEED_SAID.match?(said)
+
+          raise_unreadable_line!(@heading_lines, "This line must give the seed the playing added to the random " \
+                                                 "numbers, as a whole number, like `#{SEED_LINE}4`.")
+        end
+
         def read_step(line, number)
           return if line.empty? || line.start_with?("#")
 
           first, *rest = line.split
           return read_moment(rest.join(" "), number) if first == "moment"
+          return read_until(line, number) if first == UNTIL_WORD
 
           unless first.match?(/\A[1-9]\d*\z/)
             raise_unreadable_line!(number, "A line must start with how many frames it lasts, as a whole number, 1 or more.")
           end
           @taping.hold(buttons_named(rest, number), first.to_i)
+        end
+
+        UNTIL_EXAMPLE = "`until screen is 3: 1 start, 1 -`"
+        private_constant :UNTIL_EXAMPLE
+
+        # A line that waits on the game. Its presses are counted in frames, as the step plays them, so
+        # it is read only on a tape of passes: a tape of frames holds the frames such a step took.
+        def read_until(line, number)
+          unless @in_passes
+            raise_unreadable_line!(number, "An `#{UNTIL_WORD}` line plays only on a tape that counts passes. Add the " \
+                                           "line `#{COUNTS}#{COUNTS_PASSES}` or `#{COUNTS}#{COUNTS_VARIABLE}steps` " \
+                                           "after line 3, or write the frames as counts.")
+          end
+          said = line.match(UNTIL_LINE)
+          unless said && VARIABLE_NAME.match?(said[1])
+            raise_unreadable_line!(number, "An `#{UNTIL_WORD}` line names a variable and a whole number, then " \
+                                           "the presses to repeat after a colon, like #{UNTIL_EXAMPLE}. " \
+                                           "Without a colon, nothing is pressed.")
+          end
+          @taping.add_until(Playthrough::Until.new(var: said[1].to_sym, value: said[2].to_i,
+                                                   pattern: pattern_said(said[4], number),
+                                                   within: said[3] ? said[3].to_i : Playthrough::Until::LONGEST))
+        end
+
+        # The presses after an `until` line's colon: holds parted by commas, each written as a line of
+        # frames is.
+        def pattern_said(text, number)
+          return [] if text.nil?
+
+          text.split(",").map do |hold|
+            count, *words = hold.split
+            unless count&.match?(/\A[1-9]\d*\z/)
+              raise_unreadable_line!(number, "After the colon, each press starts with how many frames it lasts, " \
+                                             "as a whole number, 1 or more, like #{UNTIL_EXAMPLE}.")
+            end
+            Playthrough::Hold.new(buttons: Playthrough.in_console_order(buttons_named(words, number)), frames: count.to_i)
+          end
         end
 
         def buttons_named(words, number)
@@ -560,7 +732,7 @@ module VBlank
 
         # The rules are Moment's own, shared with a script; the words are a tape's.
         def read_moment(name, number)
-          problem = Playthrough::Moment.problem_with(name.to_sym, named: @taping.names, any_frames: @taping.frames.positive?)
+          problem = Playthrough::Moment.problem_with(name.to_sym, named: @taping.names, any_frames: @taping.any_played?)
           return @taping.moment(name.to_sym) unless problem
 
           raise_unreadable_line!(number, format(MOMENT_PROBLEMS.fetch(problem), name: name))

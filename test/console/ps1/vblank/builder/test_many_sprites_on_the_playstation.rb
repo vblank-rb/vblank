@@ -7,7 +7,7 @@ require "test_helper"
 # (Console::PLAYSTATION's sprite_places), so every sprite the frame shows is drawn, as the interpreter
 # draws it. Not in test/all/: the Color, the Super Nintendo and the Genesis keep places for fewer.
 #
-# THE BUILD'S TABLE NEVER RUNS OUT (PS1::Runtime::Tiles::MOST_SPRITES says why). It is filled from the
+# The build's table never runs out (PS1::Runtime::Tiles::MOST_SPRITES says why). It is filled from the
 # sprite furthest back, so a sprite that found it full would be the one in front: these tests fill it,
 # and pass a game with more places than it has rows to the build, which refuses it.
 class TestManySpritesOnThePlayStation < Minitest::Test
@@ -91,10 +91,7 @@ class TestManySpritesOnThePlayStation < Minitest::Test
         frame += 1
         scene_up = 1 if frame == 6
         scene_up = 0 if frame == 12
-        case_var(:scene_up) do
-          when_val 0, :first
-          when_val 1, :second
-        end
+        call({ 0 => :first, 1 => :second }, number: :scene_up)
       end
     end
   end

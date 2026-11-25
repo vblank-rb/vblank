@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# NUMBERS THE BUILD CAN PROVE ARE SMALL, at the edges of 8 and 16 bits. A console that works such a
+# Numbers the build can prove are small, at the edges of 8 and 16 bits. A console that works such a
 # number at 8 or 16 bits (Backends::NumberRanges) still gives the 32-bit answer (IR::Int32): a slot
 # of bytes holding 128 reads -128, a half slot holding 32768 reads -32768, the size of -32768 is
 # 32768, a shift down of a negative keeps its sign. Each pass reads the next of sixteen edge values

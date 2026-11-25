@@ -2,7 +2,7 @@
 
 module VBlank
   module Network
-    # A NETWORK IN ONE PROCESS, for a test to play with. Machines join one room, as they would on a
+    # A network in one process, for a test to play with. Machines join one room, as they would on a
     # relay; what one sends, every other receives, in the order it was sent. Nothing here keeps time
     # or draws a random number, so a test replays exactly. A test can:
     #
@@ -12,13 +12,13 @@ module VBlank
     #                                          message it had already sent
     #   net.at_round(10) { net.release(...) }  do any of these on a round of the test's choosing
     #
-    # TIME IS ROUNDS. #play runs each copy of the game in a Fiber and takes them round by round, in the
+    # Time is rounds. #play runs each copy of the game in a Fiber and takes them round by round, in the
     # order they were given (see Scheduler). A copy runs until it must wait for a message (see
     # Endpoint#wait_for_message), and the next copy then runs. A delay of three rounds means three trips
     # round all the copies, which is how a delay is felt by a game that waits on it. That keeps the whole
     # run in order, whatever the machine running the test does.
     #
-    # THE ROOM NEVER READS A MESSAGE. It stamps who sent it and hands it on, as a relay does, and it
+    # The room never reads a message. It stamps who sent it and hands it on, as a relay does, and it
     # tells every machine when another has dropped.
     class SimulatedNetwork
       # A message on its way: +due+ is the round it can first be received on, +sequence+ puts all the
@@ -132,7 +132,7 @@ module VBlank
         "Held back: #{held.join(', ')}." unless held.empty?
       end
 
-      # THE END OF ONE MACHINE'S LINK TO THE ROOM, which is what a Lockstep gives its messages to.
+      # The end of one machine's link to the room, which is what a Lockstep gives its messages to.
       class Endpoint
         attr_reader :id
 

@@ -5,9 +5,9 @@ require "tmpdir"
 
 module VBlank
   module Testing
-    # A TEST RUN WATCHED FOR THE TWO WAYS IT CAN STOP WITHOUT ENDING.
+    # A test run watched for the two ways it can stop without ending.
     #
-    # When Ruby itself crashes it prints a report headed "[BUG]" and exits. In a run played in
+    # When Ruby itself crashes it prints a report headed "[bug]" and exits. In a run played in
     # Ractors it may not: the report's own writing can spin while the garbage collector waits for
     # the Ractor that crashed, and then nothing moves and nothing exits. A whole run holds the
     # machine-wide lock while that happens, so everything waiting behind it waits for ever. A run
@@ -20,10 +20,12 @@ module VBlank
     class WatchedRun
       CRASH_HEADER = "[BUG]"
 
-      # How long a crash report gets to finish, and how long a run may print nothing. A test that
-      # plays quietly for ten minutes does not exist here: the suite prints a dot for each test.
+      # How long a crash report gets to finish, and how long a run may print nothing. The suite
+      # prints a dot as each test ends, but nothing while one plays, and a test played in a Ractor
+      # has what it prints held until it ends. So the silence limit outlasts the longest test any
+      # game has: a shell check that plays a big game from power-on through three builds.
       CRASH_GRACE_SECONDS = 30
-      SILENCE_LIMIT_SECONDS = 600
+      SILENCE_LIMIT_SECONDS = 30 * 60
       SAMPLE_SECONDS = 3
 
       POLL_SECONDS = 0.1

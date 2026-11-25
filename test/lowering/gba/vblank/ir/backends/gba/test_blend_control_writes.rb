@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "differential"
 
-# WHAT THE BLEND UNIT IS TOLD, write by write, in a game whose light takes turns with a scene that
+# What the blend unit is told, write by write, in a game whose light takes turns with a scene that
 # mixes a layer. The console draws from whatever the register holds at that moment, and an
 # interrupt can stop a pass for dozens of rows. So a pass that writes a value it means to replace
 # can leave that value in force for part of a picture, and no reading taken once a frame would show
@@ -42,7 +42,7 @@ class TestBlendControlWrites < Minitest::Test
       game_loop do
         turn += 1
         mode = numbers.fetch(to) if turn == TURN
-        case_var(:mode) { when_val 0, :title; when_val 1, :dim; when_val 2, :playing }
+        call({ 0 => :title, 1 => :dim, 2 => :playing }, number: :mode)
       end
     end
     b.finalize_program
@@ -78,7 +78,7 @@ class TestBlendControlWrites < Minitest::Test
                  distinct_runs(blend_control_values(three_scenes(from: :playing, to: :title), "LEAVE")).last(2)
   end
 
-  # A TINT TAKES THE PLACE OF A FADE THE DISPLAY WAS DOING, and hands the blend back if one was. The
+  # A tint takes the place of a fade the display was doing, and hands the blend back if one was. The
   # light's darkening looks like such a fade, and is not one.
   def test_a_tint_in_a_lit_scene_leaves_the_light_alone
     game = three_scenes(from: :title, to: :playing, lit: -> { tint :red, 30 })

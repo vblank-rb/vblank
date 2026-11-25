@@ -2,7 +2,7 @@
 
 module VBlank
   module Audio
-    # A PART PLAYED HIGHER OR LOWER THAN IT IS WRITTEN, worked into each of its notes' pitches as the
+    # A part played higher or lower than it is written, worked into each of its notes' pitches as the
     # game is built, so every backend plays the same pitches and no player does anything new.
     #
     # +transpose+ moves every note by whole semitones, up or down: twelve is an octave. +pitch_offset+
@@ -26,7 +26,7 @@ module VBlank
       VOICE_CLOCKS = Ractor.make_shareable({ square: [Sound::SQUARE_CLOCK_HZ, Sound::SQUARE_LONGEST_WAVE],
                                              wave: [Sound::WAVE_CLOCK_HZ, Sound::WAVE_LONGEST_WAVE] })
 
-      # THE SHIFT A PART GAVE, +transpose+ semitones and +pitch_offset+ pitch steps, nil for each it did
+      # The shift a part gave, +transpose+ semitones and +pitch_offset+ pitch steps, nil for each it did
       # not give. +where+ names the part, as the start of a sentence.
       def self.said(transpose:, pitch_offset:, where:)
         new(transpose: checked_amount(transpose, MOST_SEMITONES, "transpose", "semitones", where),

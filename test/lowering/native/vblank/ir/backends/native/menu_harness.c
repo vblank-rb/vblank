@@ -6,11 +6,20 @@
  *   most_scale 6                     the biggest the window can be made
  *   toggle                           open the menu, or close it
  *   press up|down|left|right|enter|close
- *   hotkey NAME                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
+ *   hotkey name                      a hotkey pressed, as rg_window.c takes it: frame_rate, mute...
  *   capture_key N                    a key pressed, by number, while one is being chosen
  *   capture_pad N                    a gamepad button pressed, by SDL's number, the same
- *   draw WIDTH DENSITY HELD FAST RATE WORK
- *                                    print what the menu draws; RATE and WORK are words, - for none
+ *   draw WIDTH HEIGHT DENSITY HELD FAST RATE WORK
+ *                                    print what the menu draws; rate and work are words, - for none
+ *   watch_begin                      the game's variables read afresh: none yet
+ *   watch name value                 ...and one of them, as the window reads it from the game
+ *   type_key N                       a key pressed, by SDL's number, for the window of variables
+ *   variables up|down|close          a key of the menu's pressed, for the window of variables
+ *   problems words                   what could not be used in the settings file, a | for each line break
+ *   tell words                       what a shell tells the player, the same, under the title Load ROM
+ *   tell_titled title words          what the window tells the player under title, a _ for each space in it
+ *   fits width height density        print "fits 1" when every box shown fits a window that size, else "fits 0"
+ *   answer                           a button pressed, which answers what the window says
  *   state                            print whether it is open and whether Quit was chosen
  *   slot N WORDS                     what slot N (0 is the quick one) says at its right, as a state's time
  *   request                          print the save or load the menu asked for and use it up:
@@ -58,7 +67,7 @@ static void print_drawing(void) {
 int main(void) {
   rg_window_use_defaults();
   rg_window_menu_reset(240, 160);
-  char line[256];
+  char line[1024];
   while (fgets(line, sizeof line, stdin)) {
     char *command = strtok(line, " \n");
     if (!command) continue;
@@ -82,13 +91,42 @@ int main(void) {
         if (strcmp(rg_window_hotkey_setting(h), name) == 0) rg_window_hotkey_changed(h, 1);
     } else if (strcmp(command, "draw") == 0) {
       int width = atoi(strtok(NULL, " \n"));
+      int height = atoi(strtok(NULL, " \n"));
       double density = strtod(strtok(NULL, " \n"), NULL);
       int held = atoi(strtok(NULL, " \n"));
       int fast = atoi(strtok(NULL, " \n"));
       const char *rate = strtok(NULL, " \n");
       const char *work = strtok(NULL, " \n");
-      rg_window_menu_draw(&drawing, width, density, held, fast, strcmp(rate, "-") ? rate : NULL, strcmp(work, "-") ? work : NULL);
+      rg_window_menu_draw(&drawing, width, height, density, held, fast, strcmp(rate, "-") ? rate : NULL,
+                          strcmp(work, "-") ? work : NULL);
       print_drawing();
+    } else if (strcmp(command, "watch_begin") == 0) {
+      rg_window_watch_begin();
+    } else if (strcmp(command, "watch") == 0) {
+      const char *name = strtok(NULL, " \n");
+      rg_window_watch_note(name, (int32_t)atol(strtok(NULL, " \n")));
+    } else if (strcmp(command, "type_key") == 0) {
+      rg_window_menu_type_key(atoi(strtok(NULL, " \n")));
+    } else if (strcmp(command, "variables") == 0) {
+      rg_window_menu_press_on_variables(key_named(strtok(NULL, " \n")));
+    } else if (strcmp(command, "problems") == 0 || strcmp(command, "tell") == 0 || strcmp(command, "tell_titled") == 0) {
+      int problems = strcmp(command, "problems") == 0;
+      char shell_title[] = "Load ROM";
+      char *title = strcmp(command, "tell_titled") == 0 ? strtok(NULL, " \n") : shell_title;
+      for (char *c = title; c && *c; c++)
+        if (*c == '_') *c = ' ';
+      char *words = strtok(NULL, "\n");
+      for (char *c = words; c && *c; c++)
+        if (*c == '|') *c = '\n';
+      if (problems) rg_window_set_problems(words ? words : "");
+      else rg_window_tell(title ? title : "", words ? words : "");
+    } else if (strcmp(command, "fits") == 0) {
+      int width = atoi(strtok(NULL, " \n"));
+      int height = atoi(strtok(NULL, " \n"));
+      double density = strtod(strtok(NULL, " \n"), NULL);
+      printf("fits %d\n", rg_window_menu_messages_fit(width, height, density));
+    } else if (strcmp(command, "answer") == 0) {
+      rg_window_menu_answer_messages();
     } else if (strcmp(command, "slot") == 0) {
       int slot = atoi(strtok(NULL, " \n"));
       const char *words = strtok(NULL, "\n");

@@ -2,91 +2,118 @@
 
 module VBlank
   class Builder
-    # The on-screen writing verbs, built on the same 5x7 bitmap font: draw_text for
-    # words (labels, dialogue) and draw_number for counters (score, damage). They
-    # stay separate because a game uses them differently — the only thing they share
-    # is the font that renders a glyph. A concern of {Builder}, mixed in flat.
+    # Text on the screen
+    #
+    # `draw_text` writes words, such as labels and dialogue, and `draw_number` writes a number that
+    # changes as the game runs, such as a score or a damage counter. They are separate because a
+    # game uses them differently. `font` makes a font of your own, and `text_width` and
+    # `text_height` measure what will be drawn, to size a box round it.
+    #
+    # ```ruby picture=still
+    # VBlank.game "TEXT", consoles: %i[gba] do
+    #   screen :tiled, backdrop: rgb(3, 4, 7)
+    #   score = 0
+    #   draw_text "SCORE", 84, 68, :white
+    #   # shows the score as it changes
+    #   draw_number score, 120, 68, :yellow,
+    #                               digits: 5
+    #   draw_text "HELLO FROM VBLANK", 70, 84,
+    #                                  :cyan
+    #   game_loop do
+    #     score += 7
+    #   end
+    # end
+    # ```
+    #
+    # ```ruby
+    # draw_text "SCORE", 8, 8, :white
+    # draw_number score, 56, 8, :white, digits: 5
+    # ```
+    #--
+    # Built on the same 5x7 bitmap font; the only thing the two share is the font that renders a
+    # glyph. A concern of Builder, mixed in flat.
+    #++
     module Text
       # The font advances this many pixels per character (a 5px glyph + a 1px gap).
-      GLYPH_WIDTH = 6
+      GLYPH_WIDTH = 6  # :nodoc:
 
       # How many digit columns draw_number reserves when you don't give one. A live
       # number's width isn't known until the game runs, so it draws in a fixed field.
-      DEFAULT_DIGITS = 4
+      DEFAULT_DIGITS = 4  # :nodoc:
 
       # The screen modes with no framebuffer to paint into — text on either of these
       # is drawn as little hardware-sprite glyphs (see #draw_text_tiled), not written
       # into pixels. `screen :rotozoom` is tile hardware too (see IR::Modes::AFFINE):
       # a different pair of background layers from `screen :tiled`'s four, but the
       # same sprite hardware composites glyphs over it exactly the same way.
-      TILE_HARDWARE_MODES = %i[tiled rotozoom].freeze
+      TILE_HARDWARE_MODES = %i[tiled rotozoom].freeze  # :nodoc:
 
-      # WHERE A LINE OF TEXT SITS, named instead of counted. These go where the left
+      # Where a line of text sits, named instead of counted. These go where the left
       # edge goes, so `draw_text "PONG", :center, 40, :white` centres it.
       #
       # A number is still right when you actually want a number. What a number cannot
       # be is CENTRED: a proportional font has no per-character width to multiply by,
       # so the only thing that knows how wide "PRESS START" comes out is the font
       # itself. Ask it, and a label can be reworded without a stale number left behind.
-      ALIGNMENTS = %i[left center right].freeze
+      ALIGNMENTS = %i[left center right].freeze  # :nodoc:
 
-      # Define a font from little glyph bitmaps, the way {#image} defines a bitmap
-      # from ASCII art — then `draw_text` can pick it. Inside the block, `glyph`
-      # gives a character its art; a lit pixel is the +on+ character (default "#"),
-      # anything else is blank. Glyphs share one height but may differ in width — a
-      # narrow "I" beside a wide "M" renders proportionally, not on a fixed grid.
+      # Defines a font, so that `draw_text` can pick it with `font:`, and returns its name.
       #
-      #   font :heavy do
-      #     glyph "A", <<~ART
-      #       ###
-      #       # #
-      #       ###
-      #     ART
-      #   end
-      #   draw_text "A", 10, 10, :white, font: :heavy   # define with `font`, select with `font:`
+      # A font can be drawn as little pictures of glyphs, the way `image` defines a picture from
+      # text art. Inside the block, `glyph` gives a character its art. A lit pixel is the `on:`
+      # character, which is `"#"` by default, and anything else is blank. Glyphs share one height
+      # but can differ in width, so a narrow "I" beside a wide "M" is drawn proportionally and not
+      # on a fixed grid.
       #
-      # That is the right surface for a font you are inventing, and the wrong one for a
-      # font that already exists — nobody is going to retype a game's alphabet as hashes
-      # and dots. So a font can also be given as GLYPH PICTURES: `glyphs:` maps each
-      # character to rows of pixel values, and a pixel that is not +blank+ is lit.
+      # ```ruby
+      # font :heavy do
+      #   glyph "A", <<~ART
+      #     ###
+      #     # #
+      #     ###
+      #   ART
+      # end
+      # draw_text "A", 10, 10, :white, font: :heavy   # define with `font`, select with `font:`
+      # ```
       #
-      #   font :imported, glyphs: { "A" => [[0, 1, 0], [1, 1, 1]] }
+      # That suits a font you are inventing. For a font that already exists, give the glyphs as
+      # pictures: `glyphs:` maps each character to rows of pixel values, and a pixel that is not
+      # `blank:` is lit. Each glyph keeps its own width, so an alphabet that was drawn
+      # proportionally stays proportional. Give a block or `glyphs:`, not both.
       #
-      # Each glyph keeps its own width, so an alphabet that was drawn proportionally
-      # stays proportional. Give a block or +glyphs:+, not both.
+      # ```ruby
+      # font :imported, glyphs: { "A" => [[0, 1, 0], [1, 1, 1]] }
+      # font :lettering, glyphs: { "A" => pack[:font].pixels(0, 70) }, height: 10
+      # ```
       #
-      # A glyph may be a run of a data pack's pixels instead, with the font's +height:+, for an
-      # alphabet that is the original's (PictureFonts#declare_font_of_pack_pixels):
+      # A font can also be made of the game's own pictures, in all their colours, such as a score
+      # in the game's numerals or words in letters lifted off a cartridge. `pictures:` maps each
+      # character to a picture declared with `image`. `strip:` is one picture cut into equal
+      # pictures, one for each character of `characters:`, left to right, as a row of numerals is
+      # kept in an original. A picture font draws each character as its picture, so it costs what
+      # those pictures cost and nothing new. Its spacing is 0 unless given, since a picture carries
+      # its own margin.
       #
-      #   font :lettering, glyphs: { "A" => pack[:font].pixels(0, 70) }, height: 10
+      # ```ruby
+      # font :numerals, pictures: ("0".."9").to_h { |d| [d, :"numeral_#{d}"] }
+      # draw_number score, 8, 8, digits: 5, font: :numerals   # no colour: the pictures have theirs
       #
-      # OR A FONT OF THE GAME'S OWN PICTURES, in all their colours: a score in the game's
-      # numerals, words in letters lifted off a cartridge. `pictures:` maps each character to a
-      # picture declared with `image` — from art, a file, or a data pack's slots:
+      # font :numerals, strip: :numeral_strip, characters: "0123456789 "
+      # ```
       #
-      #   font :numerals, pictures: ("0".."9").to_h { |d| [d, :"numeral_#{d}"] }
-      #   draw_number score, 8, 8, digits: 5, font: :numerals   # no colour: the pictures have theirs
-      #
-      # Or one picture cut into equal pictures, one for each character, left to right — a row of
-      # numerals as the original keeps them:
-      #
-      #   font :numerals, strip: :numeral_strip, characters: "0123456789 "
-      #
-      # A picture font draws each character as its picture (a blit on a bitmap screen, a sprite
-      # on a tiled one), so it costs what those pictures cost and nothing new. Its spacing is
-      # 0 unless given, since a picture carries its own margin. See PictureFonts.
-      #
-      # @param name [Symbol] the name it registers under (used as draw_text's font:)
-      # @param on [String] the character that marks a lit pixel
-      # @param spacing [Integer, nil] blank pixels between characters (1, or 0 for pictures)
-      # @param fold [Symbol, nil] :upper to render any case with these glyphs
-      # @param glyphs [Hash{String=>Array<Array>}, nil] char → rows of pixel values
-      # @param blank [Object] the pixel value that is not drawn
-      # @param pictures [Hash{String=>Symbol}, nil] char → a declared picture's name
-      # @param strip [Symbol, nil] a declared picture to cut, one piece per character of +characters+
-      # @param characters [String, nil] the characters of +strip+, left to right
-      # @param height [Integer, nil] how tall each letter is, for glyphs: given as a data pack's pixels
-      # @return [Symbol] the font name
+      # * `name` - the font's name, which `draw_text` takes as `font:`.
+      # * `on:` - the character that marks a lit pixel in a glyph's art. The default is `"#"`.
+      # * `spacing:` - blank pixels between characters. The default is 1, or 0 for pictures.
+      # * `fold:` - `:upper` to draw any case with these glyphs.
+      # * `glyphs:` - a hash from each character to rows of pixel values.
+      # * `blank:` - the pixel value in `glyphs:` that is not drawn.
+      # * `pictures:` - a hash from each character to a declared picture's name.
+      # * `strip:` - a declared picture to cut, one piece for each character of `characters:`.
+      # * `characters:` - the characters of `strip:`, left to right.
+      # * `height:` - how tall each letter is, for `glyphs:` given as a data pack's pixels.
+      #--
+      # See PictureFonts and PictureFonts#declare_font_of_pack_pixels.
+      #++
       def font(name, on: "#", spacing: nil, fold: nil, glyphs: nil, blank: 0, pictures: nil, strip: nil,
                characters: nil, height: nil, &block)
         if glyphs.is_a?(Hash) && glyphs.values.any?(DSL::PackSlot)
@@ -126,50 +153,67 @@ module VBlank
         name
       end
 
-      # Draw a line of words at (x, y): a label, a title, a line of dialogue. The
-      # string is fixed when the ROM is built.
+      # Draws a line of words at a place: a label, a title, a line of dialogue.
       #
-      #   draw_text "PRESS START", 76, 100, :gray      # at a column you picked
-      #   draw_text "PRESS START", :center, 100, :gray # centred, whatever it says
+      # The words are fixed when the game is built. For a number that changes as the game runs,
+      # such as a score, use `draw_number`: a live value cannot be put in a string, since Ruby
+      # works out `"score: #{n}"` before the game runs.
       #
-      # The left edge takes a number, or one of :left, :center and :right, which put
-      # the line against that edge of the screen. `within:` narrows what it is placed
-      # against — `within: 0..119` centres a label in the left half, which is how a
-      # caption goes under a panel or a heading over a menu window.
+      # ```ruby
+      # draw_text "PRESS START", 76, 100, :gray      # at a column you picked
+      # draw_text "PRESS START", :center, 100, :gray # centred, whatever it says
+      # ```
       #
-      # For a number that changes as the game runs (a score, a counter), use
-      # {#draw_number} — a live value can't be spliced into a string, since Ruby
-      # resolves `"score: #{n}"` at build time, before the game runs.
+      # The left edge takes a number, or `:left`, `:center` or `:right`, which put the line against
+      # that edge of the screen. `within:` narrows what it is placed against: `within: 0..119`
+      # centres a label in the left half, which is how a caption goes under a panel or a heading
+      # over a menu window.
       #
-      # The built-in font is 6px per character (a 5px glyph + a 1px gap) and 7px tall;
-      # text is uppercased, and a character the font does not have is a friendly error,
-      # since the words are known while the game is built. Another font may be proportional,
-      # so ask {#text_width} rather than multiplying.
+      # The built-in font is 6 pixels a character and 7 pixels tall, and text is drawn in capitals.
+      # A character that the font does not have is an error, since the words are known while the
+      # game is built. Another font can be proportional, so ask `text_width` rather than
+      # multiplying.
       #
-      # TWO COLOURS, AND A TEST SAYING WHICH. Give the colour as a pair and `showing:`
-      # the test that picks between them — the second while it holds, the first when it
-      # does not:
+      # To pick between two colours, give the colour as a pair and `showing:` the test that picks.
+      # The second shows while the test holds, and the first when it does not. Written the long
+      # way, as the same words drawn twice under a test and its opposite, it looks the same and
+      # costs twice as much.
       #
-      #   draw_text "SOUND", 80, 60, [:gray, :white], showing: picked == 1
-      #   draw_text "HP",     8,  8, [:white, :red],  showing: hp < 20
+      # ```ruby
+      # draw_text "SOUND", 80, 60, [:gray, :white], showing: picked == 1
+      # draw_text "HP",     8,  8, [:white, :red],  showing: hp < 20
+      # ```
       #
-      # Written the long way — the same words drawn twice, under a test and its
-      # opposite — it says the same thing and looks the same, and costs twice as much on
-      # either screen. On a tiled screen the console draws each character as its own
-      # little sprite out of a table of 128, so two draws are two sprites for every
-      # character where this is one sprite that changes colour. On a bitmap screen the
-      # words are painted pixel by pixel, so two draws are every pixel of them twice
-      # over where this paints them once with the colour picked first. A menu's rows
-      # cost half as much for it (see the `menu` verb).
+      # * `text` - the words to draw, or a list of character codes with `from:` and `length:`.
+      # * `x` - the left edge: a number, or `:left`, `:center` or `:right`.
+      # * `y` - the top edge.
+      # * `color` - the text colour, or a pair of colours to pick between. A font made of pictures
+      #   needs none.
+      # * `font:` - a font made with `font`. The default is the built-in one.
+      # * `within:` - the columns to place it in, as a range. The default is the screen.
+      # * `showing:` - the test that picks the second colour of a pair.
+      # * `from:` and `length:` - for a list of character codes, where to start and how many to draw.
+      # * `digits:` - for words with a number the game keeps in them (`"HP #{hp}"`, `hp.to_s`), the
+      #   room each number takes, as `draw_number`'s `digits:`. The default is 4.
       #
-      # @param text [String] the words to draw
-      # @param x [Integer, Symbol] left edge, or :left / :center / :right
-      # @param y [Integer] top edge
-      # @param color [Symbol, String, Integer, Array] text color, or a pair to pick between
-      # @param font [Symbol] a font registered in {Fonts} (defaults to :default)
-      # @param within [Range, nil] the columns to place it in (defaults to the screen)
-      # @param showing [Condition, Value, Symbol, nil] which of a pair of colors is showing
-      def draw_text(text, x, y, color = nil, font: :default, within: nil, showing: nil, from: nil, length: nil)
+      # A number the game keeps can go in the words, as Ruby puts one in a String. Each is drawn as
+      # `draw_number` draws it, in the room that gives it, where the words before it end:
+      #
+      # ```ruby
+      # draw_text "HP #{hp}", 8, 8, :white, digits: 3
+      # ```
+      #--
+      # On a tiled screen the console draws each character as its own little sprite out of a table
+      # of 128, so two draws are two sprites for every character where a colour pair is one sprite
+      # that changes colour. On a bitmap screen the words are painted pixel by pixel, so two draws
+      # are every pixel twice over where a pair paints them once with the colour picked first. A
+      # menu's rows cost half as much for it (see the `menu` verb).
+      #++
+      def draw_text(text, x, y, color = nil, font: :default, within: nil, showing: nil, from: nil, length: nil,
+                    digits: DEFAULT_DIGITS)
+        if text.is_a?(DSL::TextWithNumbers)
+          return draw_text_with_numbers(text, x, y, color, font: font, within: within, digits: digits)
+        end
         if text.is_a?(DSL::List)
           refuse_list_in_picture_font!(font)
           return draw_list_text(text, x, y, color, font: font, from: from, length: length, placed: within || showing)
@@ -208,7 +252,7 @@ module VBlank
         return record(Build.draw_text(text, x, y, colors.first, font: font)) if colors.length == 1
 
         # A bitmap screen paints where it is called, and the words are the same words in
-        # either colour — so they are painted ONCE, with the test worked out first to pick
+        # either colour — so they are painted once, with the test worked out first to pick
         # which colour. Written the long way, as the words under a test and again under its
         # opposite, it takes no longer and is every pixel of the words twice over.
         which = text_color_test(showing)
@@ -216,32 +260,33 @@ module VBlank
         record(Build.draw_text(text, x, y, colors.first, font: font, picked: colors.last, showing: which.node))
       end
 
-      # Draw a whole number at (x, y): a score, a damage counter, a timer. The value
-      # is timing-agnostic — a fixed number, a variable, or an expression all work:
+      # Draws a whole number at a place: a score, a damage counter or a timer.
       #
-      #   draw_number 0,      8, 8, :white           # a fixed number
-      #   draw_number score,  8, 8, :white           # a live variable
-      #   draw_number hp - 1, 8, 8, :white           # an expression
+      # The number can be fixed, a variable or a calculation. It is drawn without leading zeros and
+      # right-aligned in a field of `digits:` columns, so the ones digit stays put and the number
+      # grows to the left, the usual score look. It shows non-negative whole numbers. A value wider
+      # than the field has its top places dropped, and there is no minus sign yet.
       #
-      # It reads naturally — no leading zeros — right-aligned in a +digits+-wide
-      # field, so the ones digit stays put and the number grows to the left (the
-      # usual score/counter look). Shows non-negative whole numbers; a value wider
-      # than +digits+ has its top places dropped, and there's no minus sign yet.
+      # ```ruby
+      # draw_number 0,      8, 8, :white           # a fixed number
+      # draw_number score,  8, 8, :white           # a live variable
+      # draw_number hp - 1, 8, 8, :white           # a calculation
+      # draw_number minutes, 8, 8, :white, digits: 2, leading_zeros: true   # 07
+      # ```
       #
-      # The left edge takes the same names {#draw_text} does. What is placed is the
-      # FIELD, not the number in it — the field is the same width whatever the number
-      # is, which is what stops a centred score jittering as it counts up.
+      # The left edge takes the same names as `draw_text`. What is placed is the field, not the
+      # number in it. The field is the same width whatever the number is, which stops a centred
+      # score from jittering as it counts up.
       #
-      # @param value [Integer, Symbol, Value] the number to draw
-      # @param x [Integer, Symbol] left edge of the field, or :left / :center / :right
-      # @param y [Integer] top edge
-      # @param color [Symbol, String, Integer, nil] digit color (none in a font of pictures)
-      # `leading_zeros: true` fills the field with noughts instead, as a clock does: 7 in a field
-      # of two reads 07.
-      #
-      # @param digits [Integer] how many digit columns to reserve
-      # @param within [Range, nil] the columns to place the field in
-      # @param leading_zeros [Boolean] draw the places the number has not reached as 0
+      # * `value` - the number to draw.
+      # * `x` - the left edge of the field: a number, or `:left`, `:center` or `:right`.
+      # * `y` - the top edge.
+      # * `color` - the digit colour. A font made of pictures needs none.
+      # * `digits:` - how many digit columns to reserve. The default is 4.
+      # * `font:` - a font made with `font`. The default is the built-in one.
+      # * `within:` - the columns to place the field in, as a range.
+      # * `leading_zeros:` - `true` fills the field with zeros, as a clock does: 7 in a field of two
+      #   reads 07.
       def draw_number(value, x, y, color = nil, digits: DEFAULT_DIGITS, font: :default, within: nil, leading_zeros: false)
         unless DSL::Whole.positive?(digits)
           raise ArgumentError, "draw_number needs a positive number of digits, written in the program. " \
@@ -280,16 +325,17 @@ module VBlank
         end
       end
 
-      # How wide TEXT comes out, in pixels, when this screen draws it in this font.
+      # Measures how wide some words come out, in pixels, when this screen draws them in a font.
       #
-      #   draw_rect_at 8, 8, text_width("SCORE") + 4, text_height + 4, :blue  # a box behind it
+      # It is useful for anything sized to fit words, such as a box behind a title, a menu window as
+      # wide as its longest row, or a rule under a heading.
       #
-      # Useful on its own for anything sized to fit words — a box behind a title, a
-      # menu window as wide as its longest row, a rule under a heading.
+      # ```ruby
+      # draw_rect_at 8, 8, text_width("SCORE") + 4, text_height + 4, :blue  # a box behind it
+      # ```
       #
-      # @param text [String] the words to measure
-      # @param font [Symbol] a font registered in {Fonts}
-      # @return [Integer] pixels across
+      # * `text` - the words to measure.
+      # * `font:` - a font made with `font`. The default is the built-in one.
       def text_width(text, font: :default)
         unless text.is_a?(String)
           raise ArgumentError, "text_width measures words (a String). You gave #{Messages::PlainWords.words_for_given(text)}."
@@ -298,13 +344,37 @@ module VBlank
         font_named(font).text_width(text)
       end
 
-      # How tall one line of text is, in pixels — the other side of a box round it.
+      # Measures how tall one line of text is, in pixels, as the other side of a box round it.
       #
-      # @param font [Symbol] a font registered in {Fonts}
-      # @return [Integer] pixels down
+      # * `font:` - a font made with `font`. The default is the built-in one.
       def text_height(font: :default) = font_named(font).height
 
       private
+
+      # Words with numbers in them (DSL::TextWithNumbers): each run of words drawn as words, and each
+      # number as `draw_number` draws it, in the `digits:` room that gives it, each a character's gap
+      # after the one before, as the letters of one String are. What is placed by `x` is the whole.
+      def draw_text_with_numbers(text, x, y, color, font:, within:, digits:)
+        refuse_text_with_numbers!("a pair of colours") if color.is_a?(Array)
+        refuse_text_with_numbers!("a font made of pictures") if picture_font?(font) || lettering_font?(font)
+        chosen = IR::FontTable.of(@program).get(font)
+        widths = text.parts.map { |part| part.is_a?(String) ? chosen.text_width(part) : (digits * chosen.cell_w) - chosen.spacing }
+        at = column_for(x, widths.sum + (chosen.spacing * (widths.length - 1)), within, "draw_text")
+        text.parts.zip(widths).each do |part, width|
+          if !part.is_a?(String)
+            draw_number(part, at, y, color, digits: digits, font: font)
+          elsif !part.strip.empty?
+            draw_text(part, at, y, color, font: font)
+          end
+          at += width + chosen.spacing
+        end
+      end
+
+      def refuse_text_with_numbers!(what)
+        raise ArgumentError, "draw_text cannot draw words with a game number in them in #{what}. To fix this, draw the " \
+                             "words and the number apart: `draw_text \"HP\", 8, 8, :white`, then " \
+                             "`draw_number hp, 32, 8, :white`.#{Messages::AuthorSource.at_author_line}"
+      end
 
       # The font a name means: a font of the game's own pictures, else a font of glyphs.
       def font_named(name) = @picture_fonts[name] || @lettering_fonts[name]&.metrics || IR::FontTable.of(@program).get(name)
@@ -342,7 +412,7 @@ module VBlank
       # to choose between; two need a test, so a pair without `showing:` is refused
       # rather than one of them silently winning.
       #
-      # TWO AND NO MORE, on purpose. A pair with a test is one sprite that changes
+      # Two and no more, on purpose. A pair with a test is one sprite that changes
       # colour, because a test is 0 or 1 and that is always one of the two. Three would
       # need the number the game gave held inside the list for it, which costs a check
       # on every character of every frame — and a third colour is rare enough that
@@ -420,7 +490,7 @@ module VBlank
         return columns_of(within, verb) if within
         return [@inside_area[0], @inside_area[2]] if @inside_area
 
-        [0, console.screen_width]
+        [0, read_screen_size(verb)[0]]
       end
 
       def columns_of(within, verb)
@@ -434,7 +504,7 @@ module VBlank
         [first, within.last - first + (within.exclude_end? ? 0 : 1)]
       end
 
-      # WORDS HELD IN A LIST (see DSL::ListText): +length+ of its character codes from item +from+,
+      # Words held in a list (see DSL::ListText): +length+ of its character codes from item +from+,
       # all of it from there when not given. How wide they come out is known only as they are
       # drawn, so the left edge is a number or a variable, and each word of it is one colour.
       def draw_list_text(list, x, y, color, font:, from:, length:, placed:)
@@ -476,11 +546,14 @@ module VBlank
       # column costs about ten glyph blits of ROM — fine for a HUD; a run-time
       # glyph-by-index draw op would collapse each column to a single blit. With
       # +leading_zeros+ every column draws, as the ones column does.
+      #
+      # What a line keeps lives only while that line draws, so the lines of one routine share
+      # where they keep it (Builder#step_variable), and a routine of a hundred numbers keeps three
+      # words, not three hundred.
       def draw_live_number(value, x, y, color, digits, font, leading_zeros)
-        source = next_number_var
-        store!(source, value)
-        digit = next_number_var
-        started = next_number_var
+        source = number_source(value)
+        digit = step_variable(:number_digit).name
+        started = step_variable(:number_started).name unless leading_zeros
         store!(started, 0) unless leading_zeros
 
         cell = IR::FontTable.of(@program).get(font).cell_w
@@ -518,11 +591,36 @@ module VBlank
 
       # source / place, skipping the divide for the ones column (place == 1).
       def source_over_place(source, place)
-        ref = Build.var_ref(source)
+        ref = read_of_source(source)
         place == 1 ? ref : Build.binop(:/, ref, Build.int(place))
       end
 
-      # A fresh hidden variable name for one draw_number call's working state.
+      # A read of +source+: a variable's name, or the value node a live tiled number follows
+      # (#hud_number_source). The node itself goes in the first place that reads it, which is how
+      # the build sees the game's read was used (Guardrails::Checks::OrphanedExpression), and a
+      # copy in each place after.
+      def read_of_source(source)
+        return Build.var_ref(source) if source.is_a?(Symbol)
+
+        source.parent ? source.copy : source
+      end
+
+      # The variable a live number's digits are read from: the number, copied once as the line
+      # starts, into a variable the routine's lines share.
+      #
+      # A copy even of a variable, because every column reads it. On the Advance a timer's handler
+      # can stop the line between two columns and change the variable, and a clock going from 10
+      # to 9 there would show 19.
+      #
+      # A fraction keeps a copy of its own, since the variable it is copied into holds a fraction
+      # from then on.
+      def number_source(value)
+        source = value.is_a?(DSL::Value) && value.fraction? ? next_number_var : step_variable(:number_source).name
+        store!(source, value)
+        source
+      end
+
+      # A fresh hidden variable name for one draw_number call's fraction.
       # Named per call site, reused every frame.
       def next_number_var
         @number_seq += 1
@@ -535,12 +633,12 @@ module VBlank
       # nowhere for the bitmap draw_text/draw_number to plot pixels. Instead each
       # character becomes a tiny hardware sprite — one 8x8 glyph — that the console
       # composites over the game every frame. Because a sprite is drawn for you each
-      # frame, tiled text is declared ONCE (before the game loop, like `sprite`) and
+      # frame, tiled text is declared once (before the game loop, like `sprite`) and
       # then stays; a live number's sprite chooses which digit to show from its value
       # each frame, so it updates itself with nothing to call in the loop.
 
       # A glyph fits in one 8x8 sprite tile.
-      HUD_GLYPH_PX = 8
+      HUD_GLYPH_PX = 8  # :nodoc:
 
       # Draw a fixed string as a row of glyph sprites at (x, y), each advancing by its
       # own width the way the bitmap pen does, so a proportional font stays proportional.
@@ -551,7 +649,7 @@ module VBlank
       # character is one of them, and a sprite with no lit pixels in it would spend a
       # slot to paint nothing at all. A HUD line with two spaces in it is two slots
       # back for the game.
-      # A pair of colours becomes a pair of POSES on the one sprite — the same glyph
+      # A pair of colours becomes a pair of poses on the one sprite — the same glyph
       # twice, once in each colour, with the test choosing between them every frame.
       # That is the whole saving: the console is already changing which picture each
       # sprite shows for free, so a label that changes colour costs no more slots than
@@ -595,7 +693,7 @@ module VBlank
           return draw_text_tiled(text, x + pad * cell, y, [color], font, nil)
         end
 
-        source = hud_number_variable(value)
+        source = hud_number_source(value)
         poses = [blank_glyph_image] + ("0".."9").map { |d| glyph_image(font, d, color) }
         digits.times do |i|
           place = 10**(digits - 1 - i)
@@ -605,18 +703,24 @@ module VBlank
         nil
       end
 
-      # The variable a live tiled number tracks. A digit column reads it every frame,
-      # so it must be a plain variable (a Symbol, or a `var` handle), not a one-off
-      # expression — there's no per-frame place to recompute an expression into.
-      def hud_number_variable(value)
-        name = value.is_a?(Symbol) ? value : (value.node.name if value.node.kind == :var_ref)
-        return name if name
+      # What a live tiled number follows: a variable's name, or the read of an item of a list (a
+      # plain Ruby Array the game keeps, or a pool's field) as a value node. A digit column reads it
+      # every frame, so it must be a place that holds a number, not a one-off working-out, which
+      # has no place of its own to read again. An item's index is worked out again each frame too,
+      # so it may read only variables (IR::Unchanging.variables_read): no button, no list.
+      def hud_number_source(value)
+        return value if value.is_a?(Symbol)
 
+        node = value.node
+        return node.name if node.kind == :var_ref
+        return node if node.kind == :list_get && IR::Unchanging.variables_read(node.index)
+
+        where = Messages::AuthorSource.author_file_and_line
         raise ArgumentError,
-              "On a tiled screen, draw_number follows a variable and updates itself each frame. " \
-              "Give it a variable (like :score), not an expression. Store the value in a variable " \
-              "first (for example `shown = var :shown, 0`, then `shown = hp - 1`). Then draw that " \
-              "variable."
+              "On a tiled screen, draw_number follows a variable or an item of an Array. It draws that " \
+              "number again each frame. The number #{where ? "at #{where} " : ''}is a working-out, like " \
+              "`hp - 1`. To fix this, keep the working-out in a name that the game loop changes, like " \
+              "`shown = hp - 1`. Then draw `shown`."
       end
 
       # The sprite pose that shows the digit of +source+ at +place+ (1, 10, 100, …).
@@ -629,7 +733,7 @@ module VBlank
         show = Build.binop(:+, digit_at(source, place), Build.int(1))
         return show if place == 1 || leading_zeros
 
-        Build.binop(:*, Build.binop(:>=, Build.var_ref(source), Build.int(place)), show)
+        Build.binop(:*, Build.binop(:>=, read_of_source(source), Build.int(place)), show)
       end
 
       # Declare one glyph sprite (an object) at a fixed screen spot and remember it so
@@ -696,18 +800,18 @@ module VBlank
               "Use a smaller font (the built-in :default and :tiny fit), or draw this text on a `screen :bitmap`."
       end
 
-      # Text a VERB draws for you, rather than text the author placed — a `menu`'s rows.
+      # Text a verb draws for you, rather than text the author placed — a `menu`'s rows.
       # While this is in force, the "declare it once, above the game_loop" rule below
       # does not apply.
       #
       # That is not the rule being weakened, because the rule was never about this text.
-      # It is about an AUTHOR'S OWN call site: tiled text is declared once and redrawn
+      # It is about an author's own call site: tiled text is declared once and redrawn
       # for you every frame, and making the author write the call above the loop is what
       # makes that visible. A verb that owns its drawing has no call site to misplace —
       # the author wrote `menu`, and where a menu goes is decided by menu's own rule,
       # which is per-frame work and the same on both screens.
       #
-      # It holds the verb's NAME rather than a flag, because the other rule this text
+      # It holds the verb's name rather than a flag, because the other rule this text
       # meets does still apply and only its wording needs fixing: a bitmap menu really
       # cannot belong to a layer, and the message should say `menu` — what the author
       # wrote — rather than `draw_text`, which they never typed (see
@@ -727,7 +831,7 @@ module VBlank
       # The containers that are a test rather than a per-frame body — an `if` and its
       # `else`. Text declared under one of these is declared once, like text at the top
       # level, and shown while the test holds.
-      CONDITION_CONTAINERS = %i[if else].freeze
+      CONDITION_CONTAINERS = %i[if else].freeze  # :nodoc:
 
       # Tiled text is declared once and redrawn for you every frame, so it belongs at
       # the top level (before game_loop), not inside the loop — declared inside, it

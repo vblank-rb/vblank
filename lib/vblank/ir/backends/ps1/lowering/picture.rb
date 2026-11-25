@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class PS1
         class Lowering
-          # A SCREEN DRAWN FROM TILES, lowered for a PlayStation: its backgrounds and sprites as calls into
+          # A screen drawn from tiles, lowered for a PlayStation: its backgrounds and sprites as calls into
           # Runtime::Tiles, and what they draw with made while the program is built. Mixed into Lowering.
           #
           # Each background the game declares is given one of the runtime's planes (a picture of its map in
@@ -64,7 +64,7 @@ module VBlank
               program.walk.any? { |node| %i[background object].include?(node.kind) || (node.kind == :screen && node.mode == :tiled) }
             end
 
-            # WHETHER +program+ SHOWS A PAINTED SCREEN AND ONE DRAWN FROM TILES, at different times: it says `screen
+            # Whether +program+ shows a painted screen and one drawn from tiles, at different times: it says `screen
             # :tiled`, and `screen :bitmap` or paints. Handing over from one kind to the other replaces the whole
             # picture (IR::SceneHandover.crossing?), which the runtime keeps by whether tiles are up
             # (Runtime::Tiles::TILES_UP): only while they are is the picture drawn from tiles as each pass ends.
@@ -100,7 +100,7 @@ module VBlank
                                          levels: @levels, crosses: @crosses, mixed_planes: @mixed_planes)
             end
 
-            # THE CHIP'S WAY EACH SEE-THROUGH BACKGROUND OF +program+ IS MIXED IN (Console::PS1Hardware::
+            # The chip's way each see-through background of +program+ is mixed in (Console::PS1Hardware::
             # SEMI_TRANSPARENCY_MODES), by background: those in a layer whose amounts are numbers the chip mixes,
             # and HIDDEN for one in a layer that shows nothing of itself (`transparency: 100`), which is not drawn.
             # A layer drawn whole (`transparency: 0`) is no mix, and an amount the chip cannot mix was refused
@@ -199,7 +199,7 @@ module VBlank
             REPAINTING_KINDS = %i[scroll_background place_bar box_background scroll_rows affine_background set_tile show_map
                                   background_colors tile_run layers].freeze
 
-            # WHAT A PAINTED SCREEN SHOWS BESIDE WHAT IT PAINTS, as this build makes it: backgrounds stamped onto the
+            # What a painted screen shows beside what it paints, as this build makes it: backgrounds stamped onto the
             # picture as they are put up and never moved or changed after (#emit_stamp_background), and sprites
             # over the picture (`over_picture: true`) that neither turn nor resize, nor follow a list the game
             # changes. A sprite painted into the picture, which puts the scenery back under it as it moves
@@ -224,7 +224,7 @@ module VBlank
               refuse_unmade_sprites!
             end
 
-            # A GAME THAT SHOWS A PAINTED SCREEN AND ONE DRAWN FROM TILES, as this build makes it: its backgrounds are
+            # A game that shows a painted screen and one drawn from tiles, as this build makes it: its backgrounds are
             # each a scene's own, on a scene drawn from tiles, and go up as the scene takes over; and nothing changes
             # its colours as it runs. A background every screen shows, which goes up again each time tiles come
             # back (IR::SceneHandover#always_up), one stamped onto a painted scene, and a fade, a tint or a list of
@@ -258,7 +258,7 @@ module VBlank
               refuse_unmade!(TILED_SCREEN, "draws a background with other lists of colours on a painted (bitmap) screen")
             end
 
-            # A FADE OF PART OF THE SCREEN, placed under a layer or held to a rectangle, is a blend, which the
+            # A fade of part of the screen, placed under a layer or held to a rectangle, is a blend, which the
             # colour tables cannot give: every picture drawn through a table changes with it, wherever it is, a
             # painted screen drawn by number (PS1::PaintedNumbers) as much as one drawn from tiles.
             # How the graphics chip's own mixing does it is decided when it is made (Console::PS1Answers::UNMADE_VERBS).
@@ -288,7 +288,7 @@ module VBlank
               end
             end
 
-            # A CELL IS CHANGED ONLY INSIDE ITS OWN ROW (Reference#change_cell), and the runtime tests a changed cell
+            # A cell is changed only inside its own row (Reference#change_cell), and the runtime tests a changed cell
             # against one size for the whole map (#emit_set_tile_of), which every map the builder makes has: it
             # refuses a map whose rows differ in length (Builder#background_rows). So a map like that was built by
             # hand, and one whose cells the game changes is refused here, rather than changed past a short row's end.
@@ -314,7 +314,7 @@ module VBlank
 
             def constant_number?(node, number) = node.is_a?(Node) && node.kind == :int && node.value == number
 
-            # HOW MANY LEVELS THE PICTURE IS DRAWN IN, a level at a time (Runtime::Tiles::Screen#levels), or nil where
+            # How many levels the picture is drawn in, a level at a time (Runtime::Tiles::Screen#levels), or nil where
             # it is drawn as every background and then every sprite in the order the pass placed them. That is the
             # same picture unless a sprite can sit at a level behind a background, or the sprites' levels are not
             # in the order the frame places them, so they are drawn level by level only then
@@ -361,7 +361,7 @@ module VBlank
               Build.var_ref(level)
             end
 
-            # WHICH PLANE EACH BACKGROUND IS ON, as the Genesis's lowering gives its planes
+            # Which plane each background is on, as the Genesis's lowering gives its planes
             # (Genesis::Lowering::Picture#assign_background_layers): a scene's own scenery in the front
             # planes, 0 first, as many as the scene with the most has, and the scenery every screen shows
             # behind those; within each, the one drawn last in front. The planes are then given their
@@ -398,7 +398,7 @@ module VBlank
             # The backgrounds that go up on plane +plane+.
             def backgrounds_on(plane) = @layers.select { |_, number| number == plane }.keys
 
-            # HOW DEEP EACH PLANE IS, and each background's colour table (PS1::PlaneColors). A plane is kept at
+            # How deep each plane is, and each background's colour table (PS1::PlaneColors). A plane is kept at
             # 4 bits a texel where every background that goes up on it has 15 entries or fewer besides the
             # see-through one, at 8 where each has 255 or fewer, and at 15, the colours themselves, past that:
             # the fewer bits, the less the chip reads drawing it. Each background has a table of its own, kept
@@ -479,7 +479,7 @@ module VBlank
 
             def plane_of(bg) = @layers.fetch(bg) { raise LoweringError, "the background #{bg.name.inspect} is on no plane" }
 
-            # THE SHEET OF TILES: every tile any background can show, as its plane holds it (#tile_halfwords),
+            # The sheet of tiles: every tile any background can show, as its plane holds it (#tile_halfwords),
             # kept once however many backgrounds and cells show it the same, in columns of TILES_PER_COLUMN
             # tiles from the first column past the planes. A tile is only ever copied, so where it sits needs
             # no texture page. Each slot is TILE_SIDE halfwords across whatever the plane's depth, a tile of
@@ -542,7 +542,7 @@ module VBlank
               emit_bar_beside(node)
             end
 
-            # A BACKGROUND PUT UP ON A PAINTED SCREEN is painted into the picture, as the interpreter stamps it
+            # A background put up on a painted screen is painted into the picture, as the interpreter stamps it
             # (Reference#stamp_background): its map from the screen's corner, each cell's tile, the pixels its tiles
             # leave see-through not drawn. Nothing moves or changes it after (#refuse_unmade_painted!), so the part
             # of it the screen shows is one picture of the painted art, made while the game is built, and putting
@@ -620,7 +620,7 @@ module VBlank
               emit_store_word(:t0, runtime_place(Runtime::Tiles::PLANE_MIXES) + (plane * 4))
             end
 
-            # A STATUS BAR PUT UP shows from the top it was declared with, and the runtime's one top and one setting
+            # A status bar put up shows from the top it was declared with, and the runtime's one top and one setting
             # for covering sprites become this bar's (IR::SceneHandover#bar_covers_on_put_up). The top the game
             # keeps is placed at the end of every pass the bar is up (Builder#finalize_status_bars).
             def emit_bar_put_up(bg)
@@ -632,7 +632,7 @@ module VBlank
             # The label of the table of +bg+'s map number +which+, made with the art (#picture_sections).
             def grid_label(bg, which) = (@grids[[bg.object_id, which]] ||= ["tiles grid #{@grids.length}", bg, which]).first
 
-            # A BACKGROUND PUT UP IN A PASS IS HELD AT ITS CORNER through that pass (SceneryWrites#keep_corner_notes),
+            # A background put up in a pass is held at its corner through that pass (SceneryWrites#keep_corner_notes),
             # on a screen drawn from tiles: a note for each plane. A status bar is a plane like the others, so its
             # plane's note holds its top too.
             def keep_plane_corner_notes
@@ -683,7 +683,7 @@ module VBlank
                                              Build.int(rows)])
             end
 
-            # A TILE PICKED AS THE GAME RUNS (Nodes::SetTile#picked_by): the number, less the one the picks start
+            # A tile picked as the game runs (Nodes::SetTile#picked_by): the number, less the one the picks start
             # at, is a place in a table of where each picked tile is in video RAM; one past either end, one whose
             # entry is nil, or one standing for no tile the background has (NO_PICK), changes nothing
             # (Reference#tile_picked, Nodes::SetTile).
@@ -744,7 +744,7 @@ module VBlank
               emit_bar_beside_arrival(arrival)
             end
 
-            # A SCENE TAKING OVER IN A GAME THAT SHOWS BOTH KINDS OF SCREEN puts its own screen up first, since changing
+            # A scene taking over in a game that shows both kinds of screen puts its own screen up first, since changing
             # the kind wipes what went up before it (Reference#take_over): the `screen` it writes, or, for one that
             # writes none, the kind it draws on, which changes the screen only where the kind differs
             # (Reference#cross_to_scene_screen).
@@ -773,7 +773,7 @@ module VBlank
 
             # --- colours that change as the game runs (Runtime::Colors) ---
 
-            # A SOURCE OF COLOURS: its table's label, how many sets it can name (the declared colours first), and
+            # A source of colours: its table's label, how many sets it can name (the declared colours first), and
             # each entry it changes, [where, its colour in each set]: where is [a colour table, a place in it], or
             # :backdrop.
             ColorSource = Data.define(:label, :sets, :entries)
@@ -789,7 +789,7 @@ module VBlank
             # The source a list of colours the game changes is, by the list's name.
             def list_source(name) = PlaneColors::Source.of_list(color_list_named(name))
 
-            # A BACKDROP THAT FOLLOWS A LIST (Nodes::ColorList#backdrop_place) is the colour at its place in the set
+            # A backdrop that follows a list (Nodes::ColorList#backdrop_place) is the colour at its place in the set
             # the list holds now (Reference#exec_color_list_holds), so it is one more entry the list changes.
             def follow_backdrop_list
               list = @program.walk.find { |node| node.kind == :color_list && node.backdrop_place } or return
@@ -835,7 +835,7 @@ module VBlank
               @changing_lists.include?(name) && !color_list_named(name).recolors.empty?
             end
 
-            # THE TABLES OF COLOURS AND THEIR SOURCES, for Runtime::Colors: the game's colours (the backdrop's, then
+            # The tables of colours and their sources, for Runtime::Colors: the game's colours (the backdrop's, then
             # every colour table's entries, as each starts), room for the colours shown, how many halfwords those
             # are, each table's place and size, and each source's sets. Made once every texture has its table and
             # place (Paint#paint_sections).
@@ -867,17 +867,27 @@ module VBlank
               asm.data_words(halfwords)
               asm.label(Runtime::Colors::TABLES)
               asm.data_words(tables.length)
-              tables.each { |table| asm.data_words((table.y << 16) | table.x, (1 << 16) | table.capacity, starts[table], table.capacity / 2) }
-              @color_sources.each_value { |source| write_color_source(asm, source, starts) }
+              records = {}.compare_by_identity
+              tables.each_with_index do |table, at|
+                # The entries in use, an even number of them for the copy's words: a list's own table has room
+                # for 256 and holds what its pictures show.
+                used = [(table.entries.length + 1) & ~1, 2].max
+                records[table] = asm.label(Runtime::Colors.table_record(at))
+                asm.data_words((table.y << 16) | table.x, (1 << 16) | used, starts[table], used / 2, 0)
+              end
+              @color_sources.each_value { |source| write_color_source(asm, source, starts, records) }
               [asm.section]
             end
 
             # A source's table (Runtime::Colors): the set it holds, how many besides the declared colours, how many
-            # entries, where each is in "colors base", then each set's colours.
-            def write_color_source(asm, source, starts)
+            # entries, how many colour tables its entries are in; then each of those (its record in "colors
+            # tables", or nought for the backdrop), where each entry is in "colors base", and each set's colours.
+            def write_color_source(asm, source, starts, records)
+              touched = source.entries.map { |where, _| where == :backdrop ? 0 : records.fetch(where.first) }.uniq
               asm.align
               asm.label(source.label)
-              asm.data_words(0, source.sets - 1, source.entries.length)
+              asm.data_words(0, source.sets - 1, source.entries.length, touched.length)
+              asm.data_words(touched)
               asm.data_words(source.entries.map { |where, _| where == :backdrop ? 0 : starts[where.first] + (where.last * 2) })
               source.sets.times do |set|
                 asm.data_halves(source.entries.map { |_, colors| TextureMemory.texel_for_color(colors.fetch(set)) })
@@ -910,7 +920,7 @@ module VBlank
             # The routine Runtime::Paint's rt_paint_sprites_shown calls on a tear-free screen.
             SPRITES_OVER_PICTURE = "game sprites over picture"
 
-            # SPRITES OVER A TEAR-FREE PAINTED SCREEN are placed again in the gap where a pass's page is published,
+            # Sprites over a tear-free painted screen are placed again in the gap where a pass's page is published,
             # from the numbers the pass just finished (Reference#advance_frame), and the page goes to the screen with
             # them; the game's own step places them after the wait from the same numbers. So the frame's sprite
             # step is a routine of its own too, which the runtime calls as it copies the page (rt_paint_sprites_shown),
@@ -923,7 +933,7 @@ module VBlank
               [routine_section(SPRITES_OVER_PICTURE, [], routine: "the sprites over the picture") { emit_present_objects(step) if step }]
             end
 
-            # A RUN THE GAME PUTS IN ORDER AS IT RUNS: its list holds the run's sprites back to front, each by its
+            # A run the game puts in order as it runs: its list holds the run's sprites back to front, each by its
             # place in the run, so each entry in turn places the sprite it names. Each sprite's placing is written
             # once, as a routine of its own ending in a return, and an entry picks it from a table of their
             # addresses kept beside the code: a few instructions an entry, whatever the run's length.
@@ -933,7 +943,7 @@ module VBlank
             # does. A place naming none of the run's sprites stops the game (Runtime::Tiles' rt_draw_order_fault),
             # where the interpreter stops.
             #
-            # A SORTED RUN KEEPS ITS ENTRIES NOT SHOWING AT ITS FRONT (ShownSort), so the walk starts past
+            # A sorted run keeps its entries not showing at its front (ShownSort), so the walk starts past
             # them, and every entry it reaches was found showing by the sort on this pass: a place the sort
             # asked is placed without being asked again.
             def emit_ordered_run(run)
@@ -984,7 +994,7 @@ module VBlank
               @asm.label(skip)
             end
 
-            # A SPRITE WHOSE POSES FOLLOW THE LISTS THEY ARE DRAWN FROM (Object#follows_each, Reference#object_color_list):
+            # A sprite whose poses follow the lists they are drawn from (Object#follows_each, Reference#object_color_list):
             # each pose drawn from a list the game changes shows what the list holds now, so its picture is read
             # through the list's colour table (#sprite_picture_following), and every other pose as it is drawn.
             # For each pose, the list it follows, a BackgroundTable it is read through, or nil.
@@ -998,11 +1008,11 @@ module VBlank
               end
             end
 
-            # A BACKGROUND'S COLOUR TABLE THAT A SPRITE'S POSE IS READ THROUGH: +table+, and the place in it of each
+            # A background's colour table that a sprite's pose is read through: +table+, and the place in it of each
             # colour the pose draws (+places+, colour => place).
             BackgroundTable = Data.define(:table, :places)
 
-            # A POSE A SPRITE FOLLOWS TO A LIST THE GAME NEVER CHANGES (Object#follows_unchanging) shows the colours
+            # A pose a sprite follows to a list the game never changes (Object#follows_unchanging) shows the colours
             # it was drawn in, for good. A background drawing that list keeps those colours in its own table, in
             # entries showing the same colour in every set it can be drawn with (PlaneColors), so only a fade or a
             # tint changes what they show, and those walk every table alike (#color_sections). The
@@ -1025,7 +1035,7 @@ module VBlank
               nil
             end
 
-            # A SPRITE DRAWN WITH ANOTHER LIST OF COLOURS (`draw_with`, Reference#object_color_list): its pictures
+            # A sprite drawn with another list of colours (`draw_with`, Reference#object_color_list): its pictures
             # are made again in each list it can be drawn with, a table of them each, and the number the game
             # keeps picks the table: a number naming none of the lists draws its own colours. Kept in a number of
             # the lowering's own, which the placing reads.
@@ -1130,7 +1140,7 @@ module VBlank
               end)
             end
 
-            # THE PICTURE +name+ DRAWN WITH THE LIST +list+ THE GAME CHANGES: read through the list's own colour table
+            # The picture +name+ drawn with the list +list+ the game changes: read through the list's own colour table
             # for sprites, 256 entries, which the list's source writes as it changes (Runtime::Colors). Each pixel is
             # an entry of it, by the colours it shows in each of the list's sets (Reference#recolor_of_picture).
             def sprite_picture_following(name, list)

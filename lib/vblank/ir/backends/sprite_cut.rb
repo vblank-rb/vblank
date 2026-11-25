@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # WHICH BOXES A SPRITE'S PICTURES ARE DRAWN AS, by a display that draws a sprite as
+      # Which boxes a sprite's pictures are drawn as, by a display that draws a sprite as
       # one or more objects of a few fixed sizes. It is the art and those sizes, and
       # nothing about where anything ends up in a cartridge.
       #
@@ -16,7 +16,7 @@ module VBlank
         # An object is built from tiles this many pixels each way.
         TILE = 8
 
-        # The picture sizes sprite hardware can draw. A picture that is NOT one of these is
+        # The picture sizes sprite hardware can draw. A picture that is not one of these is
         # drawn as several objects at once — see SpriteCut#pieces_of.
         OBJ_SIZES = Console::Hardware::OBJ_SIZES
 
@@ -43,11 +43,14 @@ module VBlank
         # console reverses it left to right (+across+), top to bottom (+down+), or both.
         Mirror = Data.define(:source, :across, :down)
 
+        # What #cut makes: the boxes each pose is drawn from and the pose each one is a mirror of.
+        Cut = Data.define(:boxes, :mirrors)
+
         def initialize(bitmaps)
           @bitmaps = bitmaps
         end
 
-        # THE CANVAS A SPRITE'S POSES ARE DRAWN ON: [width, height], the box every one of them
+        # The canvas a sprite's poses are drawn on: [width, height], the box every one of them
         # fits in. Poses need not be one size. Each has its top-left corner at the sprite's
         # place, so the canvas is as wide as the widest and as tall as the tallest, and a
         # smaller pose leaves the rest of it see-through.
@@ -57,7 +60,7 @@ module VBlank
         end
 
         # The boxes each of +poses+ is drawn from, and which poses are another pose
-        # mirrored: `{ boxes:, mirrors: }`, a list for each pose. A box is
+        # mirrored: a Cut, a list of each for each pose. A box is
         # [left, top, width, height] inside the canvas, +width+ by +height+, that every
         # pose was drawn on, and a pose's boxes are in the order a display draws them,
         # the one in front first.
@@ -70,15 +73,39 @@ module VBlank
             whole ? [[0, 0, width, height]] : pieces_of(@bitmaps.fetch(image))
           end
           mirrors = whole ? Array.new(poses.length) : mirrors_of(poses)
-          { boxes: boxes, mirrors: reflect_mirrored_poses(poses, mirrors, boxes) }
+          Cut.new(boxes: boxes, mirrors: reflect_mirrored_poses(poses, mirrors, boxes))
+        end
+
+        # Which bank's part of its colours each box of +bmp+ DRAWS, in the order #pieces_of gives the
+        # boxes, for a pose cut along its pieces; nil for any other pose, whose boxes can mix parts.
+        def parts_of(bmp)
+          return nil unless cut_by_pieces?(bmp)
+
+          drawn_pieces(bmp).map { |_, _, own| bmp.part_of_piece(own) }
+        end
+
+        # The places of each box of +bmp+'s own piece, in the order #pieces_of gives the boxes, for a
+        # pose cut along its pieces; nil for any other pose. An entry is stored from these, not from
+        # the picture, which shows a piece behind through a see-through part of the one in front.
+        def piece_places_of(bmp)
+          return nil unless cut_by_pieces?(bmp)
+
+          drawn_pieces(bmp).map { |_, _, own| own }
         end
 
         private
 
-        # A POSE THAT IS ANOTHER ONE MIRRORED IS NOT STORED AT ALL: it is drawn from the
+        # Whether +bmp+ is cut along its own pieces: a pose of several banks with as many pieces
+        # drawing something as one sprite may take.
+        def cut_by_pieces?(bmp) = bmp.banked? && drawn_pieces(bmp).length.between?(1, MAX_OBJECT_PIECES)
+
+        # The pieces of +bmp+ that draw something, front-most first.
+        def drawn_pieces(bmp) = bmp.pieces.reject { |_, _, own| own.each_byte.all?(&:zero?) }
+
+        # A pose that is another one mirrored is not stored at all: it is drawn from the
         # source's tiles, reversed, so its boxes are the source's reflected in the canvas.
         #
-        # Unless one of them would land at a NEGATIVE offset, and then this pose keeps its
+        # Unless one of them would land at a negative offset, and then this pose keeps its
         # own pixels after all. That happens where a box is bigger than the picture it came
         # from — a 24x24 picture stored as one 32x32 object overhangs by eight, and its
         # reflection would have to be drawn eight pixels to the left of the canvas, which
@@ -99,7 +126,7 @@ module VBlank
           end
         end
 
-        # WHICH POSES ARE ANOTHER POSE MIRRORED, so they can be stored once.
+        # Which poses are another pose mirrored, so they can be stored once.
         #
         # "Left is the right one, backwards" is close to universal in 2D games, and the
         # console draws an object reversed for nothing — so a character that faces two
@@ -107,14 +134,14 @@ module VBlank
         # to 128 tiles rather than 256; a four-way character whose left mirrors its right,
         # 240 rather than 320.
         #
-        # NOBODY HAS TO DECLARE IT. The sameness is judged on the pixels, so a game that drew
+        # Nobody has to declare it. The sameness is judged on the pixels, so a game that drew
         # its left-facing art by hand gets this with nothing to change, exactly as two
         # sprites showing the same picture already share it (see ObjectArt). Saying it —
         # `mirror(:hero_right)` — is then a way to skip drawing the art, not a way to ask
         # for the saving.
         #
         # Returns, for each pose, the Mirror it is of another, or nil for one stored in its own
-        # right. A mirror always points at a STORED pose, never at another mirror, so there is
+        # right. A mirror always points at a stored pose, never at another mirror, so there is
         # never a chain to follow.
         #
         # A pose UPSIDE DOWN is the same saving the other way, and the console turns an object
@@ -125,7 +152,7 @@ module VBlank
         # time, and a sprite moves onto the per-pose word only where a turned pose was found —
         # which is where it saves the memory of a whole pose.
         #
-        # A pose that repeats an earlier one EXACTLY is not called a mirror, even though a
+        # A pose that repeats an earlier one exactly is not called a mirror, even though a
         # symmetric picture is its own mirror and would answer to the test below. Its
         # pieces already share the earlier pose's tiles (see SpritePictures), so calling it
         # a mirror would only add the bit that draws it backwards — three more instructions
@@ -155,7 +182,7 @@ module VBlank
           end
         end
 
-        # WHAT TWO POSES HAVE TO MATCH IN to be stored once. The pixels, and — for art
+        # What two poses have to match in to be stored once. The pixels, and — for art
         # given as places — the places too: two pictures can draw the same colors out of
         # different places of one list, and the console stores the places. And the width,
         # since poses of different sizes can hold the same pixels laid out in other rows.
@@ -169,8 +196,8 @@ module VBlank
           [mirror.across ? width - x0 - w : x0, mirror.down ? height - y0 - h : y0, w, h]
         end
 
-        # WHAT ONE POSE DRAWS, as boxes the console can hold — one for a picture that is
-        # already a size it has, SEVERAL for one that is not.
+        # What one pose draws, as boxes the console can hold — one for a picture that is
+        # already a size it has, several for one that is not.
         #
         # The console's largest object is 64x64, and it draws only twelve rectangles. That
         # used to be the ceiling on a sprite: a boss, a vehicle, a title-screen character
@@ -180,22 +207,30 @@ module VBlank
         # shoulder to shoulder look exactly like one big one — so the framework cuts the
         # picture up and moves the pieces itself, and the author writes one sprite.
         #
-        # The cut also pays for itself in memory, because a piece that draws NOTHING is not
+        # The cut also pays for itself in memory, because a piece that draws nothing is not
         # stored at all. A character is a ragged shape in a rectangular canvas, so the
         # corners of that canvas are usually empty — and an object reads a contiguous run
         # of tiles, so a single big box has to keep every blank one.
         #
-        # A PICTURE THE CONSOLE CAN ALREADY DRAW IS LEFT ALONE, and that is a promise
+        # A picture the console can already draw is left alone, and that is a promise
         # rather than a shortcut. Cutting one of those up would sometimes pay in memory,
-        # but a pose that came out as several pieces puts the WHOLE sprite on the per-pose
+        # but a pose that came out as several pieces puts the whole sprite on the per-pose
         # word — so one sparse pose could quietly make every other pose dearer to draw.
         # Measured on every example in the repo, letting the search have them changed
         # nothing at all, so the promise costs nothing to keep.
         #
         # Every pixel is read to find this, so it is remembered for the next build that holds
         # the same picture (see IR::Remembered).
+        #
+        # A pose of several banks of colours (Assets::Image#banked?) is cut along its own pieces
+        # instead, front-most first: a console's sprite entry names one bank (GBATEK, "LCD OBJ - OAM
+        # Attributes": attribute 2, bits 12-15), so each entry must draw one bank's pixels, and each
+        # piece of the frame is of one bank (#parts_of). Where two pieces overlap, the one in front is
+        # the entry in front. Each entry holds its own piece's pixels alone (#piece_places_of), so
+        # where the one in front is see-through the one behind shows, as a console draws them.
         def pieces_of(bmp)
           Remembered.fetch(:sprite_pieces, bmp) do
+            next drawn_pieces(bmp).map { |dx, dy, own| [dx, dy, Assets::Image.side(own), Assets::Image.side(own)] } if cut_by_pieces?(bmp)
             next [pose_box(bmp)] if OBJ_SIZES.key?([bmp.width, bmp.height])
 
             left, top, right, bottom = drawn_extent(bmp)
@@ -209,7 +244,7 @@ module VBlank
 
         # The cheapest cover: each of the twelve sizes tried as the cell, laid over what the
         # pose draws, with the cells that draw nothing dropped — and the winner judged on
-        # its tiles PLUS what its objects are worth (see TILES_PER_OBJECT), so a finer cut
+        # its tiles plus what its objects are worth (see TILES_PER_OBJECT), so a finer cut
         # is taken only when the blank it drops pays for the places it spends.
         #
         # Trying all twelve rather than reaching for the biggest is what makes the memory
@@ -236,11 +271,11 @@ module VBlank
         TILES_PER_OBJECT = 8
 
         # The cells of one grid that draw something. The grid starts at the corner of what
-        # the pose draws, and a cell that would hang past the far edge is PULLED BACK onto
+        # the pose draws, and a cell that would hang past the far edge is pulled back onto
         # the canvas — so two cells can overlap, which costs nothing to look at, since both
         # hold the picture's own pixels there.
         #
-        # A cell BIGGER than the whole canvas needs no special case: every one of them is
+        # A cell bigger than the whole canvas needs no special case: every one of them is
         # pulled back to the corner, so they all land in the same place and the grid
         # collapses to the single object that covers the picture. That is how a 24x24
         # picture — a size the console does not have — comes out as one 32x32 object.
@@ -263,19 +298,19 @@ module VBlank
           end
         end
 
-        # WHAT ONE POSE ACTUALLY DRAWS, as a box the console can hold: [x0, y0, w, h],
+        # What one pose actually draws, as a box the console can hold: [x0, y0, w, h],
         # where the corner is on a tile boundary and the size is one of the twelve the
         # hardware has.
         #
-        # WHY THIS IS WORTH DOING. Every pose of a sprite is drawn on one canvas, big
+        # Why this is worth doing. Every pose of a sprite is drawn on one canvas, big
         # enough for the widest frame — a sword swing, a jump — and most frames use a
         # fraction of it. Stored at the canvas's size, the rest is blank that still costs
-        # sprite memory, because an object reads a CONTIGUOUS run of tiles and cannot
+        # sprite memory, because an object reads a contiguous run of tiles and cannot
         # share the blank ones the way a background shares a repeated tile. Measured on a
         # walk cycle drawn 64x64 whose character covers 24x32, that is four times the
         # memory the art contains.
         #
-        # The offset comes back with it because the picture must not MOVE: the character's
+        # The offset comes back with it because the picture must not move: the character's
         # origin is the canvas's corner, which is where the author put the sprite, so a
         # pose trimmed by (x0, y0) is drawn (x0, y0) further along and lands exactly where
         # it did. Corner-aligned instead, a character jitters around its own feet as the

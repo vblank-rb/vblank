@@ -3,7 +3,7 @@
 require "test_helper"
 
 require "stringio"
-require VBlank.root.join("examples/piano").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/piano").to_s)
 
 # examples/piano.rb on the Advance's cartridge: both hands render with the right colours and it
 # is audible in the emulator. What the piano does on every run that plays the Advance's games is

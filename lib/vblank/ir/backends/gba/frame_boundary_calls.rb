@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBA
-        # CODE THE GAME DID NOT CALL, WHICH CAN CALL A ROUTINE THE GAME IS PART WAY THROUGH, and the
+        # Code the game did not call, which can call a routine the game is part way through, and the
         # state each call of that routine keeps to itself.
         #
         # Three kinds of code run where the game wrote no call:
@@ -24,7 +24,7 @@ module VBlank
         # and restores them after. The interrupt saves the registers already (GBA::IRQ_SAVED_REGS),
         # so there it is the memory alone. A game with none of this has no code here.
         #
-        # A HANDLER THAT WAITS CANNOT RUN IN THE INTERRUPT. While the console runs an interrupt's
+        # A handler that waits cannot run in the interrupt. While the console runs an interrupt's
         # routine it holds every other interrupt off, the screen's included, so a wait there never
         # ends and the game stops. So such a handler is a routine of its own, run where the
         # interpreter runs every handler: as the game wakes from a wait, once for each tick since the
@@ -56,10 +56,11 @@ module VBlank
           # +program+'s Plan.
           def self.plan(program)
             handlers = IR::Nodes::OnTimer.of(program)
-            bends = program.walk.select { |node| node.kind == :scroll_rows }
-            return Plan.none if handlers.empty? && bends.empty?
+            return Plan.none if handlers.empty? && program.walk.none? { |node| node.kind == :scroll_rows }
 
             lowering_plan = LoweringPlan.new(program, console: Console::ADVANCE, error: LoweringError)
+            bends = lowering_plan.row_bends.nodes
+            return Plan.none if handlers.empty? && bends.empty?
             funcs = program.walk.select { |node| node.kind == :func }.to_h { |node| [node.name, node] }
             unread = LoopForm.unread_indexes(program)
             reentered = lowering_plan.routines_reentered_at_frame_boundary
@@ -114,11 +115,13 @@ module VBlank
             @lowering = lowering
             @functions = functions
             @plan = Plan.none
+            @copying_handlers = []
           end
 
           # Works out +program+'s Plan, and makes each handler that waits a routine.
           def prepare(program)
             @plan = FrameBoundaryCalls.plan(program)
+            @copying_handlers = IR::Nodes::OnTimer.of(program).select { |_, handler| InterruptCopies.copies?(program, handler) }.keys
             @plan.waiting.each do |timer, handler|
               @functions.define_generated_func(routine_for(timer)) do
                 handler.children.each { |child| @lowering.statement(child) }
@@ -137,15 +140,23 @@ module VBlank
           end
 
           # In the interrupt, for a handler that does not wait: its body, with the state of the
-          # routines it shares with the rest of the game saved.
+          # routines it shares with the rest of the game saved, and the fill's colour word where the
+          # handler can copy or fill (Primitives#with_fill_word_saved, InterruptCopies). The word is
+          # the handler's own to save, as the registers are, so its four bytes are in the room the
+          # console leaves a handler (TopOfQuickMemory::HANDLER_OWN_BYTES), not in the state
+          # counted here.
           def with_handler_state_saved(timer, &)
-            emit_saving(@plan.for_handler.fetch(timer, SavedState.none), &)
+            emit_saving(@plan.for_handler.fetch(timer, SavedState.none)) do
+              next yield unless @copying_handlers.include?(timer)
+
+              @primitives.with_fill_word_saved(&)
+            end
           end
 
           # Whether any timer's handler waits.
           def handlers_wait? = @plan.waiting.any?
 
-          # WHAT A HANDLER THAT WAITS READS IS WHAT THE GAME'S LAST PASS READ. The interpreter runs
+          # What a handler that waits reads is what the game's last pass read. The interpreter runs
           # the handlers as a frame ends, before it counts that frame and reads the buttons
           # (Reference#advance_frame), so a handler reads the frames since power-on, the frames the
           # last pass took and the buttons pressed as the pass that just ended read them. The
@@ -226,7 +237,7 @@ module VBlank
           # How far below the mark, at the top, the last pass's +name+ is on the stack.
           def last_pass_offset(name) = 4 * (last_pass_pushed.size - 1 - last_pass_pushed.index(name))
 
-          # The frames in SPARE taken off (+op+ :sub) or put back on (:add) the frames since power-on,
+          # The frames in spare taken off (+op+ :sub) or put back on (:add) the frames since power-on,
           # with the interrupts held off so the screen's cannot count a frame between the read and
           # the write and have it lost. One held off meanwhile runs as they are let back on.
           def emit_frame_count_change(op)

@@ -17,6 +17,11 @@ v.pixel_is?(x, y, :red)                    # colour by name or 15-bit value
 v.pixel_gba(x, y)                          # the raw 15-bit BGR555 (good in failure messages)
 v.region_color?(x, y, w, h, :blue)
 v.audio_energy / v.silent? / v.sound?      # "did the speaker do anything?"
+v.last_frame_mix                           # Advance: the frame the mix wrote last, a signed sample each, byte for byte the
+                                           # interpreter's mixed_sound; hold two builds' sound alike with this, not the speaker,
+                                           # which the emulator resamples at moments a game's own video copies move.
+                                           # Needs the build's record: hand the Verifier the built ROM, not a path to
+                                           # a cartridge written to a file (that one refuses it)
 
 v.only_color                               # the one colour every pixel is, or nil for a picture
 v.brightness                               # every pixel's red, green and blue added up, each 0..31
@@ -36,7 +41,7 @@ v.palette(:sprites, row.palette)           # the sixteen colours that sprite row
 v.palette                                  # the whole table: 512, backgrounds first then sprites
 v.video_ram / v.color_ram / v.sprite_table / v.sound_registers  # the console's own tables as bytes; no build record needed
 v.sound_ram                                # Super Nintendo: the sound chip's 64K (recordings, their table at DIR's page)
-v.sprite_boxes                             # the sprite table as SpriteBox (slot, x, y, width, height, tile); SNES takes sizes:
+v.sprite_boxes                             # the sprite table as SpriteBox (slot, x, y, width, height, tile); SNES reads its sizes off OBSEL, sizes: overrides
 v.showing(only: :sprites) { v.step; ... }  # draw the picture without some of it
 v.hearing(without: :wave) { v.step(40); ... }  # mix the sound without some of it
 v.layers / v.channels                      # the names those two can be given
@@ -79,7 +84,13 @@ They change the console, not the reading, so the block must `v.step` before read
 voices go back when the block ends. Taking a voice out under a held note is a cut, not a rest —
 the mix steps and drifts back over about half a second — so step well past that before asking
 whether it went quiet. Sound readers cover the whole run, so inside a block use
-`audio_energy_by_frame.last(n)`.
+`audio_energy_by_frame.last(n)`. On a Genesis cartridge `hearing` takes no block and must come before
+the first frame (Genesis Plus GX reads its voices as it loads the cartridge); `v.channels` names the
+voices on each console. A Super Nintendo reader names the sound chip's eight, `:voice0` to `:voice7`,
+and changes them at any frame, with or without a block: the others are left out where the chip adds
+each voice into the mix and go on running, so a voice heard again sounds as if never left out. The
+chip runs a little behind the processor, so the first few samples of the frame after a change are
+from before it.
 
 ## Long runs of sound
 
@@ -90,6 +101,59 @@ ends. Every reader still answers for the whole run. The energy readers (`audio_e
 frame is cheap: `v.step.audio_energy_by_frame.last` is that frame. `audio_samples` returns every
 sample at once, read from the file each time — ask it once. To change either:
 `Verifier.new(rom, sound: VBlank::Diagnostics::RecordedSound.new(frames_in_memory: 600, folder: "scratch"))`.
+
+## Which sounds the game started, by name
+
+A cartridge built here says which sound effects it started on each frame and which song it was
+on, by the names the game gave them, frame for frame what the interpreter's audio log says
+(`[:sound_effect, :"sfx.hit"]` in `i.audio` on the frame `each_vblank` names, and
+`i.music_playing`):
+
+```ruby
+v = VBlank::Diagnostics::Verifier.new(rom, frames: 4201)  # a frame past the last one wanted
+v.watch_sound_names                                         # before the first read: from power-on
+v.sound_names_by_frame                                      # [SoundNames::Frame(frame:, effects:, song:), ...]
+v.sound_names_by_frame.find { |f| f.effects.include?(:"sfx.hit") }.frame
+```
+
+The player does a frame's work as the next frame starts, so play one frame past the last to be
+named. It watches the words the sound player keeps (which costs the emulator some speed, as
+`watch_sound` does), so an effect asked for twice in one pass is one start, one replaced by
+another of its group in the same pass is none, and a restart the frame after a start, or on the
+frame the effect would have ended, is seen. `Diagnostics::SoundNames` says how a start is given
+its frame. It needs the build's record: a cartridge written to a file is refused. Watched after
+frames have played, it lists from the frame the reader was on. Held to the interpreter by
+`test/sound_name_tests.rb`, played on the Advance by
+`test/lowering/gba/vblank/diagnostics/test_sound_names.rb`.
+
+The frame the music stops is the first whose `song` is not the one before (nil once stopped,
+another song once changed): the frame the interpreter logs `[:stop_music]`. The frame a song's
+first note sounds is not read: the record names no word of the player that marks a note, so
+for a song that opens on a note it is the frame its `song` is first named.
+
+## Which picture each sprite showed, by name
+
+A cartridge built here says, after each pass, which of its pictures each sprite showed and
+where, as `i.sprites` says after `i.run(program, frames: n)` (`DrawnSprite(name:, x:, y:,
+picture:)`, a mirrored picture by the name `mirror` gave back):
+
+```ruby
+v = VBlank::Diagnostics::Verifier.new(rom, frames: 601)    # a frame past the last pass wanted
+v.watch_sprites                                           # before the first read: from power-on
+v.sprites_by_frame(:link)                                 # [SpritesFrame(frame:, sprites: [DrawnSprite, ...]), ...]
+v.sprites_by_frame(:link).find { |f| f.sprites.first&.picture == :link_swing }.frame
+```
+
+`frame` counts the game's passes, which is the interpreter's frames for a game that keeps up; a
+pass that takes longer is read once. The Advance shows a pass's sprites as the gap after it
+ends, so play one frame past the last pass to be read. It reads the sprite table after every
+frame, so frames are played one at a time, and it counts passes (`count_passes: true`), so it
+is asked before the first read or on a reader made with that. A picture cut into pieces is one
+row. The rows are in the table's order, not always the interpreter's: compare them as a set. A
+single reading is `v.sprites(:link).first.picture`, the table as it stands after the frames
+played. Two pictures stored as one (the same pixels, facing the same way) read as the first
+of them. It needs the build's record. Held to the interpreter by `test/sprite_picture_tests.rb`,
+played on the Advance by `test/lowering/gba/vblank/diagnostics/test_sprite_pictures.rb`.
 
 ## `v.var` versus `v.mem32`
 
@@ -102,7 +166,8 @@ reads true.
 It reads the table the console composes from, so it tells a hidden sprite from one in the
 backdrop colour, one behind a background, one a pixel off the edge. Each row is a `SpriteRow`:
 `name`, `x`, `y`, `slot`, `tile`, `palette`, `color_count`, `colors`, `priority`, `shape`, `size`,
-`mirrored_across`, `mirrored_down`, `turned`, `piece_x`, `piece_y`. A sprite switched off is
+`mirrored_across`, `mirrored_down`, `turned`, `piece_x`, `piece_y`, `picture` (the name of the
+picture it shows, on a picture's first row). A sprite switched off is
 absent. `row[:x]` does not work, deliberately: as a Hash a misspelt field read back nil and the
 test passed.
 

@@ -4,7 +4,7 @@ require "digest"
 require "tmpdir"
 require "all/vblank/builder/test_pack_tile_poses"
 
-# A POSE OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES, ITS PACK LEFT OUT: what the
+# A pose of sprite tiles whose pieces are one of the original's frames, its pack left out: what the
 # games of PackTilePoseGames (test/all/vblank/builder/test_pack_tile_poses.rb) built with
 # `pack_at_start: true` refuse, and what a player's file whose frame the set cannot draw draws.
 # That each plays as its all-in-one build is the registry's (PackGames::TilePosesOfFrames,
@@ -28,7 +28,7 @@ module PackTilePoseAtStartTests
     end
   end
 
-  # WHAT THE PLAYER'S FILE HOLDS IS NOT KNOWN AS THE GAME IS BUILT, so nothing in it stops the game.
+  # What the player's file holds is not known as the game is built, so nothing in it stops the game.
   # The file's frame has a piece the set can draw, then one naming tiles past the set, one turned
   # and one off the picture's grid, which the build that holds the pack refuses. The game shows the
   # first piece alone, as an all-in-one build of a frame of that piece does.
@@ -44,7 +44,7 @@ module PackTilePoseAtStartTests
     end
   end
 
-  # A CROWDED ROW OF POSES READ AS THE GAME STARTS. Six balls stand side by side, each a pose twice
+  # A crowded row of poses read as the game starts. Six balls stand side by side, each a pose twice
   # as wide as its frame's pieces reach, so the build holds a stand-in piece for every place of its
   # grid and the frame fills only half of them. On a console that draws only so many sprite pieces
   # on a line, the frame's pieces decide which are left out, as they do all-in-one.

@@ -122,7 +122,7 @@ class TestEvaluatedGame < Minitest::Test
   # A game may say what it is doing while its block runs (reading sixty floors of a map,
   # chewing through a sprite sheet). Whether anyone is listening is decided by the caller,
   # and these two callers decide differently on purpose: a person waiting on a build hears
-  # it, and a test asking what a game IS does not.
+  # it, and a test asking what a game is does not.
   def test_a_game_says_what_it_is_doing_while_a_person_waits_on_a_build
     out = StringIO.new
     talkative_game.build_rom(out: StringIO.new, err: StringIO.new, progress: Progress.to(out))

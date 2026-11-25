@@ -9,7 +9,7 @@ require "test_helper"
 # shape of a rectangle's rows instead of both, and lets the cost model price the one that
 # runs instead of the dearer of the two — an odd row costs about three times an even one.
 #
-# HALF THIS FILE IS ABOUT REFUSING TO ANSWER, and that half matters more. Calling a column
+# Half this file is about refusing to answer, and that half matters more. Calling a column
 # even that can be odd would emit code that splices the wrong pixels and an estimate under
 # what the game costs, which is the one failure the cost model exists to prevent. So the
 # tests below come in pairs: what it proves, and the near-miss it must stay quiet about.
@@ -50,7 +50,7 @@ class TestIRParity < Minitest::Test
     assert_unknown var_ref(:x)
   end
 
-  # THE ONE THAT PAYS FOR ITSELF: an even number times anything is even, because the two is
+  # The one that pays for itself: an even number times anything is even, because the two is
   # still in there whatever it is multiplied by. This is what a grid game writes.
   def test_an_even_number_times_anything_is_even
     assert_even binop(:*, var_ref(:cell), int(8))
@@ -124,7 +124,7 @@ class TestIRParity < Minitest::Test
     assert_unknown held(:left)
   end
 
-  # THE SAFETY RULE ITSELF. Nothing is proved by being unrecognized: a kind of expression
+  # The safety rule itself. Nothing is proved by being unrecognized: a kind of expression
   # this has never heard of comes back unknown, so adding one to the IR can never quietly
   # turn into a wrong proof here. Every :value kind is asked, and the handful with rules
   # of their own above are the only ones that answer.

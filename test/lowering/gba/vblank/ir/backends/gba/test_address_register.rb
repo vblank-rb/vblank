@@ -2,10 +2,10 @@
 
 require "test_helper"
 
-# THE BASE OF THE VARIABLE MEMORY, LEFT IN A REGISTER instead of made again before every
+# The base of the variable memory, left in a register instead of made again before every
 # access. Two things have to hold for that to be safe, and they are tested apart:
 #
-#   * ASM.may_write_register? has to say YES about every instruction that could write the register,
+#   * ASM.may_write_register? has to say yes about every instruction that could write the register,
 #     and it is allowed to say yes about ones that could not. Getting that backwards does
 #     not fail — it sends a load or a store to whatever address happens to be there — so
 #     the encodings are checked one at a time, built by the same ASM methods the backend
@@ -62,7 +62,7 @@ class TestAddressRegister < Minitest::Test
   end
 
   # A predicated instruction may or may not run, which is not a distinction worth making:
-  # what matters is that it COULD write the register.
+  # what matters is that it could write the register.
   def test_an_instruction_that_might_not_run_still_disturbs_what_it_would_write
     assert may_write_register?(A.mov_reg_cond(:gt, ADDR, 0))
     assert may_write_register?(A.add_imm_cond(:ls, ADDR, ADDR, 4))
@@ -204,11 +204,15 @@ class TestAddressRegister < Minitest::Test
   #
   # A collection's base is an address that has not changed since the cartridge was built,
   # and it used to be rebuilt at every single touch. It now waits in a register the same
-  # way the variables' base does — a SECOND register, because one shared between them
+  # way the variables' base does — a second register, because one shared between them
   # would be pushed out by whichever was touched last, and a pool walk touches both
   # constantly. See {LIST_ADDR} and {Primitives#emit_load_address_register}.
+  #
+  # Each game below also reads its lists once at an index it works out (`xs[k & 7]`). A small list
+  # read only at slots written in the program is kept beside the variables and reached from their
+  # base instead (Lists#near_list?), so it would never put its own base in the register at all.
 
-  # BOTH REGISTERS ARE WATCHED, not just the first one. Nothing the DSL can express writes
+  # Both registers are watched, not just the first one. Nothing the DSL can express writes
   # the list register between two touches of a list today — the routines that use it for
   # their own work are all reached by a call or a label, and both of those forget anyway.
   # So this is the seam itself under test rather than a program that would go wrong, which
@@ -224,7 +228,7 @@ class TestAddressRegister < Minitest::Test
     refute emitter.list_register.holds?(BASE), "a write to that register ends it"
   end
 
-  # Is this an instruction that PUTS AN ADDRESS in the list register? That is a
+  # Is this an instruction that puts an address in the list register? That is a
   # data-processing instruction whose second operand is a plain number and whose answer
   # lands in that register — the MOV and ORRs an address is built from, and the ADD or SUB
   # that steps from one address to the next — or a read of the address out of the routine's
@@ -240,7 +244,7 @@ class TestAddressRegister < Minitest::Test
     ((word >> 26) & 0b11).zero? && !(word & 0x02000000).zero? && ((word >> 12) & 0xF) == LIST_ADDR
   end
 
-  # Is this the one instruction that STEPS the list register from the address it holds to
+  # Is this the one instruction that steps the list register from the address it holds to
   # another: an ADD or a SUB of a plain number, from that register into itself?
   private def steps_list_base?(word)
     [0xE2800000, 0xE2400000].include?(word & 0xFFF00000) && ((word >> 16) & 0xF) == LIST_ADDR &&
@@ -262,7 +266,8 @@ class TestAddressRegister < Minitest::Test
       screen :bitmap
       xs = list :xs, capacity: 8
       func(:body) { xs[0] = xs[1] + xs[2] }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 1, runs.length,
                  "four touches of one list, and its base is named once for the lot"
@@ -278,7 +283,8 @@ class TestAddressRegister < Minitest::Test
         xs = list :xs, capacity: 8
         a = 1
         func(:body) { a = xs[0] + a; xs[1] = a }
-        game_loop { call :body }
+        k = 0
+        game_loop { call :body; k = xs[k & 7] }
       end
     }
     runs = list_base_runs_in(:body) { program.call(self) }
@@ -299,7 +305,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       ys = list :ys, capacity: 8
       func(:body) { xs[0] = ys[0] }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] + ys[k & 7] }
     end
     assert_equal 2, runs.length, "two lists, so the base is named twice"
     assert_equal [true], runs.last.map { |word| steps_list_base?(word) },
@@ -313,7 +320,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       a = var :a, 1
       func(:body) { xs[0] = 1; if a > 0 then xs[1] = 2 else xs[2] = 3 end }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 2, runs.length,
                  "the arm that is jumped to cannot lean on what the code before the branch left; " \
@@ -326,7 +334,8 @@ class TestAddressRegister < Minitest::Test
       xs = list :xs, capacity: 8
       func(:bump) { xs[3] = 9 }
       func(:body) { xs[0] = 1; call :bump; xs[1] = 2 }
-      game_loop { call :body }
+      k = 0
+      game_loop { call :body; k = xs[k & 7] }
     end
     assert_equal 2, runs.length, "a routine between them is free to use the register for its own work"
   end

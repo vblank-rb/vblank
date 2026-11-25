@@ -2,9 +2,9 @@
 
 require "test_helper"
 
-require VBlank.root.join("examples/corridor").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/corridor").to_s)
 
-# The corridor example (examples/corridor.rb): the corpus's witness NEAR THE LINE.
+# The corridor example (examples/corridor.rb): the corpus's witness near the line.
 #
 # Every other example is comfortable — the heaviest of the rest uses under half a frame — so
 # nothing in the corpus was ever close enough to the edge for "does it fit" to be a real
@@ -14,7 +14,7 @@ require VBlank.root.join("examples/corridor").to_s
 # cartridge, is in test/lowering/gba/examples/test_corridor_example_cartridge.rb.
 class TestCorridorExample < Minitest::Test
 
-  # VBlank.build runs the guardrails and the ROM-image validation, so a clean build IS
+  # VBlank.build runs the guardrails and the ROM-image validation, so a clean build is
   # the check.
   def test_the_example_builds_clean
     assert_operator Corridor.build_rom(out: nil, err: nil).size, :>, 0, "the built ROM should be non-empty"
@@ -32,7 +32,7 @@ class TestCorridorExample < Minitest::Test
     assert_includes pixels, Corridor::BAR, "the status bar under the view"
   end
 
-  # THE STATUS BAR IS NOT DRAWN OVER. `inside` holds the view to the top 128 rows, so nothing
+  # The status bar is not drawn over. `inside` holds the view to the top 128 rows, so nothing
   # the view draws — not the sky, not the floor, not a wall column tall enough to run past the
   # bottom — reaches the bar. Written as a check on the picture rather than on the clip, since
   # the picture is what an author sees.

@@ -22,7 +22,7 @@ class TestJSPrinter < Minitest::Test
   SUMS_IN_A_LONG_LOOP = 1_500 # Sums in the loop's body, many times what one function holds
   MOST_LINES_A_FUNCTION = 1_000 # Lines of the longest printed function, well inside what V8 optimises
 
-  # A ROUTINE HEAVIER THAN V8 OPTIMISES is printed in parts, each a function lighter than that, and a
+  # A routine heavier than V8 optimises is printed in parts, each a function lighter than that, and a
   # resumable one keeps its steps in groups of functions too, so the loop a routine goes round with a
   # wait in it (a data pack's unpacking, which waits every few hundred bytes) runs in functions V8
   # optimises. The parts play as the routine did, checked against the interpreter on every frame: a

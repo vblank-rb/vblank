@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       module Computer
-        # THE C THE BACKEND WRITES, as data rather than text.
+        # The C the backend writes, as data rather than text.
         #
         # The lowering builds these and the Printer alone turns them into text, so the things
         # that are easy to get wrong by hand — how a number is spelt, which names are legal,
@@ -68,6 +68,8 @@ module VBlank
 
           While = Data.define(:condition, :body)
           Break = Data.define
+          # Back to the innermost While's test, the rest of its body left out.
+          Continue = Data.define
           Return = Data.define
 
           # { ... }, so a loop's own locals stay its own.

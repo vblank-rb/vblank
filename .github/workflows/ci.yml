@@ -1,8 +1,13 @@
 name: CI
 
-# Runs on the owner's own Mac, never on GitHub's machines: a whole run plays every test on three
-# lowerings and wants many cores for a quarter of an hour, which a hosted runner makes slow and
-# dear. Manual only. Run from the Actions tab ("Run workflow") or: gh workflow run ci.yml
+# Runs on the owner's own Mac, never on GitHub's machines: the tests play every lowering and want
+# many cores for a long time, which a hosted runner makes slow and dear. Manual only. Run from the
+# Actions tab ("Run workflow") or: gh workflow run ci.yml
+#
+# The `suite` input picks what is played. `golden` (the default) is `rake test:golden`: the core
+# tests, a little of each lowering and 5% of the other test files drawn at random, with the seed
+# printed. `all` is `rake test:all`, every test on every lowering, which takes about four and
+# three-quarter hours: run it only when the operator has agreed.
 #
 # Gated to jamescook: this repository is public, and a self-hosted runner executes whatever the
 # workflow says directly on that machine. So nothing starts a run but somebody pressing the button
@@ -15,6 +20,14 @@ name: CI
 # write access and this machine is theirs to run code on.
 on:
   workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which tests to play: golden (everyday) or all (about 4.75 hours)'
+        type: choice
+        options:
+          - golden
+          - all
+        default: golden
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,7 +38,7 @@ defaults:
     # The machine keeps its tools in mise. The versions are named here because the checkout's
     # own mise.toml is not in the repository. Everything below is already installed on the
     # machine, the C compiler and libmgba (Homebrew) included, so nothing is downloaded per run.
-    shell: /opt/homebrew/bin/mise exec ruby@4.0.9 zig@0.17.0 node@24.6.0 -- bash --noprofile --norc -eo pipefail {0}
+    shell: /opt/homebrew/bin/mise exec ruby@4.0.10 zig@0.17.0 node@24.6.0 -- bash --noprofile --norc -eo pipefail {0}
 
 jobs:
   test:
@@ -37,7 +50,8 @@ jobs:
       github.repository == 'vblank-rb/vblank' &&
       github.actor == 'jamescook' &&
       github.triggering_actor == 'jamescook'
-    timeout-minutes: 90
+    # Long enough for the `all` suite; the golden one is far shorter.
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v6
@@ -54,25 +68,23 @@ jobs:
         env:
           CI: '1'
 
-      # The PlayStation run plays its programs in Beetle PSX, which ruby-ps1-emulator builds from one
-      # downloaded archive with the tools the machine already has (make, patch, tar and clang), and
-      # plays through a small C extension of its own: the shell needs nothing more. A clean checkout
-      # has neither built, and `rake test:all` does not build them, so they are built here (a second
-      # or two when they are already there).
-      - name: Build the PlayStation's emulator core and its C extension
-        run: bundle exec rake compile_ps1_core
+      # Every emulator the runs play cartridges in, built up front so a core that cannot build
+      # fails here in a minute, not hours into the suite. The Advance's run builds the Super
+      # Nintendo, Genesis and PlayStation cores itself, but a clean checkout has none of them
+      # built. The PlayStation's Beetle PSX comes from one downloaded archive, built with the tools
+      # the machine already has (make, patch, tar and clang), and DOS's DOSBox from two
+      # (the core and libretro-common) with the same tools. A second or two when already built.
+      - name: Build every emulator core and its C extension
+        run: bundle exec rake compile_emulator compile_snes_core compile_genesis_core compile_ps1_core compile_dos_core
 
-      # The DOS run plays its programs in DOSBox, which ruby-dos-emulator builds the same way from two
-      # downloaded archives (the core and libretro-common) with the same tools.
-      - name: Build the DOS emulator core
-        run: bundle exec rake compile_dos_core
-
-      # Every test on every lowering, one after the other. A whole run takes the machine to
-      # itself, so this waits while a run in another checkout on the same Mac finishes.
+      # The suite named by the `suite` input, passed through the environment so the input is never
+      # written into the script. A whole run takes the machine to itself, so this waits while a
+      # run in another checkout on the same Mac finishes.
       - name: Run tests
-        run: bundle exec rake test:all 2>&1 | tee test-output.log
+        run: bundle exec rake "test:${SUITE}" 2>&1 | tee test-output.log
         env:
           CI: '1'
+          SUITE: ${{ inputs.suite }}
 
       # Build every example and compare what it emits against tools/emitted_baseline.json.
       # Deliberate growth is accepted with `rake emitted:record` and a commit of the diff.

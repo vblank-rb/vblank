@@ -61,7 +61,7 @@ module PackTilePoseGames
                                releases: { "Test" => { "sha1" => Digest::SHA1.hexdigest(copy), "size" => copy.bytesize } })
   end
 
-  # THE GAME, as a block a Builder or VBlank.game runs: a set of four tiles, a pose of it for each
+  # The game, as a block a Builder or VBlank.game runs: a set of four tiles, a pose of it for each
   # of +frames+ (each pose's options made by +pose+ from the pack and the frame's start), a ball
   # spinning through them, and the set loaded from a picture of the game's own on the first pass.
   # With +balls+ more than one, that many balls of the first pose stand side by side on one row,
@@ -112,7 +112,7 @@ module PackTilePoseGames
   end
 end
 
-# A POSE OF A SET OF SPRITE TILES WHOSE PIECES ARE ONE OF THE ORIGINAL'S FRAMES (Builder::SpriteTiles,
+# A pose of a set of sprite tiles whose pieces are one of the original's frames (Builder::SpriteTiles,
 # `image ..., tiles_from:, frame:`). The answer key is the same poses with their pieces written by
 # hand, which is what the made-up frames say.
 class TestPackTilePoses < Minitest::Test

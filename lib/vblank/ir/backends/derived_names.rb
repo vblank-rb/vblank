@@ -3,7 +3,7 @@
 module VBlank
   module IR
     module Backends
-      # NAMES MADE FROM ANOTHER NAME: the label just past a routine's last instruction, a label
+      # Names made from another name: the label just past a routine's last instruction, a label
       # inside a routine, a table that goes with a picture, a number a routine keeps for itself.
       #
       # A lowering names many things after the thing they belong to, and the two names have to
@@ -16,7 +16,7 @@ module VBlank
       # Every name comes back as a Symbol, which is what each lowering's tables are keyed by.
       #
       # `test/all/vblank/test_derived_names.rb` fails on a Symbol in the lowerings that starts by
-      # interpolating another name (ROUTINE, then "_end", in one Symbol literal), the shape every
+      # interpolating another name (routine, then "_end", in one Symbol literal), the shape every
       # name made from another took. A name that only puts a run-time part after a fixed prefix (`:"__music_note_#{lane}"`)
       # names a family of its own rather than following another name, and is left as it is.
       module DerivedNames

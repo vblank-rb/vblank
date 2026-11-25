@@ -7,12 +7,12 @@ module VBlank
       VIDEO_MEMORY_WORDS = { colors: "the colours", sprite_table: "the sprite table", scroll: "the scroll",
                              registers: "the video registers" }.freeze
 
-      # ONE OF THE CONSOLE'S VIDEO MEMORIES THAT DIFFERED where two cartridges parted, and its
+      # One of the console's video memories that differed where two cartridges parted, and its
       # first difference: +memory+ is which (`:colors`, `:sprite_table`, `:scroll`, `:registers`;
       # see Diagnostics::Verifier#video_memories), +at+ where in it, and +first+ and +second+
       # what each cartridge held there.
       #
-      # WHY IT IS SAID. Two pictures that differ show where on the screen and nothing about why.
+      # Why it is said. Two pictures that differ show where on the screen and nothing about why.
       # The console builds its picture out of a few memories — the colours it draws from, the
       # table of where each sprite stands, how far each background is scrolled, the registers
       # that switch each part on — and which of those differ is most of the answer: a colour

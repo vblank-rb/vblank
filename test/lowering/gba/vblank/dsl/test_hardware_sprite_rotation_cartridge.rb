@@ -61,10 +61,10 @@ class TestHardwareSpriteRotationCartridge < Minitest::Test
 
   # --- two sprites turning at once each keep their own angle ---
 
-  # TWO SPRITES TURNING TO DIFFERENT ANGLES, which is the thing that proves each gets a
-  # rotation group of ITS OWN. The console holds a turning sprite's angle in one of 32
+  # Two sprites turning to different angles, which is the thing that proves each gets a
+  # rotation group of its own. The console holds a turning sprite's angle in one of 32
   # parameter groups and each sprite's entry names which group to read; give two sprites the
-  # same group and the picture does not fail, it goes SUBTLY wrong — the group holds whichever
+  # same group and the picture does not fail, it goes subtly wrong — the group holds whichever
   # angle was written last, so both sprites draw at it and the game looks like it has one
   # rotation. Nothing but a second turning sprite can catch that, which is why this test
   # exists: with one sprite on screen, every group number works equally well.

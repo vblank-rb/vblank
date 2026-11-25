@@ -4,20 +4,20 @@ require "zlib"
 
 module VBlank
   module Graphics
-    # A PICTURE WRITTEN AS A PNG FILE: a screen, or any block of the console's colours, in the
+    # A picture written as a PNG file: a screen, or any block of the console's colours, in the
     # one image format every viewer and browser opens.
     #
-    # The rest of this module reads art IN, from whatever shape another tool left it in. This
+    # The rest of this module reads art in, from whatever shape another tool left it in. This
     # is the way out — a picture of what a game showed, for a person to look at.
     #
     #   VBlank::Graphics::PNG.write("title.png", width: 240, height: 160, pixels: colours)
     #
-    # WHAT A PNG IS, since this writes one byte by byte. After an eight-byte signature it is a
+    # What a PNG is, since this writes one byte by byte. After an eight-byte signature it is a
     # run of chunks, each its length, a four-letter type, its data and a check over the two.
     # Three are enough: a header saying the size and how a pixel is stored, the pixels
     # themselves squeezed with the same compression a zip file uses, and an empty one to end.
     #
-    # HOW A COLOUR GETS THERE. The console keeps a colour in 15 bits, five each for red, green
+    # How a colour gets there. The console keeps a colour in 15 bits, five each for red, green
     # and blue, so a channel has 32 levels; a PNG pixel here is a whole byte for each of the
     # three, 256 levels a channel. Each level is stretched to fill the byte by repeating its
     # top bits into the bottom, so black stays black and full stays full — the same stretch a
@@ -72,7 +72,8 @@ module VBlank
         [data.bytesize].pack("N") + body + [Zlib.crc32(body)].pack("N")
       end
 
-      # A colour's red, green and blue as three bytes.
+      # A colour's red, green and blue as three bytes. Public for Diagnostics::Film, which hands a
+      # side's picture to ffmpeg in the same colours a PNG of it holds.
       def eight_bit_channels(colour)
         [0, 5, 10].map { |shift| (colour >> shift) & 0x1F }.map { |level| (level << 3) | (level >> 2) }.pack("C3")
       end
@@ -106,7 +107,7 @@ module VBlank
               "An alpha: value of #{wrong} is not possible. Each value must be from 0 to 255. " \
               "0 is see-through and 255 is solid."
       end
-      private_class_method :chunk, :eight_bit_channels, :refuse_wrong_size!, :refuse_alpha_outside_byte!
+      private_class_method :chunk, :refuse_wrong_size!, :refuse_alpha_outside_byte!
     end
   end
 end

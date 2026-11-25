@@ -5,7 +5,7 @@ require "tmpdir"
 require "comparison_games"
 require "png_reading"
 
-# CARRYING ON PAST THE FIRST DRIFT. A comparison stops at the first drift unless it is asked
+# Carrying on past the first drift. A comparison stops at the first drift unless it is asked
 # to carry on, and then it plays to the end and lists every stretch of drift: the frame it
 # began on and the last frame the two still differed. That answers what the first drift
 # cannot: do the two come back into step, or is everything after it different for one reason?
@@ -21,7 +21,7 @@ class TestComparisonCarryingOn < Minitest::Test
 
   private def red_frames(cartridge, tape) = frames_where(cartridge, tape) { |game| game.red?(0, 0) }
 
-  # TWO CARTRIDGES THAT DIFFER FOR A WHILE AND THEN AGREE AGAIN ARE ONE STRETCH, from the
+  # Two cartridges that differ for a while and then agree again are one stretch, from the
   # first frame they differed to the last, and the comparison plays to the end of the tape.
   def test_a_stretch_of_differing_frames_is_one_drift_with_its_first_and_last_frame
     first = walker
@@ -37,7 +37,7 @@ class TestComparisonCarryingOn < Minitest::Test
     assert_equal result.drifts.first, result.drift, "the first drift is still the one asked for by itself"
   end
 
-  # TWO STRETCHES ARE TWO DRIFTS, in the order they happened, each saying what differed in
+  # Two stretches are two drifts, in the order they happened, each saying what differed in
   # it. The first here is a reading that is out for three frames during the walk, and the
   # second the ground turning red for three frames after it.
   def test_two_stretches_are_two_drifts
@@ -56,7 +56,7 @@ class TestComparisonCarryingOn < Minitest::Test
     assert_equal %i[standing walked], result.drifts.map(&:moment)
   end
 
-  # A DRIFT THAT NEVER ENDS RUNS TO THE LAST FRAME PLAYED: the ground turns red and stays red.
+  # A drift that never ends runs to the last frame played: the ground turns red and stays red.
   def test_a_drift_that_never_ends_runs_to_the_last_frame_played
     first = walker
     second = walker(turns_red_at: 45)
@@ -68,7 +68,7 @@ class TestComparisonCarryingOn < Minitest::Test
     assert_equal tape.frames, result.frames
   end
 
-  # WITH NOTHING SAID IT STOPS AT THE FIRST DRIFT, as it always did: one drift, and no frame
+  # With nothing said it stops at the first drift, as it always did: one drift, and no frame
   # played after the one that made it certain. How long that drift lasted is then not
   # known, and it says so by having no last frame.
   def test_with_nothing_said_a_comparison_stops_at_the_first_drift
@@ -86,7 +86,7 @@ class TestComparisonCarryingOn < Minitest::Test
     end
   end
 
-  # HOW A DRIFT ENDED IS SAID WITH IT, which is the question carrying on is for. The two
+  # How a drift ended is said with it, which is the question carrying on is for. The two
   # came back into step; or the next frame was one the comparison was told to leave out, so
   # nothing is known; or the tape ran out with the two still apart.
   def test_a_drift_says_how_it_ended
@@ -142,8 +142,8 @@ class TestComparisonCarryingOn < Minitest::Test
     assert_equal [red_on[0]..red_on[1], red_on[3]..red_on[4]], result.drifts.map(&:stretch)
   end
 
-  # WITH SEVERAL FRAMES IN A ROW ASKED FOR, A DRIFT LASTS WHILE SOMETHING THAT HAS DIFFERED
-  # FOR THAT LONG GOES ON DIFFERING. A reading that is out for one frame straight after the
+  # With several frames in a row asked for, a drift lasts while something that has differed
+  # for that long goes on differing. A reading that is out for one frame straight after the
   # red frames has not, so it does not carry the drift on a frame further; with one frame
   # asked for, every differing frame counts and the two run together as one drift.
   def test_a_flicker_straight_after_a_drift_does_not_carry_it_on
@@ -164,7 +164,7 @@ class TestComparisonCarryingOn < Minitest::Test
     assert_equal [[:picture]], forgiving.drifts.map(&:differed)
   end
 
-  # NO FRAME IS IN TWO DRIFTS. The ground is red for three frames and a reading is out for
+  # No frame is in two drifts. The ground is red for three frames and a reading is out for
   # three, the first of them the last red frame, with three in a row asked for. On the
   # frame the ground goes back the reading has been out for two frames, which is not yet
   # drift; a frame later it is. That is one drift of five frames, and not a second one
@@ -218,7 +218,7 @@ class TestComparisonCarryingOn < Minitest::Test
 
   # --- a report of each ---
 
-  # EACH DRIFT GETS A FOLDER OF ITS OWN, named for the frame it began on, holding that
+  # Each drift gets a folder of its own, named for the frame it began on, holding that
   # drift and no other, and each drift says which folder is its own. The two drifts here
   # are a reading that is out during the walk, when both grounds are blue, and the ground
   # turning red after it — so the two folders hold different pictures and different words.
@@ -250,7 +250,7 @@ class TestComparisonCarryingOn < Minitest::Test
 
   private def report_lines(folder) = File.read(File.join(folder, "report.txt")).lines.map(&:strip)
 
-  # WHAT JOINED A DRIFT LATER IS SAID WITH THE FRAME IT BEGAN ON, not as differing on the
+  # What joined a drift later is said with the frame it began on, not as differing on the
   # drift's first frame. A reading is out from before the ground turns red until after it
   # turns back, so the red frames join the drift the reading began. The report's screens are
   # of the drift's first frame, when both grounds were blue, and its words say so.

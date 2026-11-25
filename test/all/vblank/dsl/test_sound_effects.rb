@@ -28,7 +28,7 @@ module SoundEffectsGames
   BOTH_SIDES_TONES = Ractor.make_shareable({ "music.0": :half, "sfx.0": :quarter,
                                              "sfx.1": { 1 => :eighth, 2 => :three_quarter } })
   PICKED_TONES = Ractor.make_shareable({ "sfx.0": :half, "sfx.1": :half })
-  # A GROUP: the square voice the cry plays and the noise voice the hurt plays.
+  # A group: the square voice the cry plays and the noise voice the hurt plays.
   GROUP_TONES = Ractor.make_shareable({ "sfx.0": :half, "sfx.1": nil })
 
   # At 150 beats a minute and 24 ticks a beat, a tick is one frame.
@@ -138,7 +138,7 @@ module SoundEffectsGames
     shapes
   end
 
-  # A CRY on the first square voice, three notes ten ticks apart, and a HURT on the noise voice
+  # A cry on the first square voice, three notes ten ticks apart, and a hurt on the noise voice
   # — different voices, so without a group the two would sound together.
   private def cry(priority, group: :voice)
     Score.new(tempo: 150, priority: priority, group: group,
@@ -190,7 +190,7 @@ module SoundEffectsGames
 
   private def setting(tone, volume) = SoundEffectsGames.setting(tone, volume)
 
-  # THE WAVEFORM IN WAVE RAM. A tune on the triangle with a note every ten frames; an effect on the
+  # The waveform in wave RAM. A tune on the triangle with a note every ten frames; an effect on the
   # sawtooth from pass 10, twelve frames long; and from pass 16 a second tune, on the sine, which
   # starts while the effect holds the voice. Its first note is lost to the effect, and its second
   # is heard in the sine.
@@ -224,7 +224,7 @@ module SoundEffectsGames
     changes((1..frames).filter_map { |frame| (loaded = shapes.fetch(frame, loaded)) && waveform(loaded) })
   end
 
-  # A SONG RANKED BETWEEN TWO EFFECTS, so the player walks the effects above it before the song's
+  # A song ranked between two effects, so the player walks the effects above it before the song's
   # parts and the one below it after them. The higher one takes the first square voice from the
   # song; the lower one, asked for while that is sounding, is silent there and heard on the second
   # square voice, which nobody else wants.
@@ -304,7 +304,7 @@ module SoundEffectsGames
   end
 end
 
-# A SCORE PLAYED ONCE, AS A SOUND EFFECT, OVER THE SONG THAT IS PLAYING.
+# A score played once, as a sound effect, over the song that is playing.
 #
 # A sword hit, a door, a chest opening: each is a short run of notes decoded from somewhere the
 # same way a tune is, and each plays over the room's music without stopping it. When the effect
@@ -415,7 +415,7 @@ class TestSoundEffects < Minitest::Test
     assert_equal [[:"music.0", NOTES[:E4]]], notes_by_frame(silent_note_over_a_song, 30)[22]
   end
 
-  # A NOTE THAT SWELLS IN FROM VOLUME 0 is sounding from its first step, so a song that outranks an
+  # A note that swells in from volume 0 is sounding from its first step, so a song that outranks an
   # effect keeps its voice through one, as through any note it plays — a drum's as a square's.
   def test_a_note_swelling_from_nothing_keeps_its_voice
     [nil, :noise].each do |plays|
@@ -594,7 +594,7 @@ class TestSoundEffects < Minitest::Test
     assert_equal({ 4 => [[:"sfx.1", NOTES[:E5]]], 28 => [[:"sfx.1", 0]] }, notes_by_frame(program, 40))
   end
 
-  # WHICH EFFECT STARTED ON WHICH FRAME, which a game's own test reads without an emulator — the
+  # Which effect started on which frame, which a game's own test reads without an emulator — the
   # sound of a hit belongs to the frame of the hit.
   def test_the_log_says_which_effect_started_on_which_frame
     program = game({ hit: every_ten_ticks(:C5), spark: every_ten_ticks(:E5) }) do |sfx, pass|
@@ -647,7 +647,7 @@ class TestSoundEffects < Minitest::Test
   # test/lowering/gba/vblank/dsl/test_sound_effects_cartridge.rb, which holds each of these games
   # to the same answers on the Advance's cartridge.
 
-  # THE EFFECT TAKES THE FIRST SQUARE VOICE and the song comes back after it.
+  # The effect takes the first square voice and the song comes back after it.
   def test_an_effect_takes_a_square_voice_and_the_song_comes_back_after_it
     taken = song_and_effect(song_priority: 0, effect_priority: 68)
 
@@ -670,7 +670,7 @@ class TestSoundEffects < Minitest::Test
                  "the effect takes the voice, is silenced at its end, and the song comes back"
   end
 
-  # THE WAVEFORM. The wave voice loops whatever waveform is in wave RAM, and there is room there
+  # The waveform. The wave voice loops whatever waveform is in wave RAM, and there is room there
   # for one, so an effect's note has to put its own there — and the song's note after it has to
   # put the song's back. (See #two_tunes_on_the_wave_voice_under_an_effect for the game.)
   def test_each_note_on_the_wave_voice_loads_its_own_waveform
@@ -678,7 +678,7 @@ class TestSoundEffects < Minitest::Test
                  interpreted_waveforms(two_tunes_on_the_wave_voice_under_an_effect, frames: 40)
   end
 
-  # A SONG RANKED BETWEEN TWO EFFECTS: the lower one, asked for while the higher one is sounding,
+  # A song ranked between two effects: the lower one, asked for while the higher one is sounding,
   # is silent on the first square voice and heard on the second, which nobody else wants.
   def test_an_effect_below_the_song_is_heard_on_a_voice_nobody_else_wants
     assert_equal [[0, setting(:three_quarter, 7)], [24, 0]],
@@ -731,7 +731,7 @@ class TestSoundEffects < Minitest::Test
                  interpreted_changes(program, 3, WAVE_TONES, frames: 60)
   end
 
-  # A GROUP: the cry is cut off five frames in by the hurt, which outranks it.
+  # A group: the cry is cut off five frames in by the hurt, which outranks it.
   def test_an_effect_cut_off_by_a_higher_one_of_its_group_lets_its_voice_go
     assert_equal [[0, setting(:half, 12)], [5, 0]],
                  interpreted_changes(cry_then_hurt(cry_priority: 64, hurt_priority: 72), 1, GROUP_TONES, frames: 60),

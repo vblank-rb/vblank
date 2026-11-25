@@ -10,11 +10,11 @@ module VBlank
         # The tree has no operators in it: every number a game keeps goes through a runtime
         # function (runtime/rg_int32.rb). What the printer has to know:
         #
-        # - A CONDITION IS A NUMBER, nought or not. In Ruby only nil and false are false, so a
+        # - A condition is a number, nought or not. In Ruby only nil and false are false, so a
         #   number taken as a condition is written as a comparison with nought (`while x != 0`),
         #   never bare, which would always be taken. A comparison taken as one is Ruby's own
         #   comparison (`if a < b`), which is true or false already.
-        # - THE GAME'S OWN ARITHMETIC IS WRITTEN AS RUBY'S OPERATORS (INLINE_OPERATORS,
+        # - The game's own arithmetic is written as Ruby's operators (INLINE_OPERATORS,
         #   WRAPPED_OPERATORS), each in parentheses, so no precedence is needed. It runs every
         #   frame, and YJIT compiles an operator on small numbers to a few instructions but a
         #   runtime method only as a call: a `+` through rg_add was two calls. A sum, difference or
@@ -22,15 +22,17 @@ module VBlank
         #   rg_i32 to come round only when it has, which a game's numbers nearly never do. A shift
         #   by a count written in the program is an operator too (SHIFTS). The operands are worked
         #   out left to right, as the call worked them out.
-        # - A LIST ITEM IS READ IN ONE STEP (#list_item_call): the list's own method, or for a list
+        # - A list item is read in one step (#list_item_call): the list's own method, or for a list
         #   that is always full its Array's own `[]`, never the runtime's chain of small calls.
-        # - A RESUMABLE ROUTINE PICKS ITS STEP BY HALVING (#print_step_choice), not by a `case`.
-        # - WHERE A NAME LIVES. Everything the game keeps — its variables, lists, tables, the
+        # - A resumable routine picks its step by halving (#print_step_choice), not by a `case`.
+        # - Where a name lives. Everything the game keeps — its variables, lists, tables, the
         #   arrays of routines it calls by number, the art the runtime reads — is an instance
-        #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals.
-        # - A ROUTINE IS A METHOD, called by name, and one picked from an array by number is that
+        #   variable of the game, set in rg_game_setup; a routine's own locals are Ruby locals. The
+        #   printer writes each as an instance variable, and the build moves every one of them into
+        #   a holder object of no more than Ruby keeps at fixed places (FieldHolders).
+        # - A routine is a method, called by name, and one picked from an array by number is that
         #   array's block calling it by name.
-        # - A LONG ROUTINE IS SEVERAL METHODS. Ruby's compiler walks a method's branches by
+        # - A long routine is several methods. Ruby's compiler walks a method's branches by
         #   recursion on the machine's stack, one level for each `if`, `while` or `? :` in the whole
         #   method, so the stack a method needs grows with its length. A thread other than the main
         #   one, and so a Ractor, has a small stack: there a method of about 29,000 plain branches,
@@ -41,7 +43,7 @@ module VBlank
         #   printed in parts (#print_part_call), each a method of its own, and no method is longer
         #   than that whatever the routine's length. A routine shorter than that is printed whole,
         #   as before, since a call costs a little each time.
-        # - MANY LOCALS STOP RUBY ITSELF. On an arm64 machine YJIT panics, and Ruby dies ("YJIT has
+        # - Many locals stop Ruby itself. On an arm64 machine YJIT panics, and Ruby dies ("YJIT has
         #   panicked", in yjit::asm::arm64::add), the first time it compiles a method of more than
         #   about 490 locals: an add whose number does not fit the instruction, which holds up to
         #   4095, and 8 bytes a local is about that many. Every sum a routine checks for coming
@@ -103,7 +105,8 @@ module VBlank
 
           # The runtime functions that change how many items a list holds, or where its first is
           # (#always_full_lists).
-          LIST_RESIZING = Ractor.make_shareable(Set["rg_list_empty", "rg_list_push", "rg_list_drop", "rg_list_copy"])
+          LIST_RESIZING = Ractor.make_shareable(Set["rg_list_empty", "rg_list_push", "rg_list_drop", "rg_list_copy",
+                                                    "rg_list_set_capacity"])
 
           # How each C type a table is kept in packs its numbers into bytes, for a big table
           # written as base64: little-endian, the width the type holds.
@@ -111,13 +114,18 @@ module VBlank
                                             "int16_t" => "s<*", "uint16_t" => "S<*", "int32_t" => "l<*" })
 
           # The runtime's tables that grow with a game's art and sound, kept as binary Strings
-          # rather than Arrays where the game never writes them (see "THE GAME'S ART AND SOUND" in
+          # rather than Arrays where the game never writes them (see "the game's art and sound" in
           # runtime/rg_runtime.rb): a full collection reads every slot of an Array, and these are
           # millions. The runtime reads each only by one index at a time (or through the methods
           # its classes add), which a String of that class answers as an Array does. A game's own
           # tables stay Arrays: the runtime's routines that are handed one read it as an Array.
           KEPT_AS_BYTES = Ractor.make_shareable(Set["rg_game_image_pixels", "rg_game_tile_pixels", "rg_game_map_cells",
                                                     "rg_game_music", "rg_game_recording_samples"])
+
+          # The tables of KEPT_AS_BYTES kept so, unfrozen, where the game writes them: the map cells,
+          # which the start file writes for a background read from it, and which the screen reads
+          # through their class (RgHalves#entries).
+          WRITTEN_AS_BYTES = Ractor.make_shareable(Set["rg_game_map_cells"])
 
           # The runtime's class for a table of KEPT_AS_BYTES, by the C type it is kept in.
           BYTES_CLASS = Ractor.make_shareable({ "int8_t" => "RgSignedBytes", "uint8_t" => "RgBytes", "int16_t" => "RgSignedHalves",
@@ -127,8 +135,8 @@ module VBlank
           # a Ractor's stack compiles (see the class's heading).
           MOST_BRANCHES_A_METHOD = 3_000
 
-          # The most locals one printed method has, well inside what YJIT compiles (see "MANY
-          # LOCALS" in the class's heading). A routine whose locals would pass it keeps them as
+          # The most locals one printed method has, well inside what YJIT compiles (see "many
+          # locals" in the class's heading). A routine whose locals would pass it keeps them as
           # instance variables (#print_function), as a routine printed in parts does.
           MOST_LOCALS_A_METHOD = 400
 
@@ -139,7 +147,8 @@ module VBlank
           # What a part of a routine hands back to the method that called it, besides nil (it ran
           # to its end, so the caller goes on) and the routine's own 0 or 1 (the routine hands that
           # back at once): that the routine goes on to its next step, leaves its loop, or returns.
-          PART_ENDINGS = Ractor.make_shareable({ goto: ":rg_next", break: ":rg_break", return: ":rg_return" })
+          PART_ENDINGS = Ractor.make_shareable({ goto: ":rg_next", break: ":rg_break", return: ":rg_return",
+                                                 continue: ":rg_continue" })
 
           # The statements that always leave the method they are printed in, so a part ending in one
           # needs no nil after it.
@@ -209,7 +218,7 @@ module VBlank
           # a variable starts as the runtime's do.
           def items_name(list) = "@rg_items_#{list}"
 
-          # THE LISTS THAT ARE ALWAYS FULL (runtime/rg_list.rb's RgFullList, or for a list of bytes
+          # The lists that are always full (runtime/rg_list.rb's RgFullList, or for a list of bytes
           # its RgByteList), each with the bytes its slot takes: lists that every declaration fills
           # (rg_list_full), and nothing empties, pushes onto, drops from or copies into. The runtime
           # changes a list's length only through those calls (and a state read in, which puts back
@@ -281,7 +290,7 @@ module VBlank
             text
           end
 
-          # The build stops, rather than Ruby when YJIT compiles the method (see MANY LOCALS in the
+          # The build stops, rather than Ruby when YJIT compiles the method (see many locals in the
           # class's heading), if a method was printed with more locals than MOST_LOCALS_A_METHOD.
           def refuse_too_many_locals!(name)
             return if @method_locals.size <= MOST_LOCALS_A_METHOD
@@ -300,8 +309,8 @@ module VBlank
           def print_const_array(item)
             name = "@#{item.name.text}"
             frozen = item.writable ? "" : ".freeze"
-            if !item.writable && KEPT_AS_BYTES.include?(item.name.text)
-              print_table_of_bytes(item)
+            if KEPT_AS_BYTES.include?(item.name.text) && (!item.writable || WRITTEN_AS_BYTES.include?(item.name.text))
+              print_table_of_bytes(item, frozen)
             elsif item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
               # Zeros until the start file fills them (ConstArray#all_zeros?): made at that size as
               # the game starts, not read from base64 of millions of zeros.
@@ -322,19 +331,20 @@ module VBlank
 
           # A table of KEPT_AS_BYTES: its bytes in base64, held as the runtime's class for its type.
           # An empty one holds one entry, nought, as an empty table written as numbers does. One of
-          # zeros alone is its size in bytes of zeros, made as the game starts.
-          def print_table_of_bytes(item)
+          # zeros alone is its size in bytes of zeros, made as the game starts. A table the start file
+          # writes (the map cells of a background read from it) is left unfrozen, +frozen+ empty.
+          def print_table_of_bytes(item, frozen = ".freeze")
             kept_as = BYTES_CLASS.fetch(item.type) { raise LoweringError, "the printer cannot keep C's #{item.type} as bytes" }
             packing = PACKING.fetch(item.type)
             if item.values.size > MOST_WRITTEN_AS_NUMBERS && item.all_zeros?
               bytes = item.values.size * [0].pack(packing).bytesize
-              return add_starting_value("@#{item.name.text} = #{kept_as}.of(\"\\0\".b * #{integer(bytes)}).freeze")
+              return add_starting_value("@#{item.name.text} = #{kept_as}.of(\"\\0\".b * #{integer(bytes)})#{frozen}")
             end
 
             refuse_numbers_past_32_bits!(item.values)
             values = item.values.empty? ? [0] : item.values
             bytes = [values.pack(PACKING.fetch(item.type))].pack("m0")
-            add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\")).freeze")
+            add_starting_value("@#{item.name.text} = #{kept_as}.of(#{string(bytes)}.unpack1(\"m\"))#{frozen}")
           end
 
           # An array the start file fills (Statements::StartFileArray): its size alone, zeros until the runtime
@@ -402,16 +412,18 @@ module VBlank
             line(depth, "#{method_local('rg_part_ended')} = #{name}")
             if @in_part
               line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break) && @loops_open.positive?
+              line(depth, "next if rg_part_ended == #{PART_ENDINGS[:continue]}") if endings.include?(:continue) && @loops_open.positive?
               line(depth, "return rg_part_ended unless rg_part_ended.nil?")
             else
               line(depth, "next if rg_part_ended == #{PART_ENDINGS[:goto]}") if endings.include?(:goto)
               line(depth, "break if rg_part_ended == #{PART_ENDINGS[:break]}") if endings.include?(:break)
+              line(depth, "next if rg_part_ended == #{PART_ENDINGS[:continue]}") if endings.include?(:continue)
               line(depth, "return if rg_part_ended == #{PART_ENDINGS[:return]}") if endings.include?(:return)
               line(depth, "return rg_part_ended unless rg_part_ended.nil?") if endings.include?(:value)
             end
           end
 
-          # How +list+ can leave the method it is printed in: :goto, :break (of a loop outside it),
+          # How +list+ can leave the method it is printed in: :goto, :break or :continue (of a loop outside it),
           # :return, or :value (the routine's own 0 or 1).
           def endings_of(list, in_loop:)
             list.each_with_object(Set.new) do |statement, endings|
@@ -420,6 +432,7 @@ module VBlank
               when Statements::Pause, Statements::Finish, Statements::Resume then endings << :value
               when Statements::Return then endings << :return
               when Statements::Break then endings << :break unless in_loop
+              when Statements::Continue then endings << :continue unless in_loop
               when Statements::If then endings.merge(endings_of(statement.body, in_loop: in_loop))
                                                 .merge(endings_of(statement.otherwise, in_loop: in_loop))
               when Statements::Block then endings.merge(endings_of(statement.body, in_loop: in_loop))
@@ -543,6 +556,7 @@ module VBlank
             when Statements::If then print_if(depth, item)
             when Statements::While then print_while(depth, item)
             when Statements::Break then @loops_open.positive? ? line(depth, "break") : leave(depth, :break, "break")
+            when Statements::Continue then @loops_open.positive? ? line(depth, "next") : leave(depth, :continue, "next")
             when Statements::Return then leave(depth, :return, "return")
             when Statements::Block then print_block(depth, item)
             when Statements::Comment then comment(depth, item.text)
@@ -591,7 +605,7 @@ module VBlank
           # names (#print_step_choice), each step going on to the next with `next`, and leaving the
           # method with 1 or 0.
           #
-          # THE STEP IT IS ON IS A RUBY LOCAL, rg_step, read from the counter as the routine is called
+          # The step it is on is a Ruby local, rg_step, read from the counter as the routine is called
           # and set by each goto, and the counter is written only where the routine leaves: a wait
           # (Pause) and the end (Finish) set it, and a call of a routine that waits (Resume) sets it
           # to the step the call is in before it hands back 1. Nothing reads the counter while the
@@ -616,7 +630,7 @@ module VBlank
             @steps_item = nil
           end
 
-          # Step +number+ of +item+, where the choice picked it. A STEP THAT COMES BACK TO ITSELF
+          # Step +number+ of +item+, where the choice picked it. A step that comes back to itself
           # (#step_comes_back?), as the body of a loop cut into steps does through the steps that
           # count it on and test it, is a loop of its own: going back to it is that loop's `next`,
           # and going to any other step leaves it, rg_step set, for the choice to pick again. A loop
@@ -708,7 +722,7 @@ module VBlank
           end
 
           # A call of a routine that waits, made again when this one carries on: if it hands back 1,
-          # this routine does too, its counter set to the step the call is in (see THE STEP IT IS ON
+          # this routine does too, its counter set to the step the call is in (see the step it is on
           # at #print_steps).
           def print_resume(depth, item)
             return line(depth, "return 1 if #{expression(item.call)} == 1") unless @steps_item
@@ -719,7 +733,7 @@ module VBlank
             line(depth, "end")
           end
 
-          # THE STEP THE COUNTER NAMES, from +first+ up to before +past+, picked by halving: a test
+          # The step the counter names, from +first+ up to before +past+, picked by halving: a test
           # of whether it is below the middle step, then the same again on that half, until a few
           # steps are left, each then tested for in turn. So a routine of a thousand steps picks one in
           # about ten tests.
@@ -865,8 +879,8 @@ module VBlank
             "#{function}(#{item.args.map { |arg| expression(arg) }.join(', ')})"
           end
 
-          # A read or write of one item of a list as the list's own method (see "A READ OR WRITE OF
-          # ONE ITEM" atop runtime/rg_list.rb), which gives nil for an index the list does not have:
+          # A read or write of one item of a list as the list's own method (see "a read or write of
+          # one item" atop runtime/rg_list.rb), which gives nil for an index the list does not have:
           # then rg_list_index_fault stops the game. The list is always an instance variable, so
           # naming it twice reads nothing else.
           #
@@ -928,7 +942,7 @@ module VBlank
             "(#{at} = #{index}; #{kept} = #{value}; #{in_range} ? #{bytes}.setbyte(#{at}, #{kept}) : #{fault})"
           end
 
-          # A temporary of the method being printed (see MANY LOCALS in the class's heading).
+          # A temporary of the method being printed (see many locals in the class's heading).
           def temporary
             kept = method_local("w_#{(@temporaries % MOST_TEMPORARIES_A_METHOD) + 1}")
             @temporaries += 1
@@ -971,7 +985,7 @@ module VBlank
             end
           end
 
-          # THE SMALLEST AND LARGEST +item+ CAN BE, as [low, high], or nil where that is not known
+          # The smallest and largest +item+ can be, as [low, high], or nil where that is not known
           # while printing. A number written in the program is itself; a counted loop's count and
           # variable are known through its body (#counted_loop_ranges); a sum, difference, product
           # or shift of known numbers is worked out from theirs, and is known only when the whole of
@@ -1003,7 +1017,7 @@ module VBlank
             end
           end
 
-          # A COUNTED LOOP, as Computer::Lowering#lower_repeat writes one, and what is known of its
+          # A counted loop, as Computer::Lowering#lower_repeat writes one, and what is known of its
           # numbers through its body: +body+ is a block's statements, its count set to a number
           # written in the program, its index to nought, then a loop while the index is below the
           # count, which hands the index to the game's variable first and adds one to it last. Inside,
@@ -1035,7 +1049,7 @@ module VBlank
             [index_name, variable].compact.to_h { |name| [name, [0, count_value - 1]] }
           end
 
-          # WHAT A TEST SAYS OF ITS NAMES, inside the branch it takes: +condition+'s comparisons of a
+          # What a test says of its names, inside the branch it takes: +condition+'s comparisons of a
           # name with a number written in the program, alone or tested both together (rg_both), each
           # narrowing what was known of the name. So an unpacking's `at >= 0 && at < count`, its test
           # before a write to its list, prints the write knowing the index is nought or more. Nil

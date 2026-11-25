@@ -2,7 +2,7 @@
 
 module VBlank
   module IR
-    # HOW TO DIVIDE BY A NUMBER WRITTEN IN THE GAME WITHOUT DIVIDING, for a lowering whose machine can
+    # How to divide by a number written in the game without dividing, for a lowering whose machine can
     # multiply two 32-bit numbers and keep the high half of the 64-bit product.
     #
     # A divide is slow on most consoles, or missing: some have no divide instruction at all and call a
@@ -12,7 +12,7 @@ module VBlank
     #
     # One over ten has no exact binary form, so a whole number close to 2**k / 10 stands in for it, and
     # the low k bits of the product are thrown away: the same sum, scaled up and back down. "Close" has
-    # to be close ENOUGH: the rounded reciprocal must give exactly the right answer for every one of
+    # to be close enough: the rounded reciprocal must give exactly the right answer for every one of
     # the four billion numerators, not merely most of them. Rounding up by a hair is safe as long as the
     # hair can never push a numerator over the next whole number, and how big a power of two that needs
     # depends on the divisor.

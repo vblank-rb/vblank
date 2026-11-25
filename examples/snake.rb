@@ -9,8 +9,8 @@
 #   - Run into a wall or into your own body and it's game over.
 #   - Press START on the title (or after a game over) to play.
 #
-# It shows off the pieces that make a real game: a `list` for the growing body
-# (two parallel lists, xs and ys, one cell per segment), `seed`/`rand` for where
+# It shows off the pieces that make a real game: Arrays the game keeps as lists
+# for the growing body (two parallel ones, xs and ys, one cell per segment), `seed`/`rand` for where
 # the food appears, `every` for the movement beat, `draw_number` for the live
 # score, and scenes wired together with a state variable.
 #
@@ -85,7 +85,7 @@ module Snake
     def min_row = HEADER_ROWS + 1     # just below the top wall
     def max_row = rows - 2            # just above the bottom wall
 
-    # Pixel geometry of the wall frame (all fixed, so it draws with dma_fill_rect).
+    # Pixel geometry of the wall frame (all fixed, so it draws with fill_rect).
     def top_wall_y = HEADER_ROWS * CELL       # top wall sits just under the header
     def bottom_wall_y = (rows - 1) * CELL     # bottom wall on the last row
     def right_wall_x = (cols - 1) * CELL      # right wall on the last column
@@ -124,11 +124,11 @@ module Snake
     define_sound :die, frequency: 140, duty: :half, decay: :medium
 
     # --- The body: two parallel lists, one entry per cell (xs[i], ys[i]) ---
-    xs = list :xs, capacity: here.body_cap
-    ys = list :ys, capacity: here.body_cap
+    xs = Array.new(capacity: here.body_cap)
+    ys = Array.new(capacity: here.body_cap)
 
     # --- RAM variables (each `var` hands back a handle we compare and mutate) ---
-    state    = 0    # 0 = title, 1 = playing, 2 = game over (read via case_var)
+    state    = 0    # 0 = title, 1 = playing, 2 = game over (picked by the case below)
     blink    = true # flashes the "PRESS START" prompt on and off
     dx       = 1       # current heading, in cells per step (one axis at a time)
     dy       = 0
@@ -159,9 +159,10 @@ module Snake
 
     # Pick a random empty cell for the food (it doesn't paint — the caller decides
     # when, since a fresh round clears the screen right after). It tries a handful
-    # of random cells and keeps the first that isn't under the snake; the attempts
-    # are unrolled here at build time, so each is just one draw from the random
-    # stream plus one scan of the body — no loop inside a loop at run time.
+    # of random cells and keeps the first that isn't under the snake: each try is one
+    # draw from the random stream plus one scan of the body. The tries are too large to
+    # write out once each, so the build makes them a loop the game runs, around the
+    # scan's own loop; `rom.profile` lists the line and what the build chose.
     func :spawn_food do
       placed = false
       FOOD_TRIES.times do
@@ -184,7 +185,7 @@ module Snake
     # Repaint the score field: erase the old digits, then draw the new number. Only
     # called when the score changes (a round start, an eat), so it's cheap.
     func :draw_score do
-      dma_fill_rect score_num_x, SCORE_Y, SCORE_NUM_W, 7, :black
+      fill_rect score_num_x, SCORE_Y, SCORE_NUM_W, 7, :black
       draw_number score, score_num_x, SCORE_Y, :white, digits: 3
     end
 
@@ -194,10 +195,10 @@ module Snake
     func :draw_board do
       clear_screen :black
       draw_text "SCORE", SCORE_LABEL_X, SCORE_Y, :gray
-      dma_fill_rect 0, here.top_wall_y, here.width, CELL, :gray                  # top wall
-      dma_fill_rect 0, here.bottom_wall_y, here.width, CELL, :gray               # bottom wall
-      dma_fill_rect 0, here.top_wall_y, CELL, here.wall_h, :gray                 # left wall
-      dma_fill_rect here.right_wall_x, here.top_wall_y, CELL, here.wall_h, :gray # right wall
+      fill_rect 0, here.top_wall_y, here.width, CELL, :gray                  # top wall
+      fill_rect 0, here.bottom_wall_y, here.width, CELL, :gray               # bottom wall
+      fill_rect 0, here.top_wall_y, CELL, here.wall_h, :gray                 # left wall
+      fill_rect here.right_wall_x, here.top_wall_y, CELL, here.wall_h, :gray # right wall
       call :draw_score
       call :draw_food
       repeat(xs.length) do |i|
@@ -209,9 +210,9 @@ module Snake
     # Start a fresh game: reset the body to the opening snake, face right, zero the
     # score, place the first food, paint the board once, and switch to playing.
     func :new_game do
-      # Re-declaring a list empties it — the clean way to start the body over.
-      list :xs, capacity: here.body_cap
-      list :ys, capacity: here.body_cap
+      # A new Array in place of the old one empties the body, as Ruby would.
+      xs = Array.new(capacity: here.body_cap)
+      ys = Array.new(capacity: here.body_cap)
       here.start_cells.each do |cx, cy|
         xs.push cx
         ys.push cy
@@ -287,7 +288,7 @@ module Snake
     prompt_w = (text_width("PRESS START") + 1) & ~1
     { title_prompt: 96, game_over_prompt: 110 }.each do |name, y|
       func name do
-        dma_fill_rect (here.width - prompt_w) / 2, y, prompt_w, PROMPT_H, :black
+        fill_rect (here.width - prompt_w) / 2, y, prompt_w, PROMPT_H, :black
         draw_text "PRESS START", :center, y, :gray if blink
       end
     end
@@ -375,10 +376,10 @@ module Snake
 
     # --- Main loop: pick the scene for the current state, every frame ---
     game_loop do
-      case_var :state do
-        when_val 0, :title
-        when_val 1, :playing
-        when_val 2, :game_over
+      case state
+      when 0 then call :title
+      when 1 then call :playing
+      when 2 then call :game_over
       end
     end
   end

@@ -43,10 +43,7 @@ class TestCoveredBackgroundsOnThePlayStation < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick > 3
-        case_var(:state) do
-          when_val 0, :covered
-          when_val 1, :bare
-        end
+        call({ 0 => :covered, 1 => :bare }, number: :state)
       end
     end
     b.finalize_program

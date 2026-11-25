@@ -3,7 +3,7 @@
 require "test_helper"
 require "differential"
 
-# A LATE PAGE ON THE TEAR-FREE SCREEN, shown at once when the game says so.
+# A late page on the tear-free screen, shown at once when the game says so.
 #
 # The tear-free screen shows a finished page at the next break between pictures. A pass that
 # runs a little over its frame misses that break and waits for the one after, so a frame a
@@ -80,7 +80,7 @@ class TestLatePages < Minitest::Test
     assert_equal 0, result.pages_shown_part_way
   end
 
-  # A NUMBER IS A ROW: a page finished while the screen is still drawing above that row is shown
+  # A number is a row: a page finished while the screen is still drawing above that row is shown
   # at once, where a tear is least seen, and one finished below it waits as before. Here every
   # other page is shown at once: the pass after one starts part way down the picture, so it is
   # not late until the break after the coming one, and waits — two pictures in three frames,
@@ -99,7 +99,7 @@ class TestLatePages < Minitest::Test
     assert_in_delta 30.0, profile_of(late_program(ENDS_NEAR_THE_TOP, late: 4), "LATE4").fps, 0.5
   end
 
-  # PACE SAYS WHAT LATE MEANS. A game going steadily at thirty that says so is on time on every
+  # Pace says what late means. A game going steadily at thirty that says so is on time on every
   # pass, so it never shows a page at once and never tears.
   def test_a_game_on_time_for_its_pace_never_shows_a_page_at_once
     require_emulator!
@@ -121,7 +121,7 @@ class TestLatePages < Minitest::Test
     assert_operator showing.pages_shown_at_once, :>, 0
   end
 
-  # ONE TEAR DOES NOT SET OFF ANOTHER. A game at sixty whose every eighth pass runs a little
+  # One tear does not set off another. A game at sixty whose every eighth pass runs a little
   # into the next frame: that pass is shown part way down, and the passes after it, which start
   # part way down too, are shown in a break or wait — so it tears on the slow passes and on
   # nothing else, and keeps sixty where waiting drops it below.
@@ -135,7 +135,7 @@ class TestLatePages < Minitest::Test
     assert_operator showing.pages_shown_part_way, :<=, (60 / 8) + 1, "a tear for each slow pass at most"
   end
 
-  # SAID PER SCREEN, SO PER SCENE: a game can show a late page at once while it plays and keep
+  # Said per screen, so per scene: a game can show a late page at once while it plays and keep
   # its menu from ever tearing. A scene with no `screen` line of its own does what the game's
   # screen does, however the game reaches it.
   # The game starts in the menu, whose own screen waits, and moves to +stay+ a few frames in —
@@ -154,14 +154,11 @@ class TestLatePages < Minitest::Test
         clear_screen :gray
         repeat(ENDS_NEAR_THE_TOP) { done += 1 }
       end
-      if dispatch == :case_var
+      if dispatch == :number
         state = 0
         game_loop do
           after(5) { state = stay == :menu ? 0 : 1 }
-          case_var(:state) do
-            when_val 0, :menu
-            when_val 1, :play
-          end
+          call({ 0 => :menu, 1 => :play }, number: :state)
         end
       else
         mode = var :mode, :menu
@@ -178,7 +175,7 @@ class TestLatePages < Minitest::Test
   def test_a_scene_with_no_screen_line_shows_a_late_page_as_the_games_screen_says
     require_emulator!
 
-    assert_operator profile_of(two_scene_program(:case_var, :play), "LATEPLAY").fps, :>, 35.0
+    assert_operator profile_of(two_scene_program(:number, :play), "LATEPLAY").fps, :>, 35.0
   end
 
   def test_a_scene_the_game_calls_by_name_does_the_same
@@ -190,10 +187,10 @@ class TestLatePages < Minitest::Test
   def test_a_scene_whose_own_screen_waits_still_waits
     require_emulator!
 
-    assert_in_delta 30.0, profile_of(two_scene_program(:case_var, :menu), "LATEMENU").fps, 0.5
+    assert_in_delta 30.0, profile_of(two_scene_program(:number, :menu), "LATEMENU").fps, 0.5
   end
 
-  # WHAT IS DRAWN DOES NOT CHANGE, only when it is shown.
+  # What is drawn does not change, only when it is shown.
   def test_a_page_shown_at_once_is_the_page_the_interpreter_draws
     b = Builder.new
     b.instance_eval do

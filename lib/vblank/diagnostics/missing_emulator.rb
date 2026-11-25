@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # WHY THE EMULATOR WOULD NOT LOAD, AND WHAT TO DO ABOUT IT: three failures that look the same
+    # Why the emulator would not load, and what to do about it: three failures that look the same
     # and need different advice, told apart by facts about the process. Emulator works the facts out
     # and raises with #advice; a test hands them in, so each message can be asked for on its own
     # without arranging a machine where the emulator is missing in that way.
@@ -18,7 +18,7 @@ module VBlank
     # Gemfile line they already have.
     #
     # Under that the two cases are: the gem is not in the bundle at all, which is the usual one and
-    # the reader is building a game; or it IS there and its C extension was never compiled, which is
+    # the reader is building a game; or it is there and its C extension was never compiled, which is
     # what a `path:` entry gets you, because bundler builds extensions for gem and git sources and not
     # for path ones. A resolvable spec means the gem is present and the build is what is missing.
     class MissingEmulator < Data.define(:detail, :bundled, :not_built)

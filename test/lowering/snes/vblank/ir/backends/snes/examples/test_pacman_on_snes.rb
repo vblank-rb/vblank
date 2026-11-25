@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require VBlank.root.join("examples/pacman").to_s
+ShareableConstants.require_file(VBlank.root.join("examples/pacman").to_s)
 
 # examples/pacman.rb on a Super Nintendo, laid out on its 256×224 screen: Pac-Man walks up to the
 # pellet above him and eats it, then stands still until the ghost catches him, and flashes white

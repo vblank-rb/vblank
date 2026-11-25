@@ -5,7 +5,7 @@ module VBlank
     module Backends
       class SNES
         module Runtime
-          # A PAINTED SCREEN THAT TAKES TURNS between two pictures (PaintLog's, on a plain cartridge).
+          # A painted screen that takes turns between two pictures (PaintLog's, on a plain cartridge).
           #
           # A screen that blinks, or swaps one half for the other, paints on each pass what it
           # painted two passes ago. PaintLog passes over a pass that paints what the last one did,
@@ -13,12 +13,12 @@ module VBlank
           # swapped every other pass is 448 tiles' keys, the flush of them and all 896 cells of the
           # map, three frames a pass. The console's own games keep both pictures and swap a map.
           #
-          # So the screen keeps THE OTHER PICTURE, one shown before, beside the one it shows: its
+          # So the screen keeps the other picture, one shown before, beside the one it shows: its
           # log, the generation its tiles were readied in (Paint) and the rows they were readied in
           # (PaintLog::READIED), and its map (OTHER_MAP). The log is two halves, each pass writing
           # in one; a pass deferred (PaintLog::DEFERRED_CLEAR) that comes to differ from the last
           # pass within its first SMALL_PREFIX paintings is compared with the other picture's log
-          # from there (rt_paint_try_other). A pass that matches the whole of it TAKES ITS TURN
+          # from there (rt_paint_try_other). A pass that matches the whole of it takes its turn
           # (rt_paint_turn): the other picture's generation becomes the screen's, so its tiles are
           # this pass's and the last pass's are a generation gone; the two maps change places in
           # the rows where they differ (MAP_DIFFERS), sent in one copy in the blank; and the last
@@ -67,7 +67,7 @@ module VBlank
             PREFIX = "rt paint prefix"
             AT_END = "rt paint at end"
             ROW_BYTES = Paint::COLUMNS * 2
-            # TILES BOTH PICTURES SHOW. A wall painted on every pass is in both pictures, and the
+            # Tiles both pictures show. A wall painted on every pass is in both pictures, and the
             # pass that paints it readies its tiles in its own generation, out of the other's. Such
             # a tile is SHARED, not touched, when the pass leaves it as the other picture had it (the
             # same key, PaintLog::KEYS_COPY, checked as the pass ends): it is kept on a list, and each

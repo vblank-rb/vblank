@@ -4,7 +4,7 @@ module VBlank
   module IR
     module Backends
       class GBC
-        # WHAT A RUNNING COLOR CARTRIDGE PLAYED, said in the interpreter's words (Reference#audio):
+        # What a running color cartridge played, said in the interpreter's words (Reference#audio):
         # sound switched on, a beep, a hit on the noise voice, the wave voice told to play or stop,
         # a song's notes, the music stopped, and a sound effect starting, its notes, and the voices it
         # lets go at its end (Runtime::Effects, whose routines are each reached at a label of their
@@ -25,7 +25,7 @@ module VBlank
         # loudness when the game sets how loud the music is, and what the wave or noise voice is
         # doing.
         #
-        # WHERE A PASS'S SOUNDS END. The interpreter moves the music on at the frame boundary after
+        # Where a pass's sounds end. The interpreter moves the music on at the frame boundary after
         # a pass, by every frame the pass took, before anything reads the frame
         # (Reference#advance_frame), so what it has logged at the end of pass N holds that
         # boundary's notes. The cartridge's player plays them in the screen's interrupt, on each
@@ -165,7 +165,7 @@ module VBlank
 
           private
 
-          # AN INTERRUPT TAKEN JUST AS THE PROCESSOR REACHES AN INSTRUCTION comes back to it, and the
+          # An interrupt taken just as the processor reaches an instruction comes back to it, and the
           # emulator records it reached twice, with one run of it. The interrupt shows it itself:
           # the place it will return to, on top of the stack as its vector is reached, is the
           # instruction just recorded, which has not run yet. So the next arrival there is that

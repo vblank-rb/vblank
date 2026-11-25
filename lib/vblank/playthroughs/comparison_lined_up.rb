@@ -3,15 +3,15 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # TWO CARTRIDGES PLAYED STEP BY STEP, NOT FRAME BY FRAME: the first plays the tape a frame
+      # Two cartridges played step by step, not frame by frame: the first plays the tape a frame
       # at a time, as it always does, and the second is played on as far as each step the first
       # takes. A step is what each cartridge counts for itself: a pass of the game loop (Passes),
       # or a frame whose picture changed (StillFrames). The two are compared on the first frame
       # each shows each step, or at each pass's end where that was asked for (Passes, AT THE END OF
-      # EACH PASS), so a step that takes more frames on one than on the other is still like with
+      # each pass), so a step that takes more frames on one than on the other is still like with
       # like.
       #
-      # THE BUTTONS depend on what a step is. A game reads its buttons once a pass, so where the
+      # The buttons depend on what a step is. A game reads its buttons once a pass, so where the
       # steps are passes the second is held, on each frame it plays, the buttons the first held
       # on the frame that pass began on: the ones the first read. The first's buttons on its
       # other frames of that pass are given to neither (see Passes). A game that reads them on
@@ -24,7 +24,7 @@ module VBlank
       # the step before, in order, one a frame: the last of them again if it takes more frames,
       # and the rest never if it takes fewer.
       #
-      # A COUNT OF STEPS (Passes, StillFrames) answers `lined_up_on(first, second, part)` (one of
+      # A count of steps (Passes, StillFrames) answers `lined_up_on(first, second, part)` (one of
       # these; +part+ is the part of the screen looked at on every frame),
       # `refuse_unreadable_on!(cartridges)` (before a frame is played), `game_loop_count?(side)`
       # (whether that console has to keep the game loop's count) and `setting_name`.
@@ -44,8 +44,8 @@ module VBlank
         attr_reader :second_frames
 
         # +every_frame+ marks that the game reads its buttons on every frame and not once a pass (see
-        # THE BUTTONS); it matters only where the steps are passes. +at_end+ marks that each step is
-        # compared at its end and not on its first frame (Passes, AT THE END OF EACH PASS).
+        # the buttons); it matters only where the steps are passes. +at_end+ marks that each step is
+        # compared at its end and not on its first frame (Passes, at the end of each pass).
         def initialize(first, second, passes:, every_frame: false, at_end: false)
           @first = first
           @second = second
@@ -66,7 +66,7 @@ module VBlank
         # on the frame after it.
         def at_end? = @at_end
 
-        # AFTER A LEAD-IN, COMPARING STARTS ON THE FIRST CARTRIDGE'S PASS, whichever cartridge is
+        # After a lead-in, comparing starts on the first cartridge's pass, whichever cartridge is
         # ahead. A lead-in of the same frames on both can leave them passes apart, since one runs
         # late on frames the other does not, and starting at the later of the two would silently
         # leave out the passes in between on the one behind.
@@ -95,7 +95,7 @@ module VBlank
         # second whose lead-in took a road of its own (a press on another frame) is held none of
         # the first's, since that would press again what it pressed already. Once it has played as
         # many frames as the first's lead-in, or reached the first step compared, it is held the
-        # buttons of the pass as ever (THE BUTTONS). A press on a frame of the first's lead-in after
+        # buttons of the pass as ever (the buttons). A press on a frame of the first's lead-in after
         # the second has caught up comes too late for the second, which is already comparing.
         def start_after_lead_ins!(second_led_in:, first_lead_in_keys:, second_lead_in_keys:)
           return unless @passes
@@ -132,7 +132,7 @@ module VBlank
         # did not move on (or had shown nothing before).
         private def step_ended(before, after) = before && after > before ? before : nil
 
-        # Play the second cartridge on, held the buttons the first was (see THE BUTTONS; the first
+        # Play the second cartridge on, held the buttons the first was (see the buttons; the first
         # time after lead-ins, the first's lead-in's while it catches up: start_after_lead_ins!), until
         # its count shows +step+ or a later one, and answer whether it shows that very step,
         # which is then compared. It plays at least one frame the first time, since nothing is

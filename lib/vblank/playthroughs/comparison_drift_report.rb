@@ -3,10 +3,10 @@
 module VBlank
   module Playthroughs
     class Comparison
-      # THE REPORT OF A DRIFT ON A FRAME, for a comparison on the same tape: both cartridges
+      # The report of a drift on a frame, for a comparison on the same tape: both cartridges
       # were on that frame, played with the same presses.
       #
-      # ONE TAPE, UNLESS THE TWO WERE STARTED DIFFERENTLY. The presses are the same for
+      # One tape, unless the two were started differently. The presses are the same for
       # both, so where both started the same way there is one tape and it plays either of
       # them to that frame again. A tape also records where it starts, though, and a
       # cartridge that was led in is not started as one that was not: then there are two

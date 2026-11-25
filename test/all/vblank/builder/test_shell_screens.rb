@@ -4,7 +4,7 @@ require "test_helper"
 require "tmpdir"
 require "shell_screen_tests"
 
-# `shell_screen`: WHAT A GAME MAY AND MAY NOT GIVE ITS SHELL'S FIRST SCREEN, told as the shell is
+# `shell_screen`: what a game may and may not give its shell's first screen, told as the shell is
 # built (Original::Shell.build), and that a cartridge holds nothing of it. What the screen shows on
 # each runtime is tested in that runtime's folder (test_shell_screen.rb under
 # test/lowering/ruby/vblank/live/, and the web page's and the desktop program's).

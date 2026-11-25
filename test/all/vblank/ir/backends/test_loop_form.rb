@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# WHICH `while` LOOPS ARE COUNTED (Backends::LoopForm#counted_while), and that a game whose loops are
+# Which `while` loops are counted (Backends::LoopForm#counted_while), and that a game whose loops are
 # lowered as counted ones does what the interpreter does on every run: the loop's variable after it,
 # the turns made, a routine called after reading the variable, and loops that look counted and are not.
 class TestLoopForm < Minitest::Test

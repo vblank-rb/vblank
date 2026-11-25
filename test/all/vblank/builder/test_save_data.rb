@@ -3,7 +3,7 @@
 require "test_helper"
 require "first_pass_presses"
 
-# SAVE DATA: a record is a group of the game's own state — variables and lists — kept in the
+# Save data: a record is a group of the game's own state — variables and lists — kept in the
 # cartridge's save memory when the game says so, and put back when the game says so. Unlike a
 # `save_var`, nothing is written until the game asks: a player who turns the console off
 # without saving finds the game as it was when they last saved.
@@ -31,7 +31,7 @@ module SaveDataGames
   # The buttons these games give a job before starting a new game.
   BUTTONS_WITH_JOBS = %i[a b start up down left right].freeze
 
-  # THE BUTTON THAT STARTS A NEW GAME: SELECT, or C on a Genesis pad, which has no SELECT. Every
+  # The button that starts a new game: select, or C on a Genesis pad, which has no SELECT. Every
   # other button already has a job, and a game cannot read a button its console lacks.
   private def new_game_button = (VBlank::Console.described(game_console).buttons - BUTTONS_WITH_JOBS).first
 
@@ -62,7 +62,7 @@ module SaveDataGames
     game_player(save: store).input_each_frame(&presses_from_first_pass(pressing)).run(program, frames: frames)
   end
 
-  # THREE SAVE FILES, picked by a number the game works out. Each button does one thing to the
+  # Three save files, picked by a number the game works out. Each button does one thing to the
   # file `slot` names: A saves the hearts into it, B erases it, L loads it, R copies file 0
   # over it, SELECT (new_game_button) starts a new game (the kept things back as they were
   # declared), and UP and DOWN move the slot. What each file holds is read without loading it.
@@ -115,7 +115,7 @@ module SaveDataGames
     play(three_files, store, pressing: presses(*buttons), frames: (buttons.length * 2) + 4)
   end
 
-  # A FILE-SELECT SCREEN SHOWS EACH FILE'S NAME, which is a list: read it item by item from the
+  # A file-select screen shows each file's name, which is a list: read it item by item from the
   # copy, with the game's own list left alone.
   private def names_peeked
     proc do
@@ -141,7 +141,7 @@ module SaveDataGames
     end
   end
 
-  # THE RANDOM NUMBERS ARE PART OF A SAVE. A game that saves mid-level and loads again must
+  # The random numbers are part of a save. A game that saves mid-level and loads again must
   # roll what it would have rolled from there — the guard that was going to miss still misses.
   # UP churns the numbers, A saves, B rolls into `rolled`, L loads. Rolled once after the save,
   # churned again, loaded, rolled again: the two rolls are the same number.
@@ -168,7 +168,7 @@ module SaveDataGames
 
   ROLLING = %i[up up up a b up up start b].freeze
 
-  # A POOL IS PART OF A SAVE: every guard, where it was, how hurt, and which slots were free,
+  # A pool is part of a save: every guard, where it was, how hurt, and which slots were free,
   # so a load puts the same guards back in the same slots and the next one spawned lands where
   # it would have. A spawns three and removes the middle one, then saves; B hurts them all,
   # spawns one and removes another; L loads; R spawns one more; SELECT starts a new game.
@@ -229,7 +229,7 @@ module SaveDataGames
     end
   end
 
-  # A FILE SCREEN DECLARED BEFORE THE GAMEPLAY IT SAVES. The record is declared with nothing in
+  # A file screen declared before the gameplay it saves. The record is declared with nothing in
   # it and used straight away — saved, loaded, erased, copied, peeked at by name — and what it
   # keeps is added later, by the code that owns it: the hearts and the name each by a routine
   # of its own, whose body is built after the screen's. The buttons are three_files' buttons,
@@ -281,7 +281,7 @@ module SaveDataGames
     play(file_screen_first, store, pressing: presses(*buttons), frames: (buttons.length * 2) + 4)
   end
 
-  # A WHOLE GAME'S PROGRESS: three files of 1204 bytes each — a thousand and more flags packed
+  # A whole game's progress: three files of 1204 bytes each — a thousand and more flags packed
   # into a list — beside a small settings record of its own. A saves file 2 and the settings,
   # B scrambles the flags, L loads file 2 back.
   private def full_size
@@ -311,7 +311,7 @@ module SaveDataGames
     end
   end
 
-  # A SAVE RUNS IN THE BACKGROUND. A full-size file is written a piece at a time over several
+  # A save runs in the background. A full-size file is written a piece at a time over several
   # passes of the game loop, so the game never stands still for it, and `saving?` holds from
   # the moment it is asked for until the last piece is in. A copy made good at power-on shows
   # the save arrived whole.
@@ -334,7 +334,7 @@ module SaveDataGames
     end
   end
 
-  # THE SAVE HOLDS THE MOMENT IT WAS ASKED FOR. The game goes on while a big save is written,
+  # The save holds the moment it was asked for. The game goes on while a big save is written,
   # and what it changes on the passes after — hearts down, a flag cleared — is not in the save.
   private def changes_while_saving
     built do
@@ -357,7 +357,7 @@ module SaveDataGames
     end
   end
 
-  # WHAT A SAVE ASKED FOR WHILE ANOTHER IS IN HAND DOES, which the record says with `when_busy:`.
+  # What a save asked for while another is in hand does, which the record says with `when_busy:`.
   # A saves 10 and then 20 into the same copy, in one pass, and counts the passes `saving?` held.
   private def two_saves(when_busy)
     built do
@@ -387,7 +387,7 @@ module SaveDataGames
     [run, play(two_saves(when_busy), store, frames: 2)]
   end
 
-  # A RECORD KEEPS ITS PLACE WHEN THE GAME CHANGES AROUND IT. A game that ships and is then
+  # A record keeps its place when the game changes around it. A game that ships and is then
   # updated — a setting added, the records declared in another order, a fourth file — must
   # find the player's saves where the last build left them. Only a record whose own contents
   # changed reads as empty.
@@ -430,7 +430,7 @@ module SaveDataGames
     VBlank::IR::SaveImage.new.tap { |store| play(version, store, pressing: { 2 => :a }, frames: 12) }
   end
 
-  # A RECORD NAMED LIKE THE FRAMEWORK'S OWN SAVE MACHINERY — the table saying where each
+  # A record named like the framework's own save machinery — the table saying where each
   # record lives (:table, and the :places it works them out in) and the queue that writes
   # saves a piece at a time (:jobs) — is a record like any other. Each keeps a number of its
   # own, with a plain record before and after them, and every one has to come back holding
@@ -459,7 +459,7 @@ module SaveDataGames
   # --- what a save puts in save memory, byte by byte ---
   #
   # Everything above asks the game whether its saves came back. These read save memory itself,
-  # because what keeps a save safe is WHERE each part goes and in WHAT ORDER it is written, and
+  # because what keeps a save safe is where each part goes and in WHAT ORDER it is written, and
   # a mistake in either can still read back right until the power goes off at the wrong moment.
 
   Layout = VBlank::IR::SaveLayout
@@ -728,7 +728,7 @@ class TestSaveData < Minitest::Test
     assert_equal [10, 11, 0], (0..2).map { |n| back[:"shown#{n}"] }
   end
 
-  # A SAVE SAYS WHETHER IT WORKED. `saving?` holds from the moment one is asked for until it is
+  # A save says whether it worked. `saving?` holds from the moment one is asked for until it is
   # written, and then `failed?` holds when what was written did not read back.
   def test_a_save_says_it_worked
     run = files_after(SaveImage.new, :a)
@@ -787,7 +787,7 @@ class TestSaveData < Minitest::Test
     assert_equal [12, 5], [back[:hearts], back.list(:flags).last]
   end
 
-  # READING A COPY FINISHES ITS SAVE FIRST. A peek on the line after a save — a file screen
+  # Reading a copy finishes its save first. A peek on the line after a save — a file screen
   # shown straight after saving — reads what was just saved, not what was there before.
   def test_reading_a_copy_straight_after_saving_it_reads_the_save
     program = built do
@@ -939,7 +939,7 @@ class TestSaveData < Minitest::Test
 
   def test_what_a_record_cannot_keep_is_a_friendly_error
     assert_match(/a number worked out from other things/, refused { hearts = var :hearts, 3; save_data(:f) { keep hearts + 1 } })
-    assert_match(/`var` and `list`/, refused { save_data(:f) { keep 5 } })
+    assert_match(/an Array the game changes/, refused { save_data(:f) { keep 5 } })
     assert_match(/is a `save_var`/, refused { best = save_var :best, 0; save_data(:f) { keep best } })
     assert_match(/save_data :g keeps it too|keeps it\s+too/,
                  refused { h = var :h, 0; save_data(:f) { keep h }; save_data(:g) { keep h } })
