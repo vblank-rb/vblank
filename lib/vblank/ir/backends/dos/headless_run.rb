@@ -211,6 +211,18 @@ module VBlank
           # once that retrace has come, before the next one sends the next pass's.
           def picture_of_pass(camera, drawn) = picture_of(drawn, camera)
 
+          # A pass's picture is on the screen once the card shows it or a later one. The reader looks once a
+          # frame, and a picture whose sending runs past the frame's end, into the lines before the retrace (the
+          # whole screen sent as a scene comes up), is followed at that retrace by the next pass's, sent before
+          # the program is held for the reader (Runtime::Frame::READER_HOLDS holds a pass after its picture is
+          # sent): the reader finds the next shown, never this. Its entries were taken at its end, so only
+          # their colours are the next pass's palette.
+          # A stopped game's last picture is the halt's to read (#finish_after_halt).
+          def pass_on_screen?(pass)
+            shown = shown_pass
+            shown >= pass && shown != Runtime::Frame::END_SHOWN
+          end
+
           # Where the view was over the game's picture when the picture shown was last made (Runtime::View);
           # [0, 0] for a game with neither a camera nor blocks, which has no such picture.
           def read_camera

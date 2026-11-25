@@ -263,7 +263,7 @@ module VBlank
             write_last_pass(frames)
             waited += 1
             refuse_stuck_game!(last_read + 1) if waited > LONGEST_PASS_FRAMES
-            if pending && shown_pass == pending.first && moment_ready?(pending.first, frames)
+            if pending && pass_on_screen?(pending.first) && moment_ready?(pending.first, frames)
               pass, variables, lists, @sprites, sounds, camera, drawn = pending
               pending = nil
               @music_playing = @song_at_pass_end
@@ -300,6 +300,9 @@ module VBlank
             first_pass_ended if passes == 1
           end
         end
+
+        # Whether the picture of +pass+, taken at its end, is on the screen now.
+        def pass_on_screen?(pass) = shown_pass == pass
 
         # Whether the moment of +pass+, shown now, can be read yet: a console whose runtime counts
         # a pass's sounds after its wait waits for the count.
