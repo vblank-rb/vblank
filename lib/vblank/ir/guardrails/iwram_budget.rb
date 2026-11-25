@@ -51,6 +51,14 @@ module VBlank
         # > work memory. The largest part holds <size>. To fix this, give the list a smaller
         # > capacity. Or use narrower items (`width: :byte`).
         #
+        # Where the list fits in a part but the lists declared before it left no part room enough,
+        # it reads:
+        #
+        # > list :<name> needs about <size>. A <console> keeps all of a list in one part of its
+        # > work memory. The lists before it fill the parts, and the most room left in one part is
+        # > about <size>. To fix this, give this list or an earlier list a smaller capacity. Or use
+        # > narrower items (`width: :byte`).
+        #
         # ### What else the message can say
         #
         # Where the build keeps part of the roomier memory for itself (for sound or saves), the
@@ -174,7 +182,7 @@ module VBlank
             end
             work_reserved = console.roomier_memory? ? [] : kit.work_memory_reserved(program)
             free = console.free_work_memory_bytes - work_reserved.sum(&:bytes)
-            return list_too_big_findings(program, console, kit) if total <= free + roomier
+            return list_placement_findings(program, console, kit, pinned, free) if total <= free + roomier
 
             # Blame the biggest user, which is the capacity to shrink. The plain
             # variable count and the sprites' save-buffers are sums over the whole
@@ -194,24 +202,42 @@ module VBlank
 
           private
 
-          # A console that keeps each list whole in one part of its work memory has a largest list
-          # (Console::Description#largest_list_bytes). The whole may fit while one list does not, so
-          # each list past it is blamed at its own line, after the total has been checked.
-          def list_too_big_findings(program, console, kit)
+          # A console that keeps each list whole in one part of its work memory (the Color, whose
+          # parts are its two halves: Console::Description#largest_list_bytes is the larger) can
+          # have room enough in all while one list fits in neither part. So the lists are placed as
+          # its build places them: the variables first, then each list in the order the game
+          # declares them, in the first part with room for it (Backends::GBC::Memory#reserve). Each
+          # list that fits in no part is blamed at its own line, after the total has been checked.
+          def list_placement_findings(program, console, kit, fixed_bytes, free)
             most = console.largest_list_bytes or return []
 
+            rooms = [free - most - fixed_bytes, most]
+            rooms = [0, rooms.sum] if rooms.first.negative?
             list_declarations(program, kit).filter_map do |name, (bytes, node)|
-              next if bytes <= most
+              label = Messages::MadeNames.collection_words(name)
+              next list_finding(node, list_too_big_message(label, bytes, most, console)) if bytes > most
 
-              Finding.new(check: NAME, severity: :error, node: node,
-                          message: list_too_big_message(Messages::MadeNames.collection_words(name), bytes, most, console))
+              part = rooms.index { |room| room >= bytes }
+              next list_finding(node, list_unplaced_message(label, bytes, rooms.max, console)) unless part
+
+              rooms[part] -= bytes
+              nil
             end
           end
+
+          def list_finding(node, message) = Finding.new(check: NAME, severity: :error, node: node, message: message)
 
           def list_too_big_message(label, bytes, most, console)
             "#{label} needs about #{human_size(bytes)}. A #{console.title} keeps all of a list in one part of its " \
               "work memory. The largest part holds #{human_size(most)}. To fix this, give the list a smaller " \
               "capacity. Or use narrower items (`width: :byte`)."
+          end
+
+          def list_unplaced_message(label, bytes, left, console)
+            "#{label} needs about #{human_size(bytes)}. A #{console.title} keeps all of a list in one part of its " \
+              "work memory. The lists before it fill the parts, and the most room left in one part is about " \
+              "#{human_size(left)}. To fix this, give this list or an earlier list a smaller capacity. Or use " \
+              "narrower items (`width: :byte`)."
           end
 
           # The cold collections are over the roomier memory on their own. A collection marked

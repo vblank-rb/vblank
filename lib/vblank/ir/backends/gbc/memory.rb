@@ -60,6 +60,7 @@ module VBlank
 
           def initialize
             @next = FIRST
+            @next_high = HIGH_START
             @next_quick = QUICK_FIRST
             @places = {}
             @scratch = Scratch.new(cmp_top: quick(1), mul_by: quick(4), product: quick(4), div_n: quick(4),
@@ -70,14 +71,13 @@ module VBlank
 
           # +bytes+ of work memory for +name+, and its address. The same name asked again is the same
           # place.
-          def reserve(name, bytes)
-            @places.fetch(name) do
-              @next = HIGH_START if @next < HIGH_START && @next + bytes > LOW_END
-              raise Full, full_message(name, bytes) if @next + bytes > HIGH_END
-
-              @places[name] = @next.tap { @next += bytes }
-            end
-          end
+          #
+          # Each half is filled from its start, the always-there half first. A place too big for
+          # what is left of that half goes in the banked half, and a smaller place asked for later
+          # still goes in the always-there half if it fits (first fit). So nothing that would have
+          # gone in the always-there half goes in the banked one instead, and room left at the end
+          # of the always-there half is not lost.
+          def reserve(name, bytes) = @places.fetch(name) { @places[name] = place(name, bytes) }
 
           # +bytes+ of work memory for +name+ that all share one page (one high byte of the address), for a
           # table read by putting its page in one register and its index in another. Asked first, it
@@ -86,10 +86,7 @@ module VBlank
           def reserve_in_page(name, bytes)
             raise ArgumentError, "#{bytes} bytes do not fit in one page" if bytes > 0x100
 
-            @places.fetch(name) do
-              @next = (@next | 0xFF) + 1 if (@next & 0xFF) + bytes > 0x100
-              reserve(name, bytes)
-            end
+            @places.fetch(name) { @places[name] = place(name, bytes, in_page: true) }
           end
 
           # +bytes+ of quick memory, and its address.
@@ -109,19 +106,33 @@ module VBlank
           def reserved?(name) = @places.key?(name)
 
           # Whether anything was given a place in the banked half.
-          def banked_half_used? = @next >= HIGH_START
+          def banked_half_used? = @next_high > HIGH_START
 
           # Every name and where it went, for reading a running game back.
           def places = @places.dup
 
-          # How many bytes of work memory are in use.
-          def used = (@next >= HIGH_START ? (LOW_END - FIRST) + (@next - HIGH_START) : @next - FIRST)
+          # How many bytes of work memory are in use, in both halves.
+          def used = (@next - FIRST) + (@next_high - HIGH_START)
 
           private
 
+          # The first of the two halves +bytes+ fit in, moving that half's next place on.
+          def place(name, bytes, in_page: false)
+            low = start_in(@next, bytes, in_page)
+            return low.tap { @next = low + bytes } if low + bytes <= LOW_END
+
+            high = start_in(@next_high, bytes, in_page)
+            raise Full, full_message(name, bytes) if high + bytes > HIGH_END
+
+            high.tap { @next_high = high + bytes }
+          end
+
+          # Where +bytes+ start from +at+: there, or at the next page where they would cross one.
+          def start_in(at, bytes, in_page) = in_page && (at & 0xFF) + bytes > 0x100 ? (at | 0xFF) + 1 : at
+
           def full_message(name, bytes)
             "This game keeps more than a Game Boy Color's work memory holds. #{name.sub(/\A./, &:upcase)} needs #{bytes} " \
-              "bytes, and #{HIGH_END - @next} are left. A list is the usual cause. To fix this, give the " \
+              "bytes, and #{[LOW_END - @next, HIGH_END - @next_high].max} are left in one place. A list is the usual cause. To fix this, give the " \
               "game's lists smaller capacities."
           end
         end

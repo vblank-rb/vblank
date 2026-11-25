@@ -41,6 +41,7 @@ require_relative "gbc/lowering"
 require_relative "gbc/sound_log"
 require_relative "gbc/headless_run"
 require_relative "gbc/checked_run"
+require_relative "gbc/work_reservations"
 
 module VBlank
   module IR

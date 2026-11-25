@@ -315,14 +315,34 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     assert_empty findings_for(prog)
   end
 
+  # Two lists of 3K are less than the whole, but neither fits in the always-there half, and the
+  # banked half holds only one of them: the second is blamed at its line.
+  def test_a_color_list_with_no_half_left_to_hold_it_is_an_error_at_its_line
+    prog = program(
+      screen(:tiled),
+      list_of_bytes(:trail, 3 * 1024),
+      list_of_bytes(:tail, 3 * 1024),
+      loop_(wait_vblank, halt),
+      console: :gbc,
+    )
+    findings = findings_for(prog)
+
+    assert_equal [:tail], findings.map { |finding| finding.node.name }
+    assert_match(/list :tail/, findings.first.message)
+    assert_match(/lists before it fill the parts/, findings.first.message)
+  end
+
   # What the Color's runtime keeps for a game that fades is the game's memory too: a game left
-  # 50 bytes by the old count has 46 short once the color tables for fades are taken out.
+  # 50 bytes by the old count has 46 short once the color tables for fades are taken out. Two
+  # lists, since no one list may pass the larger half: the first fills the always-there half but
+  # for +bytes_free+, and the second the banked half (each list keeps two words beside its slots).
   private def color_game_with_list_leaving_free(bytes_free, *extra)
-    room = VBlank::Console::COLOR.free_work_memory_bytes - bytes_free - (4 * Budget::WORD)
+    color = VBlank::Console::COLOR
+    always_there = color.free_work_memory_bytes - color.largest_list_bytes
     program(
       screen(:tiled),
-      list_of_bytes(:trail, room / 2), # two lists, since no one list may pass the larger half
-      list_of_bytes(:tail, room / 2),
+      list_of_bytes(:tail, always_there - bytes_free - (2 * Budget::WORD)),
+      list_of_bytes(:trail, color.largest_list_bytes - (2 * Budget::WORD)),
       *extra,
       loop_(wait_vblank, halt),
       console: :gbc,

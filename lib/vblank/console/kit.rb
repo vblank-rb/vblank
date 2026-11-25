@@ -367,58 +367,10 @@ module VBlank
       def words_at_any_address? = true
       def original_formats = GBCHardware::ORIGINAL_FORMATS
 
-      # What the runtime keeps only for a game that uses it, each read off the program by the node
-      # the lowering asks of: the tables a fade or tint looks its colours up in, the queue of sprite
-      # tiles to load, a recording's player and its laps, and the motor's count. Each is sized by
-      # the runtime's own reserve call on a memory of its own, so the two cannot drift apart; the
-      # runtime's tests hold the sums to what a build reserves (test_gbc_memory.rb).
-      #--
-      # The kit reads every node, where the lowering reads only those a run can reach, so a fade in
-      # a routine nothing calls is counted here and not there: the check says less is free, never
-      # more. What else the runtime keeps for one feature is not counted, so a game near the end of
-      # its memory can still pass here and be refused by the lowering (GBC::Memory::Full): the
-      # music's extras (which hang on how its songs are written and banked), the sprite groups'
-      # records, a bar's rows, the dark frames' count, and what the art and the sprites keep.
-      #++
-      def work_memory_reserved(program)
-        runtime = IR::Backends::GBC::Runtime
-        kinds = Set.new
-        plays = []
-        program.walk do |node|
-          kinds << node.kind
-          plays << node if node.kind == :play_sample
-        end
-        reserved = []
-        reserved << work_reservation("the color tables for fades and tints") { |memory| runtime::Picture.reserve_walk_tables(memory) } if kinds.intersect?(%i[fade tint])
-        reserved << work_reservation("the queue of sprite tiles to load") { |memory| runtime::SpriteTileLoads.reserve(memory) } if kinds.include?(:load_sprite_tiles)
-        reserved << recordings_reservation(plays) unless plays.empty?
-        reserved << work_reservation("the rumble motor's count") { |memory| runtime::Rumble.reserve(memory) } if kinds.include?(:rumble)
-        reserved
-      end
-
-      private
-
-      # A WorkReservation named +label+, as many bytes as the block reserves in a work memory of its own.
-      def work_reservation(label, &reserve) = WorkReservation.new(label: label, bytes: bytes_reserved(&reserve))
-
-      def bytes_reserved
-        memory = IR::Backends::GBC::Memory.new
-        yield memory
-        memory.used
-      end
-
-      # The recordings' player, and what the music player keeps beside it to put a wave note back
-      # once a recording has borrowed the wave voice (Runtime::Music.reserve asks whether there is
-      # a recording, so it reserves after the player here, as the build does).
-      def recordings_reservation(plays)
-        runtime = IR::Backends::GBC::Runtime
-        music = bytes_reserved { |memory| runtime::Music.reserve(memory) }
-        both = bytes_reserved do |memory|
-          runtime::Clips.reserve(memory, laps: plays.any?(&:loop))
-          runtime::Music.reserve(memory)
-        end
-        WorkReservation.new(label: "the player for recordings", bytes: both - music)
-      end
+      # What the runtime keeps only for a game that uses a feature: the color tables of a fade,
+      # a recording's player, a status bar's place and the rest (IR::Backends::GBC::WorkReservations
+      # says which, and which it cannot size before the game is laid out).
+      def work_memory_reserved(program) = IR::Backends::GBC::WorkReservations.reserved_for(program)
     end
 
     # The Super Nintendo's. Its cartridges play in bsnes rather than libmgba, through
