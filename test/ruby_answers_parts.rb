@@ -388,6 +388,29 @@ class AnswerLazyKeeper
   def counter = @counter ||= AnswerCounter.new
 end
 
+# Blocks to run on each pass, kept in a plain Ruby Array.
+class AnswerHooks
+  def initialize
+    @asked = []
+  end
+
+  def after(&asked)
+    @asked << asked
+  end
+
+  def run = @asked.each(&:call)
+end
+
+# Hands an AnswerHooks a block that counts, as it is made.
+class AnswerHooked
+  def initialize(hooks)
+    @n = 0
+    hooks.after { @n += 1 }
+  end
+
+  attr_reader :n
+end
+
 # A fraction counted up, and asked for its whole part with a verb a game's number does not answer.
 class AnswerFraction
   def initialize

@@ -1695,6 +1695,17 @@ module VBlank
     # part's `initialize` (#once_for_part), or nil. A save that keeps the Array keeps it too.
     def part_started_for(name) = @part_started_by_array&.fetch(name, nil) # :nodoc:
 
+    # Is the builder recording the straight-line code of the `initialize` of a part game code keeps
+    # (`@part ||= Part.new`, #keeping_part), or of a part that `initialize` makes? Ruby runs that
+    # code once, so a change it makes to another object's plain Ruby Array happens once, while the
+    # game is built, as in Ruby. Not under a test there: Ruby would run both sides of it while
+    # building, where the game runs one. DSL::PlainRuby::InstanceVariables.refuse_unkept_change!
+    # asks.
+    def recording_kept_part_start? # :nodoc:
+      start = @part_starts&.last
+      !start.nil? && start.kept && @container_stack.length == start.depth
+    end
+
     # Is the builder recording in +start+'s `initialize` itself, under nothing but tests?
     def part_start_code?(start)
       @container_stack.length >= start.depth &&

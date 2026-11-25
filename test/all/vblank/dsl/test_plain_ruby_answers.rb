@@ -2102,6 +2102,31 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # Made once, the kept object hands its block over once, while building, as in Ruby.
+  def test_an_object_kept_with_or_equals_hands_another_a_block_as_it_is_made
+    agrees("@hooked ||= AnswerHooked.new(hooks)", reads: %i[m], passes: 3) do
+      hooks = AnswerHooks.new
+      m = 0
+      game_loop do
+        @hooked ||= AnswerHooked.new(hooks)
+        hooks.run
+        m = @hooked.n
+      end
+    end
+  end
+
+  # Handed over on every pass, the block would go in again each time in Ruby.
+  def test_a_block_handed_to_another_object_on_every_pass_is_refused
+    refused("hooks.after { } in game_loop", /still a plain Ruby Array/) do
+      hooks = AnswerHooks.new
+      m = 0
+      game_loop do
+        @hooked ||= AnswerHooked.new(hooks)
+        hooks.after { m += 1 }
+      end
+    end
+  end
+
   def test_an_object_keeping_a_changing_object_made_above_the_game_loop
     agrees("AnswerKeeper.new above game_loop", reads: %i[m n], passes: 3) do
       keeper = AnswerKeeper.new

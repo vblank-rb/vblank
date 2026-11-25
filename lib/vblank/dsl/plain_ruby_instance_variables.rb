@@ -814,8 +814,14 @@ module VBlank
         # began, and whose class body puts nothing into it, does not show what it keeps, so it never
         # became one the game keeps. Refused, saying how to show it. Anything else (a list or a pool,
         # an Array changed while setting up) is the line's as it is.
+        #
+        # So is a change made while a part game code keeps with `||=` is being made
+        # (Builder#recording_kept_part_start?): Ruby runs that `initialize` once, so a block or a
+        # name it hands another part (`hooks.after { ... }`, `costume.wear(names)`) goes into that
+        # part's Array once, while building, which is Ruby's own answer.
         def refuse_unkept_change!(array, verb, label)
           return array unless Builder::Session.recording? && array.instance_of?(Array)
+          return array if Builder::Session.builder.recording_kept_part_start?
 
           name = label.to_s.delete_prefix("@")
           raise Refused, "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \

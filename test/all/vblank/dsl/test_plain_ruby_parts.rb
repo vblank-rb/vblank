@@ -10,6 +10,7 @@ VBlank.require_game_file "../../../plain_ruby_split_counts_named"
 VBlank.require_game_file "../../../plain_ruby_split_counts_changed"
 VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "../../../plain_ruby_secret_lift_parts"
+VBlank.require_game_file "../../../plain_ruby_kept_part_hooks"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -847,5 +848,36 @@ class TestPlainRubyParts < Minitest::Test
     player = played_game(frames: 2) { flagged_byte_held_across_calls_game(self) }
 
     assert_equal [FlaggedBytes::PACKED[0]] * 2, [player[:by_method], player[:by_routine]]
+  end
+
+  # A part kept with `||=` in a scene is made once, so what its `initialize` hands another part
+  # goes into that part's plain Ruby Array once, while the game is built, as Ruby does
+  # (test/plain_ruby_kept_part_hooks.rb). The block handed over runs on every pass after.
+  def test_a_kept_part_hands_another_part_a_block_as_it_is_made
+    counts = (1..3).map { |frames| hook_play(frames)[:hook_counted_count] }
+
+    assert_equal [1, 2, 3], counts
+  end
+
+  # CostumeJump starts from the names worn once it has added its two, and counts a jump a pass.
+  def test_a_kept_part_adds_names_to_another_parts_array_as_it_is_made
+    assert_equal 5, hook_play(3)[:costume_jump_jumps]
+  end
+
+  # The same push from the scene's own code runs on every pass in Ruby, and the game cannot.
+  def test_a_push_into_another_parts_array_from_code_run_every_pass_is_refused
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      played_game do
+        hook_play_each_pass_game(self)
+      end
+    end
+
+    assert_match(/`@asked` with `<<`.*plain Ruby Array/m, error.message)
+  end
+
+  private def hook_play(frames)
+    played_game(frames: frames) do
+      hook_play_game(self)
+    end
   end
 end

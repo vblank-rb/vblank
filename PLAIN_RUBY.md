@@ -122,6 +122,8 @@ game_loop do
 end
 ```
 
+A part kept with `||=` is made once, so what its `initialize` hands another part goes in once, while VBlank builds the game, as in Ruby: a block it adds to another part's Array (`hooks.after { @count += 1 }`), or names (`costume.wear(%i[crouch leap])`). The block then runs wherever the other part runs it, on every pass. The same line run from the game loop itself would add to the Array on every pass in Ruby, so it stops with a message.
+
 A local of the game's own block, set above the game loop, keeps a part the same way: `counter = nil` above it, then `counter ||= Counter.new` in it. A part kept by another part with `||=` is kept only if that other part is kept too: a part made on every pass makes what it keeps on every pass as well. One name kept with `||=` on two lines that make different things (`@enemy ||= Bat.new` in one routine, `@enemy ||= Rat.new` in another) stops with a message, since Ruby keeps whichever runs first.
 
 A part kept so starts from the numbers its `initialize` gives, and what its `initialize` puts into an Array it makes there goes in on the first pass alone. `rom.profile` names the hidden number that keeps it to once, and a save that keeps the Array keeps that number too; to skip it, make the part above the game loop. A part whose numbers never change (a spot that only answers questions) can be made anywhere. A push in `initialize` into an Array the part was handed runs each time the line making the part runs, as in Ruby, and so does everything else `initialize` does in the game, such as drawing or putting up a picture.

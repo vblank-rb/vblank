@@ -152,6 +152,12 @@ instance variables.
   `#once_for_part`).
   A push into an Array it was handed, a push from a method called on every pass (`update`), what a
   routine, loop or timer `initialize` opens, and its drawing and pictures all run every time.
+  A change its `initialize` makes to another object's plain Ruby Array (a block or names handed
+  over: `hooks.after { ... }`, `costume.wear(names)`) is made once, while building, as Ruby makes
+  it, where the same line run from game code on every pass is refused
+  (`Builder#recording_kept_part_start?`, `InstanceVariables.refuse_unkept_change!`). Under a game
+  test in that `initialize` it stays refused: Ruby would make it while building whichever way the
+  test goes.
 - Setting-up code that works with a game one works with the game variable, so `@busy.times` while
   setting up is refused as any game number is: keep a number only the build uses out of game code.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as
