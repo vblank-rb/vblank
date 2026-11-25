@@ -242,6 +242,56 @@ class TestJSShell < Minitest::Test
     kept
   end
 
+  # A copy dragged over the page while the menu shows gets a dashed border, and dropped there it is
+  # unpacked and kept exactly as one the picker gave.
+  def test_a_copy_dropped_on_the_menu_is_unpacked_and_kept
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "drag-enter", "style screen", "drop #{copy_at(folder)}", *unpack_and_play, "picker"])
+
+      assert_match(/outline=6px dashed #ff8800/, out.grep(/\Astyle screen /).first)
+      assert_empty out.grep(/\Aopened /)
+      assert_equal all_in_one_pack, kept_pack(folder)
+      assert_same_picture all_in_one_picture, pictures_in(out).last, "after the drop"
+      assert_includes out, "picker 0"
+    end
+  end
+
+  def test_dragging_away_clears_the_border
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "drag-enter", "drag-enter", "drag-leave", "style screen", "drag-leave", "style screen"])
+      first, second = out.grep(/\Astyle screen /)
+
+      assert_match(/outline=6px dashed #ff8800/, first)
+      assert_match(/outline=-\z/, second)
+    end
+  end
+
+  def test_a_folder_dropped_where_the_copy_is_one_file_is_refused
+    Dir.mktmpdir do |folder|
+      dropped = File.join(folder, "dropped")
+      FileUtils.mkdir_p(dropped)
+      FileUtils.cp(copy_at(folder), dropped)
+      out = open_shell(folder, ["settle", "play 3", "drop #{dropped}", "play 3", "text said"])
+
+      assert_match(/dropped is a folder\. A copy of Made Up is one file/, out.grep(/\Atext said /).first)
+      assert_nil kept_pack(folder)
+    end
+  end
+
+  # A drop is only for the menu: while the game plays it shows no border, does nothing, and is not
+  # left to the browser to open in place of the page.
+  def test_a_drop_while_the_game_plays_is_ignored
+    Dir.mktmpdir do |folder|
+      open_shell(folder, [*CHOOSE_LOAD_ROM, "choose #{copy_at(folder)}", *unpack_and_play])
+      File.delete(File.join(folder, "made_up.gba"))
+      out = open_shell(folder, ["settle", "play 3", "drag-enter", "style screen", "drop #{copy_at(folder)}", "play #{GAME_FRAMES}", "picture"])
+
+      assert_match(/outline=-\z/, out.grep(/\Astyle screen /).first)
+      assert_empty out.grep(/\Aopened /), "the browser opened the dropped file in place of the page"
+      assert_same_picture all_in_one_picture, pictures_in(out).last, "after a drop on the playing game"
+    end
+  end
+
   def test_the_shell_asks_to_keep_its_data_once_it_keeps_the_pack
     Dir.mktmpdir do |folder|
       out = open_shell(folder, [*CHOOSE_LOAD_ROM, "persist", "choose #{copy_at(folder)}", *unpack_and_play, "persist"])

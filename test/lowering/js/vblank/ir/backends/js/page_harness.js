@@ -78,6 +78,14 @@
  *                       window is told it was resized (and, with R, the page's resolution query changes)
  *   style ID            prints "style ID" and the element's style width, height and outline, each "-"
  *                       where none is set
+ *   drag-enter / drag-leave   a dragged file entering the page (or one of its parts) and leaving it;
+ *                       an enter is followed by a dragover, as in a browser
+ *   drop PATH           the file or folder at PATH dropped on the page, as a browser's DataTransfer
+ *                       gives it: its first item's file-system entry (a folder's entries handed out
+ *                       two at a time, then an empty batch) and its file; prints "opened NAME"
+ *                       where the page left the browser to open it in place of the page
+ *   entries-read        prints "entries-read" and the names of the files whose bytes the page read
+ *                       through a dropped entry, in order, joined by ","
  *   workers             prints "workers" and how many workers the page has started and not ended
  *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
  *   clipboard           prints "clipboard" and what the page last copied
@@ -166,6 +174,7 @@ const blobs = new Map(); /* each blob by the address the page made for it */
 const questions = []; /* every question the page asked with confirm() */
 let reloads = 0;
 let persist_asks = 0;
+const entries_read = []; /* the files read through a dropped entry, by path from the dropped folder */
 const ratio_flag = process.argv.slice(3).find((flag) => flag.startsWith("device-pixel-ratio:"));
 let pixel_ratio = ratio_flag ? Number(ratio_flag.slice("device-pixel-ratio:".length)) : 1;
 const box_flag = process.argv.slice(3).find((flag) => flag.startsWith("canvas-box:"));
@@ -317,6 +326,53 @@ function folder_files(folder_path, relative = path.basename(folder_path)) {
   });
 }
 let picks_asked = 0;
+
+/* A file-system entry for what is dropped, as a browser's DataTransfer item gives one: a folder
+ * hands out its entries two at a time and then an empty batch, and a file hands over its bytes
+ * when asked, which is noted in entries_read. +relative+ is the path from the dropped folder. */
+function entry_for(entry_path, relative = path.basename(entry_path), root = true) {
+  const name = path.basename(entry_path);
+  if (!fs.statSync(entry_path).isDirectory()) {
+    return { isFile: true, isDirectory: false, name,
+             file(ok) { entries_read.push(relative); setImmediate(() => ok(picked_file(entry_path, name))); } };
+  }
+  return { isFile: false, isDirectory: true, name,
+    createReader() {
+      const inside = fs.readdirSync(entry_path).sort().map((each) => entry_for(path.join(entry_path, each), root ? each : `${relative}/${each}`, false));
+      let at = 0;
+      return { readEntries(ok) { const batch = inside.slice(at, at + 2); at += 2; setImmediate(() => ok(batch)); } };
+    } };
+}
+
+/* Tells the page's listeners of a drag event of +type+. Gives whether one of them prevented the
+ * browser's own handling of it. */
+function tell_drag(type, transfer) {
+  let prevented = false;
+  for (const listener of page.heard[type] || []) listener({ dataTransfer: transfer, preventDefault() { prevented = true; } });
+  return prevented;
+}
+
+/* A file dragged over the page: it enters, and the browser then sends dragover. */
+function drag_enter() {
+  const transfer = { dropEffect: "" };
+  tell_drag("dragenter", transfer);
+  tell_drag("dragover", transfer);
+}
+
+/* A file or folder dropped on the page, as a browser drops it: a dragover first. Where the page
+ * prevents neither the dragover nor the drop, the browser opens the file in place of the page;
+ * where the dragover's dropEffect is "none", no drop is sent and nothing opens. The DataTransfer
+ * is emptied once the page's listeners return, as a browser's is, so a page that reads it later
+ * finds nothing. Gives whether the browser opened the file. */
+function drop(dropped_path) {
+  const transfer = { items: [{ webkitGetAsEntry: () => entry_for(dropped_path) }],
+                     files: [picked_file(dropped_path, path.basename(dropped_path))], dropEffect: "" };
+  let opened = !tell_drag("dragover", transfer);
+  if (!opened && transfer.dropEffect !== "none") opened = !tell_drag("drop", transfer);
+  transfer.items = [];
+  transfer.files = [];
+  return opened;
+}
 
 /* IndexedDB, as far as the shell uses it: one object store of byte strings under a key, kept in
  * a file between runs where the page is started with "idb:FILE". */
@@ -791,6 +847,13 @@ async function steps() {
       const style = element(what).style;
       printed.push(`style ${what} width=${style.width || "-"} height=${style.height || "-"} outline=${style.outline || "-"}`);
     }
+    else if (step === "drag-enter") drag_enter();
+    else if (step === "drag-leave") tell(page, "dragleave");
+    else if (step === "drop") {
+      if (drop(what)) printed.push(`opened ${path.basename(what)}`);
+      for (let i = 0; i < 20; i++) await settle();
+    }
+    else if (step === "entries-read") printed.push(`entries-read ${entries_read.join(",")}`);
     else if (step === "persist") printed.push(`persist ${persist_asks}`);
     else if (step === "cookie") printed.push(`cookie ${document.cookie}`);
     else if (step === "workers") printed.push(`workers ${workers.size}`);

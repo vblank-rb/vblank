@@ -63,6 +63,32 @@ class TestJSShellFolder < Minitest::Test
     end
   end
 
+  # A folder dropped on the menu is read as the picker's is: its own files, the release's alone,
+  # each read only when named. A folder inside it is left out and nothing in it is read.
+  def test_a_dropped_folder_keeps_the_all_in_one_pack_and_reads_no_inner_folder
+    Dir.mktmpdir do |folder|
+      copy = fixture_copy_in(folder)
+      FileUtils.mkdir_p(File.join(copy, "old"))
+      File.binwrite(File.join(copy, "old", "EXTRA.BIN"), "extra")
+      out = open_shell(folder, ["settle", "play 3", "drop #{copy}", "play 2", "settle", "entries-read"])
+      read = out.grep(/\Aentries-read /).first
+
+      assert_equal folder_port(folder_original).data_pack_file, kept_pack(folder), "byte for byte"
+      assert_match(/INDEX\.MU1/, read)
+      refute_match(%r{old/}, read)
+      refute_match(/EXTRA/, read)
+    end
+  end
+
+  def test_a_file_dropped_where_the_copy_is_a_folder_is_refused
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, ["settle", "play 3", "drop #{File.join(fixture_copy_in(folder), 'INDEX.MU1')}", "play 3", "text said"])
+
+      assert_match(/INDEX\.MU1 is one file\. A copy of Folder Game is a folder/, out.grep(/\Atext said /).first)
+      assert_nil kept_pack(folder)
+    end
+  end
+
   def test_a_changed_file_is_refused_naming_it
     Dir.mktmpdir do |folder|
       copy = fixture_copy_in(folder)
