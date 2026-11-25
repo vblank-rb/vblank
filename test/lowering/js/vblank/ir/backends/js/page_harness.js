@@ -72,6 +72,8 @@
  *                       bytes as hex ("downloaded SAVER.sav 07ff..."), one line each
  *   reloads             prints "reloads" and how many times the page asked the browser to reload it
  *   confirmed           prints "confirmed" and each question the page asked with confirm(), joined by " | "
+ *   persist             prints "persist" and how many times the page asked the browser to keep its storage
+ *   cookie              prints "cookie" and document.cookie as the page reads it
  *   workers             prints "workers" and how many workers the page has started and not ended
  *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
  *   clipboard           prints "clipboard" and what the page last copied
@@ -83,6 +85,9 @@
  * when the page opens and written to it each time the page sets or removes a key, so a second run
  * of the page finds what the first kept. With "confirm-no" every confirm() is answered No (Yes
  * otherwise).
+ *
+ * Started with "cookie:NAME=VALUE" the page starts with that cookie set (once for each such flag);
+ * with "persist-refused" the browser answers the page's request to keep its storage with false.
  *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
  * is read from FILE when the page opens and written to it as the page puts something in, so a
@@ -152,6 +157,12 @@ const downloads = []; /* every file the page made a link download */
 const blobs = new Map(); /* each blob by the address the page made for it */
 const questions = []; /* every question the page asked with confirm() */
 let reloads = 0;
+let persist_asks = 0;
+/* The page's cookies, by name, seeded by each "cookie:NAME=VALUE" flag. */
+const cookies = new Map(process.argv.slice(3).filter((flag) => flag.startsWith("cookie:")).map((flag) => {
+  const pair = flag.slice("cookie:".length);
+  return [pair.slice(0, pair.indexOf("=")), pair.slice(pair.indexOf("=") + 1)];
+}));
 let clipboard = null; /* what the page last copied */
 let now = 0;
 const shown = {};
@@ -331,6 +342,13 @@ const document = {
     const input = { ...listening(), type: "", files: [], click() { picks_asked += 1; pickers.push(this); } };
     return input;
   },
+  get cookie() { return [...cookies].map(([name, value]) => `${name}=${value}`).join("; "); },
+  set cookie(text) {
+    const [pair, ...attributes] = text.split(";");
+    const name = pair.slice(0, pair.indexOf("="));
+    if (attributes.some((each) => each.trim() === "max-age=0")) cookies.delete(name);
+    else cookies.set(name, pair.slice(pair.indexOf("=") + 1));
+  },
   hidden: false,
   visibilityState: "visible",
   readyState: "loading",
@@ -465,7 +483,10 @@ const browser = {
   Blob,
   /* Started with "refuse-worker", the browser refuses to start one, as a content security policy can. */
   Worker: flags.includes("refuse-worker") ? class { constructor() { throw new Error("the page's content security policy refuses it"); } } : Worker,
-  navigator: { getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } } },
+  navigator: {
+    getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } },
+    storage: { persist: async () => { persist_asks += 1; return !flags.includes("persist-refused"); } },
+  },
   location: { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "", reload() { reloads += 1; } },
   confirm(question) { questions.push(question); return !flags.includes("confirm-no"); },
   performance: { now: () => now },
@@ -718,6 +739,8 @@ async function steps() {
     }
     else if (step === "reloads") printed.push(`reloads ${reloads}`);
     else if (step === "confirmed") printed.push(`confirmed ${questions.join(" | ")}`);
+    else if (step === "persist") printed.push(`persist ${persist_asks}`);
+    else if (step === "cookie") printed.push(`cookie ${document.cookie}`);
     else if (step === "workers") printed.push(`workers ${workers.size}`);
     else if (step === "wait") await real_ms(Number(what));
     else if (step === "clipboard") printed.push(`clipboard ${clipboard}`);

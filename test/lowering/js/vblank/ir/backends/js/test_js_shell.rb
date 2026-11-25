@@ -242,6 +242,14 @@ class TestJSShell < Minitest::Test
     kept
   end
 
+  def test_the_shell_asks_to_keep_its_data_once_it_keeps_the_pack
+    Dir.mktmpdir do |folder|
+      out = open_shell(folder, [*CHOOSE_LOAD_ROM, "persist", "choose #{copy_at(folder)}", *unpack_and_play, "persist"])
+
+      assert_equal ["persist 0", "persist 1"], out.grep(/\Apersist /)
+    end
+  end
+
   # A page stopped while the unpacking works ends the worker at once and keeps no pack.
   def test_stopping_the_page_mid_unpacking_ends_the_worker_and_keeps_no_pack
     Dir.mktmpdir do |folder|
