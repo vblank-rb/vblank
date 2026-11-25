@@ -1209,7 +1209,7 @@ module VBlank
       # that holds a fraction keeps it in its low bits, so read as a size it would be
       # thousands of pixels.
       def refuse_unusable_block_size!(size)
-        largest = IR::Backends::Blocks::LARGEST
+        largest = IR::Backends::Blocks.largest_for(@program.pixel_size || 1)
         if DSL::Fraction.bits_of(size)
           raise ArgumentError,
                 "pixelate's size is a whole number of pixels, and this one holds a fraction. " \

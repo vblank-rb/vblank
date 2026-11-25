@@ -2821,7 +2821,7 @@ module VBlank
         # What is left as drawn all the same is not this statement's to decide: a program
         # has one place for its blocks, known before it runs (see #place_blocks).
         def exec_pixelate(node)
-          size = Blocks.size(eval_value(node.size))
+          size = Blocks.size(eval_value(node.size), Blocks.largest_for(@console.pixel_size))
           return if size == @block
 
           @block = size

@@ -24,13 +24,22 @@ class TestIrGuardrailBiggerPixelsNotMadeYet < Minitest::Test
     assert_equal :error, found.first.severity
   end
 
-  def test_pixelate_is_refused_with_big_pixels
+  def test_pixelate_is_refused_with_big_pixels_where_the_console_does_not_count_the_blocks_in_the_games_pixels
+    program = VBlank.game("BIGBLOCKS", consoles: %i[snes]) do
+      screen :bitmap, pixel_size: 2
+      game_loop { pixelate 4 }
+    end.program(console: :snes)
+
+    assert_match(/pixelate/, Check.new.detect(program).first.message)
+  end
+
+  def test_pixelate_is_not_refused_on_the_advance
     found = findings do
       screen :bitmap, pixel_size: 2
       game_loop { pixelate 4 }
     end
 
-    assert_match(/pixelate/, found.first.message)
+    assert_empty found
   end
 
   def test_a_fade_held_to_a_rectangle_is_refused_where_the_console_does_not_double_it

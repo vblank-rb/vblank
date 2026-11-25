@@ -181,7 +181,7 @@ module VBlank
                               :voice_output_hz, :largest_memory_bytes, :work_memory_bytes, :work_memory_kept_bytes,
                               :roomier_memory_bytes, :variables_go_far, :sprites_placed_before_wait, :rumbles, :plays_bios_start_up,
                               :whole_screen_size, :extension, :code_cache_bytes, :face_fill_skips_outside_window,
-                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas,
+                              :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas, :bigger_pixels_pixelate,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
                               :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
                               :screen_of_its_own) do
@@ -214,7 +214,8 @@ module VBlank
       # game's small picture, which is what the game lays itself out on and what the interpreter
       # plays. +shows_bigger_pixels+ marks whether the console's hardware can show it that way.
       # +bigger_pixels_fade_areas+ marks whether, shown that way, it can also hold a fade to a rectangle the
-      # game gives in its own pixels (`fade ..., inside:` or `outside:`).
+      # game gives in its own pixels (`fade ..., inside:` or `outside:`). +bigger_pixels_pixelate+ marks whether
+      # it can pixelate, the biggest block being 16 over +pixel_size+.
       #
       # +pose_lists+ sets what the console's build makes of one sprite whose poses are drawn from
       # different lists of colours. A console's sprite table names the group of colours of each entry
@@ -259,7 +260,7 @@ module VBlank
       # read with one index; :records, a record for each thing. A game may name one
       # (`pool :enemy, ..., layout: :tables`); one the console lacks is refused.
       def initialize(code_cache_bytes: nil, face_fill_skips_outside_window: false, face_fill_by_row_middles: true,
-                     pixel_size: 1, shows_bigger_pixels: false, bigger_pixels_fade_areas: false, pose_lists: :one, sprites_in_blocks: true,
+                     pixel_size: 1, shows_bigger_pixels: false, bigger_pixels_fade_areas: false, bigger_pixels_pixelate: false, pose_lists: :one, sprites_in_blocks: true,
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
@@ -419,6 +420,10 @@ module VBlank
                               # The display's window is cut by the console's pixels, so the edges the
                               # game gives are doubled as they are written (ScreenEffects#emit_fade_window).
                               bigger_pixels_fade_areas: true,
+                              # The display's mosaic is counted in the console's pixels, so the game's
+                              # block is written times pixel_size and the biggest is 16 over it
+                              # (Backends::Blocks.largest_for).
+                              bigger_pixels_pixelate: true,
                               # A record for each thing where it fits, else as lists; tables side by
                               # side where a game asks (Backends::PoolLayout::OWN_LAYOUTS says why).
                               pool_layouts: %i[records lists tables].freeze)

@@ -21,8 +21,13 @@ module VBlank
 
         module_function
 
-        # +asked+ held to the sizes there are: 1 is the picture as drawn.
-        def size(asked) = asked.clamp(1, LARGEST)
+        # The biggest block a game of pixels +pixel_size+ times the console's can have: the display's
+        # sixteen of the console's pixels are 16 divided by that many of the game's, so 8 at
+        # `pixel_size: 2` (see Console::Description#pixel_size).
+        def largest_for(pixel_size) = LARGEST / pixel_size
+
+        # +asked+ held to the sizes there are (up to +largest+): 1 is the picture as drawn.
+        def size(asked, largest = LARGEST) = asked.clamp(1, largest)
 
         # Every place +program+ puts its blocks: nil for the whole picture, or the name of
         # a layer left as drawn. None for a program that never pixelates, and more than

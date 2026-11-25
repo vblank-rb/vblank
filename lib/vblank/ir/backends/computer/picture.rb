@@ -200,7 +200,7 @@ module VBlank
              runtime_array("picture_sizes", "int32_t",
                     [@stacking.scenery.length, @stacking.depths.count, @handover.always_up.scenery.length,
                      rebuilt_every_frame? ? 1 : 0, @see_through.size,
-                     Modes.resolve(@program).crosses_display_systems? ? 1 : 0, Blocks::LARGEST,
+                     Modes.resolve(@program).crosses_display_systems? ? 1 : 0, Blocks.largest_for(@program.pixel_size || 1),
                      @tile_runs.size, @tile_runs.each_value.sum { |run| run_pixels(run) }, @images.size,
                      sprites_over_picture? ? 1 : 0]),
              runtime_array("always_up", "int32_t", @handover.always_up.scenery.map { |bg| entry_of(bg) }),

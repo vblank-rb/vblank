@@ -101,15 +101,12 @@ module VBlank
       module ScreenPixelate
         # The hidden state, named with the framework's underscore prefix so a game's own
         # variables can never collide with it.
-        BROKEN = :__pixelate_broken   # :nodoc: How far the picture has broken up, 0.0 to FULL
+        BROKEN = :__pixelate_broken   # :nodoc: How far the picture has broken up, 0.0 to #pixelate_most_broken
         TARGET = :__pixelate_target   # :nodoc: Where the walk is heading
         STEP = :__pixelate_step       # :nodoc: How far it moves each frame
         ACTIVE = :__pixelate_active   # :nodoc: 1 while the walk is running
         SHOWN = :__pixelate_shown     # :nodoc: The size of block on screen now, 1 to the biggest
         ROUTINE = :__pixelate_tick  # :nodoc:
-
-        # As far as a picture breaks up: every size of block past the first.
-        FULL = (IR::Backends::Blocks::LARGEST - 1).to_f  # :nodoc:
 
         # TARGET starts here, which is what lets the guardrail below tell a real
         # `pixelate_in` from the declaration: nothing else writes this variable.
@@ -147,7 +144,7 @@ module VBlank
                   "The `status_bar:` setting of `pixelate_out` must be true or false. You gave #{status_bar.inspect}."
           end
           @screen_pixelate_bar = status_bar if status_bar
-          start_pixelate_walk(FULL, frames, duration, under: under)
+          start_pixelate_walk(pixelate_most_broken, frames, duration, under: under)
         end
 
         # Brings the picture back together. It is the other half of `pixelate_out`.
@@ -164,8 +161,8 @@ module VBlank
           start_pixelate_walk(0.0, frames, duration, default: nil)
         end
 
-        # Reads how big a block is on screen right now: 1 is the picture as drawn and 16 is the
-        # biggest block there is.
+        # Reads how big a block is on screen right now: 1 is the picture as drawn and 16 (8 on a screen of
+        # `pixel_size: 2`) is the biggest block there is.
         #
         # It is the size this walk has put on screen. A size that a game sets itself with `pixelate`
         # is not read back here. It makes a scene change writable: the picture is hardest to read at
@@ -279,7 +276,7 @@ module VBlank
           state = screen_pixelate_state
           state[:target] = target
           if frames || duration || default
-            state[:step] = FULL / pixelate_step_count(frames, duration, default)
+            state[:step] = pixelate_most_broken / pixelate_step_count(frames, duration, default)
           end
           state[:active] = 1
           nil
@@ -305,7 +302,7 @@ module VBlank
           @screen_pixelate_state ||= begin
             broken = var BROKEN, 0.0
             target = var TARGET, NEVER_WALKED
-            step = var STEP, FULL / (DEFAULT_FRAMES - 1)
+            step = var STEP, pixelate_most_broken / (DEFAULT_FRAMES - 1)
             active = var ACTIVE, 0
             shown = var SHOWN, 1
 
@@ -341,6 +338,11 @@ module VBlank
           end
           @screen_pixelate_place = under
         end
+
+        # As far as a picture breaks up: every size of block past the first, the biggest block counted in
+        # the game's pixels (Backends::Blocks.largest_for), so a walk over a screen of big pixels reaches
+        # its biggest block on its last frame rather than half way.
+        def pixelate_most_broken = (IR::Backends::Blocks.largest_for(@program.pixel_size || 1) - 1).to_f
 
         # How many steps get from one end to the other over that many frames (see WalkLength).
         def pixelate_step_count(frames, duration, default)

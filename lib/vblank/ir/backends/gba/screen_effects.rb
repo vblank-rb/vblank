@@ -501,8 +501,12 @@ module VBlank
           # One the game works out is held to the sizes there are first, since the fields
           # are four bits wide and a number past them would spill into its neighbour.
           def emit_pixelate(node)
+            # A block of the game's pixels is pixel_size of the console's across and down, so the size the
+            # game gives is the display's times that: the biggest block is 16 over pixel_size.
+            pixel_size = @layout.pixel_size
+            largest = Blocks.largest_for(pixel_size)
             if (size = @primitives.const_int(node.size))
-              field = Blocks.size(size) - 1
+              field = (Blocks.size(size, largest) * pixel_size) - 1
               pair = field | (field << MOSAIC_DOWN_SHIFT)
               return @emitter.write_reg16(REG_MOSAIC, pair | (pair << MOSAIC_SPRITES_SHIFT))
             end
@@ -510,8 +514,10 @@ module VBlank
             @lowering.value(node.size)
             @emitter.emit(ASM.cmp_imm(ACC, 1))
             @emitter.emit(ASM.mov_imm_cond(:lt, ACC, 1))
-            @emitter.emit(ASM.cmp_imm(ACC, Blocks::LARGEST))
-            @emitter.emit(ASM.mov_imm_cond(:gt, ACC, Blocks::LARGEST))
+            @emitter.emit(ASM.cmp_imm(ACC, largest))
+            @emitter.emit(ASM.mov_imm_cond(:gt, ACC, largest))
+            # Times pixel_size, a power of two (Console::Description::PIXEL_SIZES), so a shift.
+            @emitter.emit(ASM.lsl_imm(ACC, ACC, pixel_size.bit_length - 1)) if pixel_size > 1
             @emitter.emit(ASM.sub_imm(ACC, ACC, 1))
             @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_DOWN_SHIFT)) # across and down
             @emitter.emit(ASM.orr_reg_lsl(ACC, ACC, ACC, MOSAIC_SPRITES_SHIFT)) # ...and the same pair again for sprites
