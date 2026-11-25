@@ -7,6 +7,7 @@ require "folder_original"
 VBlank.require_game_file "fixtures/record_walk/record_walk_part"
 VBlank.require_game_file "fixtures/name_search/name_search_part"
 VBlank.require_game_file "fixtures/stepped_count/stepped_count_part"
+VBlank.require_game_file "fixtures/stepped_count/stepped_cell_part"
 VBlank.require_game_file "plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "pair_runs_format"
 VBlank.require_game_file "back_copies_format"
@@ -49,6 +50,24 @@ module CopyReaderTests
 
     assert_equal (0...STEPPED_ROUNDS).to_a, played[:seen].unpack("v*")
     assert_equal [STEPPED_ROUNDS, 0], played[:written].unpack("v*")
+  end
+
+  # A map cell's tile stepped in place, read from the cell's own bytes, reads back each count: the tile
+  # is worked out once, and not again for its high byte after its low byte is written.
+  STEPPED_CELL_ROUNDS = 300
+
+  def test_a_map_cell_stepped_in_place_reads_back_each_tile
+    unpacking = VBlank::Builder.new.data_pack(from: folder_original, version: "1") do |slots|
+      slots.map_cells :cells, count: 1
+      slots.numbers :seen, count: STEPPED_CELL_ROUNDS, width: :half, signed: false
+      slots.fill_from_copy do |_copy, pack|
+        SteppedCellPart.new(pack[:cells], pack[:seen]).count_up(STEPPED_CELL_ROUNDS)
+      end
+    end.unpacking
+    played = unpacking.slot_bytes_in(unpacking.run_on(game_player, frames: 20_000))
+
+    assert_equal (0...STEPPED_CELL_ROUNDS).to_a, played[:seen].unpack("v*")
+    assert_equal STEPPED_CELL_ROUNDS, played[:cells].unpack1("v")
   end
 
   # A read of one file at a place the routine works out as it runs is held to that file, as a place

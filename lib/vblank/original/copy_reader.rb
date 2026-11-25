@@ -481,10 +481,12 @@ module VBlank
       # A tile past 65535 or a bank past 255 written as a number is refused, since the record would
       # keep only its low bits. One the routine works out keeps them.
       def write_cell(index, tile:, bank: 0, mirrored: false, upside_down: false, in_front: false)
+        index = kept_once(index, @faults.index_written)
         refuse_cell_of_another_shape!
         cell = index.is_a?(Integer) ? "cell #{index}" : "a cell"
         MapCell.refuse_oversized_part!("The unpacking writes #{cell} of slot :#{@slot.name} with", tile: tile, bank: bank)
-        bytes = MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down, in_front: in_front)
+        bytes = bytes_kept_once(MapCell.bytes(tile: tile, bank: bank, mirrored: mirrored, upside_down: upside_down,
+                                              in_front: in_front))
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index, [@slot.count, "cell"])
           return bytes.each_with_index { |byte, at| store_byte((index * MapCell::BYTES) + at, byte) }
@@ -574,6 +576,17 @@ module VBlank
 
         variable.store!(given)
         variable
+      end
+
+      # +bytes+, a record written a byte at a time, as they are when none reads the pack; otherwise
+      # joined into one number kept in a variable and taken apart from it, so every byte is worked out
+      # before the first is written (a tile read from the cell it is written over).
+      def bytes_kept_once(bytes)
+        return bytes unless bytes.any? { |byte| byte.is_a?(DSL::Value) && reads_pack?(byte) }
+
+        joined = kept_once(combine_bits(bytes.each_with_index.map { |byte, at| (byte & 0xFF) << (8 * at) }),
+                           @faults.number_written)
+        bytes.each_index.map { |at| at.zero? ? joined : joined >> (8 * at) }
       end
 
       def reads_pack?(value) = value.node.walk.any? { |node| node.kind == :list_get && node.name == Unpacking::BYTES }
