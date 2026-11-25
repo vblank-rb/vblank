@@ -215,6 +215,13 @@ instance variables.
   reads `cave_light_state_0` to `cave_light_state_3`. That holds where every key is known while
   building: a number, a symbol, a String or a constant written out, or the name a Ruby loop over
   something written out gives (`SIDES.each do |side|`, `3.times do |i|`).
+- **An unnamed Hash or Array of Symbols alone stays Ruby's** (`InstanceVariables.names_collection?`,
+  `Uses#followed?`): names a part fills while it is set up (`@used |= names` in `initialize`) are
+  no game number, so a question on them in game code (`@used.intersect?(AIMS)`) is answered while
+  building, as Ruby answers it. A line of game code that changes them, a slot or the whole, is
+  refused naming `game_variables :used` (`Uses#names_kept_as_ruby?`,
+  `InstanceVariables.refuse_names_changed!`, and `Writes.slot` for a slot); named, they are a game
+  variable for each key, as above.
 - **A local Hash written out that game code changes at a key is a game variable for each key**:
   `h = { a: 1, b: 2 }`, then `h[:a] += 3` or `m = (h[:a] += 3)` in game code (`LocalNames#game_hash?`,
   `Writes.game_hash`), named `h_a` and `h_b`. A slot holding a place the game named (`{ x:

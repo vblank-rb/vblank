@@ -159,8 +159,10 @@ module VBlank
 
         # What a slot of a Hash or an Array holds, nil on anything else. A game's own list answers
         # `[]=` itself. A Hash is asked with `fetch`, since `[]` runs its default block for a key it does
-        # not hold, and that block may be this very write.
+        # not hold, and that block may be this very write. Names a part keeps as Ruby's are refused
+        # (InstanceVariables.refuse_names_slot_changed!).
         def slot(collection, keys, value)
+          InstanceVariables.refuse_names_slot_changed!(collection)
           current = collection.fetch(keys.first, nil) if collection.is_a?(Hash)
           current = collection[*keys] if collection.is_a?(Array)
           refuse_new_slot!(collection, keys.first, value) if current.nil?

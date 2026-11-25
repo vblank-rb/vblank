@@ -523,3 +523,76 @@ class AnswerMixedFlock
     @dots = Array.new(capacity: 4)
   end
 end
+
+# Names noted while it is set up, never changed as the game plays, and asked about in game code.
+class AnswerNoted
+  AIMS = %i[move_to].freeze
+
+  def initialize(scripts)
+    @n = 0
+    @used = []
+    scripts.each { |names| @used |= names }
+  end
+
+  def reach = @n += (@used.intersect?(AIMS) ? 1 : 10)
+
+  attr_reader :n
+end
+
+# Names a game method switches one of on every pass.
+class AnswerSwitchedNames
+  def initialize
+    @n = 0
+    @states = %i[shut shut]
+  end
+
+  def flip
+    if @states[0] == :shut
+      @states[0] = :open
+    else
+      @states[0] = :shut
+    end
+    @n += 1 if @states[0] == :open
+    @n
+  end
+
+  attr_reader :n
+end
+
+# Names a game method adds to with `|=` on every pass.
+class AnswerGrownNames
+  def initialize
+    @n = 0
+    @used = %i[walk]
+    @used |= %i[wait]
+  end
+
+  def grow
+    @used |= %i[run]
+    @n += @used.length
+  end
+
+  attr_reader :n
+end
+
+# The same names named with `game_variables`, so the game keeps them and sees each switch.
+class AnswerNamedSwitchedNames
+  game_variables :states
+
+  def initialize
+    @n = 0
+    @states = %i[shut shut]
+  end
+
+  def flip
+    if @states[0] == :shut
+      @states[0] = :open
+    else
+      @states[0] = :shut
+    end
+    @n += 1 if @states[0] == :open
+    @n
+  end
+
+  attr_reader :n
+end

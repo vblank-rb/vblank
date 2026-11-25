@@ -416,7 +416,7 @@ module VBlank
           end
           unless in_text
             note_array_handed(owner, current, label, store)
-            uses.note_ruby_array_read(current, owner, label) if current.is_a?(Array)
+            uses.note_ruby_array_read(current, owner, label) if current.is_a?(Array) || names_collection?(current)
             uses.note_read(owner, label, current)
             uses.note_flag_read(owner, label, current) if Uses::FLAGS.include?(current)
           end
@@ -520,6 +520,7 @@ module VBlank
           return own_variable_while_setting_up(owner, current, value, label) unless uses
 
           unless uses.followed?(owner, label, current) || game_number_given?(current, value, starting)
+            refuse_names_changed!(owner, label) if !starting && uses.names_kept_as_ruby?(owner, label, current)
             uses.note_change(owner, label, current, value, operator: false) unless starting
             return current
           end
@@ -556,8 +557,28 @@ module VBlank
           return game_variable_of(owner, current, label) if uses.followed?(owner, label, current)
 
           refuse_nil_changed!(label) if current.nil?
+          refuse_names_changed!(owner, label) if !starting && uses.names_kept_as_ruby?(owner, label, current)
           uses.note_change(owner, label, current, current, operator: true) unless starting
           current
+        end
+
+        # A line of game code changes +owner+'s +label+, an Array or a Hash of names that stays Ruby's
+        # (Uses#names_kept_as_ruby?): Ruby would change it on a pass, and the game would not see it.
+        def refuse_names_changed!(owner, label)
+          name = label.to_s.delete_prefix("@")
+          where = owner.is_a?(Builder) ? "the game block" : "`#{owner.class.name || 'its class'}`"
+          raise Refused, "This line changes `#{label}` while the game plays. `#{label}` holds only names, so it " \
+                         "stays a plain Ruby value, and the game does not see the change. To fix this, add " \
+                         "`game_variables :#{name}` to #{where}.#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # A slot of +collection+ is written by a line of game code. Refused where it holds names that game
+        # code read from an instance variable, kept as Ruby's (#refuse_names_changed!).
+        def refuse_names_slot_changed!(collection)
+          return unless Builder::Session.recording? && names_collection?(collection)
+
+          holder = Builder::Session.builder.instance_variable_uses.instance_variable_holding(collection)
+          refuse_names_changed!(holder.owner, holder.label) if holder
         end
 
         # `@lives -= 1` in game code while `@lives` holds nil. Ruby would stop here with its own
@@ -753,6 +774,13 @@ module VBlank
             "`#{name}`. Each new `#{name}` starts again from `initialize`. To fix this, make the `#{keeper}` " \
             "above the game loop, or keep it in an instance variable too, like `@part ||= #{keeper}.new(...)`." \
             "#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # A Hash or an Array holding Symbols and nothing else (`[:walk, :move_to]`): names a part keeps
+        # while it is set up, which no game number is made of unless its class names it (Uses#followed?).
+        def names_collection?(held)
+          values = held.is_a?(Hash) ? held.values : held
+          (held.is_a?(Hash) || held.is_a?(Array)) && !values.empty? && values.all?(Symbol)
         end
 
         # A Hash or an Array of numbers (`@tilt_counters = { left: 0, right: 0 }`), or one already
@@ -2164,6 +2192,12 @@ module VBlank
               owner.respond_to?(:"#{attribute}=")
           end
 
+          # Is +owner+'s +label+, holding +current+, names its code may change that stay Ruby's
+          # (#followed?)? A line of game code changing it is refused (InstanceVariables.refuse_names_changed!).
+          def names_kept_as_ruby?(owner, label, current)
+            InstanceVariables.names_collection?(current) && !named?(owner, label) && changing?(owner, label)
+          end
+
           # Is +owner+'s +label+, holding +current+, a game variable on the line of game code running
           # now? One a class names is. So is one its code may change (#changing?), from the first line
           # of game code that reads or changes it: it starts from the number Ruby holds there, which
@@ -2171,13 +2205,19 @@ module VBlank
           # nor one a line of game code gave a number outright before (`@named = 0`, then `@named +=
           # 1`): Ruby knows what that holds where it is read, and #note_read and #note_change keep
           # it to that.
+          #
+          # Nor an Array or a Hash of names alone (InstanceVariables.names_collection?), filled while
+          # setting up (`@used |= names`): it holds no number for the game to work out, so it stays
+          # Ruby's, and a question on it (`@used.intersect?(AIMS)`) is answered while building, as Ruby
+          # answers it. One its class names with `game_variables` is still the game's.
           def followed?(owner, label, current)
             return true if named?(owner, label)
             return false unless changing?(owner, label)
             return true if Steps.variable?(current) || current.is_a?(Condition) || current.is_a?(List)
             return false if (@uses[owner] || {})[label]&.changed_at
+            return true if STARTS.any? { |kind| current.is_a?(kind) }
 
-            STARTS.any? { |kind| current.is_a?(kind) } || InstanceVariables.numbers_collection?(current)
+            InstanceVariables.numbers_collection?(current) && !InstanceVariables.names_collection?(current)
           end
 
           # The variable name +owner+'s class (or the game block) chose for +label+, or nil.

@@ -11,6 +11,7 @@ VBlank.require_game_file "../../../plain_ruby_split_counts_changed"
 VBlank.require_game_file "../../../plain_ruby_flagged_bytes_part"
 VBlank.require_game_file "../../../plain_ruby_secret_lift_parts"
 VBlank.require_game_file "../../../plain_ruby_kept_part_hooks"
+VBlank.require_game_file "../../../plain_ruby_name_list_parts"
 
 # What files of one game share when each is brought in by `VBlank.require_game_file`.
 class TestPlainRubyParts < Minitest::Test
@@ -879,5 +880,14 @@ class TestPlainRubyParts < Minitest::Test
     played_game(frames: frames) do
       hook_play_game(self)
     end
+  end
+
+  # A list of Symbols a part fills while it is set up, and game code never changes, stays Ruby's
+  # (test/plain_ruby_name_list_parts.rb): `@used.intersect?(AIMS)` is answered while building, so
+  # the count goes up by one a pass and never by ten.
+  def test_a_list_of_names_filled_while_setting_up_is_asked_as_ruby
+    player = played_game(frames: 3) { name_list_game(self) }
+
+    assert_equal 3, player[:name_list_runner_count]
   end
 end

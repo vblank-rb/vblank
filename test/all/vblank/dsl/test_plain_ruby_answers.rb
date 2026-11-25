@@ -2127,6 +2127,41 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # Names filled while setting up and never changed by game code stay Ruby's, so Ruby answers a
+  # question on them while building.
+  def test_names_noted_while_setting_up_are_asked_as_ruby
+    agrees("@used |= names, then @used.intersect?(AIMS)", reads: %i[m], passes: 3) do
+      noted = AnswerNoted.new([%i[walk move_to], %i[wait]])
+      m = 0
+      game_loop { m = noted.reach }
+    end
+  end
+
+  # Changed by game code, names the class does not name stay Ruby's, and the game would not see it.
+  def test_names_switched_by_game_code_are_refused
+    refused("@states[0] = :open or :shut in a method", /game_variables :states/) do
+      switched = AnswerSwitchedNames.new
+      m = 0
+      game_loop { m = switched.flip }
+    end
+  end
+
+  def test_names_named_and_switched_by_game_code
+    agrees("game_variables :states, @states[0] = :open in a method", reads: %i[m], passes: 3) do
+      switched = AnswerNamedSwitchedNames.new
+      m = 0
+      game_loop { m = switched.flip }
+    end
+  end
+
+  def test_names_grown_by_game_code_are_refused
+    refused("@used |= %i[run] in a method", /game_variables :used/) do
+      grown = AnswerGrownNames.new
+      m = 0
+      game_loop { m = grown.grow }
+    end
+  end
+
   def test_an_object_keeping_a_changing_object_made_above_the_game_loop
     agrees("AnswerKeeper.new above game_loop", reads: %i[m n], passes: 3) do
       keeper = AnswerKeeper.new
