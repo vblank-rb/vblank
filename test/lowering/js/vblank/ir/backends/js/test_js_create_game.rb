@@ -88,7 +88,7 @@ class TestJSCreateGame < Minitest::Test
     JS
     told = played_page(["play 5", 'js said.join(" | ")'], html: html).grep(/\Ajs /).first
 
-    assert_match(/stopped: The game stopped: .*list :trail is full/, told)
+    assert_match(/stopped: The game stopped: .*`trail` is full/, told)
   end
 
   # A stopped game lets go of the page: its keys go back to the page (the arrows scroll again, F
