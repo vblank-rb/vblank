@@ -55,10 +55,11 @@ module VBlank
             end
 
             # The game's bends (`scroll_rows`), by the name of the background each bends: the last it is given, in
-            # the order the backgrounds were first bent, and only for a background the game has (Reference
-            # #collect_definitions, #work_out_bends).
+            # the order the backgrounds were first bent, and only for a background on a screen (Reference
+            # #collect_definitions, #work_out_bends): one declared only in a routine no run calls bends nothing
+            # (Stacking.scenery_reached).
             def self.bends_in(program)
-              named = program.walk.select { |node| node.kind == :background }.to_set(&:name)
+              named = Stacking.scenery_reached(program).to_set(&:name)
               program.walk.select { |node| node.kind == :scroll_rows && named.include?(node.name) }
                      .group_by(&:name).transform_values(&:last)
             end
