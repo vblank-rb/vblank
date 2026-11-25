@@ -550,11 +550,16 @@ module VBlank
           # calling it, reporting it — treats it as the routine it has become. Its "body"
           # is the loop node's own statements.
           def register_frame_routine(program)
+            @frame_loop = program.walk.find { |node| node.kind == :loop }
             return unless @fast_funcs.include?(FRAME_ROUTINE)
 
-            loop_node = program.walk.find { |node| node.kind == :loop }
-            @functions.funcs[FRAME_ROUTINE] = loop_node if loop_node
+            @functions.funcs[FRAME_ROUTINE] = @frame_loop if @frame_loop
           end
+
+          # Whether +node+ is the game loop whose body is the frame routine (#register_frame_routine,
+          # #placeable_nodes): the program's first loop. A game loop written inside a routine is
+          # lowered where it is written, as any statement of that routine is.
+          def frame_loop?(node) = node.equal?(@frame_loop)
 
           # Emit the moved routines, back to back, between the two labels boot copies
           # between. One block, not several, so their distances from each other survive

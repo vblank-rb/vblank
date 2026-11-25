@@ -221,6 +221,8 @@ module VBlank
           end
 
           def emit_loop(node)
+            return emit_loop_in_routine(node) unless @placement.frame_loop?(node)
+
             @placement.emit_start_counting_frames # the setting up before this is not play
             top = @emitter.gensym
             @emitter.place_label(top)
@@ -240,6 +242,16 @@ module VBlank
             stops = @emitter.pos
             @fault_stops.emit_pending
             @functions.stop_bytes[Placement::FRAME_ROUTINE] = @emitter.pos - stops
+          end
+
+          # A game loop written inside a routine: its body where it is, and a jump back to its top.
+          # Only the program's first loop is the frame routine the quick memory may hold, so this
+          # one is never a call to that routine, whose body is another loop's.
+          def emit_loop_in_routine(node)
+            top = @emitter.gensym
+            @emitter.place_label(top)
+            node.children.each { |stmt| @lowering.statement(stmt) }
+            @emitter.emit_branch(:b, top)
           end
 
           # repeat: a counted loop. The count is evaluated once into a hidden limit (matching
