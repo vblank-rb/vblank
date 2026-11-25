@@ -35,14 +35,21 @@ class TestProfileJson < Minitest::Test
   # Draws far more than fits in the gap between frames, AND draws something different each
   # frame — a tear is the display showing a row before the game finished it, so a picture that
   # repaints itself the same colour every frame has no seam to see even when it overruns.
+  #
+  # Clearing the whole screen several times before painting it is what keeps it tearing. A
+  # fill of a wide rectangle is one quick copy per row, and one that starts as the gap starts
+  # runs down the screen ahead of the display, so a single coat never tears however big it
+  # is. The clears use up the gap and the top of the picture, so the last coat starts after
+  # the display has already shown those rows black.
   private def heavy
     build("HEAVY", "ZHVY") do
       screen :bitmap
       c = var :c, 0
       game_loop do
         c = 1 - c
-        fill_rect 0, 0, 240, 120, :red if c == 0
-        fill_rect 0, 0, 240, 120, :blue if c == 1
+        3.times { clear_screen :black }
+        fill_rect 0, 0, 240, 160, :red if c == 0
+        fill_rect 0, 0, 240, 160, :blue if c == 1
       end
     end
   end
