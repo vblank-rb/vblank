@@ -11,6 +11,9 @@ module VBlank
     # (CountedPasses), as a profile reads them, and where each sprite is, from the rows the runtime keeps.
     module PS1Reading
       include CountedPasses
+      include RuntimeLists
+
+      private def list_layout = IR::Backends::PS1::Runtime::Lists
 
       # Lists of 256 colours, kept in video RAM (nothing is drawn with one yet).
       PALETTE = Verifier::PaletteLayout.new(half: 0, group: 256)

@@ -2,7 +2,7 @@
 
 module VBlank
   module Diagnostics
-    # A list as the Color, the Super Nintendo and the Genesis keep it: a header saying how many slots
+    # A list as the Color, the Super Nintendo, the Genesis and the PlayStation keep it: a header saying how many slots
     # it has, where the oldest item is and how many items it holds, and the slots after that. Their
     # runtimes lay it out alike, each naming the places in a Lists module of its own, which
     # +list_layout+ hands over, with how many bytes each number of the header takes (FIELD_BYTES).
