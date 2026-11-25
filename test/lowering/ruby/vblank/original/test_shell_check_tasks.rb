@@ -27,6 +27,26 @@ class TestShellCheckTasks < Minitest::Test
     path
   end
 
+  # The same port with a feature :rooms that refuses to build until a setting names the rooms, so
+  # its whole game does not build, ending with a line that registers a handle that does.
+  private def game_file_naming_a_build(folder, copy)
+    path = File.join(folder, "port.rb")
+    File.write(path, <<~RUBY)
+      from = VBlank::Original::Game.new(title: "Made Up", setting: "MADE_UP_ROM", env: { "MADE_UP_ROM" => #{copy.inspect} }.compact,
+                                        settings_file: #{File.join(folder, 'made_up.yml').inspect},
+                                        releases: { "Test" => { "sha1" => #{SHA1.inspect}, "size" => #{COPY_SIZE} } })
+      game = VBlank.game("MADE UP", consoles: %i[gba], features: { rooms: [] }) do
+        if feature?(:rooms) && setting(:rooms, 0).zero?
+          raise VBlank::BuildError, "The rooms feature needs the setting :rooms."
+        end
+        data_pack(from: from, version: "1") { |slots| slots.colors :palette, at: #{PALETTE_AT}, count: 16 }
+        game_loop { wait_vblank }
+      end
+      game.with_features(:rooms).with_settings(rooms: 3).register
+    RUBY
+    path
+  end
+
   private def check_task(file, passes: nil)
     Rake.application = Rake::Application.new
     VBlank::Original::ShellCheckTasks.new do |t|
@@ -40,6 +60,16 @@ class TestShellCheckTasks < Minitest::Test
     Dir.mktmpdir do |folder|
       copy = File.join(folder, "made_up.gba").tap { |path| File.binwrite(path, COPY) }
       task = check_task(game_file(folder, copy))
+      out, = capture_io { task.invoke }
+
+      assert_match "plays as its all-in-one build does", out
+    end
+  end
+
+  def test_the_task_checks_the_build_the_file_registers
+    Dir.mktmpdir do |folder|
+      copy = File.join(folder, "made_up.gba").tap { |path| File.binwrite(path, COPY) }
+      task = check_task(game_file_naming_a_build(folder, copy))
       out, = capture_io { task.invoke }
 
       assert_match "plays as its all-in-one build does", out

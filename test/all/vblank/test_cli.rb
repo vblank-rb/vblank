@@ -7,6 +7,7 @@ require "tmpdir"
 require "rbconfig"
 require "json"
 require "stringio"
+require "all/vblank/cartridge/test_game_register"
 
 # End-to-end tests for the `vblank` command. These are the only tests that touch
 # Thor: they run bin/vblank in a subprocess, the way a user does, so the CLI (and
@@ -16,6 +17,8 @@ class TestCLI < Minitest::Test
   # Which Ruby to launch, asked once here. Asking reads Ruby's own table of how it was
   # built, which is not something a worker may touch — and these tests run in a pool.
   RUBY = RbConfig.ruby.freeze
+
+  include RoomsGameFile
 
   BIN = VBlank.root.join("bin/vblank").to_s
   LIB = VBlank.root.join("lib").to_s
@@ -1559,6 +1562,38 @@ class TestCLI < Minitest::Test
       assert status.success?, out
       assert_match(/class MultiIR/, out)
       assert_match(/var: :score/, out)
+    end
+  end
+
+  # A game file names the build its commands take by registering a handle; the whole game, which
+  # refuses to build here, is built only when the file names none.
+  def test_build_takes_the_handle_the_game_file_registers
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "game.with_features(:rooms).with_settings(rooms: 3).register")
+
+      out, status = cli("build", "rooms.rb", "--format=ir", dir: dir)
+      assert status.success?, out
+      assert_match(/\b4323\b/, out)
+    end
+  end
+
+  def test_build_takes_the_handle_write_if_main_was_called_on
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "game.with_features(:rooms).with_settings(rooms: 2).write_if_main(settings: { other: 1 })")
+
+      out, status = cli("build", "rooms.rb", "--console", "gba", dir: dir)
+      assert status.success?, out
+      assert File.exist?(File.join(dir, "rooms.gba")), out
+    end
+  end
+
+  def test_build_of_a_file_that_names_no_handle_builds_the_whole_game
+    Dir.mktmpdir do |dir|
+      rooms_file(dir, "")
+
+      out, status = cli("build", "rooms.rb", "--format=ir", dir: dir)
+      refute status.success?
+      assert_match REFUSAL, out
     end
   end
 

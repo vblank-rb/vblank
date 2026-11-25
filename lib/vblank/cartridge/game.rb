@@ -343,9 +343,19 @@ module VBlank
       # +settings+ are what this build is told. This line is the command line's edge, so it is
       # the one place a game reads the environment if it wants to:
       # `write_if_main(settings: { floors: ENV.fetch("FLOORS", "60") })`.
+      #
+      # A file loaded rather than run registers this handle (#register), so the `vblank` command
+      # builds the game `ruby game.rb` does: `GAME.with_features(:hero).write_if_main` builds the
+      # hero alone under both. The handle is registered without +settings+: those are this line's
+      # edge, read from the environment, and the command has its own (`--set`), which would
+      # otherwise be refused as given twice. A handle that is the last registered game already,
+      # the game the file declared, is not registered again.
       def write_if_main(settings: {})
         caller_path = caller_locations(1, 1)&.first&.path
-        return self unless caller_path && main_script?(caller_path)
+        unless caller_path && main_script?(caller_path)
+          register unless VBlank.registered_games.last.equal?(self)
+          return self
+        end
 
         # Say what it is doing, because this path is by definition somebody who ran a build by
         # hand and is now waiting for it. A build reached any other way — a test, a tool, a
@@ -356,6 +366,20 @@ module VBlank
           rom.write(path)
           $stdout.puts "Built #{File.basename(path)} (#{rom.size} bytes)"
         end
+        self
+      end
+
+      # Make this handle the game a file names for the commands that load it (`vblank build`,
+      # `vblank run`, `vblank preview`, a port's shell check), which build the last game registered
+      # (VBlank.registered_games). Returns self. A file whose game is a cut of the whole one ends
+      # with the cut:
+      #
+      #   GAME.with_features(:hero).with_settings(rooms: 3).register
+      #
+      # A file that registers no handle has its declared game built whole, every feature on and no
+      # settings. The registry is per Ractor, as VBlank.game's is.
+      def register
+        Ractor.current[:vblank_registered_games] = VBlank.registered_games + [self]
         self
       end
 
@@ -387,8 +411,9 @@ module VBlank
         !program.nil? && File.expand_path(path) == File.expand_path(program)
       end
 
-      # This game with +options+ and +settings+ in place of its own: a handle of its own, never
-      # registered as a game declared (VBlank.registered_games), since it is a build of one.
+      # This game with +options+ and +settings+ in place of its own: a handle of its own, not
+      # registered as a game declared (VBlank.registered_games), since it is a build of one. A game
+      # file that wants the commands to build it registers it itself (#register, #write_if_main).
       def with_options(options, settings: @settings)
         self.class.new(@title, consoles: @consoles, code: @code, maker: @maker, block: @block, options: options,
                                menu: @menu, variants: @variants, settings: settings)
@@ -471,8 +496,9 @@ module VBlank
   end
 
   class << self
-    # Every game declared here, in declaration order (usually one per file). The `vblank`
-    # command loads a game file and reads the game it declared from here.
+    # Every game declared here, in declaration order (usually one per file), with each handle a
+    # game file registered (Cartridge::Game#register). The `vblank` command loads a game file and
+    # builds the last of them: the handle the file names, or else the game it declared.
     #
     # Kept per Ractor rather than for the whole process. A declared game holds the author's
     # own block so it can be built later, and a block carries the surroundings it was
@@ -543,8 +569,7 @@ module VBlank
                                        sprite_piece_size: sprite_piece_size, players: players, features: features)
       handle = Cartridge::Game.new(title, code: code, maker: maker, block: DSL::PlainRuby.game_block(block, allow: allow),
                                           options: options, consoles: consoles, menu: menu, variants: variants)
-      Ractor.current[:vblank_registered_games] = registered_games + [handle]
-      handle
+      handle.register
     end
 
     # `require_relative` for a file of a game written in normal Ruby (see DSL::PlainRuby): a part
