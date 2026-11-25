@@ -571,4 +571,29 @@ class TestRowBend < Minitest::Test
     game_steps = run[:steps] - (4 * run[:answered])
     assert_equal [9, 2], [game_steps, run[:walks]]
   end
+
+  # A bent background beside a status bar used to disagree on the Color: the bar's two rows sat
+  # below a field whose rows each scroll by their own amount. The checked run compares the
+  # picture each pass, so each tile has one blue column on red or white, which a row moved by the
+  # wrong amount shows. The field's first rows are moved apart; the bar's rows are not moved.
+  def test_a_bent_background_leaves_the_status_bar_below_it_unbent
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: game_console))
+    b.instance_eval do
+      screen :tiled
+      image(:cell, "#" => :blue, "." => :red) { (["#......."] * 8).join("\n") }
+      image(:bar, "#" => :blue, "." => :white) { (["#......."] * 8).join("\n") }
+      tiles :cells, "#" => :cell
+      tiles :bar_tiles, "#" => :bar
+      field = background :field, tiles: :cells, map: Array.new(18) { "#" * 30 }
+      field.scroll_each_row { |row| row % 4 }
+      status_bar :score, tiles: :bar_tiles, map: ["#" * 30] * 2, top: screen_height - 16
+      game_loop { }
+    end
+    b.finalize_program
+    screen = game_player.run(b.program, frames: 10).screen
+    first_blue = ->(y) { (0...8).find { |x| screen.pixel(x, y) == VBlank::Graphics::Color.resolve(:blue) } }
+
+    refute_equal first_blue.call(0), first_blue.call(1), "the field's rows are moved by different amounts"
+    assert_equal [0, 0], [screen.height - 15, screen.height - 13].map(&first_blue), "the bar's rows are not moved"
+  end
 end
