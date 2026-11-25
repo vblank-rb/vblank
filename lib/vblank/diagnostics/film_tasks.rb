@@ -98,8 +98,8 @@ module VBlank
              "that way, the cartridge in its emulator if unsaid; SOUND=<a side's label, side_by_side or in_turn> " \
              "puts sound in the film)"
         task(name) do
-          # Asked before the library is loaded, so a film not named stops here, and the rescue below
-          # (which names a class the library defines) is never asked about the stop.
+          # Must stay outside the rescue: it can stop the task before the library is loaded, and the
+          # rescue names a class the library defines, which raises NameError when the stop meets it.
           refuse_unknown_film!(ENV.fetch("NAME", nil))
           begin
             path = make_film(ENV.fetch("NAME", nil), console: setting_from_environment("CONSOLE") || console,

@@ -502,7 +502,8 @@ module VBlank
           end
 
           # The number the picks count from taken off the accumulator: inside the instruction where it
-          # fits there, else loaded first (a font's first tile is past what an immediate holds).
+          # fits there, else loaded first: a start that is a whole map cell, its colour bank in its high
+          # bits, is past what an ARM immediate holds.
           def emit_subtract_picks_from(start)
             return if start.zero?
             return @emitter.emit(ASM.sub_imm(ACC, ACC, start)) if ASM.encode_rotated_immediate(start)
