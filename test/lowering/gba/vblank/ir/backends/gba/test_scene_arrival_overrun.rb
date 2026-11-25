@@ -393,6 +393,63 @@ class TestSceneArrivalOverrun < Minitest::Test
     assert_equal [seen.values.first], seen.values.uniq, "wherever down the picture it began: #{seen}"
   end
 
+  # Two sendings in one pass, the first started late in the gap so it runs into the picture and
+  # holds the layers off for the rest of it. The second finds them off already, so waiting for the
+  # gap would save no picture from tearing; it would only spend the rest of the picture, and the
+  # pass would end in the next gap and wait a whole picture more, the game a frame behind from
+  # there. Two backgrounds walking into a new area in one gap are the same shape: a big set of
+  # tiles brought in, then a small one.
+  def test_a_second_sending_after_one_that_ran_into_the_picture_does_not_wait_for_the_gap
+    rom = assemble_rom(taken_over_twice, name: "TWOSENDS")
+    reader = VBlank::Diagnostics::Verifier.new(rom, frames: 0, vars: rom.var_addresses)
+    passes = (1..(HANDED_OVER_AT + 6)).map do
+      reader.step
+      reader.var(:pass)
+    end
+
+    lost = passes.each_cons(2).drop(1).reject { |before, after| after == before + 1 }
+    assert_empty lost, "the pass count at each frame from power-on: #{passes}"
+  end
+
+  # A title, then on pass HANDED_OVER_AT, from LATE_LINE of the gap, scene :play and then scene
+  # :sky, each with a background of its own to send: the first many tiles, the second one tile.
+  private def taken_over_twice
+    handed_over_at = HANDED_OVER_AT
+    late_line = LATE_LINE
+    b = Builder.new
+    b.extend(VBlank::Builder::Debug)
+    b.instance_eval do
+      screen :tiled
+      900.times { |n| image(:"stripe_#{n}", width: 8, height: 8, data: TestSceneArrivalOverrun.numbered_tile(n)) }
+      tiles :stripes, (0...900).to_h { |n| [n, :"stripe_#{n}"] }
+      image(:puff, "#" => :white, "." => :transparent) { (["##......"] + (["........"] * 7)).join("\n") }
+      tiles :puffs, { 0 => :puff }
+      image(:title_tile, width: 8, height: 8, data: TestSceneArrivalOverrun::TITLE)
+      tiles :title_tiles, { 0 => :title_tile }
+      map = Array.new(WIDE) { |row| Array.new(WIDE) { |col| ((row * WIDE) + col) % 900 } }
+      state = var :state, 0
+      then_state = var :then_state, 0
+      pass = var :pass, 0
+      scene(:title) { background :title, tiles: :title_tiles, map: Array.new(20) { [0] * 30 } }
+      scene(:play) { background :ground, tiles: :stripes, map: map }
+      scene(:sky) { background :clouds, tiles: :puffs, map: Array.new(20) { [0] * 30 } }
+      game_loop do
+        pass += 1
+        then_state = 0
+        if pass == handed_over_at
+          line = read_scanline
+          line = read_scanline while line < late_line
+          state = 1
+          then_state = 2
+        end
+        call({ 0 => :title, 1 => :play }, number: :state)
+        call({ 2 => :sky }, number: :then_state)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # A scene whose sending can need more than the gap leaves it holds its first picture wherever the
   # sending ends: two builds of one game move its pictures from different memories at different
   # speeds, and one ending in the gap where the other runs a few lines on must not show a different

@@ -856,7 +856,14 @@ module VBlank
           # showed the last scene above that line and the backdrop below it. Waiting, that picture
           # is the last scene whole, as the interpreter shows it, and the sending runs in the gap
           # that follows. Not while the display is forced blank, as it is until the first frame is
-          # set up: nothing is drawn then, and the wait would only delay the start. Uses ACC and TMP.
+          # set up: nothing is drawn then, and the wait would only delay the start.
+          #
+          # Nor while the layers this sending switches off are off already. That is a sending after
+          # another in the same pass, the first of which ran past the gap and holds the layers off
+          # for the rest of the picture: two sets of tiles brought in at once, say. The picture
+          # below the line is the backdrop either way, so there is nothing left to tear, and
+          # waiting would only spend the rest of the picture and make the pass miss the next gap.
+          # Uses ACC and TMP.
           def emit_wait_for_gap_if_drawing
             drawing = @emitter.gensym
             gap = @emitter.gensym
@@ -864,6 +871,8 @@ module VBlank
             @emitter.emit(ASM.load_halfword(ACC, TMP))
             @emitter.emit(ASM.tst_imm(ACC, FORCED_BLANK))
             @emitter.emit_branch(:bcond, gap, cond: :ne)    # switched off already: nothing is drawn
+            @emitter.emit(ASM.tst_imm(ACC, held_layer_bits))
+            @emitter.emit_branch(:bcond, gap, cond: :eq)    # its layers are off already: nothing to tear
             @emitter.emit_number(TMP, REG_VCOUNT)
             @emitter.place_label(drawing)
             @emitter.emit(ASM.load_halfword(ACC, TMP))      # the line being drawn
