@@ -65,11 +65,11 @@ module VBlank
             FRAME = 8
             CURSORS = 10
             STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
-            # The effects a frame has to look at, by number, each one up, the highest rank first, and nought
-            # after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the order. A word
-            # an effect. An effect asked for goes in as it is asked (rt_sfx_live_add); LIVE_CHANGED marks that
-            # one ended, so the next frame leaves out those that are over (rt_sfx_live_prune). LIVE_AT walks
-            # it, and LIVE_KEPT is where the pruning writes.
+            # The effects a frame has to look at, a word each: its number one up, the highest rank first, and
+            # nought after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the order.
+            # An effect asked for goes in as it is asked (rt_sfx_live_add); LIVE_CHANGED marks that one ended,
+            # so the next frame leaves out those that are over (rt_sfx_live_prune). LIVE_AT walks it, and
+            # LIVE_KEPT is where the pruning writes.
             LIVE = "rt sfx live"
             LIVE_RANKS = "rt sfx live ranks"
             LIVE_AT = "rt sfx live at"
@@ -104,9 +104,9 @@ module VBlank
             # walks only the effects in LIVE.
             def emit(asm, memory, level_at, recorded: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
-              emit_game_side(asm, at, memory)
-              emit_live_list(asm, at, memory)
-              emit_passes(asm, at, memory)
+              emit_game_side(asm, at)
+              emit_live_list(asm, at)
+              emit_passes(asm, at)
               emit_frame(asm, at, memory, level_at, recorded)
               emit_finish(asm, at, memory, recorded)
               emit_recorded_parts(asm, at, glides: memory.reserved?(Recordings::GLIDES)) if recorded
@@ -164,7 +164,7 @@ module VBlank
 
             # rt_sfx_play(which, list): the effect at place +which+ of effect list +list+ starts at the next
             # frame (Reference::Player#request_effect); rt_sfx_play_now, here (Reference::Player#start_effect_here).
-            def emit_game_side(asm, at, memory)
+            def emit_game_side(asm, at)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_play")
@@ -181,7 +181,7 @@ module VBlank
               asm.clr(:w, state.call(ASKED))
               # The live effects, in rank order: this one plays its first frame; one of a group waiting to be
               # cut off is cut off here. Every effect waiting to be cut off is live.
-              emit_live_walk(asm, at, memory, "rt_sfx_play_now") do
+              emit_live_walk(asm, at, "rt_sfx_play_now") do
                 asm.move(:w, at.call(EFFECT), asm.d(0))
                 asm.cmp(:w, at.call(ASKED_EFFECT), asm.d(0))
                 asm.branch(:ne, "rt_sfx_play_now_other")
@@ -271,7 +271,7 @@ module VBlank
             #
             # rt_sfx_live_prune: the effects of LIVE no longer asked for, sounding or to be cut off, left
             # out, the rest kept in their order.
-            def emit_live_list(asm, at, memory)
+            def emit_live_list(asm, at)
               state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_live_add")
               asm.move(:w, at.call(ASKED_EFFECT), asm.d(0))
@@ -355,7 +355,7 @@ module VBlank
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
             # since the last frame.
-            def emit_passes(asm, at, memory)
+            def emit_passes(asm, at)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_above")
@@ -367,7 +367,7 @@ module VBlank
               asm.branch(:ne, "rt_sfx_above_live")
               asm.rts # nothing live: nothing here or in rt_sfx_below has a thing to do
               asm.label("rt_sfx_above_live")
-              emit_live_walk(asm, at, memory, "rt_sfx_asked") do
+              emit_live_walk(asm, at, "rt_sfx_asked") do
                 asm.move(:w, state.call(ASKED), state.call(ASKED_NOW))
                 asm.clr(:w, state.call(ASKED))
               end
@@ -379,18 +379,18 @@ module VBlank
               asm.addq(:w, 1, asm.d(0))
               asm.move(:w, asm.d(0), at.call(TUNE_RANK))
               asm.label("rt_sfx_above_tune")
-              emit_pass(asm, at, memory, "rt_sfx_above", above: true)
+              emit_pass(asm, at, "rt_sfx_above", above: true)
               asm.rts
 
               asm.label("rt_sfx_below")
-              emit_pass(asm, at, memory, "rt_sfx_below", above: false)
+              emit_pass(asm, at, "rt_sfx_below", above: false)
               asm.rts
             end
 
             # One pass over the live effects in rank order, playing those that outrank the tune (+above+), or
             # those that do not: an effect outranks it when its rank's place is at least TUNE_RANK.
-            def emit_pass(asm, at, memory, name, above:)
-              emit_live_walk(asm, at, memory, name) do
+            def emit_pass(asm, at, name, above:)
+              emit_live_walk(asm, at, name) do
                 asm.move(:w, asm.disp(0, Genesis::Music::EFFECT_RANK), asm.d(0))
                 asm.cmp(:w, at.call(TUNE_RANK), asm.d(0))
                 asm.branch(above ? :cs : :cc, "#{name}_walk") # past an effect on the other side of the tune
@@ -403,7 +403,7 @@ module VBlank
             # nothing has asked for cost a frame nothing: every frame walks both sides of the tune, and
             # selecting an effect is a good many instructions. An effect that ends on the way stays in LIVE
             # until the next frame, and a turn of the block over it does nothing.
-            def emit_live_walk(asm, at, memory, name)
+            def emit_live_walk(asm, at, name)
               asm.clr(:w, at.call(LIVE_AT))
               asm.label("#{name}_live_next")
               asm.lea(at.call(LIVE), asm.a(1))
