@@ -37,7 +37,7 @@ module VBlank
           # Where a list is and how it is kept (#register_list): +capacity+ items of +width+ (+bytes+ a
           # slot) from +base+, and, for a ring, +mask+ one less than its slots. +roomy+ whether it went
           # to the roomy memory, +want+ the bytes it asks of the quick memory, +fast+ what the author set.
-          ListLayout = Data.define(:capacity, :ring, :mask, :base, :width, :bytes, :roomy, :want, :fast)
+          ListLayout = Data.define(:capacity, :ring, :mask, :base, :width, :bytes, :roomy, :want, :fast, :unsigned)
 
           def emit_statement(node)
             case node.kind
@@ -620,7 +620,7 @@ module VBlank
           #
           # A pool's list kept in its layout's area (#reserve_pool_areas) has its slots there and
           # takes no room of its own.
-          def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false, at: nil)
+          def register_list(name, capacity, ring: true, width: :word, fast: nil, roomy: false, at: nil, unsigned: false)
             if (existing = @lists[name])
               return if existing.capacity == capacity && existing.width == width
 
@@ -641,7 +641,7 @@ module VBlank
             fast = true if at # a pool's area moves as its block does (#reserve_pool_areas)
             # Placed before its counters are named, since where they go follows where it went.
             @lists[name] = ListLayout.new(capacity: capacity, ring: ring, mask: slots - 1, base: base,
-                                          width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast)
+                                          width: width, bytes: bytes, roomy: in_roomy, want: want, fast: fast, unsigned: unsigned)
             counters = ring ? [head_var(name), length_var(name)] : [length_var(name)] # a plain array's head can never move
             counters << capacity_var(name) if @lists_of_varying_capacity.include?(name)
             counters.each do |counter|
@@ -805,7 +805,7 @@ module VBlank
           # +stride+ is how far apart its slots are and +scale+ what each value is kept multiplied by:
           # +bytes+ and 1, except a pool's list kept in its layout's area, whose slots are at the pool's
           # stride, +bytes+ the value's own width there, and a link kept as the slot times the stride.
-          Place = Data.define(:base, :capacity, :bytes, :length_at, :slots, :head_at, :stride, :scale)
+          Place = Data.define(:base, :capacity, :bytes, :length_at, :slots, :head_at, :stride, :scale, :unsigned)
 
           def list_places
             @lists.to_h do |name, info|
@@ -813,7 +813,7 @@ module VBlank
               [name, Place.new(base: info.base, capacity: info.capacity, bytes: slot.width,
                                length_at: @primitives.vars.fetch(length_var(name)), slots: info.mask + 1,
                                head_at: (@primitives.vars.fetch(head_var(name)) if info.ring),
-                               stride: slot.stride, scale: slot.scale)]
+                               stride: slot.stride, scale: slot.scale, unsigned: info.unsigned)]
             end
           end
 
@@ -1389,13 +1389,15 @@ module VBlank
           # A narrow element is read back sign-extended, filling the whole register with the
           # number it holds including its sign, so what comes out of a byte slot holding -4 is
           # -4 and not 252. That is why there is no unsigned option: a slot that could not come
-          # back negative would break every countdown written `sub` first and tested second.
+          # back negative would break every countdown written `sub` first and tested second. The one
+          # exception is a list the game declared to hold 0..65535 (`width: :unsigned_half`): it is
+          # kept in two bytes and read back with no sign, so 65535 is not -1.
           #
           # +bytes+ is the slot's width (#slot_place), the list's own unless a layout placed it.
           def emit_load_element(info, into, addr, bytes: info.bytes)
             case bytes
             when 4 then @emitter.emit(ASM.ldr(into, addr))
-            when 2 then @emitter.emit(ASM.ldrsh(into, addr))
+            when 2 then @emitter.emit(info.unsigned ? ASM.load_halfword(into, addr) : ASM.ldrsh(into, addr))
             when 1 then @emitter.emit(ASM.ldrsb(into, addr))
             end
           end

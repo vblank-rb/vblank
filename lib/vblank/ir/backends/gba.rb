@@ -1775,12 +1775,42 @@ module VBlank
           capacities = declarations.group_by { |node, _ring| node.name }
                                    .transform_values { |made| made.map { |node, _ring| node.capacity }.uniq }
           @lists.lists_of_varying_capacity = capacities.select { |_name, held| held.length > 1 }.keys.to_set
+          unsigned = lists_kept_unsigned_half(program)
           ranked.each do |node, ring|
             at = @primitives.var_addr(Faces::CORNER_WORDS.first) if in_words.include?(node.name)
-            @lists.register_list(node.name, capacities.fetch(node.name).max, ring: ring, width: node.width || :word,
-                                                           fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at)
+            kept_unsigned = unsigned.include?(node.name)
+            @lists.register_list(node.name, capacities.fetch(node.name).max, ring: ring,
+                                                           width: kept_unsigned ? :half : node.width || :word,
+                                                           fast: node.fast, roomy: @lists_to_roomy.include?(node.name), at: at,
+                                                           unsigned: kept_unsigned)
           end
           @lists.place_pools(program)
+        end
+
+        # The kinds of node that read or write a list only through #emit_load_element and its store,
+        # which know a slot kept with no sign.
+        PLAIN_LIST_KINDS = %i[list_new list_get list_set list_push list_drop list_fill list_len].freeze
+
+        # The lists of whole words proven to hold 0..65535 (NumberRanges#unsigned_half_lists) that are
+        # kept in two bytes and read back with no sign. Only a plain list that nothing but its own
+        # reads, writes and pushes names: a pool's fields, a list a sort or a picture reads, and one
+        # a copy or a save moves are kept as words, which is what those parts are written for.
+        def lists_kept_unsigned_half(program)
+          proven = LoweringPlan.new(program, console: Console::ADVANCE, error: LoweringError).number_ranges.unsigned_half_lists
+          proven = proven.reject { |name| DSL::Pool.owner_of_list(name) }
+          return Set.new if proven.empty?
+
+          other = program.walk.reject { |node| PLAIN_LIST_KINDS.include?(node.kind) }
+          proven.reject { |name| other.any? { |node| operand_names?(node.attrs.values, name) } }.to_set
+        end
+
+        # Whether +value+, an operand or an Array or Hash of them, holds the name +name+ anywhere in it.
+        def operand_names?(value, name)
+          case value
+          when Array then value.any? { |item| operand_names?(item, name) }
+          when Hash then value.any? { |key, item| key == name || operand_names?(item, name) }
+          else value == name
+          end
         end
 
         # Element size in bytes for each table width, and the Array#pack directive that
