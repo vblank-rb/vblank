@@ -1164,21 +1164,50 @@ module VBlank
                        value(node.across), value(node.down))]
           end
 
-          # A tile picked as the program runs is written as the tests it stands for (IR::PickedTile):
-          # the runtimes take a tile's number, and keep no table of a background's cells to index.
+          # A tile picked as the program runs is read from a table of the tiles the numbers stand for
+          # (IR::PickedTile): the number, less the first, is a place in it, and a number past either
+          # end, or standing for no tile, leaves the cell alone.
           def lower_set_tile(node)
-            if node.picked?
-              tests = PickedTile.tests(node)
-              return tests ? lower(tests) : []
-            end
+            return lower_picked_tile(node) if node.picked?
+
             # A tile of nil is the empty cell, as the map keeps one (#map_cells).
-            tile = Statements::Int.new(node.tile || CELL_EMPTY)
+            lower_tile_write(node, Statements::Int.new(node.tile || CELL_EMPTY))
+          end
+
+          # The step writing +tile+ (a statement's number) into the cell +node+ names, now or held for
+          # the end of the pass.
+          def lower_tile_write(node, tile)
             if node.held
               return [eval_call("rg_background_hold_tile", background_number(node), value(node.col), value(node.row),
                                 tile, Statements::Int.new(Nodes::ShowHeldTiles::MOST_CELLS))]
             end
 
             [eval_call("rg_background_set_tile", background_number(node), value(node.col), value(node.row), tile)]
+          end
+
+          def lower_picked_tile(node)
+            tiles = PickedTile.words(node) { |tile| tile } or return []
+
+            table = picked_tile_table(tiles)
+            which = local_name("which")
+            tile = local_name("tile")
+            in_range = call("rg_both", call("rg_ge", which, Statements::Int.new(0)), call("rg_lt", which, Statements::Int.new(tiles.length)))
+            written = lower_tile_write(node, tile)
+            [Statements::Block.new([Statements::Local.new(name: which, value: call("rg_sub", value(node.picked_by), Statements::Int.new(node.picks_from))),
+                                    Statements::If.new(condition: in_range, body: [
+                                      Statements::Local.new(name: tile, value: Statements::Index.new(table, which)),
+                                      Statements::If.new(condition: call("rg_ne", tile, Statements::Int.new(PickedTile::NO_CELL)), body: written)
+                                    ])])]
+          end
+
+          # The table of tiles +tiles+, made once however many lines pick from it: written with the
+          # game's other arrays (#picked_tile_arrays).
+          def picked_tile_table(tiles)
+            (@picked_tile_tables ||= {})[tiles] ||= @names.own("picked_tiles_#{@picked_tile_tables.length}")
+          end
+
+          def picked_tile_arrays
+            (@picked_tile_tables || {}).map { |tiles, name| Statements::ConstArray.new(name: name, type: "int32_t", values: tiles) }
           end
 
           # Reference#exec_show_held_tiles

@@ -390,7 +390,7 @@ module VBlank
              *(@scenes.empty? ? [] : [Statements::Global.new(name: @names.own("scene"), value: -1)]),
              *(loops_ending_passes.empty? ? [] : [Statements::Global.new(name: running_loop_variable, value: 0)]),
              *held_colors_globals, *sprites_hidden_globals,
-             *tables, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
+             *tables, *picked_tile_arrays, *art, *@drawing_arrays, title_array, controls_array, seats_array, *sound_tables,
              save_memory_table,
              *@called.map { |name| Statements::Prototype.new(name: routine(name)) }, *build_start_file_prototypes,
              *routine_table_declarations,
