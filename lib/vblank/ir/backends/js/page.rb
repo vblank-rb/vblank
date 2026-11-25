@@ -31,11 +31,13 @@ module VBlank
         #   touchpad    the console's buttons on the screen, for a phone or a tablet, shown only
         #               while a finger is the screen's main pointer; with it on the page, the full
         #               screen button fills the screen with the whole page, so the pad comes too
+        #   saves       two buttons that export the game's save as a .sav file and import one; empty
+        #               for a game with no save memory (runtime/rg_mount.js)
         #   message     where a game that stops, or a page waiting for a click, says so, and a button,
         #               hidden, that copies the page's address where the browser cannot keep a
         #               shell's data (runtime/rg_mount.js)
-        #   extras      touchpad, keys, controller, fullscreen, pause and message together, in
-        #               that order
+        #   extras      touchpad, keys, controller, fullscreen, pause, saves and message together,
+        #               in that order, those that are not empty
         #
         # The script finds the pieces it fills in by their id, and a page without one of them plays
         # the same, with nothing given there.
@@ -60,9 +62,9 @@ module VBlank
           # A template that leaves the game out is a LoweringError, as anything else that stops a
           # web build is.
           def html(title:, script:, screen:, scale: 3, pixel_size: 1, template: DEFAULT, buttons: Console::ADVANCE.buttons,
-                   players: 1)
+                   players: 1, saves: false)
             pieces = pieces(title: title, script: script, scale: scale, screen: screen, pixel_size: pixel_size,
-                            buttons: buttons, players: players)
+                            buttons: buttons, players: players, saves: saves)
             page = ERB.new(File.read(template, encoding: Encoding::UTF_8), trim_mode: "-").result_with_hash(pieces)
             return page if page.include?(pieces[:game])
 
@@ -148,7 +150,8 @@ module VBlank
             end
           end
 
-          def pieces(title:, script:, scale:, screen:, pixel_size: 1, buttons: Console::ADVANCE.buttons, players: 1)
+          def pieces(title:, script:, scale:, screen:, pixel_size: 1, buttons: Console::ADVANCE.buttons, players: 1,
+                     saves: false)
             said = words(IR::ComputerControls::LAYOUT_KEYS, FIRST_PLAYER_SAID, buttons).join(", ")
             keys = <<~HTML.chomp
               <p class="keys">Arrows move. #{said}, <kbd>F</kbd> fills the screen, <kbd>F1</kbd> opens the menu, where the keys can be changed.
@@ -158,11 +161,20 @@ module VBlank
             fullscreen = '<button id="fullscreen" type="button">Full screen</button>'
             pause = '<label><input type="checkbox" id="pause" checked> Pause when another window is in front</label>'
             touchpad = touchpad(buttons: buttons)
+            saves = saves ? saves_buttons : ""
             message = %(<p id="said" hidden></p>\n<button id="copy-link" type="button" hidden>Copy the link</button>)
             { title: CGI.escapeHTML(title.to_s), style: style(scale * pixel_size, screen), game: game(script, screen), keys: keys,
               controls: controls(screen: screen, pixel_size: pixel_size, buttons: buttons, players: players),
-              controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, message: message,
-              extras: [touchpad, keys, controller, fullscreen, pause, message].join("\n") }
+              controller: controller, fullscreen: fullscreen, pause: pause, touchpad: touchpad, saves: saves,
+              message: message,
+              extras: [touchpad, keys, controller, fullscreen, pause, saves, message].reject(&:empty?).join("\n") }
+          end
+
+          # The buttons that export the game's save and import one (runtime/rg_mount.js, mount_saves),
+          # hidden until the page finds the game has save memory.
+          def saves_buttons
+            '<p id="saves" hidden><button id="save-export" type="button">Export save</button> ' \
+              '<button id="save-import" type="button">Import save</button></p>'
           end
 
           # Player 2's keys (rg_page.js's PAGE_SECOND_PLAYER_KEYS) and the controllers' players, for

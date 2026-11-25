@@ -121,9 +121,10 @@ class TestJSCreateGame < Minitest::Test
     html = page_of(game, %w[one], "window.games = [createGame({ canvas: #{canvas('one')}, storage: null })];")
     lines = played_page(["play 3", "js window.first = games[0].readSave(); first.length > 0 && first.some((byte) => byte !== 0xFF)",
                          "js games[0].writeSave(new Uint8Array(first.length).fill(7)); games[0].readSave().every((byte) => byte === 7)",
+                         "js games[0].saveSize === first.length", "js games[0].keepsSave",
                          "js try { games[0].writeSave(new Uint8Array(3)); 'kept' } catch (error) { error.message }"], html: html)
 
-    assert_equal ["js true", "js true"], lines.grep(/\Ajs /).first(2)
+    assert_equal ["js true", "js true", "js true", "js false"], lines.grep(/\Ajs /).first(4)
     assert_match(/must be \d+ bytes/, lines.grep(/\Ajs /).last)
   end
 

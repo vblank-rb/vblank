@@ -68,12 +68,21 @@
  *                       page that is busy the whole time asks for one or two
  *   text ID             prints "text ID", then "hidden" if it is, then the words in the page's
  *                       element of that id now, or "text ID (none)" for a page without one
+ *   downloaded          prints "downloaded", then for each file the page downloaded, its name and its
+ *                       bytes as hex ("downloaded SAVER.sav 07ff..."), one line each
+ *   reloads             prints "reloads" and how many times the page asked the browser to reload it
+ *   confirmed           prints "confirmed" and each question the page asked with confirm(), joined by " | "
  *   workers             prints "workers" and how many workers the page has started and not ended
  *   wait MS             waits MS milliseconds of real time, for a page's own timer to run out
  *   clipboard           prints "clipboard" and what the page last copied
  *   state               prints "state" and what the browser holds now: the sound device
  *                       (none, running or suspended), what fills the screen (none or an id),
  *                       and how many key presses the page kept from the browser
+ *
+ * Started with "local-storage:FILE", the page's localStorage is read from FILE (JSON, key to text)
+ * when the page opens and written to it each time the page sets or removes a key, so a second run
+ * of the page finds what the first kept. With "confirm-no" every confirm() is answered No (Yes
+ * otherwise).
  *
  * The page's IndexedDB is a stand-in too: a database of byte strings. Started with "idb:FILE" it
  * is read from FILE when the page opens and written to it as the page puts something in, so a
@@ -133,7 +142,16 @@ const asked = { frames: 0, pictures: 0, buffers: 0 };
 const posted = []; /* every message the page sent its speaker */
 const heard = [[], []]; /* what the speaker has put out, each channel */
 let next_frame_id = 1;
-const stored = new Map();
+const local_flag = process.argv.slice(3).find((flag) => flag.startsWith("local-storage:"));
+const local_path = local_flag ? local_flag.slice("local-storage:".length) : null;
+const stored = new Map(local_path && fs.existsSync(local_path) ? Object.entries(JSON.parse(fs.readFileSync(local_path, "utf8"))) : []);
+function local_write() {
+  if (local_path) fs.writeFileSync(local_path, JSON.stringify(Object.fromEntries(stored)));
+}
+const downloads = []; /* every file the page made a link download */
+const blobs = new Map(); /* each blob by the address the page made for it */
+const questions = []; /* every question the page asked with confirm() */
+let reloads = 0;
 let clipboard = null; /* what the page last copied */
 let now = 0;
 const shown = {};
@@ -158,7 +176,7 @@ function element(id) {
   const checked = new RegExp(`<input[^>]*\\bid="${id}"[^>]*\\bchecked\\b|<input[^>]*\\bchecked\\b[^>]*\\bid="${id}"`).test(html);
   const left = Object.keys(elements).length * BOX * 2;
   elements[id] = {
-    id, textContent: "", hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
+    id, textContent: "", blur() {}, hidden: id === "said" || hidden_in_html(id), checked, ...listening(),
     getContext: () => ({
       createImageData: (width, height) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
       putImageData: (image) => { asked.pictures += 1; shown[id] = Uint8ClampedArray.from(image.data); },
@@ -306,6 +324,9 @@ const indexedDB_stand_in = {
 const document = {
   ...listening(),
   createElement(tag) {
+    if (tag === "a") {
+      return { href: "", download: "", click() { downloads.push({ name: this.download, bytes: blobs.get(this.href).bytes }); } };
+    }
     if (tag !== "input") throw new Error(`page_harness: no element called ${tag} can be made`);
     const input = { ...listening(), type: "", files: [], click() { picks_asked += 1; pickers.push(this); } };
     return input;
@@ -331,11 +352,16 @@ let speaker_node = null;
 const processors = new Map();
 const blob_texts = new Map();
 class Blob {
-  constructor(parts) { this.text = parts.join(""); }
+  constructor(parts) {
+    this.parts = parts;
+    this.text = parts.filter((part) => typeof part === "string").join("");
+    this.bytes = Buffer.concat(parts.filter((part) => part instanceof Uint8Array));
+  }
 }
 URL.createObjectURL = (blob) => {
   const url = `blob:stand-in/${blob_texts.size}`;
   blob_texts.set(url, blob.text);
+  blobs.set(url, blob);
   return url;
 };
 URL.revokeObjectURL = () => {};
@@ -440,7 +466,8 @@ const browser = {
   /* Started with "refuse-worker", the browser refuses to start one, as a content security policy can. */
   Worker: flags.includes("refuse-worker") ? class { constructor() { throw new Error("the page's content security policy refuses it"); } } : Worker,
   navigator: { getGamepads: () => pads.slice(), clipboard: { writeText: async (words) => { clipboard = words; } } },
-  location: { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "" },
+  location: { href: pathToFileURL(path.resolve(process.argv[2])).href, search: "", reload() { reloads += 1; } },
+  confirm(question) { questions.push(question); return !flags.includes("confirm-no"); },
   performance: { now: () => now },
   requestAnimationFrame: (callback) => {
     asked.frames += 1;
@@ -461,8 +488,9 @@ const browser = {
     return { ok: true, status: 200, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
   },
   indexedDB: indexedDB_stand_in,
-  localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value),
-                  removeItem: (key) => stored.delete(key) },
+  localStorage: { getItem: (key) => stored.get(key) ?? null,
+                  setItem: (key, value) => { stored.set(key, value); local_write(); },
+                  removeItem: (key) => { stored.delete(key); local_write(); } },
 };
 for (const [name, value] of Object.entries(browser)) {
   Object.defineProperty(page, name, { value, writable: true, configurable: true, enumerable: true });
@@ -684,6 +712,12 @@ async function steps() {
       printed.push(`worked frames=${asked.frames - before}`);
     }
     else if (step === "text") printed.push(text(what));
+    else if (step === "downloaded") {
+      printed.push("downloaded");
+      for (const file of downloads) printed.push(`downloaded ${file.name} ${file.bytes.toString("hex")}`);
+    }
+    else if (step === "reloads") printed.push(`reloads ${reloads}`);
+    else if (step === "confirmed") printed.push(`confirmed ${questions.join(" | ")}`);
     else if (step === "workers") printed.push(`workers ${workers.size}`);
     else if (step === "wait") await real_ms(Number(what));
     else if (step === "clipboard") printed.push(`clipboard ${clipboard}`);
