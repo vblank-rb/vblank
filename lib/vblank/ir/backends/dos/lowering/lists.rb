@@ -44,24 +44,27 @@ module VBlank
             # A place for each list a run can reach, and the two numbers of its header that never change, set
             # as the program starts: how many it can hold and its shift. Each is set by a write of four bytes,
             # which is nought into the word beside it too: the first slot its items begin in (FRONT, after
-            # CAPACITY), and how many it holds (LENGTH, before SHIFT).
+            # CAPACITY), and how many it holds (LENGTH, before SHIFT). A list declared with several capacities
+            # (LoweringPlan#list_capacities) has room for the most of them, and each declaration writes its own
+            # into the header as it runs (#emit_list_new).
             def reserve_lists
               @lists = {}
               @plan.declared_lists.each_value do |node|
-                refuse_list_too_long!(node)
+                capacity = @plan.most_list_capacity(node.name)
+                refuse_list_too_long!(node.name, capacity)
                 width = LoweringPlan::SLOT_BYTES.fetch(node.width)
-                address = @memory.reserve([:list, node.name], Runtime::Lists::HEADER + (node.capacity * width), what: "the list #{node.name.inspect}")
-                list = ListPlace.new(address: address, capacity: node.capacity, slot_bytes: width, name: node.name.to_s)
+                address = @memory.reserve([:list, node.name], Runtime::Lists::HEADER + (capacity * width), what: "the list #{node.name.inspect}")
+                list = ListPlace.new(address: address, capacity: capacity, slot_bytes: width, name: node.name.to_s)
                 @lists[node.name] = list
-                @starts << [address + Runtime::Lists::CAPACITY, node.capacity]
+                @starts << [address + Runtime::Lists::CAPACITY, capacity]
                 @starts << [address + Runtime::Lists::LENGTH, list.shift << 16] unless list.shift.zero?
               end
             end
 
-            def refuse_list_too_long!(node)
-              return if node.capacity <= Runtime::Lists::MOST_ITEMS
+            def refuse_list_too_long!(name, capacity)
+              return if capacity <= Runtime::Lists::MOST_ITEMS
 
-              raise LoweringError, "The list #{node.name.inspect} holds #{node.capacity} items. A #{CONSOLE.title} list holds " \
+              raise LoweringError, "The list #{name.inspect} holds #{capacity} items. A #{CONSOLE.title} list holds " \
                                    "#{Runtime::Lists::MOST_ITEMS} at most. To fix this, make the list shorter, or use two."
             end
 
@@ -125,6 +128,9 @@ module VBlank
             # Reference#exec_list_new: the list as it is declared, with no items, or full of one number.
             def emit_list_new(node)
               @asm.mov(:bx, list_place(node.name))
+              # A list declared with several capacities takes this declaration's into its header, where the
+              # runtime reads it: what rt_list_at_capacity makes the length, and what a push is held to.
+              @asm.mov(X86.mem(:bx, Runtime::Lists::CAPACITY, size: 16), node.capacity) if @plan.list_capacity_varies?(node.name)
               return @asm.call("rt_list_empty") unless node.full_of
 
               @asm.call("rt_list_at_capacity")
@@ -141,6 +147,8 @@ module VBlank
             end
 
             def emit_list_sort(node)
+              return node.children.each { |child| emit_statement(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
               @asm.mov(:bx, list_place(node.name))
               @asm.mov(:di, list_place(node.by))
               @asm.mov(:dl, node.descending ? 1 : 0)
