@@ -736,7 +736,7 @@ module VBlank
               @art.group_rooms.each_value do |room|
                 @group_slots.fetch(room.set.name).each do |slot|
                   Runtime::PictureGroups.emit_slot(asm, wanted: place_of(slot.wanted), up: place_of(slot.up),
-                                                        said: place_of(slot.shown), tiles: "art_group_#{room.number}_tiles",
+                                                        shown: place_of(slot.shown), tiles: "art_group_#{room.number}_tiles",
                                                         groups: "art_group_#{room.number}_groups",
                                                         count: room.set.groups.length)
                 end
@@ -2169,7 +2169,7 @@ module VBlank
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
-              unless_sprites_hidden do
+              emit_unless_sprites_hidden do
                 front_first.each do |item|
                   next emit_placing_unless_unchanged(item) unless item.is_a?(Build::DrawOrder)
 
@@ -2204,7 +2204,7 @@ module VBlank
               emit_groups_wanted
               emit_refuse_groups_not_together
               @asm.call("rt_sprites_begin")
-              unless_sprites_hidden do
+              emit_unless_sprites_hidden do
                 objects.flat_map { |obj| Stacking.levels_of(@stacking.depths, obj) }.uniq.sort.reverse_each do |level|
                   items.reverse_each do |item|
                     next emit_ordered_run_at_level(item, level, placings) if item.is_a?(Build::DrawOrder)
@@ -2280,7 +2280,7 @@ module VBlank
             end
 
             # The sprites the block places, placed unless the pass before asked for a frame without them.
-            def unless_sprites_hidden
+            def emit_unless_sprites_hidden
               return yield unless @sprites_hidden
 
               shown = fresh("sprites_shown")

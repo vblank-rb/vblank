@@ -44,6 +44,10 @@ module VBlank
                                                 [true, false] => MBC3_TIMER_BATTERY,
                                                 [true, true] => MBC3_TIMER_RAM_BATTERY })
 
+      # The type bytes of a cartridge with a clock chip: the keys of CARTRIDGE_TYPES whose first
+      # element (clock) is true.
+      CLOCK_TYPES = Ractor.make_shareable(CARTRIDGE_TYPES.select { |(clock, _), _| clock }.values)
+
       # ...and an MBC5 with a rumble motor (Runtime::Rumble), by whether it has that memory.
       MBC5_RUMBLE = 0x1C
       MBC5_RUMBLE_RAM_BATTERY = 0x1E
@@ -87,7 +91,7 @@ module VBlank
       def size = @bytes.bytesize
 
       # Whether its header declares a clock chip.
-      def clock? = [MBC3_TIMER_BATTERY, MBC3_TIMER_RAM_BATTERY].include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
+      def clock? = CLOCK_TYPES.include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
 
       # What every Game Boy cartridge's header holds, the Color's too, whoever made it — asked of a
       # cartridge file too (Diagnostics::CartridgeFile), which has nothing but its bytes.
