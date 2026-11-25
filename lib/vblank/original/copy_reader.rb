@@ -380,7 +380,13 @@ module VBlank
         @kind = builder.var(Unpacking::FAULT_KIND, 0)
         @at = builder.var(Unpacking::FAULT_AT, 0)
         @detail = builder.var(Unpacking::FAULT_DETAIL, 0)
+        @number_written = builder.var(Unpacking::NUMBER_WRITTEN, 0)
+        @index_written = builder.var(Unpacking::INDEX_WRITTEN, 0)
       end
+
+      # The variables a wide write keeps its value and its place in, so each is worked out once
+      # (SlotBytes#kept_once).
+      attr_reader :number_written, :index_written
 
       def emit_fault(kind, at, detail)
         @kind.store!(kind)
@@ -501,12 +507,14 @@ module VBlank
       # A channel written as a number past +bits+ is refused. One the routine works out keeps its
       # low +bits+ bits.
       def write_color(index, red:, green:, blue:, bits: 8)
+        index = kept_once(index, @faults.index_written)
         refuse_color_of_another_shape!
         refuse_channel_bits_out_of_range!(bits)
         refuse_channels_past_bits!(index, bits, red: red, green: green, blue: blue)
         format = @slot.format
         number = combine_bits([[red, format.red_at], [green, format.green_at], [blue, format.blue_at]]
                                 .map { |channel, at| scale_channel(channel, bits, format.channel_bits) << at })
+        number = kept_once(number, @faults.number_written)
         low_high = [number, number >> 8]
         bytes = format.high_byte_first ? low_high.reverse : low_high
         if index.is_a?(Integer)
@@ -542,6 +550,7 @@ module VBlank
       def number_byte(index, offset) = (index * @slot.item_bytes) + offset
 
       def write_number(index, value)
+        index = kept_once(index, @faults.index_written)
         if index.is_a?(Integer)
           refuse_item_outside_slot!(index)
           return write_number_bytes(index, value)
@@ -551,10 +560,23 @@ module VBlank
       end
 
       def write_number_bytes(index, value)
+        value = kept_once(value, @faults.number_written)
         slot_bytes_lowest_first.each_with_index do |offset, step|
           store_byte(number_byte(index, offset), step.zero? ? value : value >> (8 * step))
         end
       end
+
+      # +given+ as it is when it is a number or reads no slot; otherwise kept in +variable+ and given
+      # as that. A write of several bytes works its value out for each byte, and a value that reads
+      # this slot (written[0] + 1 into written[0]) would read the low byte it has just written.
+      def kept_once(given, variable)
+        return given unless given.is_a?(DSL::Value) && reads_pack?(given)
+
+        variable.store!(given)
+        variable
+      end
+
+      def reads_pack?(value) = value.node.walk.any? { |node| node.kind == :list_get && node.name == Unpacking::BYTES }
 
       # The write the block makes, when +index+ is 0 or more and below +items+ (the slot's bytes, or
       # its numbers) as the routine runs; otherwise the fault that stops the build, naming +byte+,

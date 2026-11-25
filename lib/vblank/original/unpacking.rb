@@ -251,6 +251,10 @@ module VBlank
       FAULT_KIND = Messages::MadeNames.make(:unpacking_part, part: :fault_kind)
       FAULT_AT = Messages::MadeNames.make(:unpacking_part, part: :fault_at)
       FAULT_DETAIL = Messages::MadeNames.make(:unpacking_part, part: :fault_detail)
+      # Where a write of a number of several bytes keeps the number and the place it writes it at, when
+      # they read a slot, so each is worked out once (SlotBytes#kept_once).
+      NUMBER_WRITTEN = Messages::MadeNames.make(:unpacking_part, part: :number_written)
+      INDEX_WRITTEN = Messages::MadeNames.make(:unpacking_part, part: :index_written)
       # Which piece a program of a part's pieces plays (PiecedUnpacking): a number of
       # PIECE_NUMBER_BYTES, low byte first, in its start file after the copy.
       PIECE_NUMBER = Messages::MadeNames.make(:unpacking_part, part: :piece_number)
