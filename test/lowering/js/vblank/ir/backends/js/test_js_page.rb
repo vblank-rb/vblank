@@ -475,6 +475,6 @@ class TestJSPage < Minitest::Test
     end
     said = played_page(["play 5"], game).grep(/\Asaid /).first
 
-    assert_match(/The game stopped: .*list :trail is full/, said)
+    assert_match(/The game stopped: .*`trail` is full/, said)
   end
 end
