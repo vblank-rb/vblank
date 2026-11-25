@@ -55,7 +55,7 @@ module VBlank
       # A cell written on the frame being drawn: a bar's is asked under the status bar's answer, a
       # plain background's under its own words, which say why the console cannot.
       def cell_written_now_question(node, console)
-        bar = node.root.walk.any? { |each| each.kind == :background && each.name == node.name && each.bar_top }
+        bar = node.root.walk.any? { |named| named.kind == :background && named.name == node.name && named.bar? }
         if bar
           return Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
                               console.changes_cells_while_drawing)
