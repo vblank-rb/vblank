@@ -138,7 +138,7 @@ module VBlank
       end
 
       def refusal_words(question, console)
-        "#{question.words}, and a #{console.title} cannot: #{words_of(question.verb)}"
+        "#{question.words}, and a #{console.title} cannot: #{question.reason || words_of(question.verb)}"
       end
 
       # The reference's line for the answer to each verb in +verbs+, in the order ANSWERS gives them.

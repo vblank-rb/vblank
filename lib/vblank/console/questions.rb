@@ -17,7 +17,10 @@ module VBlank
     module Questions
       # +verb+ whose answer has the words, what the line asks for in +words+, and +can+: whether the
       # console has the part asked for, or nil where the verb's own answer decides.
-      Question = Data.define(:verb, :words, :can)
+      # +reason+, when given, is what the refusal says in place of the verb's whole answer.
+      Question = Data.define(:verb, :words, :can, :reason) do
+        def initialize(verb:, words:, can:, reason: nil) = super
+      end
 
       # A verb written in other verbs leaves no step of its own: a `pulse` is a sprite's size walked
       # every frame, an iris is the game's light closing. The steps alone would have a console
@@ -47,6 +50,21 @@ module VBlank
           written = WRITTEN_VERBS[verb] or next
           Question.new(verb, written.words, nil)
         end
+      end
+
+      # A cell written on the frame being drawn: a bar's is asked under the status bar's answer, a
+      # plain background's under its own words, which say why the console cannot.
+      def cell_written_now_question(node, console)
+        bar = node.root.walk.any? { |each| each.kind == :background && each.name == node.name && each.bar_top }
+        if bar
+          return Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
+                              console.changes_cells_while_drawing)
+        end
+
+        Question.new(:background, "This line shows a cell of background :#{node.name} on the frame being drawn (`now: true`)",
+                     console.changes_cells_while_drawing,
+                     "it writes its video memory only between frames, so the cell shows on the frame after the pass. " \
+                     "To fix this, take away `now: true`.")
       end
 
       # The verb whose steps +verb+ is made of, or nil for a verb with steps of its own.
@@ -80,10 +98,7 @@ module VBlank
           Question.new(:layers, "This game changes how much one layer shows through another as the game runs",
                        console.blends || (console.mixes_by_half && node.added == true))
         when :set_tile
-          if node.now
-            Question.new(:status_bar, "This line shows a bar's cell on the frame being drawn (`now: true`)",
-                         console.changes_cells_while_drawing)
-          end
+          cell_written_now_question(node, console) if node.now
         when :held, :pressed, :pulled then button_question(node, console)
         when :players_connected
           Question.new(:players_connected, "This line asks how many players are connected (`players_connected`)", nil)
