@@ -161,6 +161,8 @@ class TestShell < Minitest::Test
       assert_match "not the data pack this build reads", played.kept_pack_refusals.first
       assert_match "your copy of Made Up", played.kept_pack_refusals.first
       assert_equal [GRAY], colors_on(played.menu_pictures.first, READ_AGAIN_ROWS), "the menu does not say the data must be read again"
+      said = READ_AGAIN_ROWS.select { |row| colors_on(played.menu_pictures.first, row..row).include?(GRAY) }
+      assert_operator said.max - said.min, :<, 12, "the menu says the data must be read again in more than one row"
       assert_equal all_in_one_pack(version: "2"), kept_pack(folder)
     end
   end
@@ -188,16 +190,12 @@ class TestShell < Minitest::Test
     end
   end
 
-  # What the menu says of a pack to read again is the original's title, not this program's, and
-  # fits the screen a row of words at a time.
-  def test_the_menu_names_the_original_the_player_owns
-    sentence = VBlank::Original::Shell.read_again_sentence("The Made Up Original")
-    rows = VBlank::Original::Shell.read_again_rows(sentence.upcase, 120) { |words| words.length * 6 }
+  # Wider words than a row holds are still cut into rows, each no wider than the row.
+  def test_read_again_rows_cuts_a_long_sentence_into_rows
+    rows = VBlank::Original::Shell.read_again_rows("ONE TWO THREE FOUR FIVE SIX", 60) { |words| words.length * 6 }
 
-    assert_match "Load your copy of The Made Up Original.", sentence
-    assert_equal sentence.upcase, rows.join(" ")
-    assert_operator rows.map(&:length).max, :<=, 20
-    assert_operator rows.size, :>, 1
+    assert_equal "ONE TWO THREE FOUR FIVE SIX", rows.join(" ")
+    assert_operator rows.map(&:length).max, :<=, 10
   end
 
   def test_a_copy_of_the_right_size_that_is_no_release_is_refused

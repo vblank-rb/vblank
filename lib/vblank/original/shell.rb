@@ -118,7 +118,7 @@ module VBlank
           refuse_without_data_pack!(game, data_pack)
           releases = refuse_unusable_releases!(data_pack.original)
           # The first screen is made with the copies still hidden: its block is the game's code too.
-          menu = menu_program(game.title, program, releases.title, parts.first_screen)
+          menu = menu_program(game.title, program, parts.first_screen)
           unpackings = unpackings_of(data_pack, releases.readable, progress)
           splits = releases.readable.map { |release| data_pack.pieced_unpacking(release: release) }
           new(game: program, menu: menu, unpackings: unpackings, splits: splits,
@@ -261,12 +261,11 @@ module VBlank
       # and each part changes its pack, so a player who takes a new build finds the pack the old
       # one kept. Nothing went wrong and the player did nothing: the copy is read again, as on the
       # first start. So the runtime says only that such a pack is there (the start file's second
-      # byte), and the menu says under its lines, in the words of #read_again_rows, that the
-      # data must be read again from the player's copy of +original_title+, the original's own
-      # title: what the player owns, where +title+ is this program's.
-      def self.menu_program(title, game, original_title, first_screen = nil)
+      # byte), and the menu says under its lines, in the one short row of #read_again_sentence,
+      # that the player's copy must be loaded again. +title+ is this program's.
+      def self.menu_program(title, game, first_screen = nil)
         options = Cartridge::Options.new(console: game.console, variant: game.variant, for_computer: true)
-        sentence = read_again_sentence(original_title).upcase.gsub(MENU_LETTERS, "")
+        sentence = read_again_sentence.upcase.gsub(MENU_LETTERS, "")
         # The menu shows in the game's window, so it takes the screen the game was given.
         Builder::Session.building(-> { Builder.new(options: options, screen_size: game.screen_size) }) do |maker|
           maker.program.start_file = IR::StartFile.new(called: MENU_START_TITLE, size: MENU_START_BYTES, checks: [])
@@ -357,10 +356,9 @@ module VBlank
       end
 
       # What the menu says when the pack kept in the game's folder is one this build does not
-      # read: what happened, then what to do, naming the original the player owns.
-      def self.read_again_sentence(original_title)
-        "This version must read the game's data again. Load your copy of #{original_title}."
-      end
+      # read: why, then what to do, in one short row. The line under the title already names the
+      # original the player owns, so this does not say it again.
+      def self.read_again_sentence = "New version: load your copy again."
 
       # +sentence+ cut into rows of words, each no wider than +width+ by the block's measure of a
       # row's words (a word wider than that has a row to itself).
