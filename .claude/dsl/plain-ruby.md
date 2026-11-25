@@ -272,8 +272,8 @@ instance variables.
   the same variables, and a write through an item reaches the variable itself (`Writes.change`).
   The methods in `KeyedArray::ITEMS_ANSWERED` (`map`, `select`, `sort_by`, `entries`, ...) are
   refused only where the answer holds one of the Array's own variables (`map(&:itself)`), and
-  `map { |c| c + 1 }` builds, but a number in its answer the game never reads stops the build as
-  one thrown away (a known gap, held by the answers test). Called with no block they answer an Enumerator, which is refused
+  `map { |c| c + 1 }` builds. A number in its new Array that the game never reads is kept there, as
+  in Ruby, not thrown away (`KeyedArray#forget_held_numbers`). Called with no block they answer an Enumerator, which is refused
   (`KeyedArray#no_block_message`); one answering the Array itself (`each_slice` with its block) is a
   read. `[*counts]` (rewritten through `Rewriter#splat_array_text`) and
   `Array.new(counts)` are refused by `InstanceVariables.refuse_keyed_array_copied!`, since Ruby

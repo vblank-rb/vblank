@@ -1152,6 +1152,7 @@ module VBlank
                 answer = super
                 Steps.refuse_game_code!(no_block_message) if answer.is_a?(Enumerator)
                 Steps.refuse_game_code!(copy_taken_message) if !answer.equal?(self) && holds_own_item?(answer)
+                forget_held_numbers(answer) if !answer.equal?(self) && (answer.is_a?(Array) || answer.is_a?(Hash))
                 answer
               end
             RUBY
@@ -1179,6 +1180,20 @@ module VBlank
             when Array then answer.any? { |item| any? { |own| own.equal?(item) } || holds_own_item?(item) }
             when Hash then answer.each_value.any? { |value| holds_own_item?(value) }
             else false
+            end
+          end
+
+          # The numbers a block worked out into a new Array (`map { |c| c + 1 }`) are kept there, as
+          # Ruby keeps them, so one the game never reads (`copy[1]`) is not a number the author threw
+          # away (Builder#forget_expression). One it reads joins the program as any number does.
+          def forget_held_numbers(answer)
+            builder = Builder::Session.builder
+            return unless builder.respond_to?(:forget_expression)
+
+            case answer
+            when Value then builder.forget_expression(answer)
+            when Array then answer.each { |item| forget_held_numbers(item) }
+            when Hash then answer.each_value { |value| forget_held_numbers(value) }
             end
           end
 
