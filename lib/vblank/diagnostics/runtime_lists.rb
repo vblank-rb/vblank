@@ -2,12 +2,14 @@
 
 module VBlank
   module Diagnostics
-    # A list as the Color, the Super Nintendo, the Genesis and the PlayStation keep it: a header saying how many slots
-    # it has, where the oldest item is and how many items it holds, and the slots after that. Their
-    # runtimes lay it out alike, each naming the places in a Lists module of its own, which
-    # +list_layout+ hands over, with how many bytes each number of the header takes (FIELD_BYTES).
+    # A list as the Color, the Super Nintendo, the Genesis and the PlayStation keep it: a header
+    # saying how many slots it has, where the oldest item is and how many items it holds, and the
+    # slots after that. Their runtimes lay it out alike, each naming the places in a Lists module of
+    # its own, which +list_layout+ hands over, with how many bytes each number of the header takes
+    # (FIELD_BYTES).
     #
-    # The Color's and the Super Nintendo's processors keep a number's low byte at the lower address.
+    # The Color's, the Super Nintendo's and the PlayStation's processors keep a number's low byte at
+    # the lower address.
     # The Genesis's 68000 keeps the high byte there (Motorola's M68000 Family Programmer's Reference
     # Manual, "Organization of Data in Memory"), so its reader says
     # +big_endian?+ and every number of the header and every slot is read high byte first.
