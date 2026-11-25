@@ -70,17 +70,7 @@ module VBlank
 
       def write(path) = File.binwrite(path, @bytes)
 
-      # What the build noted for a profile to tell: the variables the author never declared, the
-      # counted loops and the numbers kept in instance variables (Diagnostics::BuildNotes).
-      attr_writer :hidden_variables, :counted_loops, :instance_variable_numbers
-
-      def hidden_variables = @hidden_variables || []
-      def counted_loops = @counted_loops || []
-      def instance_variable_numbers = @instance_variable_numbers || []
-
-      # How many bytes each of the game's routines takes, biggest first (PS1::Places#routine_sizes),
-      # or none for a program with no record of its build.
-      def routine_sizes = @built ? @built.routine_sizes : []
+      include ProfileNotes::WithRoutineSizes
 
       # How many frames its passes took, and where the time went: the program run in the emulator
       # (Diagnostics::PS1Profiler), reported for a person or as JSON. +keys+ are held from power-on, and

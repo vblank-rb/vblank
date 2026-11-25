@@ -10,6 +10,7 @@ require_relative "cartridge/constants"       # The old name for the hardware tab
 require_relative "cartridge/rom_validator"
 require_relative "cartridge/build_record"    # What the build worked out, carried by the cartridge
 require_relative "cartridge/game_code"       # The four characters an emulator tells one cartridge from another by
+require_relative "cartridge/profile_notes"   # What the build noted for a cartridge's profile to tell
 require_relative "cartridge/rom"
 require_relative "cartridge/gbc_rom"         # A Game Boy Color cartridge: header and checksums
 require_relative "cartridge/snes_rom"        # A Super Nintendo cartridge: header, vectors and checksum

@@ -59,22 +59,7 @@ module VBlank
       # came from), for the tools that read a running one back, or nil.
       attr_reader :built
 
-      # The variables the build added that the author never declared (see
-      # Diagnostics::HiddenVariables).
-      attr_writer :hidden_variables
-
-      def hidden_variables = @hidden_variables || []
-
-      # The counted loops of game code and what the build made of each (see
-      # Diagnostics::CountedLoops).
-      attr_writer :counted_loops
-
-      def counted_loops = @counted_loops || []
-
-      # The numbers kept in instance variables (see Diagnostics::InstanceVariableNumbers).
-      attr_writer :instance_variable_numbers
-
-      def instance_variable_numbers = @instance_variable_numbers || []
+      include ProfileNotes::WithRoutineSizes
 
       # +banks+ is the linked cartridge, bank 0 first, each 16K. +rumble+ marks that it carries a motor.
       def initialize(banks, title:, save_bytes: 0, clock: false, rumble: false, built: nil)
@@ -94,10 +79,6 @@ module VBlank
       BANK_BYTES = 0x4000
 
       def bank_count = size / BANK_BYTES
-
-      # How many bytes each of the game's routines takes, biggest first (GBC::Places#routine_sizes),
-      # or none for a cartridge with no record of its build.
-      def routine_sizes = @built ? @built.routine_sizes : []
 
       # Whether its header declares a clock chip.
       def clock? = CLOCK_TYPES.include?(@bytes.getbyte(CARTRIDGE_TYPE_AT))
