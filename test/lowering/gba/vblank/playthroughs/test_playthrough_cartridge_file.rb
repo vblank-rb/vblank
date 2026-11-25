@@ -153,7 +153,15 @@ class TestPlaythroughCartridgeFile < Minitest::Test
     Dir.mktmpdir("cartridges") do |folder|
       path = File.join(folder, "hero.gba").tap { |written| built.write(written) }
       saved = saving.play(path).save
-      shown = file_screen.play(path, save: saved).game.mem32(built.var_addresses.fetch(:shown0))
+      # A file has no build record, so the first file's steps are read where the build put the
+      # first slot of the game's list `shown`.
+      place = built.built.lists.fetch(:shown)
+      game = file_screen.play(path, save: saved).game
+      shown = case place.bytes
+              when 1 then game.mem8(place.base)
+              when 2 then game.mem16(place.base)
+              else game.mem32(place.base)
+              end
 
       assert_equal 12, shown
       assert_equal ["hero.gba"], Dir.children(folder)
