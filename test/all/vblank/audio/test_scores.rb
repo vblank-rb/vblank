@@ -181,6 +181,102 @@ class TestScores < Minitest::Test
     assert_equal TWO_NOTES_ONCE_HEARD.stops, heard_by_frame(b.program, 40).stops
   end
 
+  # Which notes sounded on which frame.
+  private def notes_by_frame(program, frames)
+    i = game_player
+    heard = {}
+    logged = 0
+    i.each_vblank do |frame|
+      fresh = i.audio.drop(logged).select { |entry| entry[0] == :note }.map(&:last)
+      logged = i.audio.size
+      heard[frame] = fresh unless fresh.empty?
+    end
+    i.run(program, frames: frames)
+    heard
+  end
+
+  # A held note in a song that plays once, with the music volume halved on pass 8 and put back
+  # on pass 40, after the song has ended.
+  private def volume_moved_after_a_song_ended
+    game([held_note(plays_once: true)]) do |music, pass|
+      music.play 0
+      music_volume 50 if pass == 8
+      music_volume 100 if pass == 40
+    end
+  end
+
+  # It ends where its length says and is not heard again, though the game goes on naming it
+  # every pass: naming the song already named changes nothing, whether or not it has ended.
+  def test_a_song_that_plays_once_does_not_come_round
+    program = game([two_notes_once]) { |music, _| music.play 0 }
+
+    assert_equal({ 2 => [NOTES[:C4]], 12 => [NOTES[:E4]] }, notes_by_frame(program, 70))
+  end
+
+  # A song that has ended is started the way any song is started over: stop the music and name
+  # it, in the same pass or a later one.
+  def test_a_song_that_ended_starts_over_after_a_stop
+    program = game([two_notes_once]) do |music, pass|
+      stop_music if pass == 40
+      music.play 0
+    end
+
+    assert_equal({ 2 => [NOTES[:C4]], 12 => [NOTES[:E4]], 41 => [NOTES[:C4]], 51 => [NOTES[:E4]] },
+                 notes_by_frame(program, 70), "stopped and named on pass 40, it plays once more and ends again")
+  end
+
+  # The stop and the naming can be passes apart.
+  def test_a_song_that_ended_starts_over_when_named_some_passes_after_a_stop
+    program = game([two_notes_once]) do |music, pass|
+      music.play 0 if pass < 40
+      stop_music if pass == 40
+      music.play 0 if pass >= 45
+    end
+
+    assert_equal({ 2 => [NOTES[:C4]], 12 => [NOTES[:E4]], 46 => [NOTES[:C4]], 56 => [NOTES[:E4]] },
+                 notes_by_frame(program, 70))
+  end
+
+  # ...or name another song first.
+  def test_a_song_that_ended_starts_over_after_another_song
+    program = game([two_notes_once, notes_every_ten_ticks(:G4)]) do |music, pass|
+      track = var :track, 0
+      track = 1 if pass == 40
+      track = 0 if pass == 45
+      music.play track
+    end
+
+    assert_equal({ 2 => [NOTES[:C4]], 12 => [NOTES[:E4]], 41 => [NOTES[:G4]], 46 => [NOTES[:C4]], 56 => [NOTES[:E4]] },
+                 notes_by_frame(program, 70))
+  end
+
+  # The fades reach it as they reach any song: faded out and back in before it ends, its note
+  # steps through the same volumes as the same song left to come round, down to nothing and
+  # back to the written 12.
+  def test_the_music_fades_reach_a_song_that_plays_once
+    volumes = lambda do |score|
+      program = game([score]) do |music, pass|
+        music.play 0
+        fade_music_out frames: 4 if pass == 4
+        fade_music_in frames: 4 if pass == 12
+      end
+      game_player.run(program, frames: 20).audio.select { |entry| entry[0] == :loudness }.map(&:last)
+    end
+    once = volumes.call(held_note(plays_once: true))
+
+    assert_equal volumes.call(held_note), once
+    assert_includes once, 0
+    assert_equal [12, 12], [once.first, once.last]
+  end
+
+  # The music volume reaches it like any song while it plays: halved on pass 8, the held note
+  # is set again at half. Moved after the song has ended, it sets nothing, since nothing is held.
+  def test_the_music_volume_reaches_a_song_that_plays_once_until_it_ends
+    set = game_player.run(volume_moved_after_a_song_ended, frames: 60)
+                     .audio.select { |entry| entry[0] == :loudness }.map { |entry| entry.drop(1) }
+    assert_equal [[1, 12], [1, 6]], set, "the first square voice, at the written 12 and then at half"
+  end
+
   # --- a note's length, instrument and loudness ---
 
   def test_a_volume_with_a_fraction_on_a_console_voice_is_a_friendly_error
