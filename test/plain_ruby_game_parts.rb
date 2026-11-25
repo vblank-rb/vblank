@@ -680,8 +680,8 @@ class UnsetNamedPart
   end
 end
 
-# Values handed a variable. A cursor names its selection. A part handed that variable whole, as an
-# argument, as it is made, was given it to change; one that names its own copies the number.
+# Values handed a variable. A cursor names its selection. A part handed that variable keeps a number
+# of its own once game code gives it one, as in Ruby, and the cursor keeps its selection.
 class HandedCursor
   game_variables :selection
   attr_reader :selection
@@ -699,8 +699,8 @@ class NamedHandedHolderPart
   end
 end
 
-# A part handed the cursor's variable whole, as an argument, as it is made: the caller gave it
-# that variable to change, so its line in game code changes the cursor's selection.
+# A part handed the cursor's variable whole, as an argument, as it is made: its line in game code
+# gives its own value a number, and the cursor's selection stays as it was.
 class HandedArgumentHolderPart
   def initialize(builder, selection)
     @selection = selection
@@ -712,7 +712,7 @@ class HandedArgumentMakerPart
   def initialize(builder, cursor) = HandedArgumentHolderPart.new(builder, cursor.selection)
 end
 
-# The same handed a slot of a Hash, which it is given to change all the same.
+# The same handed a slot of a Hash, which keeps its number all the same.
 class SlotArgumentMakerPart
   def initialize(builder)
     @states = { 0 => builder.var(:slot_argument_0, 1) }
@@ -720,24 +720,34 @@ class SlotArgumentMakerPart
   end
 end
 
-# A holder sharing the first of its own Hash's variables from setting up, given a number in game
-# code. In Ruby the first slot keeps 0, so the line is refused.
+# A holder handed the first of its own Hash's variables while setting up, given a number in game
+# code. In Ruby the first slot keeps 0 and the holder holds 5.
 class HandedHeldNumberPart
+  game_variables :seen
+
   def initialize(builder)
     @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_number_#{light}", light)] }
     @held = @states[0]
-    builder.func(:handed_held_number_tick) { @held = 5 }
+    @seen = 9
+    builder.func(:handed_held_number_tick) do
+      @held = 5
+      @seen = @held
+    end
   end
 end
 
-# The same with the Hash named, and the holder counted up.
+# The same with the Hash named, and the holder counted up from the slot's 1.
 class NamedStatesHeldPart
-  game_variables :states
+  game_variables :states, :seen
 
   def initialize(builder)
     @states = { 0 => 1, 1 => 2 }
     @held = @states[0]
-    builder.func(:named_states_held_tick) { @held += 1 }
+    @seen = 9
+    builder.func(:named_states_held_tick) do
+      @held += 1
+      @seen = @held
+    end
   end
 end
 

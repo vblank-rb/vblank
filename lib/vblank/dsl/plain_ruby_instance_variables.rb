@@ -145,6 +145,30 @@ module VBlank
           nil
         end
 
+        # The constant a class keeps the instance variables its code calls a changing verb on in
+        # (#mark_changed_by_verb), as `:@place`.
+        VERB_CHANGED_CONSTANT = :VBLANK_VERB_CHANGED_INSTANCE_VARIABLES
+
+        # +labels+ are instance variables of +owner+ (a class or module, or the game block's
+        # builder) whose code calls a changing verb on what they hold (`@place.increase!(1)`,
+        # LocalNames#verb_changed_instance_variables). Each keeps a variable it is handed as Ruby keeps
+        # the object, to change it (#changed_by_verb?).
+        def mark_changed_by_verb(owner, labels)
+          case owner
+          when Builder then owner.instance_variable_uses.mark_changed_by_verb_on_builder(labels)
+          when Module then name_in_module(owner, labels, constant: VERB_CHANGED_CONSTANT)
+          end
+          nil
+        end
+
+        # Does +owner+'s +label+ keep a variable it is handed, to change it through a verb (#mark_changed_by_verb)?
+        def changed_by_verb?(owner, label)
+          return owner.instance_variable_uses.changed_by_verb_on_builder?(label) if owner.is_a?(Builder)
+          return false if owner.is_a?(Module)
+
+          names_in_module(owner.class, constant: VERB_CHANGED_CONSTANT).include?(label)
+        end
+
         # The attributes each game file may change through a writer (LocalNames#changing_attributes),
         # as `:level`, by the file's path; and the files running when each game file was brought in
         # (Game#require_game_file), so a build takes the names of the files its own game brought in
@@ -1855,6 +1879,7 @@ module VBlank
             @unsaved_on_builder = Set.new
             @lists_on_builder = Set.new
             @changing_on_builder = Set.new
+            @changed_by_verb_on_builder = Set.new
             @changing_attributes = Set.new
             @arrays_kept = {}.compare_by_identity
             @array_hand_outs = {}.compare_by_identity
@@ -2150,6 +2175,10 @@ module VBlank
                                             InstanceVariables.changing_attributes_in_files
                                           end
           end
+
+          def mark_changed_by_verb_on_builder(labels) = @changed_by_verb_on_builder.merge(labels)
+
+          def changed_by_verb_on_builder?(label) = @changed_by_verb_on_builder.include?(label)
 
           def mark_changing_on_builder(labels, attributes)
             @changing_on_builder.merge(labels)

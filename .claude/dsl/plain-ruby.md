@@ -120,10 +120,12 @@ instance variables.
   (`Writes.refuse_unfollowed_walk!`), as a game walk there would keep one item's number.
 - **A game instance variable is a game variable from its first number on**, as if `var` had made
   it: `@busy = 0` in `initialize` makes it, starting at 0 at power-on. Every read and change after
-  that is the game's, wherever it is: in another routine, in a block another part calls later,
-  through `attr_reader`, or in a part it was handed to as that part was made (`Ball.new(selection:
-  menu.selection)` hands the variable). `if @busy == 1` above the line that changes it asks the
-  number the pass before left, and `(@seed << 5) + @seed` reads the game's seed.
+  that is the game's, wherever it is: in another routine, in a block another part calls later, or
+  through `attr_reader` and `attr_writer` (`menu.selection = 2`). A part it was handed to as that
+  part was made (`Ball.new(selection: menu.selection)`) reads it; a line of game code there giving
+  the part's own instance variable a number gives that one a number of its own, as Ruby's would,
+  and `menu.selection` stays as it was (see "handed" below). `if @busy == 1` above the line that
+  changes it asks the number the pass before left, and `(@seed << 5) + @seed` reads the game's seed.
 - **A part with changing numbers made by code that runs every frame is refused**
   (`InstanceVariables.making_part`, `refuse_part_made_every_pass!`): a `game_loop`, a scene's body, a
   `func`. Ruby makes a new one there on every pass, starting again from `initialize`, where the game
@@ -194,12 +196,22 @@ instance variables.
   made the game's there, with a variable of its own. So a rotation through a
   held value (`@held = @states[0]; @states[0] = @states[1]; @states[1] = @held`) and a swap (`@a,
   @b = @b, @a`) work as in Ruby.
-- **An instance variable nobody named that takes a slot's variable only holds it**: `@held =
-  @states[0]`, then `@held = 5` or `@held += 1` in game code, is refused at that line, naming
-  `game_variables :held`, since Ruby's line would leave `@states[0]` as it was and the game's would
-  change it. A variable a part is handed whole is that part's to change (`@selection = selection`
-  in `initialize`, or one read through another part's `attr_reader`), as is one a method makes for
-  the instance variable that first holds it (`@count = make.call(:count, 0)`).
+- **An instance variable handed another place's variable keeps a number of its own once game code
+  gives it one, as in Ruby**: handed while setting up another part's (`@held = cursor.selection`),
+  an argument (`@selection = selection` in `initialize`), a slot's (`@held = @states[0]`) or a
+  local's a `var` line made (`kept = var :kept, 3; @held = kept`), then `@held = 5` or `@held += 1`
+  in game code changes `@held` alone, and the other place keeps its number. The line handing it
+  gives the instance variable a hidden copy holding the number from that line
+  (`Writes.handed_copy`). Where no line of the game gives the copy a number, the build leaves it
+  out once every routine is recorded (`Builder#drop_unwritten_handed_copies`,
+  `IR::UnneededCopies.drop_unwritten!`): the instance variable reads the other place's variable as
+  it stands, at no cost, which differs from Ruby only where that place changes before the read. A
+  copy kept is listed in `rom.profile`'s hidden variables (`:handed_copy`), with the cheaper way:
+  change the owner (`cursor.selection = 5`) where it is meant to change, or keep a plain local where
+  the number is only read. Left as before: one a method makes and the instance variable is the
+  first to hold (`@count = make.call(:count, 0)`) is that one's own, and so is one the class calls
+  a changing verb on (`@place.increase!(1)`, `InstanceVariables.mark_changed_by_verb`), which Ruby's verb
+  changes for every place holding the object. A named instance variable always has its own.
 - A subclass has its parent's names and can name more; a module the class includes can name its own.
   `attr_reader`, `attr_writer` and `attr_accessor`, with names written out or from a list
   (`attr_accessor(*LEVELS)`), reach the same variable, so another part can test `tilt.busy` and write
@@ -650,13 +662,13 @@ Each is a friendly error naming the line.
 | a copy of a Hash of game variables, `dup`, `merge`, `select`, `slice` and the others answering a new Hash holding its variables (`KeyedHash::HASH_ANSWERED`) | the values one at a time, `left = h[:left]` |
 | an Array of a Hash of game variables' values kept in game code, `v = h.values`, `h.to_a` (`KeyedHash::VALUES_HANDED`, checked by `InstanceVariables.refuse_hash_values_handed!`; a call that only reads it at once, `h.values.sum`, is left alone: `Rewriter#note_values_read_at_once`) | read it where it is made, `h.values.sum` |
 | an instance variable that game code changes and reads back, where the source does not show the change (`@busy = 1` in a method a routine calls) | `game_variables :busy` in the class's body (or the game block) |
+| an instance variable nobody named holding a slot's game variable with no copy of its own (handed in the `initialize` of a part game code makes, or one its class calls a changing verb on), given a number or changed in game code | `game_variables :held` in the class's body: then the line copies the number |
 | an instance variable not marked, set outright by a method under a test the game makes (`r.reset if k == 2`), or worked out from a number another routine gave it, then read | `game_variables :n` in the class's body |
 | a part whose numbers or Arrays change, made in a `game_loop`, a scene or a `func` (`c = Counter.new` there) | make it above the game loop, or keep it: `@counter ||= Counter.new` |
 | `@lives -= 1` in game code while `@lives` holds nil (a routine recorded later gives it its number) | a number where it is first set, `@lives = 0` in `initialize` |
 | a line that changes an instance variable's game number after Ruby used that number while building (`Array.new(part.size)`, then `@size += 1` in game code) | keep the number Ruby uses in another instance variable |
 | `fdiv` on a game number, `**` or `pow` with a power the game works out or past 32, `floor`, `ceil`, `round` or `truncate` with a number of digits, `succ` or `pred` on a fraction, `divmod` on a fraction, or any other Integer or Float method (`Value#method_missing`) | `to_i` for the whole part of a fraction (it rounds down); a power written in the game |
 | an instance variable named by `game_variables` that holds `nil` or an object (a String, a sprite) when game code reads it | start it with a number, `true` or `false`; keep the object in another instance variable |
-| an instance variable nobody named that holds a slot's game variable (`@held = @states[0]`), given a number or changed in game code (`@held = 5`, `@held += 1`) | `game_variables :held` in the class's body: then the line copies the number |
 | a `var` line naming a variable a part already made for an instance variable (`game_variables held: :x` in a part made first, then `var :x, 0`) | a name of its own for the `var` |
 | two instance variables given one variable name (`game_variables a: :x, b: :x`), one given two, or a name another variable has | a name of its own for each |
 | `game_variables :busy, saved: :x` (`saved:` given something but `true` or `false`) | `saved: false`, or `game_variables({ saved: :x })` to name `@saved` |

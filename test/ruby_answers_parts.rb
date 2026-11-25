@@ -617,3 +617,38 @@ class AnswerNamedSwitchedNames
 
   attr_reader :n
 end
+
+# A cursor game code moves on, whose selection other parts are handed. It is named, so it is a
+# game variable from its first number and a part is handed the variable itself.
+class AnswerCursor
+  game_variables :selection
+
+  def initialize = @selection = 3
+  def step = @selection += 1
+
+  attr_reader :selection
+end
+
+# Handed the cursor's selection as it is made, then given a number of its own in game code. In
+# Ruby the holder keeps its own number, and the cursor's selection stays as it was.
+class AnswerSelectionHolder
+  def initialize(cursor) = @held = cursor.selection
+  def keep = @held = 5
+  def bump = @held += 10
+
+  attr_reader :held
+end
+
+# A local a `var` line makes, handed to two instance variables as it is made; game code gives one
+# a number of its own. In Ruby the other still holds the local's number.
+class AnswerLocalHolder
+  def initialize(build)
+    kept = build.var(:answer_kept, 3)
+    @held = kept
+    @shown = kept
+  end
+
+  def keep = @held = 7
+
+  attr_reader :held, :shown
+end

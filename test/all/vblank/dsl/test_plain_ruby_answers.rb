@@ -1886,6 +1886,62 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # An instance variable handed another part's number holds its own copy, as in Ruby: giving it a
+  # number leaves the other part's as it was.
+  def test_a_value_handed_another_parts_number_then_given_one
+    agrees("@held = cursor.selection, then @held = 5", reads: %i[s h], passes: 3) do
+      cursor = AnswerCursor.new
+      holder = AnswerSelectionHolder.new(cursor)
+      s = h = 0
+      game_loop do
+        holder.keep
+        s = cursor.selection
+        h = holder.held
+      end
+    end
+  end
+
+  # ...and once the other part's number changes, the holder still reads the number it was handed.
+  def test_a_value_handed_another_parts_number_read_after_the_other_changes
+    agrees("@held = cursor.selection, cursor steps, @held += 10 under a press", reads: %i[s h], passes: 3) do
+      cursor = AnswerCursor.new
+      holder = AnswerSelectionHolder.new(cursor)
+      s = h = 0
+      game_loop do
+        cursor.step
+        holder.bump if pressed(:a)
+        s = cursor.selection
+        h = holder.held
+      end
+    end
+  end
+
+  # A local a `var` line makes, moved into two instance variables, one then given a number.
+  def test_a_var_line_local_moved_into_a_value_then_given_a_number
+    agrees("kept = var; @held = kept; @shown = kept; @held = 7", reads: %i[h n], passes: 3) do
+      holder = AnswerLocalHolder.new(self)
+      h = n = 0
+      game_loop do
+        holder.keep
+        h = holder.held
+        n = holder.shown
+      end
+    end
+  end
+
+  # The same in the game block: `x` keeps its number after `@held` is given another.
+  def test_a_var_line_local_moved_into_the_game_blocks_value_then_given_a_number
+    agrees("x = var :x, 3; @held = x; @held = 5", reads: %i[x h], passes: 3) do
+      x = var(:x, 3)
+      @held = x
+      h = 0
+      game_loop do
+        @held = 5
+        h = @held
+      end
+    end
+  end
+
   def test_an_instance_variable_set_back_under_a_test_the_game_makes
     agrees("@n = 0 if reset, then @n += 1", reads: %i[m], passes: 3) do
       counter = AnswerReset.new

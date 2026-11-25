@@ -139,6 +139,8 @@ class Lamp
 end
 ```
 
+An instance variable handed another place's number (`@held = cursor.selection`, an argument, a slot `@states[0]`, or a local) holds that number, as in Ruby. If game code gives it another number (`@held = 5`, `@held += 1`), it keeps a number of its own, and the other place keeps its number. To change the other place, change it there: `cursor.selection = 5`. An instance variable that game code only reads reads the other place's number as it is at that time. A changing verb on what it holds (`@place.increase!(1)`) changes the other place, as in Ruby.
+
 The number is named after the class and the instance variable: `lamp_lit` for `@lit` of a `Lamp`, and `score` for the game block's own `@score`. In the class body, `game_variables busy: :lamp_wait` gives the number a name of your own, and `game_variables :damage, saved: false` keeps numbers out of a save.
 
 Limits: see [Refused › Parts and instance variables](#parts-and-instance-variables) and [Builds, but surprises you](#builds-but-surprises-you).
@@ -3464,6 +3466,38 @@ end
 ## What costs more
 
 These lines build and work, and cost the console more memory or more time than you can expect. Some plain Ruby lines need a hidden number that the game keeps for them, and `rom.profile` lists every line that makes one, with what it costs.
+
+<details>
+<summary>Don't: give a handed number another in game code to change its owner. Do: change it through its owner</summary>
+
+`@spot = cursor.at`, then `@spot = 0` in game code, keeps a hidden number for `@spot`: one word of quick memory. The cursor keeps its number, as in Ruby. If you mean to move the cursor, write `cursor.at = 0`. If you only read the number, keep it in a plain local, or read `cursor.at` where you use it.
+
+```ruby
+# A cursor, and a marker that starts where the cursor is
+class Cursor
+  game_variables :at
+  attr_accessor :at
+
+  def initialize = @at = 3
+end
+
+class Marker
+  def initialize(cursor) = @spot = cursor.at
+  def jump = @spot = 0
+
+  attr_reader :spot
+end
+screen :bitmap
+cursor = Cursor.new
+marker = Marker.new(cursor)
+game_loop do
+  marker.jump if pressed(:a)
+  cursor.at += 1 if pressed(:right)
+  draw_rect_at marker.spot, cursor.at, 4, 4, :green
+end
+```
+
+</details>
 
 <details>
 <summary>Don't: <code>item = trail.shift</code> when you can avoid it. Do: <code>trail.first</code>, then <code>shift</code></summary>

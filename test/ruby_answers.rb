@@ -24,7 +24,7 @@ module RubyAnswers
   Array.singleton_class.prepend(CapacityIgnored)
 
   # The game's verbs a case may use, as plain Ruby has them with nothing on screen and no button
-  # down: a button is never pressed, drawing does nothing, and `func` and `call` keep and run a
+  # down: a button is never pressed, drawing does nothing, `var` answers its start, and `func` and `call` keep and run a
   # block. `game_loop` runs its body once for each pass and keeps where it was written, which is
   # where the names a case reads are found.
   class Stage
@@ -48,6 +48,7 @@ module RubyAnswers
     def draw_rect_at(*) = nil
     def draw_number(*, **) = nil
     def draw_text(*, **) = nil
+    def var(_name, start, **) = start
     def func(name, &body) = @funcs[name] = body
     def call(name) = @funcs.fetch(name).call
   end

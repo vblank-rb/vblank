@@ -54,6 +54,58 @@ module VBlank
         true
       end
 
+      # Leave out each copy in +names+ that one `set` gives another variable's number and nothing
+      # else writes: every read of it reads that variable instead. Answers the names left out.
+      #
+      # Such a copy is what a place handed another's variable keeps of its own, in case game code
+      # gives it a number (PlainRuby::Writes.handed_copy). Where no line does, the place only reads
+      # the number, and it reads the other's variable as it stands, as one handed it always has:
+      # no copy, and the same program as with none.
+      def drop_unwritten!(program, names)
+        wanted = names.to_set
+        sets = {}
+        written = Set.new
+        program.walk do |node|
+          next if node.kind == :var_ref
+
+          if node.kind == :set && wanted.include?(node.var) && node.value.kind == :var_ref
+            written << node.var if sets.key?(node.var)
+            sets[node.var] = node
+          else
+            names_in(node).each { |name| written << name if wanted.include?(name) }
+          end
+        end
+        dropped = sets.reject { |name, _| written.include?(name) }
+        return [] if dropped.empty?
+
+        replace_reads(program, dropped)
+        remove_sets(program, dropped.values)
+        dropped.keys
+      end
+
+      # Each read of a name in +sets+ becomes a read of what its `set` gave it.
+      def replace_reads(program, sets)
+        program.walk do |node|
+          node.attrs.each do |field, held|
+            if held.is_a?(Array)
+              next unless held.any? { |each_held| dropped_read?(each_held, sets) }
+
+              node.set_operand(field, held.map { |each_held| dropped_read?(each_held, sets) ? sets[each_held.name].value.copy : each_held })
+            elsif dropped_read?(held, sets)
+              node.set_operand(field, sets[held.name].value.copy)
+            end
+          end
+        end
+      end
+
+      def dropped_read?(held, sets) = held.is_a?(Node) && held.kind == :var_ref && sets.key?(held.name)
+
+      def remove_sets(program, sets)
+        removed = ->(child) { sets.any? { |set| set.equal?(child) } }
+        containers = program.walk.select { |node| node.children.any?(&removed) }
+        containers.each { |node| node.children.delete_if(&removed) }
+      end
+
       # The one `set` of +name+ and how many times +name+ is read, or nil where anything else names it.
       def writer_and_reads(program, name)
         sets = []

@@ -14,6 +14,10 @@ module VBlank
         copy: ["keeps the number it got on this line, as Ruby does.",
                IR::Guardrails::Checks::IwramBudget::COPY_ADVICE],
         swap: ["keeps one number while the others are written.", nil],
+        handed_copy: ["keeps a number of its own, as Ruby does: this instance variable was handed another " \
+                      "place's number, and game code gives it another.",
+                      "Unneeded if you change the other place itself (`cursor.selection = 5`) where you mean " \
+                      "it to change, or keep the number in a plain local where you only read it."],
         field: ["keeps the number a Struct's field was given, as Ruby does.",
                 "Unneeded if the field is read before the numbers it was given from change."],
         picked: ["keeps the number the test picked.", nil],

@@ -135,11 +135,27 @@ module VBlank
       # Is this variable a number in Ruby's eyes, which a local given it copies
       # (PlainRuby::Steps.kept_answer)? One made with no `var` line is, and so is a hidden one
       # the build made for a number. One a `var` line or a verb made is a handle the game holds.
-      def number_in_ruby? = made_with_no_var_line? || hidden? # :nodoc:
+      # A handed copy answers as the variable it copied (#stand_for).
+      def number_in_ruby? # :nodoc:
+        return @stands_for.number_in_ruby? if @stands_for
+
+        made_with_no_var_line? || hidden?
+      end
 
       # Is this a hidden variable, one the build made for a number the author never named
-      # (Builder#hidden_variable)?
-      def hidden? = @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX) # :nodoc:
+      # (Builder#hidden_variable)? A handed copy answers as the variable it copied (#stand_for).
+      def hidden? # :nodoc:
+        return @stands_for.hidden? if @stands_for
+
+        @name.to_s.start_with?(Build::KEPT_VARIABLE_PREFIX)
+      end
+
+      # This is an instance variable's copy of +variable+, which it was handed
+      # (PlainRuby::Writes.handed_copy). Until the build is finished it cannot tell whether game code
+      # gives the copy a number; where none does, the copy is left out and its reads read +variable+
+      # (Builder#drop_unwritten_handed_copies). So every question the build asks while recording is
+      # answered as +variable+ answers it, and a game whose copy is left out builds as with none.
+      def stand_for(variable) = @stands_for = variable # :nodoc:
 
       # The kinds of node whose number no line of the game can change: a number written out, a
       # cartridge table's item, and arithmetic on them.
@@ -168,17 +184,12 @@ module VBlank
 
       def note_holder(object, label) = @holder = Holder.new(object, label) # :nodoc:
 
-      # The instance variables of parts this variable was handed to whole, as an argument, which
-      # each own it too (PlainRuby::Writes.share_argument).
-      def note_sharer(object, label) = (@sharers ||= []) << Holder.new(object, label) # :nodoc:
-
-      # Was this variable made for +label+ of +object+, or handed to it to change? A place in
-      # VBlank's own files names no object, and takes any variable made for a place but a local
-      # as its own.
+      # Was this variable made for +label+ of +object+? A place in VBlank's own files names no
+      # object, and takes any variable made for a place but a local as its own.
       def held_by?(object, label) # :nodoc:
         return !@holder.nil? && !@holder.object.equal?(LOCAL_HOLDER) if object.nil?
 
-        [@holder, *@sharers].any? { |place| place && place.object.equal?(object) && place.label == label }
+        !@holder.nil? && @holder.object.equal?(object) && @holder.label == label
       end
 
       # The plain name this hidden variable was made for, by PlainRuby::Writes.promote or

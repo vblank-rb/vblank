@@ -458,13 +458,20 @@ class CopiedLevelPart
   end
 end
 
-# Nothing named: the held value shares the first state's variable from setting up, so giving it the
-# second state in game code is refused.
+# Nothing named: the held value is handed the first state's variable while setting up, and given
+# the second state in game code. As in Ruby, it keeps a number of its own, and the first state
+# keeps its number.
 class HandedHeldPart
+  game_variables :seen
+
   def initialize(builder)
     @states = (0..1).to_h { |light| [light, builder.var(:"handed_held_#{light}", light)] }
     @held = @states[0]
-    builder.func(:handed_held_tick) { @held = @states[1] }
+    @seen = 9
+    builder.func(:handed_held_tick) do
+      @held = @states[1]
+      @seen = @held
+    end
   end
 end
 

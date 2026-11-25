@@ -121,6 +121,8 @@ module VBlank
         unless changing.empty? && attributes.empty?
           marks += "#{Rewriter::INSTANCE_VARIABLES}.mark_changing(self, #{changing.inspect}, attributes: #{attributes.inspect}); "
         end
+        verb_changed = rewriter.verb_changed_instance_variables
+        marks += "#{Rewriter::INSTANCE_VARIABLES}.mark_changed_by_verb(self, #{verb_changed.inspect}); " unless verb_changed.empty?
         "proc { |*__plain_ruby_given| #{marks}(#{code}).call(*__plain_ruby_given) }"
       end
 
@@ -469,10 +471,12 @@ module VBlank
 
           lists = @names.instance_variables_at_worked_out_keys_by_module.fetch(node, nil)
           changing = @names.changing_instance_variables_by_module.fetch(node, nil)
+          verb_changed = @names.verb_changed_instance_variables_by_module.fetch(node, nil)
           readers = plain_reader_labels(node)
           marks = []
           marks << "#{INSTANCE_VARIABLES}.keep_arrays_as_lists(self, #{lists.to_a.inspect}); " if lists
           marks << "#{INSTANCE_VARIABLES}.mark_changing(self, #{changing.to_a.inspect}); " if changing
+          marks << "#{INSTANCE_VARIABLES}.mark_changed_by_verb(self, #{verb_changed.to_a.inspect}); " if verb_changed
           marks << "#{INSTANCE_VARIABLES}.mark_plain_readers(self, #{readers.inspect}); " unless readers.empty?
           return text if marks.empty?
 
@@ -511,6 +515,9 @@ module VBlank
         # The game block's own instance variables its code may change as the game plays
         # (LocalNames#changing_instance_variables), as `:@score`. Asked once the block is rewritten.
         def changing_instance_variables = @names.changing_instance_variables.to_a
+
+        # ...and the ones it calls a changing verb on (LocalNames#verb_changed_instance_variables).
+        def verb_changed_instance_variables = @names.verb_changed_instance_variables.to_a
 
         # ...and the attributes it may change through a writer (LocalNames#changing_attributes).
         def changing_attributes = @names.changing_attributes.to_a
@@ -1303,7 +1310,6 @@ module VBlank
           return "#{prefix}#{WRITES}.keep_as_own((#{value}), self, :#{node.name})" if LocalNames.makes_variable?(node.value)
 
           copies = @names.moved_in_game_code?(node.name) ? ", copies: true" : ""
-          copies += ", shares: true" if @names.argument_read?(node.value)
           "#{prefix}#{write_call(instance_variable_place_text(node.name), "(#{value})", node.name,
                                  options: ", moves: true#{copies}#{owner_option}")}"
         end

@@ -747,6 +747,7 @@ module VBlank
       refuse_starts_not_declared! # ...and so is every `var` and `list` a start can name
       # Every line of game code is recorded, so each plain flag's tests and changes are known.
       @instance_variable_uses.refuse_game_flags!
+      drop_unwritten_handed_copies # ...and so is every line that gives a handed copy a number
       drop_unneeded_field_copies # ...and every timer's handler and bend that could change a field's number
 
       finalize_scene_sprite_handover # first: it settles what each sprite waits for before it is painted
@@ -1498,6 +1499,25 @@ module VBlank
 
       outside = IR::UnneededCopies.names_outside_main_flow(@program)
       @field_copies.each { |name| forget_hidden_variable(name) if IR::UnneededCopies.drop!(@program, name, outside) }
+    end
+
+    # A hidden variable an instance variable keeps of its own, holding the number of the variable
+    # +like+ it was handed (PlainRuby::Writes.handed_copy), noted so that
+    # #drop_unwritten_handed_copies can leave it out where no line gives it a number.
+    def handed_copy_variable(like:)
+      hidden_variable(:handed_copy, like: like).tap { |copy| (@handed_copies ||= []) << copy.name }
+    end
+
+    # Each handed copy that only its first line writes is left out, its reads reading the variable
+    # it copied (IR::UnneededCopies.drop_unwritten!). Run once every line of game code is recorded.
+    def drop_unwritten_handed_copies
+      return if @handed_copies.nil?
+
+      IR::UnneededCopies.drop_unwritten!(@program, @handed_copies).each do |name|
+        forget_hidden_variable(name)
+        @unique_names.delete(name)
+        @fraction_vars.delete(name)
+      end
     end
 
     # A hidden variable nothing came to need, which then takes no memory and is not reported.

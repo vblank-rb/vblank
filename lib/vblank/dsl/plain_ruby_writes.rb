@@ -37,7 +37,7 @@ module VBlank
         # (InstanceVariables.write_target): one the game names is its game variable by now. +starting+
         # is a write in its `initialize`.
         def write(current, value, tests, label, second_name: false, moves: false, needs_slot: false, copies: false,
-                  shares: false, before_plain_start: 0, owner: nil, starting: false)
+                  before_plain_start: 0, owner: nil, starting: false)
           Steps.refuse_number_question_as_number!(value)
           # A thing of an Array of Structs given a name keeps its slot, so the name stays on that
           # thing after its walk moves on.
@@ -45,7 +45,6 @@ module VBlank
 
           value = InstanceVariables.follow_objects_in(value)
           refuse_object_replaced!(label, current, value)
-          share_argument(value, owner, label) if shares && owner
           if owner
             InstanceVariables.refuse_nil_written_under_game_test!(owner, current, label, tests)
             first = InstanceVariables.first_variable(owner, current, value, label)
@@ -61,6 +60,10 @@ module VBlank
           if copies && Promotion.moved_instance_variable(current, value, owner, label).promoted?
             return yield(own_copy(label, value, owner))
           end
+          if handed_from_elsewhere?(value, owner, label) && !own_variable?(current, owner, label)
+            return yield(handed_copy(value, owner, label))
+          end
+
           unless Steps.variable?(current)
             claim_unheld(value, owner, label) if owner
             return write_plain_place(current, value, game, label, needs_slot) { |given| yield given }
@@ -370,11 +373,13 @@ module VBlank
         # Does the instance variable +label+ of +owner+ hold +current+ without owning it, so that
         # storing +value+ there would change a variable made for another place?
         #
-        # A number stored in a variable a part was handed whole (an argument, another part's
-        # attribute) is the game's change to it, as plain-ruby.md tells, and so is one in a variable
-        # no other place held first (#claim_unheld). A slot's is not: `@held = @states[0]` takes the
-        # number to hold for a while (a rotation, a swap), and Ruby's `@held = 5` after it leaves
-        # `@states[0]` as it was. So in a game's own code any value counts there.
+        # A variable handed while setting up is copied as it is handed (#handed_copy), so this asks
+        # only of one held without a copy: handed in the `initialize` of a part game code makes, or
+        # one its class calls a changing verb on. A number stored in a variable no other place held
+        # first is the instance variable's own (#claim_unheld), and so is one in a variable it was
+        # handed to change by a verb. A slot's is not: `@held = @states[0]` takes the number to hold
+        # for a while, and Ruby's `@held = 5` after it leaves `@states[0]` as it was. So in a game's
+        # own code any value counts there.
         #
         # Anywhere, another variable given to a place that does not own the one it holds is a move,
         # never a copy into the other place's (`@focus = a`, then `@focus = b`); a hidden variable
@@ -658,14 +663,34 @@ module VBlank
           variable
         end
 
-        # A part is handed a game variable whole as an argument, and an instance variable keeps it
-        # (`@sound_setting = sound_setting` in `initialize`). The caller gave the part that variable
-        # to change, so it is that instance variable's as well as the place it was made for.
-        def share_argument(value, owner, label)
-          return unless Steps.variable?(value)
+        # Is +value+ a variable another place holds, given to +owner+'s +label+ while setting up?
+        # Another part's (`@held = cursor.selection`, or an argument), a slot of a Hash or an
+        # Array's (`@held = @states[0]`), or a local a `var` line made (`@held = kept`). In Ruby the
+        # instance variable then holds the number, and a line giving it another leaves the other
+        # place as it was, so it keeps a copy of its own (#handed_copy). One a named instance
+        # variable is given has one already (InstanceVariables.first_variable), and one that holds
+        # a truth beside its number is left as it is. So is one whose code calls a changing verb on
+        # it (`@place.increase!(1)`): Ruby's instance variable holds the very object then, and the
+        # verb changes it for every place that holds it (InstanceVariables.changed_by_verb?).
+        def handed_from_elsewhere?(value, owner, label)
+          return false if owner.nil? || Builder::Session.recording? || !Steps.variable?(value)
+          return false if value.holder.nil? || value.held_by?(owner, label) || value.truth
 
-          claim_unheld(value, owner, label)
-          value.note_sharer(owner, label)
+          !InstanceVariables.changed_by_verb?(owner, label)
+        end
+
+        # The copy of +value+ that +owner+'s +label+ keeps of its own, holding +value+'s number from
+        # this line (#handed_from_elsewhere?). Game code that gives the instance variable a number
+        # changes the copy, never +value+. Where no line does, the build leaves the copy out, and
+        # the instance variable reads +value+ as it stands (Builder#drop_unwritten_handed_copies),
+        # so a part that only reads what it was handed costs nothing more. `rom.profile` lists each
+        # copy kept among the hidden variables.
+        def handed_copy(value, owner, label)
+          copy = Builder::Session.builder.handed_copy_variable(like: value)
+          copy.mark_boolean! if value.boolean?
+          copy.store!(value)
+          copy.stand_for(value)
+          keep_as_own(copy, owner, label)
         end
 
         # A place of +owner+'s, +label+, is given +value+ to hold as it is. A variable no place owns

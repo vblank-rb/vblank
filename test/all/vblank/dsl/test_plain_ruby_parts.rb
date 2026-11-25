@@ -238,16 +238,15 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [8, 5], [player[:copied_level_part_level], player[:copied_level_source]]
   end
 
-  def test_an_unnamed_value_sharing_a_variable_given_another_is_refused_naming_game_variables
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(HandedHeldPart, :handed_held_tick) }
+  def test_an_unnamed_value_handed_a_variable_then_given_another_copies_its_number
+    player = played(HandedHeldPart, :handed_held_tick)
 
-    assert_match(/belongs to something else.*add `game_variables :held` to HandedHeldPart/, error.message)
+    assert_equal [0, 1, 1], [player[:handed_held_0], player[:handed_held_1], player[:handed_held_part_seen]]
   end
 
-  # A holder handed a variable (test/plain_ruby_game_parts.rb). One taken from a slot of a Hash
-  # holds it for a while, and in Ruby a line giving the holder a number leaves the slot as it was;
-  # the build cannot copy into a variable the holder does not have, so it stops at the line,
-  # naming `game_variables`. One handed whole to a part is that part's to change.
+  # A holder handed a variable (test/plain_ruby_game_parts.rb): a slot of a Hash, an argument, or
+  # another part's attribute. As in Ruby, a line of game code giving the holder a number gives it
+  # a number of its own, and the place it was handed keeps its number.
   private def played_with_cursor(holder, routine)
     builder = Builder.new
     holder.new(builder, HandedCursor.new)
@@ -256,19 +255,20 @@ class TestPlainRubyParts < Minitest::Test
     game_player.tap { |player| player.run(builder.program, frames: 3) }
   end
 
-  private def assert_slot_holder_refused(holder, routine, variable)
-    error = assert_raises(VBlank::DSL::PlainRuby::Refused) { played(holder, routine) }
+  def test_an_unnamed_value_handed_a_slot_of_a_hash_given_a_number_keeps_its_own
+    player = played(HandedHeldNumberPart, :handed_held_number_tick)
 
-    assert_match(/`@held` holds the game variable :#{variable}.*`game_variables :held` to #{holder.name}/m, error.message)
-    assert_match(/plain_ruby_game_parts\.rb:\d+/, error.message)
+    assert_equal [0, 5], [player[:handed_held_number_0], player[:handed_held_number_part_seen]]
   end
 
-  def test_an_unnamed_value_sharing_a_slot_of_a_hash_given_a_number_is_refused
-    assert_slot_holder_refused(HandedHeldNumberPart, :handed_held_number_tick, :handed_held_number_0)
-  end
+  # 2, 3, 4: the holder counts up from the slot's 1, and the slot keeps it.
+  def test_an_unnamed_value_handed_a_slot_of_a_named_hash_counted_up_keeps_its_own
+    seen = (1..3).map do |frames|
+      player = played(NamedStatesHeldPart, :named_states_held_tick, frames: frames)
+      [player[:named_states_held_part_states_0], player[:named_states_held_part_seen]]
+    end
 
-  def test_an_unnamed_value_sharing_a_slot_of_a_named_hash_counted_up_is_refused
-    assert_slot_holder_refused(NamedStatesHeldPart, :named_states_held_tick, :named_states_held_part_states_0)
+    assert_equal [[1, 2], [1, 3], [1, 4]], seen
   end
 
   # 1, 2, then set back to 0 and counted to 1.
@@ -276,14 +276,14 @@ class TestPlainRubyParts < Minitest::Test
     assert_equal [1, 2, 1], (1..3).map { |frames| played(MadeByMethodPart, :made_by_method_tick, frames: frames)[:made_by_method_count] }
   end
 
-  def test_a_value_handed_a_variable_whole_as_an_argument_changes_it
+  def test_a_value_handed_a_variable_whole_as_an_argument_leaves_it
     player = played_with_cursor(HandedArgumentMakerPart, :handed_argument_tick)
 
-    assert_equal 5, player[:handed_cursor_selection]
+    assert_equal 3, player[:handed_cursor_selection]
   end
 
-  def test_a_value_handed_a_slot_whole_as_an_argument_changes_it
-    assert_equal 5, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
+  def test_a_value_handed_a_slot_whole_as_an_argument_leaves_it
+    assert_equal 1, played(SlotArgumentMakerPart, :handed_argument_tick)[:slot_argument_0]
   end
 
   def test_a_named_value_handed_another_parts_variable_keeps_a_number_of_its_own

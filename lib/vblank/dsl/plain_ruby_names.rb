@@ -73,6 +73,15 @@ module VBlank
         # The same, for those inside a `class` or `module`, by the nearest one around them.
         attr_reader :changing_instance_variables_by_module
 
+        # The instance variables the code calls a changing verb on (`@place.increase!(1)`), as
+        # `:@place` (#note_verb_changed_instance_variable): each holds a variable as a handle to change,
+        # as Ruby holds the object, so one handed another's keeps it rather than a copy
+        # (Writes.handed_from_elsewhere?). These are the game block's own.
+        attr_reader :verb_changed_instance_variables
+
+        # The same, for those inside a `class` or `module`, by the nearest one around them.
+        attr_reader :verb_changed_instance_variables_by_module
+
         # The attributes the code may change as the game plays through a writer, on any object, as
         # `:level` (#note_changing_attribute): `dial.level += 3`, `dial.level = dial.level + 3`, or
         # any `dial.level = ...` in a game verb's block. Its object's class is known only as the
@@ -316,6 +325,8 @@ module VBlank
           @instance_variables_at_worked_out_keys_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
           @changing_instance_variables = Set.new
           @changing_instance_variables_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
+          @verb_changed_instance_variables = Set.new
+          @verb_changed_instance_variables_by_module = Hash.new { |all, node| all[node] = Set.new }.compare_by_identity
           @changing_attributes = Set.new
           @reader_index_sites = {}.compare_by_identity
           @open_modules = []
@@ -537,8 +548,6 @@ module VBlank
 
         def first_write?(write) = @locals_by_node[write]&.first_write_of?(write) || false
 
-        # Is this a read of a method's argument (`@sound_setting = sound_setting` in `initialize`)?
-        def argument_read?(read) = read.is_a?(Prism::LocalVariableReadNode) && (@locals_by_node[read]&.parameter? || false)
 
         # Could the name hold something as this line writes it? An argument always does.
         def holds_before_write?(write)
@@ -953,6 +962,7 @@ module VBlank
 
         def read_call(node, scopes, in_game_code)
           note_whole_arguments(node)
+          note_verb_changed_instance_variable(node)
           @calls_on_something << node if node.receiver && node.arguments
           node.compact_child_nodes.each do |child|
             next read_ruby_iteration(child, scopes, in_game_code) if child.is_a?(Prism::BlockNode) && ruby_iteration?(node)
@@ -1081,6 +1091,14 @@ module VBlank
           return true if node.is_a?(Prism::InstanceVariableReadNode) && node.name == name
 
           node.compact_child_nodes.any? { |child| reads_instance_variable?(child, name) }
+        end
+
+        # `@place.increase!(1)`: a changing verb called on what an instance variable holds.
+        def note_verb_changed_instance_variable(call)
+          return unless call.receiver.is_a?(Prism::InstanceVariableReadNode) && call.name.end_with?("!")
+
+          noted = @open_modules.empty? ? @verb_changed_instance_variables : @verb_changed_instance_variables_by_module[@open_modules.last]
+          noted << call.receiver.name
         end
 
         def note_changing_instance_variable(name)

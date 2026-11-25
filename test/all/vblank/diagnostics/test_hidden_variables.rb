@@ -3,6 +3,8 @@
 require "test_helper"
 require "stringio"
 
+VBlank.require_game_file "../../../ruby_answers_parts"
+
 # The hidden-variables report (Diagnostics::HiddenVariables) has a plain line for every reason the
 # framework makes a variable the author never declared, so a game using any verb that makes one
 # can be profiled.
@@ -39,6 +41,27 @@ class TestHiddenVariables < Minitest::Test
     assert_includes out.string, "room.restore_cells 0, 0, 2, 2"
     assert_includes out.string, REPORT::WORDS.fetch(:cell_block).first
     REPORT.as_json(rom).dig(:hidden_variables, :lines).each { |line| refute_empty line[:says] }
+  end
+
+  # AnswerLocalHolder hands a local's variable to @held and @shown, and game code gives @held a
+  # number: @held keeps a copy, told with the cheaper way to write it, and @shown, which game code
+  # only reads, keeps none.
+  def test_a_value_handed_a_number_then_given_another_has_its_copy_told
+    rom = VBlank.build("HANDED", console: :gba, out: StringIO.new, err: StringIO.new) do
+      holder = AnswerLocalHolder.new(self)
+      n = var :n, 0
+      game_loop do
+        holder.keep
+        n = holder.held + holder.shown
+      end
+    end
+    out = StringIO.new
+    REPORT.render(rom, VBlank::IR::Printer.for(out, color: false))
+    said, advice = REPORT::WORDS.fetch(:handed_copy)
+
+    assert_equal 1, rom.hidden_variables.count { |note| note.why == :handed_copy }
+    assert_includes out.string, "@held = kept  #{said}"
+    assert_includes out.string, advice
   end
 
   def test_every_reason_the_library_makes_a_hidden_variable_for_has_words
