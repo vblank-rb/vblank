@@ -147,6 +147,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `m4a_answers.rb` (the answer key for the Advance's common sound driver, MusicPlayer2000: a made-up song of VBlank's own using each command the reader reads, and a player written from the driver's source),
 `settings_root_cases.rb` (where a player's settings folders are, the table the Ruby and C rules are both held to),
 `console_bios_cases.rb` (where a player's Game Boy Advance BIOS is found and whether it is used, the same for the Ruby and C rules, with made-up files and a made-up checksum, so no BIOS is needed),
+`profile_build_notes_tests.rb` (a game with a hidden number and a counted loop, and what `rom.profile` tells of them and of the routines' sizes, human and JSON, included by each console's profile file that has a cartridge),
 `repaint_games.rb` (a tiled game that holds its scroll still and one that scrolls every frame, for how often each runtime builds the whole view),
 `border_frame_tests.rb` (a game laid out for the Color, built for the Advance in a border, as the C, JavaScript and Ruby runs' windows show it: the whole screen, the border round the game's),
 `color_screen_tests.rb` (games laid out for the Color with a status bar and `hide_sprites`, played by each console they are for: the Advance in its border, and the Color),

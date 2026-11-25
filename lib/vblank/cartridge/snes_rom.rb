@@ -91,6 +91,18 @@ module VBlank
       # back, or nil.
       attr_reader :built
 
+      # What the build noted for a profile to tell: the variables the author never declared, the
+      # counted loops and the numbers kept in instance variables (Diagnostics::BuildNotes).
+      attr_writer :hidden_variables, :counted_loops, :instance_variable_numbers
+
+      def hidden_variables = @hidden_variables || []
+      def counted_loops = @counted_loops || []
+      def instance_variable_numbers = @instance_variable_numbers || []
+
+      # How many bytes each of the game's routines takes, biggest first (SNES::Places#routine_sizes),
+      # or none for a cartridge with no record of its build.
+      def routine_sizes = @built ? @built.routine_sizes : []
+
       # A size as the header holds it, a byte: the power of two of its kilobytes (32K is 5); and the
       # bytes a header's byte stands for. SNESReading's save file is the size the header gives.
       def self.size_byte(bytes) = Math.log2(bytes / 1024).to_i
@@ -219,8 +231,13 @@ module VBlank
         result = Diagnostics::SNESProfiler.run(self, frames: frames, settle: settle || Diagnostics::SNESProfiler::SETTLE,
                                                      keys: keys)
         case format
-        when :human then Diagnostics::SNESProfiler.render(result, out: out)
-        when :json then out.puts(JSON.generate(result.to_h))
+        when :human
+          Diagnostics::BuildNotes.render(self, out)
+          Diagnostics::SNESProfiler.render(result, out: out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{size / 1024} KB")
+        when :json
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::BuildNotes.as_json(self))
+                                            .merge(Diagnostics::RoutineSizes.as_json(routine_sizes))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result

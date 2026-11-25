@@ -126,7 +126,12 @@ module VBlank
         raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)" unless %i[human json].include?(format)
 
         result = profiler.run_tape(rom, tape: tape, frames: frames, routines: routines_kept(routines))
-        format == :human ? render(result, out: out) : out.puts(JSON.generate(result.to_h))
+        if format == :human
+          BuildNotes.render(rom, out)
+          render(result, out: out)
+        else
+          out.puts(JSON.generate(result.to_h.merge(BuildNotes.as_json(rom))))
+        end
         result
       end
 

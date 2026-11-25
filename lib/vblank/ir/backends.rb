@@ -35,6 +35,7 @@ require_relative "backends/cartridge_faults"
 require_relative "backends/cartridge_start_file" # a cartridge is never handed a file as it starts
 require_relative "backends/cartridge_headless_run"
 require_relative "backends/cartridge_check"
+require_relative "backends/routine_size"
 require_relative "backends/gba"
 # Must load before native, js and ruby: each takes in the runtime features a game uses.
 require_relative "backends/runtime_features"

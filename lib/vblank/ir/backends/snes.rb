@@ -84,6 +84,9 @@ module VBlank
           # work RAM at an address).
           def sound_effect_voices(&read16) = sound_effect_voicing.voices(runtime, &read16)
 
+          # How many bytes each of the game's routines takes, biggest first.
+          def routine_sizes = RoutineSize.summed(routines)
+
           # Where the runtime counts the times the game has waited for the screen (32 bits).
           def waits_counted_at = runtime.fetch(Runtime::Frame::PASSES)
 

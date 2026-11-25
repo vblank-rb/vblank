@@ -151,16 +151,13 @@ module VBlank
                                                     keys: keys)
         case format
         when :human
-          Diagnostics::HiddenVariables.render(self, IR::Printer.for(out))
-          Diagnostics::CountedLoops.render(self, IR::Printer.for(out))
-          Diagnostics::InstanceVariableNumbers.render(self, IR::Printer.for(out))
+          Diagnostics::BuildNotes.render(self, out)
           Diagnostics::GBCProfiler.render(result, out: out)
-          render_routine_sizes(out)
+          Diagnostics::RoutineSizes.render(routine_sizes, out, whole: "a cartridge of #{bank_count} banks")
         when :json
-          out.puts(JSON.generate(result.to_h.merge(routine_sizes_as_json)
-                                            .merge(Diagnostics::HiddenVariables.as_json(self))
-                                            .merge(Diagnostics::CountedLoops.as_json(self))
-                                            .merge(Diagnostics::InstanceVariableNumbers.as_json(self))))
+          out.puts(JSON.generate(result.to_h.merge(Diagnostics::RoutineSizes.as_json(routine_sizes))
+                                            .merge(bank_count: bank_count)
+                                            .merge(Diagnostics::BuildNotes.as_json(self))))
         else raise ArgumentError, "unknown profile format #{format.inspect} (use :human or :json)"
         end
         result
@@ -172,20 +169,6 @@ module VBlank
       def logo_intact? = @bytes.byteslice(LOGO_AT, LOGO.size).bytes == LOGO
 
       private
-
-      def routine_sizes_as_json
-        { routine_sizes: routine_sizes.map { |size| { routine: size.routine, bytes: size.bytes } }, bank_count: bank_count }
-      end
-
-      # The twelve biggest routines, and how much of the cartridge the game's code is.
-      def render_routine_sizes(out)
-        sizes = routine_sizes
-        return if sizes.empty?
-
-        out.puts "", "Your routines by size:"
-        sizes.first(12).each { |size| out.puts format("%8d bytes  %s", size.bytes, size.routine) }
-        out.puts "In all: #{sizes.sum(&:bytes)} bytes of routines, in a cartridge of #{bank_count} banks."
-      end
 
       # A whole number of banks, a power of two, at least two.
       def padded(bytes)
