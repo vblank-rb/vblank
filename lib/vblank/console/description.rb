@@ -184,7 +184,11 @@ module VBlank
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas, :bigger_pixels_pixelate, :bigger_pixels_camera,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
                               :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
-                              :screen_of_its_own) do
+                              :screen_of_its_own, :largest_list_bytes) do
+      # +largest_list_bytes+ is the most one list can take, where the console keeps each list whole
+      # in one part of its work memory and the parts differ in size: the Color's banked half, the
+      # largest of its two. Nil is no limit but the memory itself (Checks::IwramBudget).
+      #
       # +screen_of_its_own+ marks a computer's build of a game that asks a size of screen
       # (#with_screen_size): the window shows the picture whole, or a scene's smaller screen in the
       # middle of it (Program::SHOWN_SCREEN_VARIABLE, rg_screen_show_size). False for every console.
@@ -266,7 +270,7 @@ module VBlank
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
-                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -470,6 +474,11 @@ module VBlank
                             # runtime's own state are in it before any variable, which the Color
                             # lowering's tests hold this to (test_gbc_memory.rb).
                             largest_memory_bytes: 8 * 1024,
+                            # A list never spans the two halves, and the always-there half is the
+                            # smaller, so the banked half's 4K is the most one list can take. This
+                            # file must not require the lowering, so the number is written out;
+                            # test_gbc_memory.rb holds it to GBC::Memory.
+                            largest_list_bytes: 4 * 1024,
                             work_memory_bytes: 8 * 1024, work_memory_kept_bytes: 1952,
                             roomier_memory_bytes: 0, variables_go_far: false,
                             # The sprite table and the scroll are sent from a copy as the wait

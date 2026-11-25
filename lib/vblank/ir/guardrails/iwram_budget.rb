@@ -162,7 +162,7 @@ module VBlank
               cold_bytes = cold.sum(&:cold_bytes)
               return cold_overflow_findings(cold, cold_bytes, roomier, reserved, console) if cold_bytes > roomier
             end
-            return [] if total <= console.free_work_memory_bytes + roomier
+            return list_too_big_findings(program, console, kit) if total <= console.free_work_memory_bytes + roomier
 
             # Blame the biggest user, which is the capacity to shrink. The plain
             # variable count and the sprites' save-buffers are sums over the whole
@@ -181,6 +181,26 @@ module VBlank
           end
 
           private
+
+          # A console that keeps each list whole in one part of its work memory has a largest list
+          # (Console::Description#largest_list_bytes). The whole may fit while one list does not, so
+          # each list past it is blamed at its own line, after the total has been checked.
+          def list_too_big_findings(program, console, kit)
+            most = console.largest_list_bytes or return []
+
+            list_declarations(program, kit).filter_map do |name, (bytes, node)|
+              next if bytes <= most
+
+              Finding.new(check: NAME, severity: :error, node: node,
+                          message: list_too_big_message(Messages::MadeNames.collection_words(name), bytes, most, console))
+            end
+          end
+
+          def list_too_big_message(label, bytes, most, console)
+            "#{label} keeps a list of about #{human_size(bytes)}. A #{console.title} keeps each list whole in one " \
+              "part of its work memory, and the largest part holds #{human_size(most)}. To fix this, give the " \
+              "list a smaller capacity. Or use narrower items (`width: :byte`)."
+          end
 
           # The cold collections are over the roomier memory on their own. A collection marked
           # cold (`fast: false`, or a pool too big to share the quick memory, which the builder

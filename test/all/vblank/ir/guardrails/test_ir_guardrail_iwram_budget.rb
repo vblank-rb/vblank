@@ -285,6 +285,36 @@ class TestIRGuardrailIwramBudget < Minitest::Test
     refute_match(/256KB/, message, "the Advance's roomier memory is not the Color's")
   end
 
+  # The whole may fit while one list does not: a list is kept whole in one half of the Color's
+  # work memory, and the banked half, the larger, holds 4K. The build check says so at the line
+  # that declares the list.
+  def test_a_color_list_too_big_for_either_half_is_an_error_at_its_line
+    prog = program(
+      screen(:tiled),
+      list_of_bytes(:trail, 5 * 1024),
+      loop_(wait_vblank, halt),
+      console: :gbc,
+    )
+    findings = findings_for(prog)
+
+    assert_equal 1, findings.size
+    assert findings.first.error?
+    assert_equal :trail, findings.first.node.name
+    assert_match(/list :trail/, findings.first.message)
+    assert_match(/Game Boy Color/, findings.first.message)
+    assert_match(/4KB/, findings.first.message)
+  end
+
+  def test_a_color_list_that_fits_a_half_is_not_flagged
+    prog = program(
+      screen(:tiled),
+      list_of_bytes(:trail, 3 * 1024),
+      loop_(wait_vblank, halt),
+      console: :gbc,
+    )
+    assert_empty findings_for(prog)
+  end
+
   # On the Color variables share the one memory with the lists, so fewer of them is a fix too.
   def test_a_color_program_with_too_many_variables_is_told_to_use_fewer
     count = (VBlank::Console::COLOR.free_work_memory_bytes / Budget::WORD) + 64

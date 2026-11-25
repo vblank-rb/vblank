@@ -17,6 +17,12 @@ class TestGBCMemory < Minitest::Test
     assert_equal COLOR.work_memory_bytes, Memory::HIGH_END - Memory::SHADOW_OAM
   end
 
+  # No list spans the two halves of work memory, so the most one can take is the banked half,
+  # the larger. The description cannot name the lowering, so the number is held to it here.
+  def test_the_colors_description_says_the_largest_list_is_the_banked_half
+    assert_equal Memory::HIGH_END - Memory::HIGH_START, COLOR.largest_list_bytes
+  end
+
   # What is free for a game is what the least game leaves: the stack, the sprite table's copy and
   # the runtime's own state are in memory before any variable is. Said a little short of it rather
   # than over, so the check never passes a game the lowering then refuses for that reason alone.
