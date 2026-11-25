@@ -6,8 +6,7 @@ VBlank.require_game_file "turner"
 # up through the dial's writer, and game code reads the level before the line that turns it.
 module WriterNamesTurningGame
   def self.game
-    VBlank.game("TURNING", consoles: %i[gba]) do
-      screen :bitmap
+    VBlank.game("TURNING", consoles: %i[gba gbc snes genesis ps1]) do
       dial = WriterNamesDial.new
       turner = WriterNamesTurner.new
       seen = 0

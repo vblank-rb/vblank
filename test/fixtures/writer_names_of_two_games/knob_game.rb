@@ -6,8 +6,7 @@ VBlank.require_game_file "knob"
 # writer too, and nothing in this game changes it.
 module WriterNamesKnobGame
   def self.game
-    VBlank.game("KNOB", consoles: %i[gba]) do
-      screen :bitmap
+    VBlank.game("KNOB", consoles: %i[gba gbc snes genesis ps1]) do
       knob = WriterNamesKnob.new
       seen = 0
       game_loop { seen = knob.level }

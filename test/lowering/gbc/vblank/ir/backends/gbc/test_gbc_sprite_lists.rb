@@ -42,7 +42,9 @@ class TestGBCSpriteLists < Minitest::Test
           if s.zero? && filler.positive?
             never = var :never, 0
             if never == 1
-              filler.times { |i| never = never + i }
+              # A number of its own each round, not one that counts up, so the rounds stay
+              # written out: rounds alike, or differing only by a count, are made one loop.
+              filler.times { |i| never = never + ((i * 7919) % 251) }
             end
           end
           ships = (0...sprites).map do |n|
