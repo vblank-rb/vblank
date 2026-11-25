@@ -3,6 +3,7 @@
 require "test_helper"
 require "json"
 require "open3"
+require "rbconfig"
 require "stringio"
 require "tmpdir"
 require "vblank/diagnostics/film_tasks"
@@ -18,6 +19,10 @@ class TestFilmTasks < Minitest::Test
   include HeardFilm
 
   STRIP = 28
+
+  # The Ruby that runs this test, read once as the file loads (RbConfig is not for a Ractor).
+  RUBY = RbConfig.ruby.freeze
+  LIB = VBlank.root.join("lib").to_s.freeze
 
   def setup
     require_emulator!
@@ -133,6 +138,23 @@ class TestFilmTasks < Minitest::Test
     error = assert_raises(SystemExit) { capture_io { tasks.make_film(nil) } }
     assert_match(/NAME=door/, error.message)
     assert_match(/door, walk/, error.message)
+  end
+
+  # The task is run by rake in a process that has not loaded the library, as a person runs it: the
+  # list of films is all that is said, with no NameError for a class the library defines.
+  def test_rake_film_with_no_name_lists_the_films_without_a_name_error
+    film_file("walk", "parts 1..2\n")
+    File.write(File.join(scratch, "Rakefile"), <<~RAKEFILE)
+      require "vblank/diagnostics/film_tasks"
+      VBlank::Diagnostics::FilmTasks.new { |t| t.films = "films"; t.out = "out" }
+    RAKEFILE
+
+    said, status = Open3.capture2e({ "NAME" => nil }, RUBY, "-I", LIB, "-e", 'require "rake"; Rake.application.run(ARGV)', "film",
+                                   chdir: scratch)
+
+    assert_includes said, "walk"
+    refute_predicate status, :success?
+    refute_match(/NameError/, said)
   end
 
   def test_a_film_that_is_not_there_is_named

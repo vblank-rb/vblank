@@ -98,12 +98,17 @@ module VBlank
              "that way, the cartridge in its emulator if unsaid; SOUND=<a side's label, side_by_side or in_turn> " \
              "puts sound in the film)"
         task(name) do
-          path = make_film(ENV.fetch("NAME", nil), console: setting_from_environment("CONSOLE") || console,
-                                                   lowering: setting_from_environment("LOWERING") || lowering,
-                                                   sound: setting_from_environment("SOUND"))
-          puts "The film is at #{path}."
-        rescue Film::MissingTool => e
-          abort e.message
+          # Asked before the library is loaded, so a film not named stops here, and the rescue below
+          # (which names a class the library defines) is never asked about the stop.
+          refuse_unknown_film!(ENV.fetch("NAME", nil))
+          begin
+            path = make_film(ENV.fetch("NAME", nil), console: setting_from_environment("CONSOLE") || console,
+                                                     lowering: setting_from_environment("LOWERING") || lowering,
+                                                     sound: setting_from_environment("SOUND"))
+            puts "The film is at #{path}."
+          rescue Film::MissingTool => e
+            abort e.message
+          end
         end
       end
 
