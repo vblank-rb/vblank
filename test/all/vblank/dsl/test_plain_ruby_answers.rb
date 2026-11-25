@@ -2406,18 +2406,22 @@ class TestPlainRubyAnswers < Minitest::Test
 
   # A build stopped by an error part way through game code leaves no builder recording: plain Ruby
   # run after it answers as Ruby does.
+  #
+  # An earlier test on this thread can leave a builder it made by hand current, stopped inside its
+  # game loop, so the test starts from no game being built (#made_with_no_game).
   def test_plain_ruby_after_a_build_that_failed
-    assert_raises(ArgumentError) do
-      built_program do
-        k = 0
-        game_loop do
-          k += 1
-          raise ArgumentError, "stopped inside a game test" if k == 3
+    ticker = made_with_no_game do
+      assert_raises(ArgumentError) do
+        built_program do
+          k = 0
+          game_loop do
+            k += 1
+            raise ArgumentError, "stopped inside a game test" if k == 3
+          end
         end
       end
+      AnswerTicker.new.tap { |made| 3.times { made.tick } }
     end
-    ticker = AnswerTicker.new
-    3.times { ticker.tick }
 
     assert_equal 30, ticker.shown
   end
