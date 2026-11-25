@@ -5,6 +5,10 @@
       "code": 48260,
       "data": 0
     },
+    "animate@gbc": {
+      "code": 10998,
+      "data": 8592
+    },
     "animate@genesis": {
       "code": 4432,
       "data": 1122
@@ -105,6 +109,10 @@
       "code": 2832,
       "data": 0
     },
+    "font_styles@gbc": {
+      "code": 10960,
+      "data": 6736
+    },
     "font_styles@snes": {
       "code": 16219,
       "data": 2187
@@ -112,6 +120,10 @@
     "fonts": {
       "code": 4488,
       "data": 0
+    },
+    "fonts@gbc": {
+      "code": 10960,
+      "data": 6848
     },
     "fonts@genesis": {
       "code": 4014,
@@ -124,6 +136,10 @@
     "grid_cursor": {
       "code": 6804,
       "data": 0
+    },
+    "grid_cursor@gbc": {
+      "code": 10960,
+      "data": 8544
     },
     "grid_cursor@genesis": {
       "code": 4500,
@@ -157,6 +173,10 @@
       "code": 3872,
       "data": 0
     },
+    "level@gbc": {
+      "code": 8174,
+      "data": 8032
+    },
     "level@genesis": {
       "code": 4470,
       "data": 2404
@@ -176,6 +196,10 @@
     "maze": {
       "code": 3156,
       "data": 0
+    },
+    "maze@gbc": {
+      "code": 8108,
+      "data": 6400
     },
     "maze@genesis": {
       "code": 4042,
@@ -229,6 +253,10 @@
       "code": 9032,
       "data": 0
     },
+    "pixels@gbc": {
+      "code": 10960,
+      "data": 7280
+    },
     "pixels@genesis": {
       "code": 4310,
       "data": 44
@@ -277,6 +305,10 @@
       "code": 2348,
       "data": 0
     },
+    "scroll@gbc": {
+      "code": 7868,
+      "data": 10832
+    },
     "scroll@genesis": {
       "code": 3286,
       "data": 8472
@@ -288,6 +320,10 @@
     "sheet": {
       "code": 3872,
       "data": 0
+    },
+    "sheet@gbc": {
+      "code": 8174,
+      "data": 8032
     },
     "sheet@snes": {
       "code": 8264,
@@ -313,6 +349,10 @@
       "code": 3144,
       "data": 0
     },
+    "sparks@gbc": {
+      "code": 11409,
+      "data": 9360
+    },
     "sparks@snes": {
       "code": 18195,
       "data": 611
@@ -320,6 +360,10 @@
     "sprite_mover": {
       "code": 12964,
       "data": 0
+    },
+    "sprite_mover@gbc": {
+      "code": 10998,
+      "data": 8048
     },
     "sprite_mover@genesis": {
       "code": 4840,
@@ -332,6 +376,10 @@
     "tiles": {
       "code": 7848,
       "data": 0
+    },
+    "tiles@gbc": {
+      "code": 6432,
+      "data": 8816
     },
     "tiles@genesis": {
       "code": 3406,

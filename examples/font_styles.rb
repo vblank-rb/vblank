@@ -15,7 +15,7 @@
 require_relative "../lib/vblank"
 
 module FontStyles
-  GAME = VBlank.game("FONTSTY", consoles: %i[gba snes]) do
+  GAME = VBlank.game("FONTSTY", consoles: %i[gba snes gbc]) do
     screen :bitmap
     clear_screen :black
 

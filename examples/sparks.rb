@@ -25,7 +25,7 @@ module Sparks
 
   # The game as a block the builder runs, so a test can drive the exact program that
   # ships — the headless interpreter runs THIS, the console runs the ROM.
-  GAME = VBlank.game("SPARKS", consoles: %i[gba snes]) do
+  GAME = VBlank.game("SPARKS", consoles: %i[gba snes gbc]) do
     screen :bitmap
     seed 0x5EED # a fixed stream, so every run is the same run
 

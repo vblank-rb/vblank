@@ -21,7 +21,7 @@ require_relative "../lib/vblank"
 # The game lives in a module, as every example's does, so its block belongs to the module
 # rather than to Ruby's own main object, which two cores may never share.
 module Pixels
-  GAME = VBlank.game("RUBYGBA", consoles: %i[gba snes genesis]) do
+  GAME = VBlank.game("RUBYGBA", consoles: %i[gba snes genesis gbc]) do
     screen :bitmap
 
     # Draw an Italian flag in the center of the screen
