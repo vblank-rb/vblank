@@ -44,13 +44,19 @@ module M4AAnswers
   ONE_SHOT_AT = 0x660           # one that does not
   TRACKS_AT = 0x700
 
+  # A plain voice's key byte (its base key) is not read by the driver: ply_note strikes a note at the
+  # note's own key, and MidiKeyToFreq takes the recording's own rate from its wave data. So the
+  # recording here is written with base key 67 and the second square with 72, and every note plays
+  # as it would with 60. Only a drum kit's entry gives a key (ply_note reads the entry's byte as the
+  # key the note plays at), as the kit's entries below do.
+  #
   # The voices: a recording, the two squares, the wave, the noise, a key split (low keys the
   # recording, from key 60 the second square), a drum kit, and a recording at a fixed rate. The
   # first square slides down (its sweep byte), and the noise swells in (its attack).
   WAVE_PATTERN_AT = 0x5F0
   WAVE_PATTERN = [0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10].freeze
-  VOICES = [[0x00, 60, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x2B, 2, [0, 0, 15, 0]],
-            [0x02, 60, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + WAVE_PATTERN_AT, [0, 0, 15, 0]],
+  VOICES = [[0x00, 67, 0, 0, ROM + WAVE_AT, [255, 0, 255, 165]], [0x01, 60, 0, 0x2B, 2, [0, 0, 15, 0]],
+            [0x02, 72, 0, 0, 1, [0, 1, 12, 2]], [0x03, 60, 0, 0, ROM + WAVE_PATTERN_AT, [0, 0, 15, 0]],
             [0x04, 60, 0, 0, 0, [3, 2, 0, 0]],
             [0x40, 0, 0, 0, ROM + SPLIT_GROUP_AT, ROM + SPLIT_TABLE_AT], [0x80, 0, 0, 0, ROM + KIT_AT, [0, 0, 0, 0]],
             [0x08, 60, 0, 0, ROM + ONE_SHOT_AT, [255, 40, 200, 10]]].freeze

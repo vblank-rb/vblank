@@ -74,6 +74,10 @@ module VBlank
       # the slots room: a port sizes a track's slot, and a Score's `longest:`, for the rounds its
       # song comes round in.
       #
+      # A plain voice's key byte (its base key) plays no part in the pitch: ply_note hands MidiKeyToFreq
+      # the note's own key (the track's key moved by KEYSH, TUNE and BEND) and the recording's own rate,
+      # and a voice's key byte is read only for a drum kit's entry, where it is the key the note plays.
+      #
       # Each note, as ply_note strikes it: its voice is the track's (VOICE), or for a drum kit the
       # kit's voice of the note's key, and for a key split the split's voice its table names for the
       # key; a split or kit inside one plays nothing. Its key is the note's key (a drum kit's: its
