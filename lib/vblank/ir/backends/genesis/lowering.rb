@@ -1611,6 +1611,8 @@ module VBlank
           # A sort handed +shown+ asks each place first, and starts past the entries not showing
           # (ShownSort).
           def emit_list_sort(node)
+            return node.children.each { |child| statement(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
             keyed = @keyed_sorts&.fetch(node.name, nil)
             shown = @shown_sorts&.fetch(node.name, nil)
             emit_shown_sorted_first(node, shown, keyed) if shown

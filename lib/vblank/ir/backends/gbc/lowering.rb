@@ -1368,6 +1368,8 @@ module VBlank
           # is smaller as whole unsigned numbers. Two numbers of different signs are the other way
           # round as signed ones, so the borrow is turned over when their top bits differ.
           def emit_list_sort(node)
+            return node.children.each { |child| statement(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
             refuse_sorting_front_dropped!(node)
             shown = @shown_sorts&.fetch(node.name, nil)
             return emit_shown_keyed_sort(node, shown) if shown

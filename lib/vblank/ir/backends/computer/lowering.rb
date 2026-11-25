@@ -932,6 +932,8 @@ module VBlank
           # With +shown+, whether each place shows is written into an array of its own first, a place
           # at a time, and the runtime puts every item not showing behind the rest.
           def lower_list_sort(node)
+            return node.children.flat_map { |child| lower(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
             by = Statements::AddressOf.new(list(node.by))
             descending = Statements::Int.new(node.descending ? 1 : 0)
             return [list_call("rg_list_sort", node, by, descending)] unless node.shown

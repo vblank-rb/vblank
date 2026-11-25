@@ -376,7 +376,10 @@ module VBlank
       # whose statements are made when the routine's body is built, so one taken back costs nothing.
       def sort_routines
         @sort_routines ||= SortOrder::Routines.new(@builder, @name) do |name, key|
-          @builder.declare_routine_once(name) { insertion_sort_nodes(key.fields.first.descending) }
+          @builder.declare_routine_once(name) do
+            descending = key.fields.first.descending
+            [Build.list_sort(@name, descending: descending, body: insertion_sort_nodes(descending))]
+          end
         end
       end
 

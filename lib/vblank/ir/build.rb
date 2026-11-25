@@ -1209,9 +1209,11 @@ module VBlank
       # Put every item of the list in order by the number list +by+ holds at it, the smallest
       # first, or the biggest with +descending+; level items keep their order (see ListSort).
       # +shown+, a value for each place of +by+, puts the items whose value is not 1 behind the rest.
-      def list_sort(name, by:, descending: false, shown: nil)
+      # With no +by+ the items are their own numbers, and +body+ is the insertion sort that means it.
+      def list_sort(name, by: nil, descending: false, shown: nil, body: [])
         given = shown ? { shown: shown.map { |value| to_value_node(value) } } : {}
-        Nodes.build(:list_sort, name: name, by: by, descending: descending ? true : false, **given)
+        given[:by] = by if by
+        Nodes.build(:list_sort, name: name, descending: descending ? true : false, children: body, **given)
       end
 
       # Overwrite the item at `index` with a new value (the slot must already hold

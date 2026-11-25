@@ -43,18 +43,17 @@ class TestSortCartridge < Minitest::Test
     sorts.each { |line| assert_operator line.samples, :>, 0 }
   end
 
-  # Instructions a pass each sort spends, held to what they cost when written (2026-11-24: about
-  # 685 for the sixteen scores, one new each pass, and 835 for the eight sparks), with a little room.
-  # The scores were 1120 until an item already in its place cost one read and one compare, which is
-  # how an insertion sort pays for a list that changes little from frame to frame: the habit of a
-  # short list sorted each frame, kept in order by moving only what moved. A hand-written insertion
-  # sort of sixteen nearly sorted words in ARM is a few hundred, so this is still above a careful
-  # game's; that gap is tracked, and this test only stops it growing.
-  def test_each_sort_costs_no_more_than_when_it_was_written
+  # Instructions a pass each sort spends. The sixteen scores, one new each pass, are sorted by the
+  # item itself, which the Advance writes in its own code (GBA::Lists#emit_list_sort): an insertion sort
+  # of a nearly sorted word list written for the processor, a load, a compare, a branch and a store an
+  # item, as the console's games keep their sprite order. It was 684 an insertion sort written as
+  # statements (about 45 an item) and is 249 now, so at most 400 is its budget. The eight sparks are
+  # sorted by a field of a thing, still the statements' sort (835 when written), with a little room.
+  def test_each_sort_costs_no_more_than_its_budget
     per_pass = profile_lines.select { |line| line.label.to_s.start_with?("sorting") }
                             .to_h { |line| [line.label[/`(\w+)`/, 1], line.samples / FRAMES] }
 
-    assert_operator per_pass.fetch("scores"), :<, 760
+    assert_operator per_pass.fetch("scores"), :<=, 400
     assert_operator per_pass.fetch("sparks"), :<, 950
   end
 
@@ -116,5 +115,26 @@ class TestSortCartridge < Minitest::Test
     assert_equal SHAPES.fetch(:scrambled).sort.reverse, v.list(:down_scrambled)
     assert_equal SHAPES.fetch(:with_repeats).sort.reverse, v.list(:down_repeats)
     assert_equal SHAPES.fetch(:first_is_last).sort.reverse, v.list(:down_last)
+  end
+
+  # An Array the game takes items from the front of is kept as a ring, whose items wrap round its
+  # block; its sort walks the ring a slot at a time, and comes out as Ruby's.
+  def test_an_array_shifted_from_the_front_is_put_in_order
+    builder = Builder.new
+    builder.instance_eval do
+      queue = Array.new(capacity: 8)
+      [5, 3, 9, 1, 7, 6, 2, 8].each { |n| queue.push(n) }
+      game_loop do
+        queue.shift
+        queue.push((queue.length * 5) % 11)
+        queue.sort!
+      end
+    end
+    builder.finalize_program
+    v = assert_emulator_loads_rom(assemble_rom(builder.program, name: "SORTRING"), frames: 3)
+    want = VBlank::IR::Backends::Reference.new.run(builder.program, frames: 3)
+
+    assert_equal want.list(:queue), v.list(:queue)
+    assert_equal want.list(:queue).sort, v.list(:queue)
   end
 end

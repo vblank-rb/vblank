@@ -282,10 +282,10 @@ module VBlank
           SORT_ITEM = 7
           SORT_FIRST = 8
 
-          # list_sort: every item put in order by the number +by+ holds at it (Reference
-          # #exec_list_sort), as an insertion sort written here in the program's own code, where
-          # both lists' places are known when the cartridge is built. Each item in turn is taken
-          # out and walked back past every item before it whose number is beyond its own — only
+          # list_sort: every item put in order by the number +by+ holds at it, or with no +by+ by the
+          # item itself (Reference#exec_list_sort), as an insertion sort written here in the program's
+          # own code, where both lists' places are known when the cartridge is built. Each item in
+          # turn is taken out and walked back past every item before it whose number is beyond its own — only
           # STRICTLY beyond, so level items keep their order — and put down where it stops. A list
           # already in order, which is what a draw order is on nearly every frame, is one compare
           # an item: about twenty instructions each, none of them a call.
@@ -294,13 +294,16 @@ module VBlank
           # ever scaled; only an item, to find its number in +by+, is shifted by that list's width.
           # Every item is a place in +by+ (see IR ListSort), so none is checked.
           #
-          # Only plain arrays are sorted: a shifted list's items wrap round its block, and nothing
-          # builds a sort of one.
+          # Only plain arrays are sorted here: a shifted list's items wrap round its block. A shifted
+          # list sorted by its items runs the insertion sort its node carries as statements, which
+          # read each item through the ring; nothing builds a sort of one by another list.
           def emit_list_sort(node)
             info = list_info(node.name)
-            keys = list_info(node.by)
+            return node.children.each { |child| @lowering.statement(child) } if node.by.nil? && info.ring
+
+            keys = list_info(node.by) if node.by
             [[node.name, info], [node.by, keys]].each do |name, each|
-              raise LoweringError, "list #{name.inspect} is shifted, so it cannot be sorted" if each.ring
+              raise LoweringError, "list #{name.inspect} is shifted, so it cannot be sorted" if each&.ring
             end
 
             e = @emitter
@@ -314,7 +317,7 @@ module VBlank
             stays = node.descending ? :ge : :le # the item before stays before when it is not beyond
             e.emit(ASM.push(SORT_AT, SORT_END, SORT_KEYS, SORT_ITEM, SORT_FIRST))
             e.emit_number(SORT_FIRST, info.base)
-            e.emit_number(SORT_KEYS, keys.base)
+            e.emit_number(SORT_KEYS, keys.base) if keys
             @primitives.load_var(SORT_END, length_var(node.name))
             shift = Math.log2(step).to_i
             e.emit(ASM.lsl_imm(SORT_END, SORT_END, shift)) if shift.positive?
@@ -330,15 +333,19 @@ module VBlank
             e.emit(ASM.cmp_reg(SORT_AT, SORT_END))
             e.emit_branch(:bcond, done, cond: :hs)
             emit_load_element(info, SORT_ITEM, SORT_AT)              # the item being placed
-            emit_load_key(keys, ACC, SORT_ITEM)                      # r0 = its number
+            emit_load_key(keys, ACC, SORT_ITEM) if keys              # r0 = its number
             e.emit(ASM.mov_reg(TMP, SORT_AT))                        # r1 = where it would go
             e.place_label(inner)
             e.emit(ASM.cmp_reg(TMP, SORT_FIRST))
             e.emit_branch(:bcond, place, cond: :eq)                  # nothing before it
             e.emit(ASM.sub_imm(HIGH, TMP, step))
             emit_load_element(info, SPARE, HIGH)                     # r2 = the item before
-            emit_load_key(keys, HIGH, SPARE)                         # r3 = its number
-            e.emit(ASM.cmp_reg(HIGH, ACC))
+            if keys
+              emit_load_key(keys, HIGH, SPARE)                       # r3 = its number
+              e.emit(ASM.cmp_reg(HIGH, ACC))
+            else # the items are their own numbers: compare the one before with the one placed
+              e.emit(ASM.cmp_reg(SPARE, SORT_ITEM))
+            end
             e.emit_branch(:bcond, place, cond: stays)
             emit_store_element(info, SPARE, TMP)                     # it moves up a slot
             e.emit(ASM.sub_imm(TMP, TMP, step))

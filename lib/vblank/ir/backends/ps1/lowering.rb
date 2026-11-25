@@ -1238,6 +1238,8 @@ module VBlank
           # its index names, so the sort is written here with both lists' places and slot sizes known
           # (#emit_fixed_front_sort); otherwise the runtime sorts through the ring (Runtime::Lists#emit_sort).
           def emit_list_sort(node)
+            return emit_children(node) if node.by.nil? # the items alone: the insertion sort that means it
+
             keys = @lists.fetch(node.by) { raise LoweringError, "the list #{node.by.inspect} is used and never declared" }
             if [node.name, node.by].any? { |name| @lists_dropped_from_front.include?(name) }
               return list_call("rt_list_sort", node, Build.int(keys.address), Build.int(node.descending ? 1 : 0))

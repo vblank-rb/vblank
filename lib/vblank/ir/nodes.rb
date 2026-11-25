@@ -1382,6 +1382,11 @@ module VBlank
       # above. So an item that shows again comes in at the back, behind the items level with it, as
       # if it were newly added, and a backend may leave the items not showing out of its sort and of
       # whatever walks the list after it.
+      #
+      # With no +by+ the items are their own numbers: the list of numbers put in order, smallest first
+      # (biggest first with +descending+), level items alike. Such a sort has the insertion sort that means
+      # it as its children, as a SetTileBlock has its cells: a backend with no sort of its own for it runs
+      # those, and the Advance writes the sort in its own code instead.
       class ListSort
         include Node
         kind :list_sort

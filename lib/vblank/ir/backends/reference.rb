@@ -4344,6 +4344,8 @@ module VBlank
         # in the order they stood, and its number is not read; the items showing are ordered as
         # above behind them. One that shows again so comes in at the back of the items level with it.
         def exec_list_sort(node)
+          return node.children.each { |child| exec(child) } if node.by.nil? # the items alone: the insertion sort that means it
+
           list = list_for(node.name)
           keys = list_for(node.by)
           items = list.to_a

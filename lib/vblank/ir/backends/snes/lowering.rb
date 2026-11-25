@@ -2856,6 +2856,8 @@ module VBlank
           #   R2  the item that moves, as its slot holds it        is, and (high half) the list's end
           #   R3  its number    R4  pointer to the slot before Y's    R5  pointer to Y's slot
           def emit_list_sort(node)
+            return emit_children(node) if node.by.nil? # the items alone: the insertion sort that means it
+
             keyed = @keyed_sorts&.fetch(node.name, nil)
             return emit_keyed_sort_asked(node, keyed) if keyed
 

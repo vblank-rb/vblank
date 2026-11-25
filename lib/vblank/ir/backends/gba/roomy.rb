@@ -132,7 +132,7 @@ module VBlank
             node.walk do |n|
               found << n.name if %i[list_get list_set list_fill list_copy list_sort list_push list_drop list_len list_new
                                     save_load_list save_store_list].include?(n.kind)
-              found << n.by if n.kind == :list_sort
+              found << n.by if n.kind == :list_sort && n.by
               found << n.name << n.into if n.kind == :list_pack
               n.callees.each { |target| visit_callee(target, bodies, seen, found) }
             end
