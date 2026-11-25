@@ -196,7 +196,8 @@ module VBlank
       def sort_by!(&block)
         refuse_sort_in_walk!
         probe = walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(0))))
-        sort_by_key!(SortOrder.key_from(probe, block) { |node| field_sorted_by(node) })
+        key = @builder.with_expressions_untracked { SortOrder.key_from(probe, block) { |node| field_sorted_by(node) } }
+        sort_by_key!(key)
       end
 
       # Puts the things in the order +key+ (SortOrder::Key) gives, with the routine for +line+:
@@ -268,13 +269,14 @@ module VBlank
       # answer compared must be one field read from both, whose sides say which way it sorts
       # (SortOrder.key_from_comparison). It runs once, while building, so a block that records
       # anything the game would do (a change, a sound) is refused: Ruby would do that on every
-      # comparison.
+      # comparison. What it works out is read, never put in the program
+      # (Builder#with_expressions_untracked).
       private def order_of(block)
         return own_order unless block
 
         first, second = [0, 1].map { |slot| walked(Pool::Instance.new(@pool, Value.new(@builder, IR::Build.int(slot)))) }
         mark = @builder.statement_mark
-        answer = block.call(first, second)
+        answer = @builder.with_expressions_untracked { block.call(first, second) }
         refuse_order_doing_something! if @builder.recorded_since?(mark)
         SortOrder.key_from_comparison(answer, kind_name) do |left, right|
           field = field_sorted_by(left)

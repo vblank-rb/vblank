@@ -683,8 +683,11 @@ class TestPlainRubyAnswers < Minitest::Test
   end
 
   # A block that works out new numbers from the items makes numbers of its own, as in Ruby.
+  # The build stops where `copy[1]`, worked out and never read, is taken for a number thrown away.
   def test_map_to_new_numbers_of_a_named_array_agrees
-    agrees("c = sizes.counts.map { |c| c + 1 }; c[0] += 5", reads: %i[n m], passes: 2) do
+    known_gap("c = sizes.counts.map { |c| c + 1 }; c[0] += 5",
+              gap: "a number held in a new Array and never read stops the build as one thrown away",
+              reads: %i[n m], passes: 2) do
       sizes = AnswerNamedSizes.new
       n = m = 0
       game_loop do
@@ -3186,6 +3189,25 @@ class TestPlainRubyAnswers < Minitest::Test
         sparks.each do |s|
           visits = (visits * 10) + s.x
           call :order if s.x == 1
+        end
+      end
+    end
+  end
+
+  # AnswerLow's `<=>` is in a game file, so the build reads it as game code, as a real game's is.
+  def test_sort_by_the_structs_own_order
+    agrees("sort! by the Struct's <=>", reads: %i[a b]) do
+      s = Array.new(capacity: 3)
+      started = a = b = 0
+      game_loop do
+        if started == 0
+          [[30, 2], [10, 1], [50, 0]].each { |x, y| s << AnswerLow.new(x, y) }
+          started = 1
+        end
+        s.sort!
+        s.each_with_index do |t, at|
+          a = t.x if at == 0
+          b = t.x if at == 2
         end
       end
     end

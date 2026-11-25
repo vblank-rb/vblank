@@ -703,6 +703,16 @@ module VBlank
                                   "`#{label} = value`. To change it only some of the time, put that line under an `if`.")
         end
 
+        # `counts[0] ||= value` reads the slot to see whether Ruby would give it a value, and a slot
+        # holding a number never gets one, so the read is all the line builds. That read is the
+        # line's own, never a number the author threw away (Builder#with_expressions_untracked).
+        def with_slot_reads_untracked(&)
+          builder = Builder::Session.builder
+          return yield unless Builder::Session.recording? && builder.respond_to?(:with_expressions_untracked)
+
+          builder.with_expressions_untracked(&)
+        end
+
         # A number given to a key that a Hash of game variables does not hold is a misspelt key: it
         # would go in as a plain Ruby number, and the game's variable would stay as it was.
         def refuse_new_slot!(collection, key, value)

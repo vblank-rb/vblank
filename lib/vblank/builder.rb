@@ -1145,6 +1145,17 @@ module VBlank
       @expressions.delete_if { |each_value| each_value.equal?(value) }
     end
 
+    # Runs the block, then forgets every expression it built. For a block of the game's that the
+    # build calls once on stand-ins, only to read what it gives (the key of `sort_by!`, the
+    # comparison of a Struct's `<=>`): what it works out is read and then left out of the program
+    # on purpose, so it is not a number the author threw away.
+    def with_expressions_untracked
+      known = @expressions.to_set(&:object_id)
+      yield
+    ensure
+      @expressions.select! { |value| known.include?(value.object_id) }
+    end
+
     # The expressions built during this build, for the orphaned-expression guardrail.
     def expressions
       @expressions

@@ -113,9 +113,16 @@ module RubyAnswers
   end
 
   # Built as a game is built (Cartridge::EvaluatedGame), which may build it again where game code
-  # read an instance variable before changing it.
+  # read an instance variable before changing it. A build also stops on a number worked out and
+  # dropped, which only the build itself is told of (VBlank.build), so it is asked here too: a
+  # case a test player plays and a real game file's build stops on would otherwise pass.
   private def built_program(&game)
-    VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false)).program
+    evaluated = VBlank::Cartridge::EvaluatedGame.new(VBlank::DSL::PlainRuby.rewrite(game, checked: false))
+    program = evaluated.program
+    dropped = VBlank::IR::Guardrails::Checks::OrphanedExpression.new(evaluated.expressions).detect(program)
+    raise VBlank::BuildError, dropped.map(&:message).join("\n") unless dropped.empty?
+
+    program
   end
 
   # The game played for +passes+ passes: the interpreter starts its first pass in the first frame.

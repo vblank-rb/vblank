@@ -321,7 +321,9 @@ module VBlank
       # the smallest first, and minus the item, `{ |n| -n }`, the biggest first.
       def sort_by!(&block)
         probe = Value.new(@builder, Build.var_ref(SORT_KEY_PROBE))
-        key = SortOrder.key_from(probe, block) { |node| :item if node.kind == :var_ref && node.name == SORT_KEY_PROBE }
+        key = @builder.with_expressions_untracked do
+          SortOrder.key_from(probe, block) { |node| :item if node.kind == :var_ref && node.name == SORT_KEY_PROBE }
+        end
         SortOrder.refuse_unknown_key! unless key.fields.size == 1
         sort_routines.call(key, SortOrder.author_line)
         self

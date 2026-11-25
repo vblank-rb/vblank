@@ -272,7 +272,8 @@ instance variables.
   the same variables, and a write through an item reaches the variable itself (`Writes.change`).
   The methods in `KeyedArray::ITEMS_ANSWERED` (`map`, `select`, `sort_by`, `entries`, ...) are
   refused only where the answer holds one of the Array's own variables (`map(&:itself)`), and
-  `map { |c| c + 1 }` builds. Called with no block they answer an Enumerator, which is refused
+  `map { |c| c + 1 }` builds, but a number in its answer the game never reads stops the build as
+  one thrown away (a known gap, held by the answers test). Called with no block they answer an Enumerator, which is refused
   (`KeyedArray#no_block_message`); one answering the Array itself (`each_slice` with its block) is a
   read. `[*counts]` (rewritten through `Rewriter#splat_array_text`) and
   `Array.new(counts)` are refused by `InstanceVariables.refuse_keyed_array_copied!`, since Ruby
@@ -443,7 +444,10 @@ end
   two stand-in things into a `SortOrder::Key` (`StructArray#own_order`, from the pairs
   `Value#sign_against` keeps), and `things.sort!` sorts by it at `sort_by!`'s cost. Each pair must
   be one field against the other thing's same field (reversed for the biggest first), alone or in
-  an Array for ties; any other `<=>` is refused rather than called per comparison. `min`, `max`
+  an Array for ties; any other `<=>` is refused rather than called per comparison. The numbers a
+  `<=>`, a comparing block or a `sort_by!` block works out on the stand-ins are read and left out
+  of the program, so the build does not take them for numbers thrown away
+  (`Builder#with_expressions_untracked`). `min`, `max`
   and `minmax` walk once by the same key (`StructArray#precedes`, field by field), keeping the
   first thing nothing later comes before, started at the first thing; they hand back a kept thing.
   Two things of one Array answer `<`, `>`, `<=`, `>=`, `between?` (game tests by the same key),

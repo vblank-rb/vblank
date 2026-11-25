@@ -1164,8 +1164,9 @@ module VBlank
           keys = node.arguments ? node.arguments.arguments.map { |key| argument(key) } : []
           label = "#{node.receiver.slice}[#{node.arguments&.arguments.to_a.map(&:slice).join(', ')}]"
           "(#{holder} = #{argument(node.receiver)}; #{held_keys} = [#{keys.join(', ')}]; " \
+            "#{WRITES}.with_slot_reads_untracked { " \
             "#{WRITES}.refuse_logic_slot_write!(#{holder}[*#{held_keys}], #{label.inspect}, #{node.operator.inspect}); " \
-            "#{holder}[*#{held_keys}] #{node.operator} #{argument(node.value)})"
+            "#{holder}[*#{held_keys}] #{node.operator} #{argument(node.value)} })"
         end
 
         # `+=` on a place. The block is what Ruby would do, for a place that holds no variable.
