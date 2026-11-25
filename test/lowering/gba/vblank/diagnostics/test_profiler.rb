@@ -269,6 +269,72 @@ class TestProfiler < Minitest::Test
     refute_match(/updates after the wait/, late.string)
   end
 
+  # Additions in each scene's own routine: enough that the two routines do not fit the quick
+  # memory together, so each is kept in a set of its own that comes in with its scene.
+  SET_ADDS = 1200
+
+  # A title, then a play scene whose routine runs a game loop of its own for good, the routine kept
+  # in the play scene's set. That loop's gap after the wait is the one above's, spinning to line
+  # +gap_until+ on the routine's eighth pass before it places the frame's sprites. The scenes are
+  # built in the DSL, for their sets, and the spin is put in by hand, as above.
+  private def game_whose_set_kept_gap_runs_to(gap_until)
+    adds = SET_ADDS
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      title = 0
+      t = 0
+      where = 0
+      passes = var :passes, 0
+      var :spin, 0
+      func(:title_work) { adds.times { |n| title += 1 + (n.even? ? 5 : -5) } }
+      func(:play_work) do
+        adds.times { |n| title += 1 + (n.even? ? 5 : -5) }
+        game_loop { passes += 1 }
+      end
+      scene(:title) { call :title_work }
+      scene(:play) { call :play_work }
+      game_loop do
+        t += 1
+        where = 1 if t == 3
+        call({ 0 => :title, 1 => :play }, number: :where)
+      end
+    end
+    b.finalize_program
+    program = b.program
+    insert_gap_spin(program.walk.to_a.reverse.find { |node| node.kind == :loop }, gap_until)
+    assemble_rom(program, name: "PGSET")
+  end
+
+  # The loop +inner+ made to spin after its wait to line +gap_until+ on its eighth pass, then place
+  # the frame's sprites, as #game_whose_gap_runs_to does.
+  private def insert_gap_spin(inner, gap_until)
+    build = VBlank::IR::Build
+    spin_until = lambda do |index, test|
+      build.repeat(build.int(100_000), index, build.add(:spin, build.int(1)), stop_when: test)
+    end
+    gap = build.if_(build.binop(:==, build.var_ref(:passes), build.int(8)),
+                    spin_until.call(:__repeat_1, build.binop(:<, build.read_scanline, build.int(160))),
+                    spin_until.call(:__repeat_2, build.binop(:>=, build.read_scanline, build.int(gap_until))),
+                    build.present_objects([]))
+    gap.parent = inner
+    inner.children.insert(inner.children.index { |node| node.kind == :wait_vblank } + 1, gap)
+  end
+
+  # A game loop in a routine kept in a swapped set ends its gap at the set's place in the quick
+  # memory, which is that routine's only while its set is in. The profile watches it there, and
+  # names the gap that ran past the next break as it does for a game loop outside a set.
+  def test_a_gap_in_a_routine_kept_in_a_set_that_ran_past_the_next_break_is_named
+    rom = game_whose_set_kept_gap_runs_to(165)
+    in_time = game_whose_set_kept_gap_runs_to(150)
+
+    assert(rom.built.gap_ends.any? { |site| site[:set] }, "the routine's gap ends in its set")
+    overruns = rom.profile(out: StringIO.new, frames: 20, settle: 0).gap_overruns
+    assert_equal 1, overruns.size, overruns.inspect
+    assert_includes 5..9, overruns.first.lines
+    assert_empty in_time.profile(out: StringIO.new, frames: 20, settle: 0).gap_overruns
+  end
+
   # A game with one sprite moving a pixel a pass, whose gap after the wait spins to line +gap_until+
   # before it writes the sprite's row: a line of the picture after the screen has left the break, so
   # the sprite table changes on that row; a line of the break straight away. Hand-built for the reason
