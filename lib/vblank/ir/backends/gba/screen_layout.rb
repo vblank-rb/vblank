@@ -748,6 +748,19 @@ module VBlank
             end
           end
 
+          # Which picture each sprite's first place is showing, by the name the game gave it.
+          #
+          # Keyed as #sprite_offsets is, by the place in the console's table and then by what tells
+          # that place's poses apart (#pose_key), so a row read back off the console finds its
+          # picture the way it finds how far it was moved. Only a sprite's first place is here: a
+          # picture cut into pieces is one picture, named once. Two poses stored as one picture
+          # facing one way are one key, and the first of them names it.
+          def shown_picture_names
+            each_built_sprite.each_with_object({}) do |(node, sprite), named|
+              named[sprite.slot] = pose_pictures(node, sprite)
+            end
+          end
+
           # Which sprite is in a place sprites of several scenes take turns at (see
           # Cartridge::BuildRecord#sprite_turns). The block gives the address of what the
           # variable picking the scenes held when the table was last written for a change of
@@ -762,7 +775,8 @@ module VBlank
               pose_var = sprite.frames && address_of.call(sprite.resident_frame_var)
               sprite.pieces.times do |piece|
                 (turns[sprite.slot + piece] ||= []) << VBlank::Cartridge::BuildRecord::SpriteTurn.new(
-                  at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var
+                  at: at, value: value, name: node.declared, offsets: pose_offsets(sprite, piece), pose_var: pose_var,
+                  pictures: piece.zero? ? pose_pictures(node, sprite) : {}
                 )
               end
             end
@@ -3336,6 +3350,15 @@ module VBlank
             (0...sprite.pose_count).to_h do |pose|
               word = words&.at(pose)
               [pose_key(sprite, pose, word), word ? decode_pose_offset(word) : alike]
+            end
+          end
+
+          # A sprite's pictures by what tells its first piece's poses apart (#pose_key), the first
+          # pose keeping a key two poses share.
+          def pose_pictures(node, sprite)
+            words = sprite.pose_words&.first(sprite.pose_count)
+            (0...sprite.pose_count).each_with_object({}) do |pose, named|
+              named[pose_key(sprite, pose, words&.at(pose))] ||= node.poses.fetch(pose)
             end
           end
 

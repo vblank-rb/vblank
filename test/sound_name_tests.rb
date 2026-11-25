@@ -97,6 +97,24 @@ module SoundNameTests
                  "this_frame, the same frame as asked for at the next")
   end
 
+  # The interpreter logs `[:stop_music]` on the frame the song playing goes quiet, stopped or
+  # changed for another, which is the frame the cartridge's song is first named as something else.
+  def test_the_music_stops_on_the_frame_the_interpreter_logs_it
+    built = named_sound_game
+    stopped = []
+    player = VBlank::IR::Backends::Reference.new
+    player.each_vblank do |frame|
+      stopped << frame if player.audio.include?([:stop_music])
+      player.audio.clear
+    end
+    player.run(built.source_program, frames: FRAMES)
+    songs = cartridge(built).first(FRAMES).map { |frame, _, song| [frame, song] }
+    changed = songs.each_cons(2).filter_map { |(_, was), (frame, now)| frame if was && now != was }
+
+    assert_equal [25, 31], changed, "the boss in place of the theme, then stopped"
+    assert_equal stopped, changed
+  end
+
   def test_the_song_is_named_while_it_plays
     songs = cartridge(named_sound_game).to_h { |frame, _, song| [frame, song] }
 

@@ -821,6 +821,69 @@ module VBlank
                              "registers as they stand after a step (`sound_registers`) instead."
       end
 
+      # Keep, from now on, the sprites the cartridge shows after each pass of its game loop: read
+      # back with #sprites_by_frame. Asked before anything is read, it keeps them from power-on.
+      #
+      # The cartridge knows its pictures by where they are stored, and the build kept which name
+      # each is, so this reads a cartridge built here and no other. It counts the passes, which on
+      # the Advance must start before the first frame plays (or give the reader `count_passes:
+      # true`), and it reads the sprites after every frame, so frames are played one at a time.
+      #
+      # @return [self]
+      def watch_sprites
+        refuse_missing_build_record!("which picture each of its sprites shows")
+        refuse_late_sprite_watch! if @rendered && !@count_passes
+        @count_passes = true
+        @sprite_frames ||= []
+        self
+      end
+
+      # What #watch_sprites has kept, a SpritesFrame for each pass since: its +frame+, counted as
+      # the interpreter counts its frames, by the passes of the game loop; and the +sprites+ shown
+      # once that pass is placed, each a DrawnSprite with the +name+, +x+, +y+ and +picture+ that
+      # `sprites` gives after the interpreter's `run(program, frames: frame)`. Name a sprite and
+      # only its rows come back.
+      #
+      # A console that draws its sprites in the gap before the next frame (the Advance) shows a
+      # pass's sprites as that gap ends, a frame after the pass, so to read +n+ passes there play
+      # +n+ + 1 frames. A pass that takes several frames is read once, on the first frame after it.
+      # A sprite is one row however many pieces the console draws it in, and +x+ and +y+ are as
+      # #sprites reads them, in the ranges the console keeps them in. The rows are in the order
+      # the console holds them, which need not be the interpreter's: compare them as a set.
+      #
+      # @param name [Symbol, nil] keep only this declared sprite's rows; nil for every row
+      # @return [Array<SpritesFrame>]
+      def sprites_by_frame(name = nil)
+        unless @sprite_frames
+          raise ArgumentError, "Nothing has watched this cartridge's sprites. To fix this, call `watch_sprites` " \
+                               "before the frames to read are played."
+        end
+
+        ensure_rendered!
+        sprites(name) if name # refuses a name the game gave no sprite
+        @sprite_frames.map do |kept|
+          name ? SpritesFrame.new(frame: kept.frame, sprites: kept.sprites.select { |row| row.name == name }) : kept
+        end
+      end
+
+      # Keep the sprites the frame just played shows, under the pass that placed them, the first
+      # time the count of passes reaches it.
+      private def keep_sprite_frame
+        pass = passes
+        return if pass.nil? || pass < 1 || pass <= (@sprite_frames.last&.frame || 0)
+
+        shown = sprites.filter_map do |row|
+          DrawnSprite.new(name: row.name, x: row.x, y: row.y, picture: row.picture) if row.picture
+        end
+        @sprite_frames << SpritesFrame.new(frame: pass, sprites: shown)
+      end
+
+      private def refuse_late_sprite_watch!
+        raise ArgumentError, "This reader has played frames without counting the game's passes, so it cannot " \
+                             "watch the sprites from here. To fix this, call `watch_sprites` before anything is " \
+                             "read, or make the reader with `count_passes: true`."
+      end
+
       private def take_sound_writes
         all = @probe.changes
         registers = sound_register_addresses
@@ -1245,7 +1308,8 @@ module VBlank
       #
       # The frames go over in one go when the same buttons are held throughout, which is the
       # usual case and which reads the picture once rather than once per frame. Input that
-      # changes frame by frame has to be handed over a frame at a time, so it is.
+      # changes frame by frame has to be handed over a frame at a time, so it is, and so are
+      # frames whose sprites are watched (#watch_sprites).
       #
       # A long run of frames is played in several steps, none longer than the frames of sound
       # this reader holds in memory. The emulator holds the sound of a step until the step
@@ -1254,11 +1318,12 @@ module VBlank
       def play(count, holding: nil)
         return unless count.positive?
 
-        changing = (holding || @keys).respond_to?(:call)
-        (changing ? Array.new(count, 1) : frames_in_steps(count)).each do |frames|
+        one_at_a_time = (holding || @keys).respond_to?(:call) || @sprite_frames
+        (one_at_a_time ? Array.new(count, 1) : frames_in_steps(count)).each do |frames|
           @probe.step(frames, keys: keys_for(@played, holding: holding))
           @sound.keep(@probe.audio_by_frame)
           @played += frames
+          keep_sprite_frame if @sprite_frames
         end
         take_sound_writes if @sound_writes_seen
         # The picture is read from the emulator only when something asks for it (#picture): a

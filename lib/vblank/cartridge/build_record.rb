@@ -81,6 +81,10 @@ module VBlank
     # to have them taken off again before it means the corner of the picture. Keyed by the place
     # in that table, then by the two things a row of it holds about which pose it is holding: its
     # first tile, and whether it is being drawn backwards.
+    # +sprite_pictures+ is which picture each sprite is showing, by the name the game gave it,
+    # keyed as +sprite_offsets+ is: by a sprite's first place, then by what tells its poses
+    # apart there. A picture cut into pieces is named on its first place alone. It is what lets a
+    # running cartridge be asked which picture a sprite shows, as the interpreter names it.
     # +streamed_sprite_pose_vars+ is the exception to that keying, and it exists because a sprite with
     # more pictures than sprite memory holds keeps one of them there at a time — so every pose of
     # it goes into the same place, and the place stops telling the poses apart. Such a sprite's
@@ -135,14 +139,14 @@ module VBlank
                                     :palette_entries, :column_stretches, :compression,
                                     :build_options, :findings, :emitted, :routines, :video_memory,
                                     :roomy_memory, :timer_handlers, :voices, :sound_drops,
-                                    :sprite_slots, :sprite_offsets, :streamed_sprite_pose_vars,
+                                    :sprite_slots, :sprite_offsets, :sprite_pictures, :streamed_sprite_pose_vars,
                                     :video_copies, :late_pages, :lists, :sprite_runs, :scene_sets,
                                     :missed_routine_parts, :colors_short, :sprite_turns, :held_sprites,
                                     :runtime, :data_assets, :gap_ends, :routine_statements, :func_spans, :number_tables, :statement_spans,
                                     :sound_player)
       def initialize(findings: [], emitted: nil, routines: {}, video_memory: nil,
                      roomy_memory: nil, timer_handlers: {}, voices: nil, sound_drops: nil,
-                     sprite_slots: {}, sprite_offsets: {}, streamed_sprite_pose_vars: {},
+                     sprite_slots: {}, sprite_offsets: {}, sprite_pictures: {}, streamed_sprite_pose_vars: {},
                      video_copies: [], late_pages: [], gap_ends: [], lists: {}, sprite_runs: [], scene_sets: nil,
                      missed_routine_parts: {}, routine_statements: {}, colors_short: nil, sprite_turns: {}, held_sprites: nil, runtime: {},
                      data_assets: [], func_spans: {}, number_tables: {}, statement_spans: [], sound_player: nil, **rest)
@@ -203,8 +207,8 @@ module VBlank
       # scenes' variable held when the table was last written for a change of scene, and the
       # sprite is in the place while that holds +value+. +pose_var+ is where a sprite keeping
       # one frame at a time records which pose it is showing (see +streamed_sprite_pose_vars+), or
-      # nil.
-      SpriteTurn = Data.define(:at, :value, :name, :offsets, :pose_var)
+      # nil. +pictures+ names its pictures as +sprite_pictures+ does, empty past its first place.
+      SpriteTurn = Data.define(:at, :value, :name, :offsets, :pose_var, :pictures)
 
       # One run of the sprite table drawn in an order the game works out: +order+ is the address
       # of its order, and +homes+ is each of its sprites' own first place and how many places it

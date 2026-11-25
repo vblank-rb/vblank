@@ -634,6 +634,7 @@ module VBlank
                                    roomy_memory: roomy_memory_report,
                                    sprite_slots: @screen.sprite_slots,
                                    sprite_offsets: @screen.sprite_offsets,
+                                   sprite_pictures: @screen.shown_picture_names,
                                    streamed_sprite_pose_vars: streamed_sprite_pose_vars,
                                    sprite_runs: sprite_runs,
                                    sprite_turns: @screen.sprite_turns { |name| var_addresses[name] },

@@ -436,6 +436,7 @@ module VBlank
           slots.each { |slot| by_slot[slot] = name }
         end
         moved = @rom.built.sprite_offsets
+        pictures = @rom.built.sprite_pictures
         rooms = @rom.built.streamed_sprite_pose_vars
         # A run drawn in an order the game works out moves its sprites' rows about, so a row is
         # taken back to the sprite's own place before anything is looked up by place.
@@ -456,16 +457,20 @@ module VBlank
           slot = held ? held.row_in_copy(row[:slot] - border_rows) { |address| mem16(address) } : row[:slot]
           home = own.fetch(slot, slot)
           name = whose[home]
-          dx, dy = moved.dig(home, pose_key(row, rooms, home)) || [0, 0]
+          key = pose_key(row, rooms, home)
+          dx, dy = moved.dig(home, key) || [0, 0]
+          shown = pictures.dig(home, key)
           # A place several scenes' sprites take turns at is the sprite of the scene the table
           # was last written for.
           if (turn = turns.fetch(home, []).find { |each_turn| var_at(each_turn.at) == each_turn.value })
             name = turn.name
-            dx, dy = turn.offsets[turn_pose_key(row, turn)] || [0, 0]
+            key = turn_pose_key(row, turn)
+            dx, dy = turn.offsets[key] || [0, 0]
+            shown = turn.pictures[key]
           end
           # Back into the ranges the console keeps these in, so a sprite half off the left edge
           # reads the way its own place reads rather than going negative.
-          SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y],
+          SpriteRow.new(**row, name: name, piece_x: row[:x], piece_y: row[:y], picture: shown,
                         x: (row[:x] - dx) & 0x1FF, y: (row[:y] - dy) & 0xFF,
                         colors: colors_drawn_from(row, table))
         end

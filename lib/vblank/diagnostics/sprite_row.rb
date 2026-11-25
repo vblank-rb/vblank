@@ -17,6 +17,9 @@ module VBlank
     # colours it is wearing and +color_count+ gives how many it draws from, 16 or 256 (see
     # Verifier#colors_drawn_from). The rest — +slot+, +tile+, +palette+, +priority+, +shape+,
     # +size+, the three about being drawn backwards or turned — are the console's own entry.
+    # +picture+ is the one of the sprite's pictures it is showing, by the name the game gave it
+    # (a mirrored one by the name `mirror` gave back), as the interpreter's row names it: on the
+    # first row of a picture cut into pieces, nil on the others and on a row nobody named.
     #
     # Why it is a type rather than a hash, which is what it was. Sixteen fields in a plain Hash
     # means a key that is not one of them reads back as nothing at all, so a test asserting on a
@@ -30,20 +33,24 @@ module VBlank
     # Written as +row.color_count+ it is a method, and a name that does not exist cannot be run.
     SpriteRow = Data.define(:name, :x, :y, :slot, :tile, :palette, :color_count, :colors,
                             :priority, :shape, :size, :mirrored_across, :mirrored_down,
-                            :turned, :piece_x, :piece_y)
+                            :turned, :piece_x, :piece_y, :picture)
 
     # One sprite the reference interpreter drew, which is the oracle's half of the same question
     # (see IR::Backends::Reference#sprites).
     #
-    # It has four fields and not sixteen because the interpreter has no console to keep them in:
+    # It has four fields and not seventeen because the interpreter has no console to keep them in:
     # there is no table of 128 places, so there is no place number, no tile, no colour group and
     # nothing about how the picture is stored — and naming a place was the thing worth being rid
-    # of. What it has instead is +picture+, the one of the sprite's pictures the pose selector
-    # picked, given as the name the author drew rather than as a number counting into the set.
+    # of. +picture+ is the one of the sprite's pictures the pose selector picked, given as the
+    # name the author drew rather than as a number counting into the set.
     #
-    # +name+, +x+ and +y+ mean exactly what they mean on a {SpriteRow}, and that is the point of
+    # +name+, +x+, +y+ and +picture+ mean exactly what they mean on a {SpriteRow}, and that is the point of
     # them being methods on both: a test comparing the two backends reads them the same way, and
     # neither type will quietly answer a question the other one can.
     DrawnSprite = Data.define(:name, :x, :y, :picture)
+
+    # The sprites a running cartridge showed from one frame's pass, as DrawnSprites, the way the
+    # interpreter's `sprites` gives them on that frame (see Verifier#sprites_by_frame).
+    SpritesFrame = Data.define(:frame, :sprites)
   end
 end

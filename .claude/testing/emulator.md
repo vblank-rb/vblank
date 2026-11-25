@@ -126,6 +126,35 @@ frames have played, it lists from the frame the reader was on. Held to the inter
 `test/sound_name_tests.rb`, played on the Advance by
 `test/lowering/gba/vblank/diagnostics/test_sound_names.rb`.
 
+The frame the music stops is the first whose `song` is not the one before (nil once stopped,
+another song once changed): the frame the interpreter logs `[:stop_music]`. The frame a song's
+first note sounds is not read: the record names no word of the player that marks a note, so
+for a song that opens on a note it is the frame its `song` is first named.
+
+## Which picture each sprite showed, by name
+
+A cartridge built here says, after each pass, which of its pictures each sprite showed and
+where, as `i.sprites` says after `i.run(program, frames: n)` (`DrawnSprite(name:, x:, y:,
+picture:)`, a mirrored picture by the name `mirror` gave back):
+
+```ruby
+v = VBlank::Diagnostics::Verifier.new(rom, frames: 601)    # a frame past the last pass wanted
+v.watch_sprites                                           # before the first read: from power-on
+v.sprites_by_frame(:link)                                 # [SpritesFrame(frame:, sprites: [DrawnSprite, ...]), ...]
+v.sprites_by_frame(:link).find { |f| f.sprites.first&.picture == :link_swing }.frame
+```
+
+`frame` counts the game's passes, which is the interpreter's frames for a game that keeps up; a
+pass that takes longer is read once. The Advance shows a pass's sprites as the gap after it
+ends, so play one frame past the last pass to be read. It reads the sprite table after every
+frame, so frames are played one at a time, and it counts passes (`count_passes: true`), so it
+is asked before the first read or on a reader made with that. A picture cut into pieces is one
+row. The rows are in the table's order, not always the interpreter's: compare them as a set. A
+single reading is `v.sprites(:link).first.picture`, the table as it stands after the frames
+played. Two pictures stored as one (the same pixels, facing the same way) read as the first
+of them. It needs the build's record. Held to the interpreter by `test/sprite_picture_tests.rb`,
+played on the Advance by `test/lowering/gba/vblank/diagnostics/test_sprite_pictures.rb`.
+
 ## `v.var` versus `v.mem32`
 
 `v.var` is the number the program counted to, a signed whole number, matching `i[:hurt]` for the
@@ -137,7 +166,8 @@ reads true.
 It reads the table the console composes from, so it tells a hidden sprite from one in the
 backdrop colour, one behind a background, one a pixel off the edge. Each row is a `SpriteRow`:
 `name`, `x`, `y`, `slot`, `tile`, `palette`, `color_count`, `colors`, `priority`, `shape`, `size`,
-`mirrored_across`, `mirrored_down`, `turned`, `piece_x`, `piece_y`. A sprite switched off is
+`mirrored_across`, `mirrored_down`, `turned`, `piece_x`, `piece_y`, `picture` (the name of the
+picture it shows, on a picture's first row). A sprite switched off is
 absent. `row[:x]` does not work, deliberately: as a Hash a misspelt field read back nil and the
 test passed.
 
