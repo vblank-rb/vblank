@@ -67,6 +67,9 @@ module VBlank
       # interpreter, given the Color's screen, and comparing every variable, list and pixel after
       # every pass of the game loop (GBC::CheckedRun).
       class GBC
+        # How many bytes one routine of the game's takes in the cartridge, its parts together.
+        RoutineSize = Data.define(:routine, :bytes)
+
         # Where a running cartridge keeps what a reader wants, which nothing in its bytes shows:
         # every variable by the game's name, every list (its place, its capacity, its slot width),
         # where the runtime keeps how the run stands (Runtime::Frame's names), where every label of
@@ -109,6 +112,15 @@ module VBlank
               drawn.row(whose - 1, picture, signed16.call(x), signed16.call(y))
             end
             rows.reverse
+          end
+
+          # How many bytes each of the game's routines takes, biggest first. The parts a big routine
+          # was cut into share its name (Lowering#routines_fitting), so they are one entry.
+          def routine_sizes
+            sizes = routines.group_by(&:routine).map do |routine, parts|
+              RoutineSize.new(routine: routine, bytes: parts.sum { |part| part.addresses.size })
+            end
+            sizes.sort_by { |size| [-size.bytes, size.routine] }
           end
 
           # Where the runtime counts the times the game has waited for the screen (32 bits).
