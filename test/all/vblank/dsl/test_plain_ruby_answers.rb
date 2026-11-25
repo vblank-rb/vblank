@@ -2309,6 +2309,54 @@ class TestPlainRubyAnswers < Minitest::Test
     assert_equal [20, 20], [first, second]
   end
 
+  # A part made outside the game's block, whose Array or Hash game code changes: Ruby made it while
+  # no game was being built, so the game has no place of its own for those numbers. Refused at the
+  # line of game code, saying where to make the part, whether its class or a reader changes it.
+  def test_a_part_made_outside_the_game_whose_array_changes_is_refused
+    scores = made_with_no_game { AnswerScores.new }
+    refused("scores.scores[1] += 1, made outside", /`AnswerScores`.*inside the `VBlank.game` block/m) do
+      n = 0
+      game_loop do
+        scores.scores[1] += 1
+        n = scores.scores[1]
+      end
+    end
+    tallies = made_with_no_game { AnswerTallies.new }
+    refused("tallies.counts[at] += 1, made outside", /`AnswerTallies`.*inside the `VBlank.game` block/m) do
+      n = at = 0
+      game_loop do
+        at = (at + 1) % 3
+        tallies.counts[at] += 1
+        n = tallies.counts[0]
+      end
+    end
+    slots = made_with_no_game { AnswerSlots.new }
+    refused("slots.bump(at), made outside", /`AnswerSlots`.*inside the `VBlank.game` block/m) do
+      n = at = 0
+      game_loop do
+        at = (at + 1) % 3
+        slots.bump(at)
+        n = slots.first
+      end
+    end
+    tally = made_with_no_game { AnswerTally.new }
+    refused("tally.count on a Hash, made outside", /`AnswerTally`.*inside the `VBlank.game` block/m) do
+      n = 0
+      game_loop do
+        tally.count
+        n = tally.left
+      end
+    end
+    flock = made_with_no_game { AnswerFlock.new }
+    refused("flock.add in the loop, made outside", /`AnswerFlock`.*inside the `VBlank.game` block/m) do
+      n = 0
+      game_loop do
+        flock.add(1) if flock.dots.size < 4
+        n = flock.dots.size
+      end
+    end
+  end
+
   # A build stopped by an error part way through game code leaves no builder recording: plain Ruby
   # run after it answers as Ruby does.
   def test_plain_ruby_after_a_build_that_failed
@@ -3268,6 +3316,10 @@ class TestPlainRubyAnswers < Minitest::Test
     own = node.kind == :list_new ? [node.name] : []
     own + node.children.flat_map { |child| list_names(child) }
   end
+
+  # A part made as above `VBlank.game`, with no game being built. An earlier test on this thread
+  # can leave a builder it made by hand current, so the part is made as plain Ruby on purpose.
+  private def made_with_no_game(&) = VBlank::Builder::Session.running_as_plain_ruby(&)
 
   # The game asking the EQUALITY_QUESTIONS case +name+ of game numbers each pass.
   private def equality_question(name)

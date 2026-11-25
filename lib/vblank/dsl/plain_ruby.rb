@@ -900,7 +900,7 @@ module VBlank
         end
 
         def own_array_change_text(node)
-          "#{INSTANCE_VARIABLES}.refuse_unkept_change!(#{argument(node.receiver)}, :#{node.name}, :#{node.receiver.name})" \
+          "#{INSTANCE_VARIABLES}.refuse_unkept_change!(#{argument(node.receiver)}, :#{node.name}, :#{node.receiver.name}, self)" \
             "#{copied_text(node, from: node.receiver.location.end_offset)}"
         end
 

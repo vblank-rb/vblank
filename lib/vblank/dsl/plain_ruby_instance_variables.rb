@@ -719,6 +719,7 @@ module VBlank
         # ||= Counter.new` makes it the first time it runs (#keeping_part).
         def making_part(owner, &)
           builder = Builder::Session.builder
+          note_part_made_by(owner, builder)
           return yield unless builder
 
           uses = builder.instance_variable_uses
@@ -728,6 +729,41 @@ module VBlank
             refuse_part_made_every_pass!(owner, builder.keeper_made_every_pass) if uses.changing_part?(owner)
           end
           builder.making_part(&)
+        end
+
+        # The build each part was made in, by the part, or NO_BUILD for one made while no game was
+        # being built: above `VBlank.game`, in a constant as its file loads, or after a build ended.
+        # Held weakly, so a part nothing else keeps is let go, and one table per Ractor, since each
+        # builds games of its own.
+        def builds_by_part = Ractor.current[:vblank_builds_by_part] ||= ObjectSpace::WeakKeyMap.new
+
+        # What #builds_by_part holds for a part made while no game was being built.
+        NO_BUILD = :no_build
+
+        def note_part_made_by(owner, builder) = builds_by_part[owner] = builder || NO_BUILD
+
+        # Was +owner+, a part, made by another build than the one recording now, or by none? Only
+        # a part whose `initialize` a game file holds is known; any other answers false.
+        def made_outside_this_build?(owner)
+          made_by = builds_by_part[owner]
+          !made_by.nil? && !made_by.equal?(Builder::Session.builder)
+        end
+
+        # +owner+'s +label+, an Array or a Hash, is about to become numbers the game keeps, and
+        # +owner+ was made outside this build (#made_outside_this_build?). Ruby made it while no game
+        # was being built, so its numbers would be the first build's alone: a game built twice, for
+        # two consoles, would play the second from places the first one made.
+        def refuse_part_made_outside!(owner, label)
+          return unless made_outside_this_build?(owner)
+
+          raise Refused, part_made_outside_message(owner, label)
+        end
+
+        def part_made_outside_message(owner, label)
+          name = owner.class.name || "this class"
+          "This line needs the game to keep `#{label}` of a `#{name}`. Your code made this `#{name}` " \
+            "outside the `VBlank.game` block, so the game cannot keep `#{label}`. To fix this, make the `#{name}` inside the `VBlank.game` block." \
+            "#{Messages::AuthorSource.at_author_line}"
         end
 
         # `@counter ||= Counter.new` (Rewriter#kept_part_text): the part made in the block, and
@@ -802,6 +838,7 @@ module VBlank
         # The list a named Array of numbers is, holding its items, with room for no more, and
         # named as its variable would be (`counts_by_number_part_counts`).
         def list_of(owner, label, held)
+          refuse_part_made_outside!(owner, label)
           builder = Builder::Session.builder
           builder.instance_variable_uses.refuse_array_kept_twice!(held, owner, label)
           # Each object keeps its own: a second one of the class takes the next free list name.
@@ -847,10 +884,14 @@ module VBlank
         # (Builder#recording_kept_part_start?): Ruby runs that `initialize` once, so a block or a
         # name it hands another part (`hooks.after { ... }`, `costume.wear(names)`) goes into that
         # part's Array once, while building, which is Ruby's own answer.
-        def refuse_unkept_change!(array, verb, label)
+        #
+        # +owner+ is the object the line runs on. One made outside this build has its own refusal
+        # (#refuse_part_made_outside!): its class did show what the Array keeps, but too late.
+        def refuse_unkept_change!(array, verb, label, owner)
           return array unless Builder::Session.recording? && array.instance_of?(Array)
           return array if Builder::Session.builder.recording_kept_part_start?
 
+          refuse_part_made_outside!(owner, label)
           name = label.to_s.delete_prefix("@")
           raise Refused, "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \
                          "plain Ruby Array. So it changes one time, while VBlank builds the game. VBlank makes the game " \
@@ -878,6 +919,7 @@ module VBlank
         def game_variables_in(owner, label, held)
           return held if held.is_a?(KeyedVariables)
 
+          refuse_part_made_outside!(owner, label)
           base = variable_name(owner, label)
           keyed = if held.is_a?(Hash)
                     KeyedHash[held.map { |key, value| [key, element_variable(owner, label, base, key, value)] }]

@@ -250,8 +250,13 @@ instance variables.
   (`KeyedArray#worked_out_key_message`). Both name the fix: a method of its class
   (`def bump(at) = @counts[at] += 1`). A part made by code that runs every frame (the game loop, a
   `func`, or under a game test) and not kept is refused there too (`refuse_part_made_every_pass!`):
-  Ruby's Array starts again each pass, the list would not. A part made above `VBlank.game` works for
-  one game; a second game using it stops with a raw FrozenError, as on main. A method answering a copy (`@counts.dup`) is left alone, and
+  Ruby's Array starts again each pass, the list would not. A part made outside this build (above
+  `VBlank.game`, or after a build ended; `InstanceVariables.made_outside_this_build?`, read from
+  the build each part's `initialize` ran in) is refused where its Array or Hash would become the
+  game's, by a reader or by its own class (`refuse_part_made_outside!`), saying to make it inside the
+  game's block: those places would be the first build's alone, and a second build for another
+  console would record into the first one's finished program. Its numbers alone still work, each
+  build starting from Ruby's number. A method answering a copy (`@counts.dup`) is left alone, and
   an index the game works out into a copy stops with words saying the game does not keep that
   Array. Part of a named Array (`counts[0..]`, `counts[1, 2]`, `first(2)`, `last(2)`, `take`,
   `drop`) and a copy of one (`dup`, `clone`, `reverse`, `rotate`, `values_at`, `+`) are refused
@@ -655,6 +660,7 @@ Each is a friendly error naming the line.
 | `Array.new` given a word other than `capacity:`, `width:` or `fast:` (`holds:` too: what goes in decides) | one of those |
 | an Array method a list has no meaning for (`rotate!`, `map`, `uniq`) on an Array the game changes | the verbs in "Arrays" above |
 | a part's Array its class does not change, added to or turned as a whole through a reader in game code (`flock.dots << dot`, `part.counts.rotate!`; `InstanceVariables.refuse_changed_from_outside!`, the rewrite's `whole_array_change?`) | a method of its class, `def add(dot) = @dots << dot` |
+| a part made outside the game's block whose Array or Hash game code changes, or reads at an index the game works out (`InstanceVariables.refuse_part_made_outside!`) | the part made inside the `VBlank.game` block |
 | a part's Array nothing was put into before the game began, changed in game code by a method its class body does not hold, such as the class reopened (`InstanceVariables.refuse_unkept_change!`, the rewrite's `own_array_change?`) | the first item put in before the game loop, or the method in the class body that makes the Array |
 | a whole number the game works out put into an Array that another line puts a fraction into | `.to_f` on the whole number |
 | a `true`/`false` name given a number | a comparison: `ok = count > 0` |

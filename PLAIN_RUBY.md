@@ -1593,6 +1593,64 @@ end
 </details>
 
 <details>
+<summary>Don't: make a part above <code>VBlank.game</code> and change its Array. Do: make it inside</summary>
+
+The game keeps a part's Array or Hash only when the part is made inside the game block. A part made above it is made one time, before VBlank builds the game, and a game built for two consoles cannot share it. A part whose numbers alone change works anywhere.
+
+With this class in `tallies.rb`:
+
+```rb
+class Tallies
+  def initialize
+    @counts = [0, 0, 0]
+  end
+
+  def bump(at) = @counts[at] += 1
+end
+```
+
+Refused:
+
+```rb
+VBlank.require_game_file "tallies"
+
+tallies = Tallies.new
+
+VBlank.game "TALLY", consoles: %i[gba] do
+  screen :bitmap
+  at = 0
+  game_loop do
+    at = (at + 1) % 3
+    tallies.bump(at)
+  end
+end
+```
+
+VBlank says:
+
+```
+This line needs the game to keep `@counts` of a `Tallies`. Your code made this `Tallies` outside the `VBlank.game` block, so the game cannot keep `@counts`. To fix this, make the `Tallies` inside the `VBlank.game` block.
+```
+
+Write instead:
+
+```rb
+VBlank.require_game_file "tallies"
+
+VBlank.game "TALLY", consoles: %i[gba] do
+  screen :bitmap
+  tallies = Tallies.new
+  at = 0
+  game_loop do
+    at = (at + 1) % 3
+    tallies.bump(at)
+  end
+end
+```
+
+</details>
+
+<details>
 <summary>Don't: set <code>@open</code> in a method and test it elsewhere. Do: <code>game_variables :open</code></summary>
 
 VBlank cannot see in the source that the game changes `@open`. So Ruby decides the test once, while it builds the game.
