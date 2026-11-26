@@ -105,7 +105,7 @@ module VBlank
               said = @program.walk.select { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
               return if said.empty? || (!painted? && said.all? { |node| handover.scene_screen?(node) })
 
-              refuse_unmade!("a `screen ... backdrop:` of its own on a painted screen, or anywhere but in a scene's own lines")
+              refuse_unmade!("a `screen ... backdrop:` of a scene's own on a painted screen, or anywhere but in a scene's own lines")
             end
 
             # Whether a scene of +program+ says a backdrop the game's does not, which colour 0 is changed
