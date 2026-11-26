@@ -804,7 +804,7 @@ module VBlank
             # lists (Art#reserve_bar_palettes), so each set writes those whole (Art#bar_held_set).
             def third_layer_colors_label(bg)
               held_colors_label([:third_layer, bg.object_id]) do
-                [nil, *bg.recolors.each_index].map { |step| @art.bar_held_set(step && bg.list_swaps(step)) }
+                [nil, *bg.recolors.each_index].map { |step| @art.bar_held_set(step && bg.list_swaps(step), colors_scene_of(bg)) }
               end
             end
 
@@ -1748,7 +1748,11 @@ module VBlank
               # (Art#bar_held_set), so two declarations walking theirs would write over each other's.
               walking = backgrounds_declared.select { |bg| bg.held_to_rows? && !Array(bg.recolors).empty? }
               refuse_unmade!("two backgrounds on the third layer drawn with other colours (`draw_with`)") if walking.length > 1
-              backgrounds_declared.select(&:held_to_rows?).each do |held|
+              on_third = backgrounds_declared.select(&:held_to_rows?)
+              # In a game of screen colours, each scene keeps its own third layer's lists, where no
+              # background on the layer is every screen's (Art#keep_bar_lists_by_scene!).
+              @art.keep_bar_lists_by_scene!(on_third.map(&:scene).uniq) if @screen_colors && on_third.all?(&:scene)
+              on_third.each do |held|
                 @layers[held] = THIRD_LAYER
                 refuse_unmade_third_layer!(held)
                 held.every_map.each_index { |which| grid_of(held, which) }
@@ -1926,7 +1930,8 @@ module VBlank
               name = bg.tiles.fetch(tile)
               if on_third_layer?(bg)
                 owner = Art::ThirdLayerOwner.new(name: bg.name, held_above: !bg.above_row.nil?)
-                return @art.bar_cell(@cache.image(picture_named(name)), owner: owner, tile: name, walks: !Array(bg.recolors).empty?)
+                return @art.bar_cell(@cache.image(picture_named(name)), owner: owner, tile: name, walks: !Array(bg.recolors).empty?,
+                                                                        scene: colors_scene_of(bg))
               end
 
               @run_cells.fetch(name) do

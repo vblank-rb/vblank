@@ -208,4 +208,129 @@ class TestSceneColorsOnTheSuperNintendo < Minitest::Test
     assert_equal first_color(0), shown_by(prog, 2).pixel(0, 0), "every screen's"
     assert_equal first_color(14), shown_by(prog, (SWITCH_AT * 2) + 1).pixel(0, 8), "the second scene's own"
   end
+
+  SAND = [10, 6, 4].freeze
+  LAMP = [28, 12, 31].freeze
+  PANEL = [5, 25, 15].freeze
+
+  # A scene of eight lists of its own, then a scene whose three backgrounds put one on the third
+  # layer: an arena, a light that takes the arena away, and a bar held alone above row 32. The
+  # third layer's colours are in the backgrounds' first set, and only on the screen that shows it.
+  private def full_scene_then_barred_light
+    switch = SWITCH_AT
+    sand = SAND
+    lamp = LAMP
+    panel = PANEL
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      row = SceneColorLists.declare(self, :one_set, (0...8).to_a)
+      image(:sand, "#" => rgb(*sand)) { tile }
+      image(:lamp, "#" => rgb(*lamp)) { tile }
+      image(:panel, "#" => rgb(*panel)) { tile }
+      tiles :sands, "#" => :sand
+      tiles :lamps, "#" => :lamp
+      tiles :panels, "#" => :panel
+      layers :arena, :light, :bar
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:one) { background :one, tiles: :one_set, map: Array.new(4) { row } }
+      scene(:two) do
+        layer(:arena) { background :floor, tiles: :sands, map: Array.new(32) { "#" * 32 } }
+        layer(:light, shows: 100, shows_behind: 100, subtract: true) do
+          background :glow, tiles: :lamps, map: Array.new(32) { ("#" * 16) + (" " * 16) }
+        end
+        layer(:bar) { background :score, tiles: :panels, map: Array.new(4) { "#" * 32 }, above_row: 32, alone: :without_sprites }
+      end
+      game_loop do
+        tick += 1
+        state = 1 if tick == switch
+        state = 0 if tick == switch * 3
+        call({ 0 => :one, 1 => :two }, number: :state)
+      end
+    end
+  end
+
+  private def rgb5(red, green, blue) = red | (green << 5) | (blue << 10)
+
+  # A bar tile in three colours of its own, so each takes a list of the third layer to itself:
+  # colour +n+ * 3, and the two after it.
+  private def bar_tile_colors(n) = (0...3).map { |i| [n + 1, (n * 3) + i + 4, 31 - i] }
+
+  # Two screens with a bar held alone above row 32, each in tiles of its own colours: the first a
+  # bar of two lists over a background of seven lists of fifteen, the second a bar of three lists
+  # over an arena and a light that takes it away. Together the two bars need two of the eight sets,
+  # and the first screen has only one to spare; alone each needs one. The game opens on the first.
+  private def two_barred_screens
+    switch = SWITCH_AT
+    sand = SAND
+    lamp = LAMP
+    tile = SOLID_TILE
+    bars = (0...5).map { |n| bar_tile_colors(n) }
+    striped = ("abcabcab\n" * 8).chomp
+    program do
+      screen :tiled
+      row = SceneColorLists.declare(self, :one_set, (0...7).to_a)
+      bars.each_with_index do |(a, b, c), n|
+        image(:"bar#{n}", "a" => rgb(*a), "b" => rgb(*b), "c" => rgb(*c)) { striped }
+      end
+      image(:sand, "#" => rgb(*sand)) { tile }
+      image(:lamp, "#" => rgb(*lamp)) { tile }
+      tiles :one_bar, "0" => :bar0, "1" => :bar1
+      tiles :two_bar, "2" => :bar2, "3" => :bar3, "4" => :bar4
+      tiles :sands, "#" => :sand
+      tiles :lamps, "#" => :lamp
+      layers :arena, :light, :bar
+      state = var :state, 0
+      tick = var :tick, 0
+      below = Array.new(4) { " " * 7 } + Array.new(4) { row }
+      scene(:one) do
+        background :one, tiles: :one_set, map: below
+        layer(:bar) { background :one_score, tiles: :one_bar, map: Array.new(4) { "01" }, above_row: 32, alone: :without_sprites }
+      end
+      scene(:two) do
+        layer(:arena) { background :floor, tiles: :sands, map: Array.new(32) { "#" * 32 } }
+        layer(:light, shows: 100, shows_behind: 100, subtract: true) do
+          background :glow, tiles: :lamps, map: Array.new(32) { ("#" * 16) + (" " * 16) }
+        end
+        layer(:bar) { background :two_score, tiles: :two_bar, map: Array.new(4) { "234" }, above_row: 32, alone: :without_sprites }
+      end
+      game_loop do
+        tick += 1
+        state = 1 if tick == switch
+        state = 0 if tick == switch * 3
+        call({ 0 => :one, 1 => :two }, number: :state)
+      end
+    end
+  end
+
+  # Each bar's first colour, read at the left of each of its tiles.
+  private def bar_firsts(screen, count) = (0...count).map { |at| screen.pixel(at * 8, 0) }
+
+  private def first_bar_colors(range) = range.map { |n| rgb5(*bar_tile_colors(n).first) }
+
+  def test_two_screens_keep_their_own_bars_lists_beside_seven_lists
+    prog = two_barred_screens
+    one = shown_by(prog, 2)
+    two = shown_by(prog, (SWITCH_AT * 2) + 1)
+    back = shown_by(prog, (SWITCH_AT * 3) + 3)
+
+    assert_equal first_bar_colors(0..1), bar_firsts(one, 2), "the first screen's bar, from power-on"
+    assert_equal first_color(6), one.pixel(48, 32), "the first screen's last list below its bar"
+    assert_equal first_bar_colors(2..4), bar_firsts(two, 3), "the second screen's bar"
+    assert_equal rgb5(18, 6, 27), two.pixel(8, 40), "the light below the second bar"
+    assert_equal first_bar_colors(0..1), bar_firsts(back, 2), "the first screen's bar again"
+    assert_equal first_color(0), back.pixel(0, 32), "the first screen's first list again"
+  end
+
+  def test_eight_lists_of_one_scene_beside_a_third_layer_on_another
+    prog = full_scene_then_barred_light
+    two = shown_by(prog, (SWITCH_AT * 2) + 1)
+
+    assert_equal first_color(0), shown_by(prog, 2).pixel(0, 0), "the first scene's first list"
+    assert_equal first_color(7), shown_by(prog, 2).pixel(56, 0), "the first scene's last list"
+    assert_equal rgb5(*PANEL), two.pixel(8, 8), "the bar, in the third layer's colours"
+    assert_equal rgb5(18, 6, 27), two.pixel(8, 40), "the light below the bar, the sand taken away"
+    assert_equal first_color(0), shown_by(prog, (SWITCH_AT * 3) + 3).pixel(0, 0), "the first scene's first list again"
+  end
 end

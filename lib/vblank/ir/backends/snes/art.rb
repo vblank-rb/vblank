@@ -266,6 +266,7 @@ module VBlank
             @held_lengths = {} # a background whose held lists may share => each such list's colours, how many
             @most_background_tiles = third_layer ? THIRD_LAYER_TILE_PLACES : MOST_BACKGROUND_TILES
             @bar_palettes = []
+            @scene_bar_palettes = nil # a scene -> its third layer's lists, in a game keeping them by scene
             @bar_tile_numbers = { blank_bar_tile => 0 }
             @bar_open_slots = {}.compare_by_identity
             @sprite_squares = sprite_squares
@@ -399,7 +400,7 @@ module VBlank
           # colours, or more colours than the eight lists hold, is refused naming the background and
           # the tile (+tile+). On a background drawn with other colours (+walks+) each colour is a
           # BarPlace, so the lists hold one colour for each place of a list a tile is drawn at.
-          def bar_cell(image, owner:, tile:, walks: false)
+          def bar_cell(image, owner:, tile:, walks: false, scene: nil)
             drawn = (0...64).reject { |at| image.tile_see_through_at?(at) }
             colors = drawn.map { |at| bar_color_key(image, at, walks) }.uniq
             if colors.length > BAR_OWN_COLORS
@@ -409,9 +410,10 @@ module VBlank
                                               "draw the tile :#{tile} in #{BAR_OWN_COLORS} colours or fewer."
             end
 
-            palette = bar_palette_for(colors, owner)
+            lists = bar_lists(scene)
+            palette = bar_palette_for(lists, colors, owner)
             places = Array.new(64) do |at|
-              image.tile_see_through_at?(at) ? 0 : @bar_palettes[palette].index(bar_color_key(image, at, walks)) + 1
+              image.tile_see_through_at?(at) ? 0 : lists[palette].index(bar_color_key(image, at, walks)) + 1
             end
             [bar_tile_number(TileBytes.of(places).byteslice(0, BAR_TILE_BYTES)), palette]
           end
@@ -421,11 +423,13 @@ module VBlank
           # fifteen colours. +swaps+ (Nodes::Background#list_swaps) gives each list a tile is drawn
           # from the list it is drawn with, and nil leaves every colour as drawn. A BarPlace takes the
           # colour at its place in the list its own list is drawn with, as the interpreter's swap by
-          # place does (Assets::Recolor); a colour kept by its colour stays.
-          def bar_held_set(swaps)
-            Array.new(bar_background_palettes) do |palette|
+          # place does (Assets::Recolor); a colour kept by its colour stays. +scene+ is the scene whose
+          # third layer it is, in a game keeping its lists by scene (#keep_bar_lists_by_scene!).
+          def bar_held_set(swaps, scene = nil)
+            lists = bar_lists(scene)
+            Array.new(bar_background_palettes(scene)) do |palette|
               colors = (1...PLACES).map do |at|
-                list = @bar_palettes[(palette * BAR_PALETTES_A_LIST) + (at / (BAR_OWN_COLORS + 1))]
+                list = lists[(palette * BAR_PALETTES_A_LIST) + (at / (BAR_OWN_COLORS + 1))]
                 index = at % (BAR_OWN_COLORS + 1)
                 index.zero? || list.nil? || list[index - 1].nil? ? 0 : bar_color_shown(list[index - 1], swaps)
               end
@@ -433,13 +437,44 @@ module VBlank
             end
           end
 
+          # Keeps the third layer's lists for each of +scenes+ apart, before any of its cells is made: in
+          # a game of screen colours whose third layer shows only the backgrounds of some scenes, each
+          # its own. The colour memory those lists are in is the third layer's only while a screen with
+          # it is up, so each screen holds its own layer's lists alone, and a screen that does not show
+          # the layer has those sets for its other backgrounds (#free_bar_palettes). That screen brings
+          # its layer's colours back in as it takes over (#scene_colors).
+          def keep_bar_lists_by_scene!(scenes)
+            @scene_bar_palettes = scenes.to_h { |scene| [scene, []] } if @screen_colors
+          end
+
+          # The third layer's lists +scene+ shows, or the game's where they are not kept by scene.
+          def bar_lists(scene)
+            return @bar_palettes unless @scene_bar_palettes
+
+            @scene_bar_palettes.fetch(scene) { raise LoweringError, "the scene #{scene.inspect} shows no third layer" }
+          end
+
           # The backgrounds' lists the bar's colours are in, kept from the other backgrounds: one for
-          # each four lists of the bar's. Called once the bar's cells are made and before any other
-          # background's, so those are the first lists and nothing else is in them yet.
+          # each four lists of the bar's, the most any screen needs. Called once the bar's cells are
+          # made and before any other background's, so those are the first lists and nothing else is
+          # in them yet.
           def reserve_bar_palettes
             bar_background_palettes.times do |palette|
               @background_palettes[palette] = Array.new(OWN_COLORS, BAR_LIST_HOLDER)
               @held[:backgrounds] << palette
+            end
+          end
+
+          # +scene+'s copy of the sets of colours with the lists its own third layer does not take handed
+          # back to it, in a game keeping those by scene (#keep_bar_lists_by_scene!). An area of a
+          # background every screen shows keeps them all: it is on screen beside every scene's layer.
+          def free_bar_palettes(scene, palettes)
+            return if @scene_bar_palettes.nil? || scene.is_a?(AreaKey)
+
+            kept = @scene_bar_palettes.key?(scene) ? bar_background_palettes(scene) : 0
+            (kept...bar_background_palettes).each do |palette|
+              palettes[palette] = nil
+              @scene_held[scene].delete(palette)
             end
           end
 
@@ -506,7 +541,9 @@ module VBlank
 
             base = scene.is_a?(AreaKey) ? background_palettes(scene.colors_base) : @background_palettes
             @scene_held[scene] ||= (scene.is_a?(AreaKey) ? held_in(base) : @held[:backgrounds]).dup
-            @scene_palettes[scene] ||= base.map { |list| list&.dup }
+            @scene_palettes[scene] ||= base.map { |list| list&.dup }.tap do |copy|
+              free_bar_palettes(scene, copy) if base.equal?(@background_palettes)
+            end
           end
 
           # One area of a background that walks between areas (`background ..., tiles: { shrine: ..., clearing: ... }`):
@@ -521,12 +558,16 @@ module VBlank
           # What +scene+ brings in as it takes over, as [where in the colour memory, its colours] for
           # each set: those that are not as every screen left them. Never none, since the routine
           # that copies them counts down from how many (Runtime::Tint's rt_colors_hold).
+          #
+          # A screen that shows the third layer, in a game where only some do, brings the layer's
+          # colours in too (#reserve_bar_palettes): another screen may have used those lists.
           def scene_colors(scene)
             palettes = background_palettes(scene)
             changed = palettes.each_index.select { |palette| palettes[palette] && palettes[palette] != @background_palettes[palette] }
             sprites = scene_sprite_colors(scene)
-            changed = [(0...PALETTES).find { |palette| !@scene_held[scene].include?(palette) } || 0] if changed.empty? && sprites.empty?
-            changed.map { |palette| [background_palette_at(palette), palettes[palette] || []] } + sprites
+            bar = @scene_bar_palettes&.key?(scene) ? bar_held_set(nil, scene) : []
+            changed = [(0...PALETTES).find { |palette| !@scene_held[scene].include?(palette) } || 0] if changed.empty? && sprites.empty? && bar.empty?
+            bar + changed.map { |palette| [background_palette_at(palette), palettes[palette] || []] } + sprites
           end
 
           # The sets of colours +scene+'s own sprites are drawn from: in a game of +sprite_colors+ a
@@ -863,6 +904,7 @@ module VBlank
             (area ? background_palettes(area) : @background_palettes).each_with_index { |list, p| list&.each_with_index { |c, i| colors[(p * PLACES) + i + 1] = c } }
             @sprite_palettes.each_with_index { |list, p| list&.each_with_index { |c, i| colors[128 + (p * PLACES) + i + 1] = c } }
             (1...(bar_background_palettes * PLACES)).each { |at| colors[at] = 0 }
+            # A game keeping the lists by scene has none of its own here: each screen brings its own in.
             @bar_palettes.each_with_index do |list, p|
               list.each_with_index { |c, i| colors[(p * (BAR_OWN_COLORS + 1)) + i + 1] = bar_color_shown(c, nil) }
             end
@@ -904,8 +946,17 @@ module VBlank
           # How many sprite tiles a painted screen leaves.
           def painted_screen_sprite_tiles = MOST_SPRITE_TILES - Runtime::Paint::FIRST_SPRITE_TILE - Runtime::Paint::SPRITE_TILES_TAKEN.length
 
-          # How many of the backgrounds' lists the third layer's colours take: one for each four of its lists.
-          def bar_background_palettes = (@bar_palettes.length + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
+          # How many of the backgrounds' lists the third layer's colours take: one for each four of its
+          # lists, +scene+'s in a game keeping them by scene, and with none named there the most any
+          # screen takes.
+          def bar_background_palettes(scene = nil)
+            count = if @scene_bar_palettes && scene.nil?
+                      @scene_bar_palettes.each_value.map(&:length).max || 0
+                    else
+                      bar_lists(scene).length
+                    end
+            (count + BAR_PALETTES_A_LIST - 1) / BAR_PALETTES_A_LIST
+          end
 
           # What the third layer's lists hold for pixel +at+ of +image+: its colour, or, where the
           # background walks its colours, the BarPlace it was drawn at.
@@ -924,24 +975,25 @@ module VBlank
           end
 
           # The third layer's list holding every one of +colors+, adding them to one with room, or
-          # starting another of the eight; refused naming +owner+ (a ThirdLayerOwner) where none is left.
-          def bar_palette_for(colors, owner)
-            found = @bar_palettes.index { |list| (colors - list).empty? }
+          # starting another of the eight of +lists+; refused naming +owner+ (a ThirdLayerOwner) where none
+          # is left.
+          def bar_palette_for(lists, colors, owner)
+            found = lists.index { |list| (colors - list).empty? }
             return found if found
 
-            roomy = @bar_palettes.each_index.select { |p| (@bar_palettes[p] | colors).length <= BAR_OWN_COLORS }
-                                 .max_by { |p| (@bar_palettes[p] & colors).length }
-            return roomy.tap { @bar_palettes[roomy] |= colors } if roomy
+            roomy = lists.each_index.select { |p| (lists[p] | colors).length <= BAR_OWN_COLORS }
+                         .max_by { |p| (lists[p] & colors).length }
+            return roomy.tap { lists[roomy] |= colors } if roomy
 
-            if @bar_palettes.length >= BAR_PALETTES
+            if lists.length >= BAR_PALETTES
               raise ThirdLayerArtTooColorful, "The tiles of the #{owner.kind} :#{owner.name} use more colours than its layer holds. On a " \
                                               "Super Nintendo, #{owner.layer_words} uses tiles of four colours. " \
                                               "The layer holds #{BAR_PALETTES} lists of #{BAR_OWN_COLORS} colours, and each " \
                                               "tile uses one list. To fix this, use fewer colours in the tiles of :#{owner.name}."
             end
 
-            @bar_palettes << colors.dup
-            @bar_palettes.length - 1
+            lists << colors.dup
+            lists.length - 1
           end
 
           # A four-colour tile's number: half of one of the backgrounds' places, the second half of
