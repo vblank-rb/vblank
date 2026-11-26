@@ -43,6 +43,7 @@ module RubyGenesisEmulator
     PSG_REGISTERS = 0x8007
     FM_REGISTERS = 0x8008
     PROCESSOR_TIME = 0x8009
+    SOUND_WRITES = 0x800A
 
     # How much each of the PSG's sixteen loudness steps is in the core's numbers, the last being silence,
     # and the bits of its noise setting.
@@ -230,6 +231,22 @@ module RubyGenesisEmulator
     def take_processor_time
       bytes = memory(PROCESSOR_TIME)
       bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
+    end
+
+    # EVERY WRITE TO THE SOUND CHIPS since this was last asked, oldest first: [dropped, writes], where writes is
+    # an Array of [chip, register, value], the chip :psg (its one byte, register 0) or :fm (register 0 to
+    # 0x1FF, the second part from 0x100), and dropped is how many more than a million came and were counted, not
+    # kept. The DAC's sample (0x2A) and the timers (0x24 to 0x27) are left out: the sound processor writes them
+    # every sample of a recording, and they start no note. The first ask starts the log and answers nothing.
+    def take_sound_writes
+      bytes = memory(SOUND_WRITES)
+      return [0, []] if bytes.empty?
+
+      dropped = bytes.unpack1("L<")
+      writes = bytes.byteslice(4..).unpack("CS<C" * ((bytes.bytesize - 4) / 4)).each_slice(3).map do |chip, register, value|
+        [chip.zero? ? :psg : :fm, register, value]
+      end
+      [dropped, writes]
     end
 
     # The 68000's registers by name (REGISTER_NAMES): the data registers, the address registers,

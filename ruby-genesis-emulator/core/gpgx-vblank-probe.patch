@@ -1,11 +1,11 @@
 diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
+index 07d2514..9438fe5 100644
 --- a/core/m68k/m68kcpu.c
 +++ b/core/m68k/m68kcpu.c
-@@ -18,6 +18,47 @@
- #include "m68kconf.h"
+@@ -19,6 +19,47 @@ extern int vdp_68k_irq_ack(int int_level);
  #include "m68kcpu.h"
  #include "m68kops.h"
-+
+ 
 +/* THE PROBE PATCH: where the 68000's time goes, for a profiler. Each instruction's cycles, in the
 +   core's own count of seven to a processor cycle, are added to the address it started at. Nothing
 +   is kept until the first time it is asked for. probe_profile_take hands over what was counted
@@ -46,10 +46,11 @@ diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
 +  probe_touched_count = 0;
 +  return size;
 +}
- 
++
  /* ======================================================================== */
  /* ================================= DATA ================================= */
-@@ -268,7 +309,9 @@
+ /* ======================================================================== */
+@@ -268,7 +309,9 @@ void m68k_run(unsigned int cycles)
    /* Make sure we're not stopped */
    if (CPU_STOPPED)
    {
@@ -59,7 +60,7 @@ diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
      return;
    }
  
-@@ -297,6 +340,8 @@
+@@ -297,6 +340,8 @@ void m68k_run(unsigned int cycles)
  #endif
  
      /* Decode next instruction */
@@ -68,7 +69,7 @@ diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
      REG_IR = m68ki_read_imm_16();
  
      /* 68K bus access refresh delay (Mega Drive / Genesis specific) */
-@@ -309,6 +354,7 @@
+@@ -309,6 +354,7 @@ void m68k_run(unsigned int cycles)
      /* Execute instruction */
      m68ki_instruction_jump_table[REG_IR]();
      USE_CYCLES(CYC_INSTRUCTION[REG_IR]);
@@ -77,42 +78,96 @@ diff --git a/core/m68k/m68kcpu.c b/core/m68k/m68kcpu.c
      /* Trace m68k_exception, if necessary */
      m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
 diff --git a/core/sound/psg.c b/core/sound/psg.c
+index cf7069e..fa407fb 100644
 --- a/core/sound/psg.c
 +++ b/core/sound/psg.c
-@@ -223,6 +223,8 @@
- 
+@@ -224,8 +224,12 @@ int psg_context_load(uint8 *state)
    return bufferptr;
  }
-+
-+int *probe_psg_registers(void) { return psg.regs; } /* THE PROBE PATCH: the chip's eight registers */
  
++int *probe_psg_registers(void) { return psg.regs; } /* THE PROBE PATCH: the chip's eight registers */
++extern void probe_sound_write(unsigned int chip, unsigned int reg, unsigned int value); /* THE PROBE PATCH: see ym2612.c */
++
  void psg_write(unsigned int clocks, unsigned int data)
  {
++  probe_sound_write(0, 0, data & 0xff);
+   int index;
+ 
+   /* PSG chip synchronization */
 diff --git a/core/sound/ym2612.c b/core/sound/ym2612.c
+index 3cba674..f1b6272 100644
 --- a/core/sound/ym2612.c
 +++ b/core/sound/ym2612.c
-@@ -1954,9 +1954,13 @@
+@@ -1954,10 +1954,61 @@ void YM2612ResetChip(void)
  /* n = number  */
  /* a = address */
  /* v = value   */
 +unsigned char probe_fm_registers[0x200]; /* THE PROBE PATCH: what each register was last told */
 +
++/* THE PROBE PATCH: every write to the sound chips, for a probe that lists them. Nothing is logged until the
++   log is first taken (probe_sound_writes_take), so a run that never watches pays nothing. An entry is four
++   bytes: the chip (0 the PSG, 1 the FM chip), the register as a little-endian 16-bit number, and the value.
++   Past a million entries, writes are counted and not kept. */
++#include <stdlib.h>
++#include <string.h>
++#define PROBE_SOUND_ENTRIES (1 << 20)
++static unsigned char *probe_sound_log = NULL;
++static unsigned int probe_sound_count = 0;
++static unsigned int probe_sound_dropped = 0;
++unsigned char *probe_sound_writes_bytes = NULL;
++
++void probe_sound_write(unsigned int chip, unsigned int reg, unsigned int value)
++{
++  unsigned char *entry;
++  if (!probe_sound_log) return;
++  if (probe_sound_count >= PROBE_SOUND_ENTRIES) { probe_sound_dropped++; return; }
++  entry = probe_sound_log + probe_sound_count * 4;
++  entry[0] = chip;
++  entry[1] = reg & 0xff;
++  entry[2] = (reg >> 8) & 0xff;
++  entry[3] = value;
++  probe_sound_count++;
++}
++
++/* What was written since this was last asked: a 4-byte little-endian count of the writes dropped, then the
++   entries. The first ask starts the log and answers nothing. */
++unsigned int probe_sound_writes_take(void)
++{
++  unsigned int n, size;
++  if (!probe_sound_log)
++  {
++    probe_sound_log = malloc(PROBE_SOUND_ENTRIES * 4);
++    return 0;
++  }
++  size = 4 + probe_sound_count * 4;
++  probe_sound_writes_bytes = realloc(probe_sound_writes_bytes, size);
++  for (n = 0; n < 4; n++) probe_sound_writes_bytes[n] = probe_sound_dropped >> (n * 8);
++  memcpy(probe_sound_writes_bytes + 4, probe_sound_log, probe_sound_count * 4);
++  probe_sound_count = 0;
++  probe_sound_dropped = 0;
++  return size;
++}
++
  void YM2612Write(unsigned int a, unsigned int v)
  {
    v &= 0xff;  /* adjust to 8 bit bus */
-+
-+  if (a & 1) probe_fm_registers[ym2612.OPN.ST.address & 0x1ff] = v;
  
++  if (a & 1) probe_fm_registers[ym2612.OPN.ST.address & 0x1ff] = v;
++  /* the DAC's sample (0x2A) and the timers (0x24 to 0x27) start no note, and a recording writes them every sample */
++  if ((a & 1) && ym2612.OPN.ST.address != 0x2a && (ym2612.OPN.ST.address < 0x24 || ym2612.OPN.ST.address > 0x27))
++    probe_sound_write(1, ym2612.OPN.ST.address & 0x1ff, v);
++
    switch( a )
    {
+     case 0:  /* address port 0 */
 diff --git a/libretro/libretro.c b/libretro/libretro.c
+index 798c6cc..75f19bb 100644
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -3742,11 +3742,52 @@
- }
+@@ -3743,10 +3743,55 @@ void retro_unload_game(void)
  
  unsigned retro_get_region(void) { return vdp_pal ? RETRO_REGION_PAL : RETRO_REGION_NTSC; }
-+
+ 
 +/* THE PROBE PATCH: the console's own memories, which libretro has no names for. Video RAM, colour
 +   RAM, vertical scroll RAM, the VDP's registers, and the 68000's registers (data registers, then
 +   address registers, then the program counter and the status register, 32 bits each). */
@@ -125,11 +180,14 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +#define PROBE_PSG_REGS  0x8007
 +#define PROBE_FM_REGS   0x8008
 +#define PROBE_PROFILE   0x8009
- 
++#define PROBE_SOUND_WRITES 0x800A
++
 +extern int *probe_psg_registers(void);
 +extern unsigned char probe_fm_registers[0x200];
 +extern unsigned char *probe_profile_bytes;
 +extern unsigned int probe_profile_take(void);
++extern unsigned char *probe_sound_writes_bytes;
++extern unsigned int probe_sound_writes_take(void);
 +
 +static unsigned int probe_m68k_regs[18];
 +
@@ -158,10 +216,11 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +      case PROBE_FM_REGS:   return probe_fm_registers;
 +      case PROBE_M68K_REGS: probe_read_m68k_regs(); return probe_m68k_regs;
 +      case PROBE_PROFILE:   return probe_profile_bytes;
++      case PROBE_SOUND_WRITES: return probe_sound_writes_bytes;
        case RETRO_MEMORY_SAVE_RAM:
           return sram.on ? sram.sram : NULL;
        case RETRO_MEMORY_SYSTEM_RAM:
-@@ -3762,6 +3803,15 @@
+@@ -3762,6 +3807,16 @@ size_t retro_get_memory_size(unsigned id)
  
     switch (id)
     {
@@ -174,6 +233,7 @@ diff --git a/libretro/libretro.c b/libretro/libretro.c
 +      case PROBE_FM_REGS:   return 0x200;
 +      case PROBE_M68K_REGS: return sizeof(probe_m68k_regs);
 +      case PROBE_PROFILE:   return probe_profile_take();
++      case PROBE_SOUND_WRITES: return probe_sound_writes_take();
        case RETRO_MEMORY_SAVE_RAM:
        {
           /* return 0 if SRAM is disabled */

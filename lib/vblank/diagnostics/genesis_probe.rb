@@ -147,6 +147,7 @@ module VBlank
       def video_ram = @core.vram
       def color_ram = @core.cram.unpack("v*").pack("n*")
       def sound_registers = @core.fm_registers
+      def take_sound_writes = @core.take_sound_writes
 
       def sprite_table
         registers = @core.vdp_registers

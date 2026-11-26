@@ -251,8 +251,9 @@ module VBlank
       # List every write the game makes to its sound chip from now on, which is how a port sees each note
       # its original starts: a voice starts when the top bit of its last register is written, and that
       # bit reads back the same whether or not one did. Gives back what the registers hold now, by
-      # address; after each #step, #sound_writes is what it wrote. The Advance and the Color only, for
-      # now (Diagnostics::Verifier#watch_sound says why and what it leaves out).
+      # address; after each #step, #sound_writes is what it wrote. The Advance, the Color and the Genesis
+      # only, for now (Diagnostics::Verifier#watch_sound says why and what it leaves out). The Genesis lists every
+      # write, a value written twice included, except the DAC's samples and the timers.
       #
       #   registers = probe.watch_sound
       #   probe.step

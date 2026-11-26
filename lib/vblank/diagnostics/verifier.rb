@@ -739,7 +739,10 @@ module VBlank
 
       # One write a cartridge made to its sound chip: the register's address, and the value written, as
       # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
-      SoundWrite = Data.define(:address, :value)
+      # +chip+ is :fm or :psg on the Genesis, which has two, and nil elsewhere.
+      SoundWrite = Data.define(:address, :value, :chip) do
+        def initialize(address:, value:, chip: nil) = super
+      end
 
       # Every write a cartridge makes to its sound chip, from now on, so a test can see each note it
       # starts. #sound_registers says what the registers hold after a step, and that cannot say when a
@@ -751,8 +754,9 @@ module VBlank
       # A write that leaves a register holding what it held is not listed: the emulator's watch sees
       # only a change. A start bit is listed even so, as it reads back as 1.
       #
-      # The Advance and the Color, which play in mGBA, list them; another console's reader cannot yet,
-      # and says so. Watching costs the emulator some speed (RubyGBAEmulator::Probe#watch).
+      # The Advance and the Color, which play in mGBA, and the Genesis, list them; another console's reader cannot
+      # yet, and says so. Watching costs the emulator some speed (RubyGBAEmulator::Probe#watch). The Genesis lists
+      # every write, a value written twice included, except the DAC's samples and the timers.
       #
       # @return [Hash{Integer => Integer}]
       def watch_sound

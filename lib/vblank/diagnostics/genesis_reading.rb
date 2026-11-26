@@ -103,6 +103,20 @@ module VBlank
         @probe.video_registers
       end
 
+      # Every write the cartridge makes to its sound chips from now on, a test's way to see each note a game
+      # starts (Verifier#watch_sound): after each #step, #sound_writes lists what that step wrote to the FM chip
+      # and to the square voices, a value written twice included, but for the DAC's samples and the timers,
+      # which a recording makes every sample. Gives back what the FM chip's registers hold now, by number.
+      #
+      # @return [Hash{Integer => Integer}]
+      def watch_sound
+        ensure_rendered!
+        @probe.take_sound_writes # starts the log; what it answers is nothing
+        @sound_writes_seen = 0
+        @sound_writes = []
+        sound_registers.bytes.each_with_index.to_h { |value, register| [register, value] }
+      end
+
       # The square voices' and the noise voice's registers, which the FM chip's (Verifier#sound_registers)
       # do not hold: for each of the three square voices the length of its wave then its loudness
       # (fifteen is silent), then the noise voice's setting and its loudness.
@@ -114,6 +128,20 @@ module VBlank
       end
 
       private
+
+      # The writes the last step made, as SoundWrites: an FM write at its register, a square voice's at the
+      # chip's one address.
+      def take_sound_writes
+        dropped, writes = @probe.take_sound_writes
+        if dropped.positive?
+          raise ArgumentError, "More than a million writes to the sound chips came in one step, so some are not " \
+                               "listed. To fix this, step fewer frames at a time."
+        end
+
+        @sound_writes = writes.map do |chip, register, value|
+          Verifier::SoundWrite.new(address: chip == :fm ? register : Console::GenesisHardware::PSG, value: value, chip: chip)
+        end
+      end
 
       def refuse_genesis_reader!(question)
         raise ArgumentError, "The Verifier cannot say #{question} of a Genesis cartridge yet. Play it with " \
