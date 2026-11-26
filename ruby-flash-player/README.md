@@ -16,7 +16,7 @@ press a line, `FRAME KEY down` or `FRAME KEY up`; a key on frame F is pressed ju
 runs. Frames count from 1: the movie's first frame, which builds it, comes before frame 1. Keys are
 `left right up down space enter escape tab backspace shift control f1`..`f9`, or one character. A movie
 that plays by its own clock (`getTimer`, which is the machine's, not the player's) is given `--real-time`, which
-waits out each frame. A movie that draws into bitmaps (`BitmapData.draw`: a text field into a bitmap, as flixel does)
+waits out each frame. A movie that draws into bitmaps (`BitmapData.draw`: a text field into a bitmap)
 is given `--render`: software Vulkan, Mesa's lavapipe (`mesa-vulkan-drivers`; `VK_ICD_FILENAMES` names its
 `lvp_icd.json` where the loader does not find it). A movie that asks to stop (`fscommand("rg_exit", "CODE:MESSAGE")`)
 ends the run early with that code.
