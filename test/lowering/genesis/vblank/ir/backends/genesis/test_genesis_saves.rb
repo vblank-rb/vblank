@@ -15,6 +15,22 @@ class TestGenesisSaves < Minitest::Test
   end
 
   # A saved number only read, so what it holds after a pass is what it started with.
+  # A record in save memory, written, read back and summed by the game itself.
+  RECORDS = VBlank.game("RECORDS", consoles: %i[gba genesis]) do
+    score = 0
+    loaded = 0
+    files = save_data(:files) { keep score }
+    game_loop do
+      score += 3
+      files[0].save if score == 9
+      if score == 15
+        score = 0
+        files[0].load
+        loaded = score
+      end
+    end
+  end
+
   READING = VBlank.game("READING", consoles: %i[gba genesis]) do
     best = save_var :best, 5
     seen = 0
@@ -54,6 +70,34 @@ class TestGenesisSaves < Minitest::Test
     Reference.new(save: store).run(counting_up, frames: 3)
 
     assert_equal 13, Genesis::HeadlessRun.new(save: store).run(counting_up, frames: 1)[:best]
+  end
+
+  def test_a_save_record_is_written_and_read_back_as_the_interpreter_does
+    run = Genesis::CheckedRun.new(save: SaveImage.new).run(RECORDS.program(console: :genesis), frames: 8)
+
+    assert_equal 9, run[:loaded]
+  end
+
+  def test_a_sum_of_save_memory_is_the_interpreters_checksum
+    build = VBlank::IR::Build
+    sums = build.program(build.save_write(build.int(0x7FFC), build.int(0x0102_03FF)),
+                         build.set(:whole, build.save_sum(build.int(0x7FFC), build.int(4))),
+                         # An odd count, and the last byte alone.
+                         build.set(:odd, build.save_sum(build.int(0x7FFC), build.int(3))),
+                         build.set(:last, build.save_sum(build.int(0x7FFF), build.int(1))),
+                         build.set(:empty, build.save_sum(build.int(0x7FFC), build.int(0))),
+                         build.set(:none, build.save_sum(build.int(0x7FFC), build.int(-5))),
+                         # From far past the 32K, back to its end: no bytes, so nothing to stop for.
+                         build.set(:from_far, build.save_sum(build.int(0x10000), build.int(-0x8000))), build.halt)
+
+    run = Genesis::CheckedRun.new.run(sums, frames: 1)
+
+    assert_equal VBlank::IR::SaveLayout.checksum([0xFF, 0x03, 0x02, 0x01]), run[:whole]
+    assert_equal VBlank::IR::SaveLayout.checksum([0xFF, 0x03, 0x02]), run[:odd]
+    assert_equal VBlank::IR::SaveLayout.checksum([0x01]), run[:last]
+    assert_equal 0, run[:empty]
+    assert_equal 0, run[:none]
+    assert_equal 0, run[:from_far]
   end
 
   def test_the_header_names_32k_of_battery_backed_ram_on_odd_bytes

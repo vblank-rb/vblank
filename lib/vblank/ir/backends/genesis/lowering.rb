@@ -168,8 +168,7 @@ module VBlank
           NOT_LOWERED_YET = Ractor.make_shareable({
                                                     "the status bar" => %i[place_bar],
                                                     "sprite tiles the game loads" => %i[load_sprite_tiles],
-                                                    "layers see-through" => %i[see_through],
-                                                    "save memory" => %i[save_erase save_sum save_load_list save_store_list]
+                                                    "layers see-through" => %i[see_through]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by

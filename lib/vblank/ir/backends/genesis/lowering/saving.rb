@@ -9,22 +9,25 @@ module VBlank
           # save memory worked out by IR::SaveLayout, so the cartridge's battery-backed RAM holds the bytes the
           # interpreter's save memory holds. Mixed into Lowering.
           module Saving
-            STATEMENT_KINDS = %i[save_init save_store save_write].freeze
+            STATEMENT_KINDS = %i[save_init save_store save_write save_erase save_load_list save_store_list].freeze
 
             def emit_saving_statement(node)
               case node.kind
               when :save_init then emit_save_init(node)
               when :save_store then emit_save_store(node)
               when :save_write then emit_save_write(node)
+              when :save_erase then emit_save_erase(node)
+              when :save_load_list, :save_store_list then emit_save_list_move(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
 
-            VALUE_KINDS = %i[save_read].freeze
+            VALUE_KINDS = %i[save_read save_sum].freeze
 
             def value_of_saving_kind(node)
               case node.kind
               when :save_read then value_of_save_read(node)
+              when :save_sum then value_of_save_sum(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -86,7 +89,24 @@ module VBlank
             # does.
             def emit_save_write(node) = runtime_call("rt_save_write", [node.at, node.value, save_width(node)])
 
+            # Reference#exec_save_erase: battery-backed RAM needs no wiping, but the place is worked out all the
+            # same, as the interpreter works it out.
+            def emit_save_erase(node) = runtime_call("rt_save_erase", [node.at])
+
+            # A whole list moved to or from save memory (Reference#exec_save_load_list, #exec_save_store_list):
+            # the loops the step stands for (SaveListMoves.loops_for), an item at a time. A load whose most is
+            # more than the list holds is refused here, as the interpreter stops it as it runs.
+            def emit_save_list_move(node)
+              if node.kind == :save_load_list
+                capacity = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }[1]
+                refusal = SaveListMoves.past_capacity_message(node, capacity)
+                raise LoweringError, refusal if refusal
+              end
+              SaveListMoves.loops_for(node).each { |step| statement(step) }
+            end
+
             def value_of_save_read(node) = runtime_call("rt_save_read", [node.at, save_width(node)])
+            def value_of_save_sum(node) = runtime_call("rt_save_sum", [node.at, node.length])
 
             def save_width(node) = Build.int(SAVE_BYTES.fetch(node.width))
           end
