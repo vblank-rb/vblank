@@ -132,8 +132,9 @@ module VBlank
 
           private
 
+          # The frames a pass took are kept a half each here (Runtime::Frame::STEPS), not a byte.
           def note_frames_took(pass)
-            super
+            @frames_took[pass] = half(runtime_place(Runtime::Frame::STEPS) + ((pass % Runtime::Frame::STEPS_KEPT) * 2))
             @lines_after_blank[pass] = half(runtime_place(Runtime::Frame::END_LINES) + ((pass % Runtime::Frame::STEPS_KEPT) * 2))
           end
 

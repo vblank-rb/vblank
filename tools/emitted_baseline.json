@@ -62,7 +62,7 @@
       "data": 0
     },
     "cube3d@ps1": {
-      "code": 40064,
+      "code": 40068,
       "data": 5044
     },
     "dive": {
@@ -190,7 +190,7 @@
       "data": 0
     },
     "lit_corridor@ps1": {
-      "code": 35024,
+      "code": 35028,
       "data": 6316
     },
     "maze": {
@@ -222,7 +222,7 @@
       "data": 14272
     },
     "pacman@ps1": {
-      "code": 17036,
+      "code": 17040,
       "data": 15360
     },
     "pacman@snes": {
@@ -410,7 +410,7 @@
       "data": 0
     },
     "two_rooms@ps1": {
-      "code": 37144,
+      "code": 37148,
       "data": 7076
     },
     "wanderers": {
@@ -426,7 +426,7 @@
       "data": 3152
     },
     "wanderers@ps1": {
-      "code": 13760,
+      "code": 13764,
       "data": 9664
     },
     "wanderers@snes": {

@@ -66,8 +66,10 @@ module VBlank
             FRAMES_MARK = "rt frames mark"
             STEP_TAKEN = "rt step"
             FRAMES_TAKEN = "rt frames taken"
-            # ...and the real number for each of the last STEPS_KEPT passes, a byte each, by the pass's
-            # number less its multiples of STEPS_KEPT, for a reader of the run.
+            # ...and the real number for each of the last STEPS_KEPT passes, a half each, by the pass's
+            # number less its multiples of STEPS_KEPT, for a reader of the run. A half, not a byte: a pass
+            # that reads a level from the disc (Disc) can take more than 255 frames, and the music plays
+            # through every one of them.
             STEPS = "rt steps"
             STEPS_KEPT = 16
             # How late a pass was. The console's line timer (PS1Hardware::TIMER1_COUNT) as the last blank
@@ -118,7 +120,7 @@ module VBlank
               WORDS.each { |name| memory.reserve(name, 4) }
               memory.reserve(SETTING_UP, 4) if counted
               memory.reserve(FAULT, FAULT_BYTES)
-              memory.reserve(STEPS, STEPS_KEPT)
+              memory.reserve(STEPS, STEPS_KEPT * 2)
               memory.reserve(END_LINES, STEPS_KEPT * 2)
               memory.reserve(SAVED, (KEPT_REGISTERS.size + 2) * 4)
             end
@@ -542,15 +544,16 @@ module VBlank
               asm.lw(:t1, at.call(FRAMES_MARK), :gp)
               asm.sw(:t2, at.call(FRAMES_MARK), :gp)
               asm.subu(:t1, :t2, :t1)
-              asm.andi(:t1, :t1, 0xFF)
+              asm.andi(:t1, :t1, 0xFFFF)
               asm.bne(:t1, :zero, "rt_read_buttons_some")
               asm.li(:t1, 1) # a pass is worth at least the frame it ran in
               asm.label("rt_read_buttons_some")
               asm.sw(:t1, at.call(FRAMES_TAKEN), :gp)
               asm.lw(:t2, at.call(PASSES), :gp)
               asm.andi(:t2, :t2, STEPS_KEPT - 1)
+              asm.sll(:t2, :t2, 1)
               asm.addu(:t2, :t2, :gp)
-              asm.sb(:t1, at.call(STEPS), :t2)
+              asm.sh(:t1, at.call(STEPS), :t2)
               asm.sltiu(:t0, :t1, IR::Frames::MOST + 1)
               asm.bne(:t0, :zero, "rt_read_buttons_step")
               asm.li(:t1, IR::Frames::MOST)
