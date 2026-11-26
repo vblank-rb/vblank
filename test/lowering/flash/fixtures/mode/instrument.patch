@@ -1,0 +1,178 @@
+Instrumentation for the original Mode, to trace its attract-mode replays.
+
+Made against these two sources, which it applies to as they are (patch -p1, from a folder that holds both):
+  Mode    AdamAtomic/Mode     commit cb6bdaeaf8d5   (Mode/ here)
+  flixel  AdamAtomic/flixel   commit 4d6f5e8a1986   (flixel/ here)
+
+It makes the game play one of its attract-mode replays from start-up (CONFIG::attract is 1 or 2), take exactly
+one update for each frame the player runs, and trace:
+  update N HASH      after each update's picture is drawn: the CRC-32 of the camera's picture, each pixel cut to
+                     5 bits a channel and packed as a 15-bit colour (red lowest) in two bytes, low byte first;
+  sound NAME V PAN   for each sound started;
+  end N              when the replay ends, and it asks the player to stop.
+
+diff -ruN a/Mode/src/MenuState.as b/Mode/src/MenuState.as
+--- a/Mode/src/MenuState.as
++++ b/Mode/src/MenuState.as
+@@ -83,6 +83,9 @@
+ 			add(pathFollower);//*/
+ 			
+ 			FlxG.mouse.show(ImgCursor,2);
++			
++			//Instrumentation: play one of the attract-mode replays from the start (CONFIG::attract is 1 or 2).
++			FlxG.loadReplay((CONFIG::attract == 1)?(new Attract1()):(new Attract2()),new PlayState(),["ANY"],22,FlxG.instrumentEnd);
+ 		}
+ 		
+ 		override public function destroy():void
+diff -ruN a/flixel/org/flixel/FlxG.as b/flixel/org/flixel/FlxG.as
+--- a/flixel/org/flixel/FlxG.as
++++ b/flixel/org/flixel/FlxG.as
+@@ -418,6 +418,14 @@
+ 		}
+ 		
+ 		/**
++		 * Instrumentation: the replay has ended (see FlxGame.instrumentEnd).
++		 */
++		static public function instrumentEnd():void
++		{
++			_game.instrumentEnd();
++		}
++		
++		/**
+ 		 * Stops the current replay.
+ 		 */
+ 		static public function stopReplay():void
+diff -ruN a/flixel/org/flixel/FlxGame.as b/flixel/org/flixel/FlxGame.as
+--- a/flixel/org/flixel/FlxGame.as
++++ b/flixel/org/flixel/FlxGame.as
+@@ -14,6 +14,7 @@
+ 	import flash.text.TextFormat;
+ 	import flash.ui.Mouse;
+ 	import flash.utils.Timer;
++	import flash.system.fscommand;
+ 	import flash.utils.getTimer;
+ 	
+ 	import org.flixel.system.FlxDebugger;
+@@ -418,6 +419,63 @@
+ 		 * 
+ 		 * @param	FlashEvent	Flash event.
+ 		 */
++		/**
++		 * Instrumentation for comparing a remake with this game: how many updates the replay has played,
++		 * and how many of them have been traced.
++		 */
++		protected var _instrumentUpdates:uint = 0;
++		protected var _instrumentTraced:uint = 0;
++		protected var _instrumentCrcTable:Vector.<uint>;
++		
++		/**
++		 * Traces "update N HASH" once for each update of a replay, after its picture is drawn: the CRC-32 of the
++		 * camera's picture with each pixel cut to 5 bits a channel and packed as the Game Boy Advance's 15-bit
++		 * colour (red lowest), each as two bytes, low byte first.
++		 */
++		protected function instrumentUpdate():void
++		{
++			if(_instrumentUpdates == _instrumentTraced)
++				return;
++			_instrumentTraced = _instrumentUpdates;
++			if(_instrumentCrcTable == null)
++			{
++				_instrumentCrcTable = new Vector.<uint>(256,true);
++				for(var n:uint = 0; n < 256; n++)
++				{
++					var c:uint = n;
++					for(var bit:uint = 0; bit < 8; bit++)
++						c = ((c & 1) != 0) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
++					_instrumentCrcTable[n] = c;
++				}
++			}
++			var picture:BitmapData = FlxG.camera.buffer;
++			var pixels:Vector.<uint> = picture.getVector(picture.rect);
++			var crc:uint = 0xFFFFFFFF;
++			var count:uint = pixels.length;
++			for(var i:uint = 0; i < count; i++)
++			{
++				var p:uint = pixels[i];
++				var word:uint = ((p >> 19) & 31) | (((p >> 11) & 31) << 5) | (((p >> 3) & 31) << 10);
++				crc = _instrumentCrcTable[(crc ^ word) & 0xFF] ^ (crc >>> 8);
++				crc = _instrumentCrcTable[(crc ^ (word >> 8)) & 0xFF] ^ (crc >>> 8);
++			}
++			crc = crc ^ 0xFFFFFFFF;
++			var hex:String = crc.toString(16);
++			while(hex.length < 8)
++				hex = "0" + hex;
++			trace("update " + _instrumentUpdates + " " + hex);
++		}
++		
++		/**
++		 * Called when the replay ends, by running out of frames or of time: says how many updates it played and
++		 * asks the player to stop.
++		 */
++		public function instrumentEnd():void
++		{
++			trace("end " + _instrumentUpdates);
++			fscommand("rg_exit","0:");
++		}
++		
+ 		protected function onEnterFrame(FlashEvent:Event=null):void
+ 		{			
+ 			var mark:uint = getTimer();
+@@ -436,18 +494,12 @@
+ 				}
+ 				else
+ 				{
+-					_accumulator += elapsedMS;
+-					if(_accumulator > _maxAccumulation)
+-						_accumulator = _maxAccumulation;
+-					while(_accumulator >= _step)
+-					{
+-						step();
+-						_accumulator = _accumulator - _step; 
+-					}
++					step();
+ 				}
+ 				
+ 				FlxBasic._VISIBLECOUNT = 0;
+ 				draw();
++				instrumentUpdate();
+ 				
+ 				if(_debuggerUp)
+ 				{
+@@ -537,6 +589,7 @@
+ 			FlxBasic._ACTIVECOUNT = 0;
+ 			if(_replaying)
+ 			{
++				_instrumentUpdates++;
+ 				_replay.playNextFrame();
+ 				if(_replayTimer > 0)
+ 				{
+diff -ruN a/flixel/org/flixel/FlxSound.as b/flixel/org/flixel/FlxSound.as
+--- a/flixel/org/flixel/FlxSound.as
++++ b/flixel/org/flixel/FlxSound.as
+@@ -1,5 +1,6 @@
+ package org.flixel
+ {
++	import flash.utils.getQualifiedClassName;
+ 	import flash.events.Event;
+ 	import flash.media.Sound;
+ 	import flash.media.SoundChannel;
+@@ -236,8 +237,11 @@
+ 		 * 
+ 		 * @return	This <code>FlxSound</code> instance (nice for chaining stuff together, if you're into that).
+ 		 */
++		protected var _instrumentName:String;
++		
+ 		public function loadEmbedded(EmbeddedSound:Class, Looped:Boolean=false):FlxSound
+ 		{
++			_instrumentName = getQualifiedClassName(EmbeddedSound);
+ 			stop();
+ 			createSound();
+ 			_sound = new EmbeddedSound();
+@@ -296,6 +300,7 @@
+ 		 */
+ 		public function play():void
+ 		{
++			trace("sound " + _instrumentName + " " + _volume + " " + _transform.pan);
+ 			if(_position < 0)
+ 				return;
+ 			if(_looped)
