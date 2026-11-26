@@ -82,6 +82,21 @@ class TestSceneColorsOnTheGenesis < Minitest::Test
     assert_equal shown(SceneColorGames.list_after(:screen, TITLE_AGAIN_PASS - 1)[1]), lair.pixel(200, 150), "the backdrop in the lair"
   end
 
+  # The lamp's list is kept in the title alone though the shop shows one of the lamp's poses: the lair of
+  # three sprites of fifteen colours has the other three palettes. Played to the end, each pass held to
+  # the interpreter's picture.
+  def test_a_list_drawn_by_a_sprite_whose_pose_another_scene_shows_keeps_its_palette_in_its_scene_alone
+    program = shared_pose_game
+    game_player.run(program, frames: SHARED_POSE_PASSES_PLAYED)
+
+    lair = screen_after(program, SHARED_POSE_PASSES_PLAYED - 1)
+    SHARED_POSE_LAIR_SPRITES.times do |which|
+      x, y = SceneColorGames.lair_sprite_at(which)
+      picture = SceneColorGames.lair_picture(which)
+      assert_equal [shown(picture[0]), shown(picture[4])], [lair.pixel(x, y), lair.pixel(x + 4, y)], "lair sprite #{which}"
+    end
+  end
+
   # Pictures drawn from three lists of fifteen fill four palettes and more when packed by their colours,
   # and three in their lists' order. Played to the end, each pass held to the interpreter's picture.
   def test_pictures_of_three_lists_show_in_three_palettes

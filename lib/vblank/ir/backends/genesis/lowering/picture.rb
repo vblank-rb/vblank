@@ -385,7 +385,7 @@ module VBlank
             # belongs to a scene of, with those scenes. A scene that draws nothing with such a list needs nothing
             # of its palette, so built with :lists every other scene has that palette for its own pictures
             # (Art#reserve_scene_held_palette). A list anything every screen shows draws with is kept for every
-            # scene, as before. A sprite belongs to a scene when every pose it shows does.
+            # scene, as before. A sprite belongs to the scene it is declared in.
             def scene_held_lists
               @scene_held_lists ||= begin
                 found = {}
@@ -397,7 +397,7 @@ module VBlank
                   drawn.call([:sprites, list], own_colors(@cache.image(picture_named(name))), scene_owning_picture(name)) if list
                 end
                 @objects.each_value do |obj|
-                  changing_lists_of(obj).each { |entry, colors| drawn.call([:sprites, entry], colors, object_scene(obj, owned: true)) }
+                  changing_lists_of(obj).each { |entry, colors| drawn.call([:sprites, entry], colors, declared_scene_of(obj)) }
                 end
                 @backgrounds.each do |bg|
                   bg.tiles.uniq.each do |tile|
@@ -421,13 +421,14 @@ module VBlank
               end
             end
 
-            # The scene every pose of +obj+ belongs to, or nil where they do not all belong to one. +owned+ asks
-            # it of the scenes the poses belong to, whatever the build; without it, of the scenes whose colours
-            # the poses are cut in (#colors_scene_of_picture).
-            def object_scene(obj, owned: false)
-              scenes = obj.poses.map { |name| owned ? scene_owning_picture(name) : colors_scene_of_picture(name) }.uniq
+            # The scene every pose of +obj+ has its colours cut in, or nil where they are not all in one.
+            def object_scene(obj)
+              scenes = obj.poses.map { |name| colors_scene_of_picture(name) }.uniq
               scenes.first if scenes.length == 1
             end
+
+            # The scene +obj+ is declared in, which alone shows it, or nil for a sprite every screen shows.
+            def declared_scene_of(obj) = (obj.scene if @scenes.key?(obj.scene))
 
             # Whether +obj+ can be drawn with a list of +scene_held+, whose palettes are allotted after those
             # every screen keeps: so its table of palettes is made then too, in its scene's copy.

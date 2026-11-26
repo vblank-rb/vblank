@@ -233,6 +233,46 @@ module SceneColorGames
     b.program
   end
 
+  # A title whose lamp sprite is drawn with a list the game changes on every pass and shows two poses, one
+  # of which (:glow) a shop's sprite shows too, then the shop, then a lair of three sprites of fifteen
+  # colours each, none another's. A sprite is shown only in the scene it is declared in, whichever poses
+  # it shows, so the list's palette is kept in the title alone and the lair has the other three.
+  SHARED_LISTS = {
+    lights: [:black, widened([5, 5, 0]), widened([7, 7, 0])],
+    lights_dim: [:black, widened([2, 2, 0]), widened([3, 3, 0])]
+  }.freeze
+  SHARED_POSE_LAIR_SPRITES = 3
+  SHARED_POSE_PASSES_PLAYED = 10
+
+  private def shared_pose_game
+    b = VBlank::Builder.new
+    b.instance_eval do
+      SHARED_LISTS.each { |name, list| colors :"#{name}_colors", list }
+      screen :tiled
+      halves = ->(left, right) { Array.new(64) { |i| (i % 8) < 4 ? left : right } }
+      lights = SHARED_LISTS[:lights]
+      image :lamp, width: 8, height: 8, data: halves.(lights[1], lights[2]), colors: :lights_colors
+      image :glow, width: 8, height: 8, data: halves.(lights[2], lights[1]), colors: :lights_colors
+      SHARED_POSE_LAIR_SPRITES.times { |which| image :"lair_#{which}", width: 8, height: 8, data: SceneColorGames.lair_picture(which) }
+      state = var :state, 0
+      pass = var :pass, 0
+      scene(:title) { sprite(:lamp, frames: %i[lamp glow], rate: 2, at: LAMP_AT).draw_with :lights_colors }
+      scene(:shop) { sprite(:glow, at: [50, 10]) }
+      scene(:lair) do
+        SHARED_POSE_LAIR_SPRITES.times { |which| sprite :"lair_#{which}", at: SceneColorGames.lair_sprite_at(which) }
+      end
+      game_loop do
+        pass += 1
+        recolor :lights_colors, %i[lights_dim_colors], showing: pass & 1
+        state = 1 if pass == 4
+        state = 2 if pass == 6
+        call({ 0 => :title, 1 => :shop, 2 => :lair }, number: :state)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
+
   # A scene whose pictures are drawn from three lists of fifteen colours, as a Genesis game's pieces each
   # name one of its palette lines. Each picture uses a few of its list's colours, and the pictures are
   # in an order that spreads their colours over four palettes when they are packed by colour: two
