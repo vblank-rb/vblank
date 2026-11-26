@@ -16,8 +16,13 @@ module VBlank
           module Paint
             STATEMENT_KINDS = %i[
               clear_screen fill_rect draw_rect_at pixel inside blit blit_pose draw_text
-              draw_digit save_region restore_region camera
+              draw_digit save_region restore_region camera draw_column_at
             ].freeze
+
+            # What a column of a picture is handed over in (#emit_draw_column_at), and what its walk
+            # works out as it goes (#emit_column_walk): the walk's slice is the one handed over, clamped.
+            COLUMN = %i[height slice x top width].freeze
+            COLUMN_WALK = %i[step row last pixel].freeze
 
             def emit_paint_statement(node)
               case node.kind
@@ -33,6 +38,7 @@ module VBlank
               when :save_region then emit_save_region(node)
               when :restore_region then emit_restore_region(node)
               when :camera then emit_camera(node)
+              when :draw_column_at then emit_draw_column_at(node)
               else raise LoweringError, "no writer here for #{node.kind.inspect}"
               end
             end
@@ -54,6 +60,7 @@ module VBlank
               @painted_art = PaintedArt.new(exact: self.class.fading?(@program))
               @picture_lists = [] # each a list of PaintedArt pictures' numbers
               @patches = {} # a backing buffer's name -> [its place, its width, its height]
+              @column_routines = {} # a picture drawn a column at a time -> its routine's label
             end
 
             def painted? = @painted
@@ -106,7 +113,25 @@ module VBlank
               [tables.section, *picture_pixel_sections]
             end
 
+            # The routine that draws a column of each picture drawn so (#emit_draw_column_at), made after the
+            # program is lowered, which is what says which pictures are drawn so.
+            def column_sections
+              @column_routines.map do |name, label|
+                routine_section(label, [], routine: "#{name.inspect} drawn a column at a time") { emit_column_walk(name) }
+              end
+            end
+
             private
+
+            # The numbers a column is handed over in, and the walk's, kept once before any routine is made: a
+            # routine can be lowered more than once (#routines_fitting), and a number kept inside it would
+            # take memory each time.
+            def keep_column_numbers
+              return unless @program.walk.any? { |node| node.kind == :draw_column_at }
+
+              @column_numbers = (COLUMN + COLUMN_WALK).to_h { |what| [what, keep_local(:"column_#{what}")] }
+              @column_routines = {}
+            end
 
             # Each picture's pixels, a section each.
             def picture_pixel_sections
@@ -182,6 +207,65 @@ module VBlank
               digits = (0..9).map { |digit| text_picture(digit.to_s, node.font, node.fonts, node.color) }
               runtime_call("rt_paint_blit_one_of", [Build.int(picture_list(digits)), node.value,
                                                     value_node(node.x), value_node(node.y)])
+            end
+
+            # Reference#exec_draw_column_at: one column of a picture stretched to a height worked out as the
+            # game runs. What is drawn is handed over in numbers the program keeps once (COLUMN), the height
+            # first: a height of nought or less draws nothing, and the others are not worked out. The picture's
+            # own routine walks it (#column_sections).
+            def emit_draw_column_at(node)
+              numbers = @column_numbers
+              label = @column_routines[node.name] ||= "column of #{node.name}"
+              value(value_node(node.height))
+              store(numbers.fetch(:height))
+              done = fresh("column_done")
+              jump_unless(Build.binop(:>, Build.var_ref(numbers.fetch(:height)), Build.int(0)), done)
+              [[node.slice, :slice], [node.x, :x], [node.top, :top]].each do |part, what|
+                value(value_node(part))
+                store(numbers.fetch(what))
+              end
+              load_constant(node.width || 1)
+              store(numbers.fetch(:width))
+              call_routine(label)
+              @asm.label(done)
+            end
+
+            # The walk of Reference#exec_draw_column_at: down the screen a row at a time, only the rows that show.
+            # Each row is the picture's row the step in 65536ths lands it on, painted across the strip's width by
+            # one call into rt_paint_fill, a see-through one left as it was. How much that costs on the console
+            # has not been measured against a console game that draws walls a column at a time.
+            def emit_column_walk(name)
+              numbers = @column_numbers
+              ref = ->(what) { Build.var_ref(numbers.fetch(what)) }
+              number = picture_number(name)
+              image = @cache.image(picture_named(name))
+              fixed = Build.int(Reference::FIXED)
+              value(Build.clamped(ref.(:slice), Build.int(0), Build.int(image.width - 1)))
+              store(numbers.fetch(:slice))
+              value(Build.binop(:/, Build.int(image.height << Reference::FIXED), ref.(:height)))
+              store(numbers.fetch(:step))
+              value(Build.clamped(Build.neg(ref.(:top)), Build.int(0), Build.int(Int32::MAX)))
+              store(numbers.fetch(:row))
+              value(Build.clamped(ref.(:height), Build.int(Int32::MIN), Build.binop(:-, Build.int(Runtime::Paint::HEIGHT), ref.(:top))))
+              store(numbers.fetch(:last))
+              walk = fresh("column_row")
+              done = fresh("column_done")
+              see_through = fresh("column_see_through")
+              @asm.label(walk)
+              jump_unless(Build.binop(:<, ref.(:row), ref.(:last)), done)
+              source = Build.clamped(Build.binop(:>>, Build.binop(:*, ref.(:row), ref.(:step)), fixed),
+                                     Build.int(0), Build.int(image.height - 1))
+              value(Build.binop(:+, Build.binop(:*, source, Build.int(image.width)), ref.(:slice)))
+              @asm.lea(@asm.abs_l("paint pixels #{number}"), @asm.a(0))
+              emit_table_entry(1, false, :l)
+              store(numbers.fetch(:pixel))
+              jump_unless(Build.binop(:!=, ref.(:pixel), Build.int(Runtime::Paint::NOT_DRAWN)), see_through)
+              runtime_call("rt_paint_fill", [ref.(:x), Build.binop(:+, ref.(:top), ref.(:row)), ref.(:width), Build.int(1), ref.(:pixel)])
+              @asm.label(see_through)
+              value(Build.binop(:+, ref.(:row), Build.int(1)))
+              store(numbers.fetch(:row))
+              jump(walk)
+              @asm.label(done)
             end
 
             # Reference#exec_save_region and #exec_restore_region.

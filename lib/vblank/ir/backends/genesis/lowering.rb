@@ -166,7 +166,6 @@ module VBlank
                                                     "the status bar" => %i[place_bar],
                                                     "sprite tiles the game loads" => %i[load_sprite_tiles],
                                                     "layers see-through" => %i[see_through],
-                                                    "the picture" => %i[draw_column_at],
                                                     "save memory" => %i[save_init save_store save_write save_erase
                                                                         save_read save_sum save_load_list save_store_list]
                                                   })
@@ -310,6 +309,7 @@ module VBlank
             @scene = keep_local(:scene, start: -1) unless @scenes.empty?
             keep_scene_held_sets
             keep_timer_numbers
+            keep_column_numbers
             keep_corner_notes((0...PLANES).to_a, bar: nil) # the Genesis build places no status bar yet
             keep_loop_running
             keep_order_tables
@@ -324,7 +324,7 @@ module VBlank
             bend_routine = bend_sections
             main = routines_fitting(MAIN, @program.children, routine: "the game loop")
             [data_section, video_registers_section, *table_sections, *routines, *timers, *bend_routine, *main,
-             *paint_sections, *art_sections, *tile_runs_section, *pose_rooms_sections, *collision_sections]
+             *column_sections, *paint_sections, *art_sections, *tile_runs_section, *pose_rooms_sections, *collision_sections]
           end
 
           private

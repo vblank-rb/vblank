@@ -158,7 +158,6 @@ and a game that reaches one of these steps is refused, naming the step, until it
 - the status bar: `place_bar`
 - sprite tiles the game loads: `load_sprite_tiles`
 - layers see-through: `see_through`
-- the picture: `draw_column_at`
 - save memory: `save_init`, `save_store`, `save_write`, `save_erase`, `save_read`, `save_sum`, `save_load_list`, `save_store_list`
 
 Parts of the picture are refused the same way, naming the part:
