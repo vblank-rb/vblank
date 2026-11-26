@@ -296,7 +296,7 @@ module VBlank
               lines = {}
               blocks = SpritePieces.group_rectangles(image, most: PIECE_SQUARES).reverse.map do |dx, dy, columns, rows, squares|
                 part = image.part_of_piece(squares.find { |own| own.each_byte.any?(&:positive?) } || squares.first)
-                line = lines[part] ||= ordered_palette(bank_colors(image, part), taker: "#{taker}, bank part #{part}")
+                line = lines[part] ||= ordered_palette(bank_colors(image, part), taker: bank_taker(taker, part))
                 tiles = squares.map { |own| TileBytes.of(own.bytes.map { |place| place.zero? ? 0 : place % image.bank_places }) }
                 Block.new(dx: dx, dy: dy, columns: columns, rows: rows, tiles: tiles, palette: line)
               end
@@ -655,6 +655,14 @@ module VBlank
           end
 
           def sprite_taker(name) = "sprite picture :#{name}"
+
+          # Which banks of a pose's `banks:` a refusal names, by where each stands: no pose draws from more
+          # than the console's palettes.
+          BANK_ORDINALS = %w[first second third fourth].freeze
+
+          # The colours of bank part +part+ of +taker+, a picture of several banks, for a refusal's words. The
+          # game numbers its banks itself, so the bank is named by where it stands in `banks:`, not by number.
+          def bank_taker(taker, part) = "the colours of the #{BANK_ORDINALS.fetch(part, "#{part + 1}th")} bank in the `banks:` of #{taker}"
 
           # The colours of bank part +part+ of a picture of several banks (15-bit), its see-through place left
           # out, as a palette's places hold them.
