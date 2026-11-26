@@ -79,3 +79,70 @@ class RgShownFilter {
     this.fill = fill;
   }
 }
+
+/* The box a background is held to: whether it is held to one, and its left, top, and the column and row just past it. */
+class RgBox {
+  public var held:Int = 0;
+  public var left:Int = 0;
+  public var top:Int = 0;
+  public var right:Int = 0;
+  public var bottom:Int = 0;
+
+  public function new() {}
+
+  public function copy():RgBox {
+    var made = new RgBox();
+    made.held = held;
+    made.left = left;
+    made.top = top;
+    made.right = right;
+    made.bottom = bottom;
+    return made;
+  }
+}
+
+/* A background's own copy of the cells of a map (or none, while it shows the declared one), and whose map it is a copy of. */
+class RgCells {
+  public var which:Int = 0;
+  public var of:Int = 0;
+  public var cells:Vector<Int> = null;
+
+  public function new() {}
+}
+
+/* Where a background's window sits. */
+class RgScroll {
+  public var x:Int = 0;
+  public var y:Int = 0;
+
+  public function new(x:Int = 0, y:Int = 0) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/* What a background is turned by. */
+class RgTurn {
+  public var turned:Int = 0;
+  public var angle:Int = 0;
+  public var size:Int = 0;
+  public var pivot_x:Int = 0;
+  public var pivot_y:Int = 0;
+
+  public function new() {}
+}
+
+/* A change to a cell waiting to be shown. */
+class RgHeldTile {
+  public var background:Int;
+  public var col:Int;
+  public var row:Int;
+  public var tile:Int;
+
+  public function new(background:Int, col:Int, row:Int, tile:Int) {
+    this.background = background;
+    this.col = col;
+    this.row = row;
+    this.tile = tile;
+  }
+}
