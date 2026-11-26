@@ -141,6 +141,7 @@ static function page_store_saves():Void {
 
 /* The driver's part of what the game asks of its runtime: a page prints nothing. */
 static function rg_sound_logged(line:String):Void {}
+static function headless_print(text:String):Void {}
 static function rg_dump_variable(name:String, value:Int):Void {}
 static function rg_dump_list(list:RgList):Void {}
 

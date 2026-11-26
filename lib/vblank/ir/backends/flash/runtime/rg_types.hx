@@ -249,3 +249,31 @@ class RgSquare {
 
   public function new() {}
 }
+
+/* One voice of the mixer. */
+class RgMixVoice {
+  public var sounding:Int = 0;
+  public var owner:Int = 0;
+  public var effect:Int = 0;
+  public var lane:Int = 0;
+  public var rank:Int = 0;
+  public var loops:Int = 0;
+  public var ticket:Int = 0;
+  public var recording:Int = 0;
+  public var position:Int = 0;
+  public var fraction:Int = 0;
+  public var step:Int = 0;
+  public var back:Int = 0;
+  public var loudness:Int = 0;
+  public var gain:Int = 0;
+  public var ramp:Int = 0;
+  public var shaped:Int = 0;
+  public var level:Int = 0;
+  public var phase:Int = 0;
+  public var attack:Int = 0;
+  public var decay:Int = 0;
+  public var sustain:Int = 0;
+  public var release:Int = 0;
+
+  public function new() {}
+}
