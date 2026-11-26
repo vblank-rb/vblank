@@ -52,6 +52,7 @@ module VBlank
           #   rt_colors_hold(table, which, palette)  a list's other colours, see Runtime::Tiles's tables
           #   rt_colors_hold_places(table, which, first, count)  the same for a list sharing its palette
           #   rt_backdrop_hold(table, which)         a backdrop that follows a list, its colour in that set
+          #   rt_scene_backdrop(color)               a scene taking over: colour 0, its backdrop
           #   rt_scene_colors(table)                 a scene taking over: its own palettes
           #   rt_colors_prepared                     as a pass ends: the copy of the colour memory made to hold it
           #   rt_colors_written                      the blank's work: the copy written to the colour memory
@@ -96,14 +97,16 @@ module VBlank
 
             # +backdrop+ for a game whose backdrop is copied from a list it recolours, which then carries
             # rt_backdrop_hold; +scene_colors+ for one whose scenes each write their own palettes, which
-            # carries rt_scene_colors.
-            def emit(asm, memory, backdrop: false, scene_colors: false)
+            # carries rt_scene_colors; +scene_backdrops+ for one whose scenes differ in their backdrop,
+            # which carries rt_scene_backdrop.
+            def emit(asm, memory, backdrop: false, scene_backdrops: false, scene_colors: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_start(asm, memory)
               emit_tint_to(asm, at)
               emit_tint_tables(asm, memory, at)
               emit_hold(asm, memory, at)
               emit_backdrop_hold(asm, at) if backdrop
+              emit_scene_backdrop(asm, at) if scene_backdrops
               emit_scene_colors(asm, memory, at) if scene_colors
               emit_prepared(asm, memory, at)
               emit_written(asm, memory, at)
@@ -168,6 +171,20 @@ module VBlank
               asm.bset(0, at.call(DIRTY))
               asm.bset(0, at.call(CHANGED))
               asm.label("rt_backdrop_hold_done")
+              asm.rts
+            end
+
+            # rt_scene_backdrop(color): a scene taking over changes colour 0, the backdrop, to +color+ (D0, a
+            # 15-bit colour), in the game's colours, and palette line 0 is owed. It is rt_backdrop_hold's
+            # end, so a fade in force moves it on the same pass, and a colour already held costs nothing.
+            def emit_scene_backdrop(asm, at)
+              asm.label("rt_scene_backdrop")
+              asm.cmp(:w, at.call(COLORS), asm.d(0))
+              asm.branch(:eq, "rt_scene_backdrop_done")
+              asm.move(:w, asm.d(0), at.call(COLORS))
+              asm.bset(0, at.call(DIRTY))
+              asm.bset(0, at.call(CHANGED))
+              asm.label("rt_scene_backdrop_done")
               asm.rts
             end
 

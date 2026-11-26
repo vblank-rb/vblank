@@ -278,7 +278,8 @@ module VBlank
           # Whether the game changes its colours as it runs: it fades, tints, or has a list of colours told
           # to hold others (a sprite's, or a background's), which is when its cartridge carries Runtime::Tint.
           def self.changing_colors?(program)
-            program.walk.any? { |node| %i[fade tint color_list_holds background_colors].include?(node.kind) }
+            program.walk.any? { |node| %i[fade tint color_list_holds background_colors].include?(node.kind) } ||
+              Picture.scene_backdrops?(program)
           end
 
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the

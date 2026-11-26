@@ -97,14 +97,23 @@ module VBlank
               refuse_unmade_sprites!
             end
 
-            # A `screen` other than the game's own that sets a backdrop the game's does not: a scene's
-            # own. Colour 0 is the console's one backdrop, set once for the game, so one that changes
-            # as a scene comes up is not made yet.
+            # A `screen` other than the game's own that says a backdrop the game's does not, somewhere
+            # it cannot come up by: on a painted screen, or anywhere but one of a scene's own lines.
             def refuse_backdrops_of_its_own!
-              game_backdrop = @cache.handover.game_backdrop
-              return unless @program.walk.any? { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
+              handover = @cache.handover
+              game_backdrop = handover.game_backdrop
+              said = @program.walk.select { |node| node.kind == :screen && node.backdrop && node.backdrop != game_backdrop }
+              return if said.empty? || (!painted? && said.all? { |node| handover.scene_screen?(node) })
 
-              refuse_unmade!("a scene that says a backdrop of its own (`screen ... backdrop:`)")
+              refuse_unmade!("a `screen ... backdrop:` of its own on a painted screen, or anywhere but in a scene's own lines")
+            end
+
+            # Whether a scene of +program+ says a backdrop the game's does not, which colour 0 is changed
+            # to as it takes over (Runtime::Tint's rt_scene_backdrop).
+            def self.scene_backdrops?(program, handover = IR::SceneHandover.of(program))
+              return false if Lowering::Paint.painted?(program)
+
+              handover.scene_screens.any? { |_, screen| screen.backdrop && screen.backdrop != handover.game_backdrop }
             end
 
             # Reference#exec_fade and #exec_tint, which on a console that cannot blend walk the colours
@@ -1426,6 +1435,7 @@ module VBlank
               emit_scene_tiles(scene)
               emit_scene_colors(scene)
               emit_scene_held_lists(scene)
+              emit_scene_backdrop(scene)
               return if @scene_layers.zero?
 
               arrival = @handover.arrival(scene)
@@ -1464,6 +1474,16 @@ module VBlank
               return unless @scene_colors
 
               runtime_call("rt_scene_colors", [LabelAddress.new(scene_colors_label(scene))])
+            end
+
+            # A scene taking over, in a game whose scenes differ in their backdrop: colour 0 changed to its
+            # own, or the game's where it says none. It goes out with the scene's colours, through whatever
+            # fade is in force (Runtime::Tint's rt_scene_backdrop).
+            def emit_scene_backdrop(scene)
+              @scene_backdrops = Picture.scene_backdrops?(@program, @handover) if @scene_backdrops.nil?
+              return unless @scene_backdrops && (backdrop = @handover.arrival(scene).backdrop)
+
+              runtime_call("rt_scene_backdrop", [Build.int(backdrop & 0x7FFF)])
             end
 
             def scene_colors_label(scene) = "art scene colors #{scene}"

@@ -355,7 +355,7 @@ module VBlank
         "a background on a painted (bitmap) screen",
         "a sprite put in another layer, or behind a background",
         "a scene's own background in a layer behind one every screen shows",
-        "a scene that says a backdrop of its own (`screen ... backdrop:`)",
+        "a `screen ... backdrop:` of a scene's own on a painted screen, or anywhere but in a scene's own lines",
         "background tiles that are not 8×8, or backgrounds of different sizes on one screen",
         "a map too big to hold",
         "more lists of colours than the console's four",

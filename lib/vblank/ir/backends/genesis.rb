@@ -229,6 +229,7 @@ module VBlank
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,
+                                             scene_backdrops: Lowering::Picture.scene_backdrops?(program),
                                              scene_tiles: scene_tiles, scene_colors: scene_colors,
                                              runs: picture == :tiled && lowering.paints_tiles?,
                                              poses: lowering.streams_poses?,

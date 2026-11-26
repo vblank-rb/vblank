@@ -60,7 +60,8 @@ module VBlank
           # +picture+ is how the game draws (Picture), :painted, :tiled or :none, which carries what it
           # draws with, and +columns+ how many cells across the planes of a tiled one are.
           # +colors+ for a game that fades, tints or recolours (Tint), and +backdrop+ for one whose backdrop is
-          # copied from a list it recolours (Lowering::Picture#backdrop_copied?).
+          # copied from a list it recolours (Lowering::Picture#backdrop_copied?), and +scene_backdrops+ for one
+          # whose scenes differ in their backdrop (Lowering::Picture.scene_backdrops?).
           # +camera+ for a painted screen whose game moves the window over its picture (Paint), and
           # +sprites_over_picture+ for one that shows sprites over it. +scene_tiles+ for a tiled game whose
           # scenes each bring their own tiles in as they take over (Tiles#emit_scene_tiles), and
@@ -84,7 +85,7 @@ module VBlank
           # (Recordings), and +recorded_parts+ when a song or effect has a part that plays one.
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
-                         backdrop: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
+                         backdrop: false, scene_backdrops: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
                          poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
@@ -96,6 +97,7 @@ module VBlank
             Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
+                                      scene_backdrops: scene_backdrops,
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                       samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks, bends: bends)
             Collide.emit(asm, memory) if collision

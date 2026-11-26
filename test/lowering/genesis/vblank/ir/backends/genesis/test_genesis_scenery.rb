@@ -82,18 +82,21 @@ class TestGenesisScenery < Minitest::Test
     assert_match(/The scene :one shows 3 backgrounds at one time/, error.message)
   end
 
-  def test_a_scene_with_a_backdrop_of_its_own_is_refused_in_words
+  def test_a_backdrop_named_in_the_game_loop_is_refused_in_words
     error = assert_raises(Genesis::Lowering::NotMadeYet) do
       Genesis.new.build(program_of do
         screen :tiled
         background :field, tiles: :red_set, map: Array.new(20) { "#" * 30 }
-        scene(:one) { screen :tiled, backdrop: :blue }
+        scene(:one) { background :near, tiles: :red_set, map: ["#"] }
         state = var :state, 0
-        game_loop { call({ 0 => :one }, number: :state) }
+        game_loop do
+          screen :tiled, backdrop: :blue
+          call({ 0 => :one }, number: :state)
+        end
       end)
     end
 
-    assert_match(/a backdrop of its own/, error.message)
+    assert_match(/anywhere but in a scene's own lines/, error.message)
   end
 
   # Each scene's own tiles are counted with those every screen shows, and one scene with more than
