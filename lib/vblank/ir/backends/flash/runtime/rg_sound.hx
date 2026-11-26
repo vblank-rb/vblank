@@ -382,3 +382,89 @@ static function rg_sound_noise(which:Int):Void {
   noise_start(rg_game_hits[hit], rg_game_hits[hit + 1], rg_game_hits[hit + 2], rg_game_hits[hit + 3]);
   game_voice_struck(RG_NOISE_VOICE);
 }
+
+/* --- the state image (rg_sound.c says what each field holds) --- */
+
+static function loudness_numbers(fading:RgLoudness):Array<Int> { return [fading.volume, fading.hold_samples, fading.left, fading.up ? 1 : 0]; }
+
+static function loudness_from(n:Array<Int>, at:Int):RgLoudness {
+  if (n[at] < 0 || n[at] >= VOLUMES) rg_state_refuse_damaged("a voice is louder than a voice can be");
+  return new RgLoudness(n[at], n[at + 1], n[at + 2], n[at + 3] != 0);
+}
+
+static inline var SQUARE_LOUDNESS_AT:Int = 7; // Where a square's loudness starts among its numbers, which end with it
+static inline var NOISE_LOUDNESS_AT:Int = 7; // Where the noise voice's loudness starts among its numbers, which end with it
+static inline var SQUARE_STATE_NUMBERS:Int = 11;
+static inline var EIGHTH_HIGHEST:Int = 7; // The highest eighth of a square's wave
+static inline var NOISE_BITS_FEWEST:Int = 2; // The fewest bits the noise's row can hold
+static inline var NOISE_BITS_MOST:Int = 31; // The most bits the noise's row can hold
+
+static function rg_sound_visit_state():Void {
+  var general:Array<Float> = [sample_carry, slide_clock, loaded_waveform, sides[1], sides[2], sides[3], sides[4]];
+  rg_state_float_numbers("sound", general);
+  if (general[0] < 0 || general[0] >= RG_CONSOLE_TICKS_A_SECOND || general[1] < 0 || general[1] >= SLIDE_TICK_SAMPLES ||
+      general[2] < -1 || general[2] >= rg_game_waveforms[0]) rg_state_refuse_damaged("the sound is somewhere it cannot be");
+  sample_carry = general[0];
+  slide_clock = Std.int(general[1]);
+  loaded_waveform = Std.int(general[2]);
+  for (voice in 1...RG_NOISE_VOICE + 1) {
+    var side = Std.int(general[2 + voice]);
+    if (side != 0 && side != PAN_LEFT && side != PAN_RIGHT) rg_state_refuse_damaged("a voice plays from a speaker there is not");
+    sides[voice] = side;
+  }
+
+  var square_numbers:Array<Int> = [];
+  for (s in squares) {
+    for (number in [s.wave_ticks, s.eighths_high, s.eighth, s.eighth_progress, s.slide, s.slide_left, s.slid_ticks]) square_numbers.push(number);
+    for (number in loudness_numbers(s.loudness)) square_numbers.push(number);
+  }
+  rg_state_numbers("sound.squares", square_numbers);
+  for (i in 0...squares.length) {
+    var at = i * SQUARE_STATE_NUMBERS;
+    if (square_numbers[at + 2] < 0 || square_numbers[at + 2] > EIGHTH_HIGHEST || square_numbers[at] < 0 || square_numbers[at + 6] < 0) {
+      rg_state_refuse_damaged("a square voice is part way through a wave it cannot be");
+    }
+    var square = new RgSquare();
+    square.wave_ticks = square_numbers[at];
+    square.eighths_high = square_numbers[at + 1];
+    square.loudness = loudness_from(square_numbers, at + SQUARE_LOUDNESS_AT);
+    square.eighth = square_numbers[at + 2];
+    square.eighth_progress = square_numbers[at + 3];
+    square.slide = square_numbers[at + 4];
+    square.slide_left = square_numbers[at + 5];
+    square.slid_ticks = square_numbers[at + 6];
+    squares[i] = square;
+  }
+
+  var wave_numbers:Array<Int> = [for (i in 0...WAVE_STEPS) wave_steps[i]];
+  for (number in [wave_switched_on, wave_wave_ticks, wave_quarters, wave_cut_sum, wave_step, wave_step_progress]) wave_numbers.push(number);
+  rg_state_numbers("sound.wave", wave_numbers);
+  if (wave_numbers[WAVE_STEPS + 4] < 0 || wave_numbers[WAVE_STEPS + 4] >= WAVE_STEPS || wave_numbers[WAVE_STEPS + 1] < 0) {
+    rg_state_refuse_damaged("the wave voice is on a step it does not have");
+  }
+  for (i in 0...WAVE_STEPS) wave_steps[i] = wave_numbers[i];
+  wave_switched_on = wave_numbers[WAVE_STEPS] != 0 ? 1 : 0;
+  wave_wave_ticks = wave_numbers[WAVE_STEPS + 1];
+  wave_quarters = wave_numbers[WAVE_STEPS + 2];
+  wave_cut_sum = wave_numbers[WAVE_STEPS + 3];
+  wave_step = wave_numbers[WAVE_STEPS + 4];
+  wave_step_progress = wave_numbers[WAVE_STEPS + 5];
+
+  var noise_numbers:Array<Int> = [hiss_step_ticks, hiss_bits, hiss_row, hiss_high, hiss_heard_high, hiss_row_progress, hiss_hand_progress];
+  for (number in loudness_numbers(hiss_loudness)) noise_numbers.push(number);
+  rg_state_numbers("sound.noise", noise_numbers);
+  if (noise_numbers[0] < 0 || (noise_numbers[0] != 0 && (noise_numbers[1] < NOISE_BITS_FEWEST || noise_numbers[1] > NOISE_BITS_MOST)) || noise_numbers[2] < 0) {
+    rg_state_refuse_damaged("the noise voice holds a row of bits it cannot");
+  }
+  hiss_step_ticks = noise_numbers[0];
+  hiss_bits = noise_numbers[1];
+  hiss_row = noise_numbers[2];
+  hiss_high = noise_numbers[3];
+  hiss_heard_high = noise_numbers[4];
+  hiss_row_progress = noise_numbers[5];
+  hiss_hand_progress = noise_numbers[6];
+  hiss_loudness = loudness_from(noise_numbers, NOISE_LOUDNESS_AT);
+
+  rg_spu_visit_state();
+  rg_hook_visit_sound_state();
+}

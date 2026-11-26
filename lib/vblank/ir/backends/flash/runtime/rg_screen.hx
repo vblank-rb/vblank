@@ -892,3 +892,155 @@ static function rg_picture_crc(pixels:Vector<Int>):String {
   return StringTools.hex(crc ^ -1, 8).toLowerCase();
 }
 
+/* --- the screen's half of the state image (rg_screen.c's rg_screen_visit_state) --- */
+
+static function page_number(page:Vector<Int>):Int { return page == first_page ? 0 : (page == second_page ? 1 : 2); }
+
+static function page_from_number(number:Int):Vector<Int> {
+  if (number < 0 || number > 2) rg_state_refuse_damaged("the screen names a page it does not have");
+  return number == 0 ? first_page : (number == 1 ? second_page : scenery);
+}
+
+static function visit_mixes(name:String, mixes:RgMixedSides):Void {
+  var values:Array<Int> = [];
+  for (i in 0...RG_CELLS) values.push(mixes.is_mixed[i]);
+  for (i in 0...RG_CELLS) values.push(mixes.tops[i]);
+  for (i in 0...RG_CELLS) values.push(mixes.unders[i]);
+  rg_state_numbers(name, values);
+  for (i in 0...RG_CELLS) {
+    mixes.is_mixed[i] = values[i];
+    mixes.tops[i] = values[RG_CELLS + i];
+    mixes.unders[i] = values[2 * RG_CELLS + i];
+  }
+}
+
+/* How many areas are open around the one in force, then that one, then each open around it, the outermost first; the slots
+ * past those open are noughts. */
+static function visit_areas():Void {
+  var area_numbers = 5;
+  var values:Array<Int> = [for (i in 0...1 + area_numbers * (AREAS_DEEP + 1)) 0];
+  var open = [[area_in_force, area_left, area_top, area_right, area_bottom]].concat(outer_areas);
+  values[0] = outer_areas.length;
+  for (i in 0...open.length) {
+    for (k in 0...area_numbers) values[1 + area_numbers * i + k] = open[i][k];
+  }
+  rg_state_numbers("screen.areas", values);
+  if (values[0] < 0 || values[0] > AREAS_DEEP) rg_state_refuse_damaged("the screen holds more areas than it can");
+  var read = function(i:Int):Array<Int> {
+    var at = 1 + area_numbers * i;
+    return [values[at], values[at + 1], values[at + 2], values[at + 3], values[at + 4]];
+  };
+  var now = read(0);
+  area_in_force = now[0];
+  area_left = now[1];
+  area_top = now[2];
+  area_right = now[3];
+  area_bottom = now[4];
+  outer_areas = [];
+  for (i in 1...values[0] + 1) outer_areas.push(read(i));
+}
+
+/* Each see-through layer's shares kept for the owed rebuild, then those last told: whether kept, and the two shares,
+ * noughts where none are kept (forget_kept_shares leaves the old ones behind). */
+static function visit_kept_shares():Void {
+  var values:Array<Int> = [];
+  for (side in [owed_shares, told_shares]) {
+    for (layer in 0...RG_MAX_SEE_THROUGH) {
+      var kept = side[layer];
+      values.push(kept.kept != 0 ? 1 : 0);
+      values.push(kept.kept != 0 ? kept.at.painted : 0);
+      values.push(kept.kept != 0 ? kept.at.under : 0);
+    }
+  }
+  rg_state_numbers("screen.shares", values);
+  var s = 0;
+  for (side in [owed_shares, told_shares]) {
+    for (layer in 0...RG_MAX_SEE_THROUGH) {
+      var at = 3 * (s * RG_MAX_SEE_THROUGH + layer);
+      var kept = new RgKeptShares();
+      kept.kept = values[at];
+      kept.at = new RgShares(values[at + 1], values[at + 2]);
+      side[layer] = kept;
+    }
+    s++;
+  }
+}
+
+/* What the game painted into its runs, and which runs' images were painted from them. */
+static function visit_runs():Void {
+  var runs = rg_game_picture_sizes[RG_SIZE_RUNS];
+  var run_pixels = rg_game_picture_sizes[RG_SIZE_RUN_PIXELS];
+  if (painted_places == null) painted_places = new Vector<Int>(run_pixels + 1);
+  if (runs_painted == null) runs_painted = new Vector<Int>(runs + 1);
+  rg_state_cells("screen.runs.places", painted_places, run_pixels);
+  rg_state_cells("screen.runs.painted", runs_painted, runs);
+  if (!rg_state_reading()) return;
+  for (run in 0...runs) {
+    if (runs_painted[run] != 0) {
+      paint_run_images(run);
+      continue;
+    }
+    for (i in 0...run_field(run, RG_RUN_IMAGES)) {
+      var image = rg_game_run_images[(run_field(run, RG_RUN_FIRST_IMAGE) + i) * RG_RUN_IMAGE_FIELDS];
+      if (image < painted_images.length) painted_images[image] = null;
+    }
+  }
+}
+
+static function rg_screen_visit_state():Void {
+  var numbers:Array<Int> = [
+    page_number(pixels), page_number(viewed), page_number(target), held, frames_begun, kind, owed, rebuild_skipped,
+    picture_touched, backdrop, current_scene, scenery_kept, painting_sprite, placing_at_pass_end, scenery_taken_down,
+    camera_x, camera_y, mixed_cells_by.painted, mixed_cells_by.under];
+  rg_state_numbers("screen", numbers);
+  pixels = page_from_number(numbers[0]);
+  viewed = page_from_number(numbers[1]);
+  target = page_from_number(numbers[2]);
+  held = numbers[3];
+  frames_begun = numbers[4];
+  kind = numbers[5];
+  owed = numbers[6];
+  rebuild_skipped = numbers[7];
+  picture_touched = numbers[8];
+  backdrop = numbers[9];
+  current_scene = numbers[10];
+  scenery_kept = numbers[11];
+  painting_sprite = numbers[12];
+  placing_at_pass_end = numbers[13];
+  scenery_taken_down = numbers[14];
+  camera_x = numbers[15];
+  camera_y = numbers[16];
+  mixed_cells_by = new RgShares(numbers[17], numbers[18]);
+  if (RG_SCREEN_OF_ITS_OWN != 0) { /* kept only by a game given a screen of its own */
+    var shown_size:Array<Int> = [shown_width, shown_height];
+    rg_state_numbers("screen.shown_size", shown_size);
+    shown_width = shown_size[0];
+    shown_height = shown_size[1];
+  }
+  rg_state_cells("screen.page.first", first_page, RG_CELLS);
+  rg_state_cells("screen.page.second", second_page, RG_CELLS);
+  rg_state_cells("screen.scenery", scenery, RG_CELLS);
+  rg_state_cells("screen.without_sprites", picture_without_sprites, RG_CELLS);
+  visit_mixes("screen.mixes.picture", picture_mixes);
+  visit_mixes("screen.mixes.scenery", scenery_mixes);
+  visit_areas();
+  visit_kept_shares();
+  visit_runs();
+  rg_hook_visit_state();
+}
+
+/* A patch of picture kept under a sprite: whether it was saved, then its cells (rg_state.h). */
+static function rg_patch_visit_state(name:String, buffer:Int, width:Int, height:Int):Void {
+  var cells = width * height;
+  var patch = buffer < saved_patches.length ? saved_patches[buffer] : null;
+  var values:Array<Int> = [patch != null ? 1 : 0];
+  for (i in 0...cells) values.push(patch != null ? patch[i] : NO_CELL);
+  rg_state_numbers(name, values);
+  if (values[0] == 0) {
+    if (buffer < saved_patches.length) saved_patches[buffer] = null;
+    return;
+  }
+  while (saved_patches.length <= buffer) saved_patches.push(null);
+  if (saved_patches[buffer] == null) saved_patches[buffer] = new Vector<Int>(cells > 1 ? cells : 1);
+  for (i in 0...cells) saved_patches[buffer][i] = values[i + 1];
+}

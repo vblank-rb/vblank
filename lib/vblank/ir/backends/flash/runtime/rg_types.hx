@@ -429,3 +429,17 @@ class RgFaceEdge {
     this.step = step;
   }
 }
+
+/* One field of a state image being read: its name, how many numbers it holds, the numbers, and whether the game took it. */
+class RgStateField {
+  public var name:String;
+  public var count:Int;
+  public var values:Array<Float>;
+  public var taken:Bool = false;
+
+  public function new(name:String, count:Int, values:Array<Float>) {
+    this.name = name;
+    this.count = count;
+    this.values = values;
+  }
+}

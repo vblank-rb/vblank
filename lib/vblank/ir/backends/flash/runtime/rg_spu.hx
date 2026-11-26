@@ -402,3 +402,70 @@ static function spu_tell_recording(place:Int, sounding:Bool, ran_out:Bool, recor
     : (scaled << SPU_GAIN_TO_VOLUME_SHIFT()) >> SPU_WHOLE_GAIN_SHIFT();
   spu_tell(SPU_GAME_VOICES + place, loop >= 0, loop, pitch < 1 ? 1 : (pitch > SPU_PITCH_TOP() ? SPU_PITCH_TOP() : pitch), value, 0);
 }
+
+/* --- the state image (rg_spu.c says what each field holds) --- */
+
+static inline var SPU_GENERAL_NUMBERS:Int = 13;
+static inline var SPU_CARRY_AT:Int = 6;
+static inline var SPU_VOICE_FIELDS:Int = 24;
+
+static function rg_spu_visit_state():Void {
+  var numbers:Array<Int> = [spu_struck, spu_struck_by_game, spu_struck_waiting, spu_set_by_game, spu_keys_on, spu_keys_off, spu_carry,
+    spu_out_left, spu_out_right, spu_waveform, spu_slide_frame[0], spu_slide_frame[1], spu_stopped_by_game];
+  for (v in spu) {
+    for (number in [v.start, v.loop, v.loop_held, v.pitch, v.volume[0], v.volume[1], v.heard[0], v.heard[1], v.address, v.flags, v.shift,
+                    v.filter, v.older, v.newer, v.write_at, v.read_at, v.decoded, v.delay, v.phase, v.level, v.divider, v.stage, v.keyed,
+                    v.loop_start]) numbers.push(number);
+    for (i in 0...SPU_RING) numbers.push(v.ring[i]);
+  }
+  rg_state_numbers("sound.spu", numbers);
+  if (numbers[SPU_CARRY_AT] < 0 || numbers[SPU_CARRY_AT] >= RG_SOUND_RATE) rg_state_refuse_damaged("the sound chip is somewhere it cannot be");
+
+  spu_struck = numbers[0];
+  spu_struck_by_game = numbers[1];
+  spu_struck_waiting = numbers[2];
+  spu_set_by_game = numbers[3];
+  spu_keys_on = numbers[4];
+  spu_keys_off = numbers[5];
+  spu_carry = numbers[6];
+  spu_out_left = numbers[7];
+  spu_out_right = numbers[8];
+  spu_waveform = numbers[9];
+  spu_slide_frame[0] = numbers[10];
+  spu_slide_frame[1] = numbers[11];
+  spu_stopped_by_game = numbers[12];
+  for (n in 0...SPU_VOICES) {
+    var v = spu[n];
+    var at = SPU_GENERAL_NUMBERS + n * (SPU_VOICE_FIELDS + SPU_RING);
+    if (numbers[at + 14] < 0 || numbers[at + 14] >= SPU_RING || numbers[at + 15] < 0 || numbers[at + 15] >= SPU_RING ||
+        numbers[at + 21] < ENVELOPE_RELEASE || numbers[at + 21] > ENVELOPE_SUSTAIN || numbers[at + 10] < 0 || numbers[at + 10] > 15 ||
+        numbers[at + 11] < 0 || numbers[at + 11] > 15) {
+      rg_state_refuse_damaged("a voice of the sound chip is part way through a sound it cannot be");
+    }
+    v.start = numbers[at];
+    v.loop = numbers[at + 1];
+    v.loop_held = numbers[at + 2];
+    v.pitch = numbers[at + 3];
+    v.volume[0] = numbers[at + 4];
+    v.volume[1] = numbers[at + 5];
+    v.heard[0] = numbers[at + 6];
+    v.heard[1] = numbers[at + 7];
+    v.address = numbers[at + 8];
+    v.flags = numbers[at + 9];
+    v.shift = numbers[at + 10];
+    v.filter = numbers[at + 11];
+    v.older = numbers[at + 12];
+    v.newer = numbers[at + 13];
+    v.write_at = numbers[at + 14];
+    v.read_at = numbers[at + 15];
+    v.decoded = numbers[at + 16];
+    v.delay = numbers[at + 17];
+    v.phase = numbers[at + 18];
+    v.level = numbers[at + 19];
+    v.divider = numbers[at + 20];
+    v.stage = numbers[at + 21];
+    v.keyed = numbers[at + 22];
+    v.loop_start = numbers[at + 23];
+    for (i in 0...SPU_RING) v.ring[i] = numbers[at + SPU_VOICE_FIELDS + i];
+  }
+}

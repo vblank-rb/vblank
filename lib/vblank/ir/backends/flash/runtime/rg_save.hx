@@ -170,3 +170,14 @@ static function rg_save_file_written():Void {
 }
 
 static function rg_save_cut_power_after(steps:Int):Void { power_left = steps; }
+
+/* The save memory in the state image (rg_state.hx): every byte, and where a block is still being wiped. A game with no
+ * save memory keeps none. Read back, the memory differs from the file it came from, so the file is due to be written
+ * again. */
+static function rg_save_visit_state():Void {
+  if (save_size() == 0) return;
+  save_wake();
+  rg_state_cells("save.memory", save_bytes, save_size());
+  wiping = rg_state_number("save.wiping", wiping);
+  if (rg_state_reading()) save_changed();
+}

@@ -431,3 +431,64 @@ static function rg_clock_set_to(year:Int, month:Int, day:Int, hour:Int, minute:I
 
 static function rg_clock_kept_days(current:Int):Int { return rg_clock_present != 0 ? rg_clock_days_kept : current; }
 static function rg_clock_kept_seconds(current:Int):Int { return rg_clock_present != 0 ? rg_clock_seconds_kept : current; }
+
+/* --- the state image (rg_state.hx) --- */
+
+/* A vector of numbers as a field, written as it stands or filled from the image. */
+static function rg_runtime_visit_vector(name:String, cells:Vector<Int>):Void { rg_state_cells(name, cells, cells.length); }
+
+/* Every timer as five numbers: started, running, its rate, its frames a second, and how far it has ticked. Then the
+ * order they were first started in: how many, and the timers' numbers (-1 for none). */
+static function rg_runtime_visit_timers():Void {
+  var values:Array<Float> = [];
+  for (timer in rg_timers) {
+    values.push(timer.started);
+    values.push(timer.running);
+    values.push(timer.ticksASecond);
+    values.push(timer.framesASecond);
+    values.push(timer.parts);
+  }
+  rg_state_float_numbers("runtime.timers", values);
+  for (i in 0...RG_MAX_TIMERS) {
+    var timer = rg_timers[i];
+    timer.started = Std.int(values[i * 5]);
+    timer.running = Std.int(values[i * 5 + 1]);
+    timer.ticksASecond = Std.int(values[i * 5 + 2]);
+    timer.framesASecond = Std.int(values[i * 5 + 3]);
+    timer.parts = values[i * 5 + 4];
+  }
+  var order:Array<Int> = [rg_timers_started.length];
+  for (i in 0...RG_MAX_TIMERS) order.push(i < rg_timers_started.length ? rg_timers_started[i] : -1);
+  rg_state_numbers("runtime.timers.order", order);
+  while (rg_timers_started.length > order[0]) rg_timers_started.pop();
+  for (i in 0...order[0]) rg_timers_started[i] = order[i + 1];
+  var walk:Array<Int> = [rg_walk_place, rg_walk_ticks_left, rg_handler_state, rg_frame_end_pending];
+  rg_state_numbers("runtime.timers.walk", walk);
+  rg_walk_place = walk[0];
+  rg_walk_ticks_left = walk[1];
+  rg_handler_state = walk[2];
+  rg_frame_end_pending = walk[3];
+}
+
+/* The runtime's own fields, in Computer::StateFields's order. */
+static function rg_runtime_visit_state():Void {
+  rg_runtime_visit_vector("runtime.buttons.held", rg_buttons_held);
+  rg_runtime_visit_vector("runtime.buttons.seen", rg_buttons_seen);
+  rg_runtime_visit_vector("runtime.buttons.pressed", rg_buttons_pressed);
+  rg_connected = rg_state_number("runtime.players.connected", rg_connected);
+  rg_runtime_visit_timers();
+  var clock:Array<Float> = [rg_clock_present, rg_clock_set, rg_clock_counts_frames, rg_clock_seconds, rg_clock_ticks, rg_clock_days_kept, rg_clock_seconds_kept];
+  rg_state_float_numbers("runtime.clock", clock);
+  rg_clock_present = Std.int(clock[0]);
+  rg_clock_set = Std.int(clock[1]);
+  rg_clock_counts_frames = Std.int(clock[2]);
+  rg_clock_seconds = clock[3];
+  rg_clock_ticks = Std.int(clock[4]);
+  rg_clock_days_kept = Std.int(clock[5]);
+  rg_clock_seconds_kept = Std.int(clock[6]);
+  var motor:Array<Int> = [rumble_left, rumble_bits, motor_on];
+  rg_state_numbers("runtime.motor", motor);
+  rumble_left = motor[0];
+  rumble_bits = motor[1];
+  motor_on = motor[2];
+}
