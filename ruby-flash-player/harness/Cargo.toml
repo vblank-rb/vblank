@@ -17,3 +17,5 @@ path = "src/main.rs"
 ruffle_core = { path = "../ruffle/core", features = ["audio", "mp3", "default_font"] }
 ruffle_render = { path = "../ruffle/render" }
 ruffle_input_format = { path = "../ruffle/tests/input-format" }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }
+tracing = "0.1"

@@ -36,16 +36,17 @@ module VBlank
       # what it was handed (paint_onto_plain_layer, front_layer).
       module RuntimeFeatures
         ROOT = Ractor.make_shareable(File.expand_path("runtime_features", __dir__))
-        LANGUAGES = Ractor.make_shareable(%i[c js ruby])
+        LANGUAGES = Ractor.make_shareable(%i[c js ruby hx])
         WRITTEN_BY_C = "/* Written by VBlank's native backend: the game's runtime features. Do not edit. */\n"
         RUBY_MAGIC_COMMENT = "# frozen_string_literal: true\n" # The first line of a feature's Ruby, left out where it is joined
 
         # +params+ are the hook's arguments by name; +default+, for a :one hook, is the answer with no
         # taker: one of the params, a number, or :null. +languages+ are the runtimes that have the hook, and
         # +c_signature+ is the C one as rg_screen.c declares it (the compiler holds the two alike).
-        # +joins+ is the C runtime that calls it, :screen or :sound.
-        Hook = Data.define(:name, :way, :params, :default, :languages, :c_signature, :joins) do
-          def initialize(name:, way:, params: [], default: nil, languages: LANGUAGES, c_signature: nil, joins: :screen)
+        # +joins+ is the C runtime that calls it, :screen or :sound. +hx_signature+ is the Haxe one,
+        # the function's name, its typed parameters and its type ("rg_hook_paint_level(level:Int):Void").
+        Hook = Data.define(:name, :way, :params, :default, :languages, :c_signature, :joins, :hx_signature) do
+          def initialize(name:, way:, params: [], default: nil, languages: LANGUAGES, c_signature: nil, joins: :screen, hx_signature: nil)
             super
           end
         end
@@ -54,58 +55,77 @@ module VBlank
           # Ruby keeps the runtime's state in instance variables set as it starts (rg_screen_setup).
           Hook.new(name: :setup, way: :each, languages: %i[ruby]),
           # A screen of a new kind is up (Reference#exec_screen).
-          Hook.new(name: :screen_set, way: :each, c_signature: "static void rg_hook_screen_set(void)"),
+          Hook.new(name: :screen_set, way: :each, c_signature: "static void rg_hook_screen_set(void)",
+                   hx_signature: "rg_hook_screen_set():Void"),
           # That screen took the place of one of another kind, which went with what was up on it.
           Hook.new(name: :screen_crossed, way: :each, params: %i[new_kind],
-                   c_signature: "static void rg_hook_screen_crossed(int32_t new_kind)"),
+                   c_signature: "static void rg_hook_screen_crossed(int32_t new_kind)",
+                   hx_signature: "rg_hook_screen_crossed(new_kind:Int):Void"),
           # A frame boundary is reached, before the pages trade places (Reference#advance_frame).
-          Hook.new(name: :frame_ended, way: :each, c_signature: "static void rg_hook_frame_ended(void)"),
+          Hook.new(name: :frame_ended, way: :each, c_signature: "static void rg_hook_frame_ended(void)",
+                   hx_signature: "rg_hook_frame_ended():Void"),
           # A rebuild of the whole view is asked for (Reference#request_repaint).
-          Hook.new(name: :repaint_requested, way: :each, c_signature: "static void rg_hook_repaint_requested(void)"),
+          Hook.new(name: :repaint_requested, way: :each, c_signature: "static void rg_hook_repaint_requested(void)",
+                   hx_signature: "rg_hook_repaint_requested():Void"),
           # An owed rebuild was painted, or none was owed (Reference#paint_owed_repaint).
-          Hook.new(name: :rebuild_checked, way: :each, c_signature: "static void rg_hook_rebuild_checked(void)"),
+          Hook.new(name: :rebuild_checked, way: :each, c_signature: "static void rg_hook_rebuild_checked(void)",
+                   hx_signature: "rg_hook_rebuild_checked():Void"),
           # The rebuild has cleared the picture to the backdrop, and paints nothing else yet.
-          Hook.new(name: :repaint_began, way: :each, c_signature: "static void rg_hook_repaint_began(void)"),
+          Hook.new(name: :repaint_began, way: :each, c_signature: "static void rg_hook_repaint_began(void)",
+                   hx_signature: "rg_hook_repaint_began():Void"),
           # The rebuild is at one level of the stack, before that level's sprites.
           Hook.new(name: :paint_level, way: :each, params: %i[level],
-                   c_signature: "static void rg_hook_paint_level(int32_t level)"),
+                   c_signature: "static void rg_hook_paint_level(int32_t level)",
+                   hx_signature: "rg_hook_paint_level(level:Int):Void"),
           # The rebuild has painted every level.
-          Hook.new(name: :repaint_ending, way: :each, c_signature: "static void rg_hook_repaint_ending(void)"),
+          Hook.new(name: :repaint_ending, way: :each, c_signature: "static void rg_hook_repaint_ending(void)",
+                   hx_signature: "rg_hook_repaint_ending():Void"),
           # The scenery up, stamped onto the copy kept to put back under sprites (Reference#scene_framebuffer).
-          Hook.new(name: :stamp_scenery, way: :each, c_signature: "static inline void rg_hook_stamp_scenery(void)"),
+          Hook.new(name: :stamp_scenery, way: :each, c_signature: "static inline void rg_hook_stamp_scenery(void)",
+                   hx_signature: "rg_hook_stamp_scenery():Void"),
           # Whether any scenery is up, so a new backdrop has the picture built again rather than cleared.
-          Hook.new(name: :scenery_up, way: :claim, c_signature: "static int32_t rg_hook_scenery_up(void)"),
+          Hook.new(name: :scenery_up, way: :claim, c_signature: "static int32_t rg_hook_scenery_up(void)",
+                   hx_signature: "rg_hook_scenery_up():Bool"),
           # Whether scenery showing now is in a see-through layer (Reference#layer_has_anything?).
           Hook.new(name: :layer_holds_scenery, way: :claim, params: %i[layer],
-                   c_signature: "static int32_t rg_hook_layer_holds_scenery(int32_t layer)"),
+                   c_signature: "static int32_t rg_hook_layer_holds_scenery(int32_t layer)",
+                   hx_signature: "rg_hook_layer_holds_scenery(layer:Int):Bool"),
           # A scene takes over; a taker that takes scenery down answers true (Reference#take_down_scenery).
           Hook.new(name: :scene_take_down, way: :claim, params: %i[brings_scenery],
-                   c_signature: "static int32_t rg_hook_scene_take_down(int32_t brings_scenery)"),
+                   c_signature: "static int32_t rg_hook_scene_take_down(int32_t brings_scenery)",
+                   hx_signature: "rg_hook_scene_take_down(brings_scenery:Int):Bool"),
           # The size of the blocks scenery and sprites are painted in, in pixels each way: 1 for no
           # blocks. Scenery or a sprite the game left as drawn ignores it.
           # Must be inline in C: only the tiled and sprites features ask it, and the compiler counts an
           # unasked inline function as no fault.
           Hook.new(name: :block_size, way: :one, default: 1,
-                   c_signature: "static inline int32_t rg_hook_block_size(void)"),
+                   c_signature: "static inline int32_t rg_hook_block_size(void)",
+                   hx_signature: "rg_hook_block_size():Int"),
           # How many sprites the game last put on screen, and the one at a place among them
           # (Reference#sprites): what the headless runners read, with or without sprites.
-          Hook.new(name: :drawn_count, way: :one, default: 0, c_signature: "static int32_t rg_hook_drawn_count(void)"),
+          Hook.new(name: :drawn_count, way: :one, default: 0, c_signature: "static int32_t rg_hook_drawn_count(void)",
+                   hx_signature: "rg_hook_drawn_count():Int"),
           Hook.new(name: :drawn_sprite, way: :one, params: %i[place], default: :null,
-                   c_signature: "static rg_drawn_sprite rg_hook_drawn_sprite(int32_t place)"),
+                   c_signature: "static rg_drawn_sprite rg_hook_drawn_sprite(int32_t place)",
+                   hx_signature: "rg_hook_drawn_sprite(place:Int):RgDrawnSprite"),
           # Whether any sprite is kept for the next rebuild (Reference#redraw_sprites_over_arrived_scenery).
-          Hook.new(name: :any_sprite_kept, way: :claim, c_signature: "static int32_t rg_hook_any_sprite_kept(void)"),
+          Hook.new(name: :any_sprite_kept, way: :claim, c_signature: "static int32_t rg_hook_any_sprite_kept(void)",
+                   hx_signature: "rg_hook_any_sprite_kept():Bool"),
           # The layer shown in front of the picture as it is read (sprites over a painted screen), a
           # screen's worth of cells holding RG_NOTHING_IN_FRONT where nothing is (nil in Ruby), or
           # null for no layer. Asked once a read.
           Hook.new(name: :front_layer, way: :one, default: :null,
-                   c_signature: "static const uint16_t *rg_hook_front_layer(void)"),
+                   c_signature: "static const uint16_t *rg_hook_front_layer(void)",
+                   hx_signature: "rg_hook_front_layer():Vector<Int>"),
           # Whether a painted screen can be read as it is stored, row for row. JavaScript reads it a
           # pixel at a time always, so has no such shortcut.
           Hook.new(name: :shown_plain, way: :all, languages: %i[c ruby], c_signature: "static int32_t rg_hook_shown_plain(void)"),
           # The stored column each screen column is read from, or null for its own.
-          Hook.new(name: :shown_columns, way: :one, default: :null, c_signature: "static const int64_t *rg_hook_shown_columns(void)"),
+          Hook.new(name: :shown_columns, way: :one, default: :null, c_signature: "static const int64_t *rg_hook_shown_columns(void)",
+                   hx_signature: "rg_hook_shown_columns():Vector<Int>"),
           # The stored row a screen row is read from.
-          Hook.new(name: :shown_row, way: :one, params: %i[y], default: :y, c_signature: "static int64_t rg_hook_shown_row(int64_t y)"),
+          Hook.new(name: :shown_row, way: :one, params: %i[y], default: :y, c_signature: "static int64_t rg_hook_shown_row(int64_t y)",
+                   hx_signature: "rg_hook_shown_row(y:Int):Int"),
           # The FILTER the finished picture is read through when a fade or tint changes a colour, or
           # null when none does (Framebuffer#faded). Asked once a read, after any owed rebuild. A
           # filter is plain data, so the loop that reads the picture asks nothing a pixel:
@@ -116,61 +136,74 @@ module VBlank
           #   remix:      whether a see-through mixed cell is mixed again from its two sides, each
           #               through the table (Framebuffer#shown_color).
           Hook.new(name: :fade_filter, way: :one, default: :null,
-                   c_signature: "static const shown_filter *rg_hook_fade_filter(void)"),
+                   c_signature: "static const shown_filter *rg_hook_fade_filter(void)",
+                   hx_signature: "rg_hook_fade_filter():RgShownFilter"),
           # The same for a light darkening the rest of each row (Framebuffer#shade_outside), applied
           # after the fade's. Asked once a read.
           Hook.new(name: :dim_filter, way: :one, default: :null,
-                   c_signature: "static const shown_filter *rg_hook_dim_filter(void)"),
+                   c_signature: "static const shown_filter *rg_hook_dim_filter(void)",
+                   hx_signature: "rg_hook_dim_filter():RgShownFilter"),
           # The colour table a thing is painted through while a fade placed in the stack reaches it
           # (Reference#set_blend_for), or null where it is left as drawn. +fade_place+ is how far
           # forward the thing's layer is. Asked once a thing painted, never once a pixel.
           Hook.new(name: :paint_fade_for, way: :one, params: %i[fade_place], default: :null,
-                   c_signature: "static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place)"),
+                   c_signature: "static const uint16_t *rg_hook_paint_fade_for(int32_t fade_place)",
+                   hx_signature: "rg_hook_paint_fade_for(fade_place:Int):RgShownFilter"),
           # Whether a fade holds the display's blend, so a see-through layer is solid
           # (Reference#fading?). Asked once a thing painted.
           Hook.new(name: :blend_held_by_fade, way: :claim,
-                   c_signature: "static int32_t rg_hook_blend_held_by_fade(void)"),
+                   c_signature: "static int32_t rg_hook_blend_held_by_fade(void)",
+                   hx_signature: "rg_hook_blend_held_by_fade():Bool"),
           # The state image is written or read (runtime/rg_state.h): each feature visits its own
           # fields, the ones Computer::StateFields lists under its name, after the screen's.
-          Hook.new(name: :visit_state, way: :each, c_signature: "static void rg_hook_visit_state(void)"),
+          Hook.new(name: :visit_state, way: :each, c_signature: "static void rg_hook_visit_state(void)",
+                   hx_signature: "rg_hook_visit_state():Void"),
 
           # --- the sound runtime's hooks (rg_sound.c) ---
 
           # The frame begins (Reference#advance_frame): every feature's work for the frame, in order.
           # The mixer's slice is made before the tune plays, so the music comes after the mix.
-          Hook.new(name: :sound_frame, way: :each, joins: :sound, c_signature: "static void rg_hook_sound_frame(void)"),
+          Hook.new(name: :sound_frame, way: :each, joins: :sound, c_signature: "static void rg_hook_sound_frame(void)",
+                   hx_signature: "rg_hook_sound_frame():Void"),
           # The frame's sound work is done: what has to be moved on after the tune has played (the
           # mixer steps every sounding note's shape).
           Hook.new(name: :sound_frame_ended, way: :each, joins: :sound,
-                   c_signature: "static void rg_hook_sound_frame_ended(void)"),
+                   c_signature: "static void rg_hook_sound_frame_ended(void)",
+                   hx_signature: "rg_hook_sound_frame_ended():Void"),
           # The game's own beep, wave or stop_wave took a console voice (Reference::Player#game_sound_on):
           # a tune's note there no longer wobbles or steps its shapes. Never asked for `noise`.
           Hook.new(name: :voice_taken_by_game, way: :each, params: %i[voice], joins: :sound,
-                   c_signature: "static void rg_hook_voice_taken_by_game(int32_t voice)"),
+                   c_signature: "static void rg_hook_voice_taken_by_game(int32_t voice)",
+                   hx_signature: "rg_hook_voice_taken_by_game(voice:Int):Void"),
           # The newest slice of mixed recordings, handed to the render of a frame: how many samples it
           # holds and, in +samples+, where they are; 0 for a game that mixes nothing. Asked once a
           # frame, never once a sample.
           Hook.new(name: :mixed_slice, way: :one, params: %i[samples], default: 0, joins: :sound,
-                   c_signature: "static int32_t rg_hook_mixed_slice(const int32_t **samples)"),
+                   c_signature: "static int32_t rg_hook_mixed_slice(const int32_t **samples)",
+                   hx_signature: "rg_hook_mixed_slice(samples:Array<Int>):Int"),
           # How many bits the render takes each sample of that slice down by, after it scales a
           # byte's worth up to the speaker: IR::Mixing::FULL_DEPTH_SHIFT for a slice mixed at sixteen
           # bits, so a recording is as loud as at eight, and 0 otherwise. The speaker keeps half its
           # range for the console's voices, so it hears fifteen of the sixteen. Asked once a frame.
           Hook.new(name: :mixed_sample_shift, way: :one, default: 0, joins: :sound,
-                   c_signature: "static int32_t rg_hook_mixed_sample_shift(void)"),
+                   c_signature: "static int32_t rg_hook_mixed_sample_shift(void)",
+                   hx_signature: "rg_hook_mixed_sample_shift():Int"),
           # Where the console's sound chip plays each recording on a voice of its own (rg_spu.c), the
           # chip is told once a frame what each of the mixer's voices plays (spu_tell_recording).
           # Must be inline in C: only a console whose voices read sound memory asks it.
           Hook.new(name: :recordings_told, way: :each, joins: :sound,
-                   c_signature: "static inline void rg_hook_recordings_told(void)"),
+                   c_signature: "static inline void rg_hook_recordings_told(void)",
+                   hx_signature: "rg_hook_recordings_told():Void"),
           # A windowless run prints a moment (rg_headless.c and its twins): each feature prints the
           # lines of its own state. A game with none of them prints nothing here.
           Hook.new(name: :moment_printed, way: :each, joins: :sound,
-                   c_signature: "static void rg_hook_moment_printed(void)"),
+                   c_signature: "static void rg_hook_moment_printed(void)",
+                   hx_signature: "rg_hook_moment_printed():Void"),
           # The state image is written or read: each sound feature visits its own fields, after the
           # console voices' (rg_sound_visit_state).
           Hook.new(name: :visit_sound_state, way: :each, joins: :sound,
-                   c_signature: "static void rg_hook_visit_sound_state(void)")
+                   c_signature: "static void rg_hook_visit_sound_state(void)",
+                   hx_signature: "rg_hook_visit_sound_state():Void")
         ])
 
         # +needed_by+ is the kinds of step that need the feature; +after+ the features whose hooks
@@ -253,6 +286,12 @@ module VBlank
              *HOOKS.filter_map { |hook| js_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:js) }].join
           end
 
+          # The Haxe a game's runtime takes in: each feature's file, then every hook's dispatcher.
+          def hx_text(features)
+            [*features.map { |feature| File.read(feature.file("hx"), encoding: Encoding::UTF_8) },
+             *HOOKS.filter_map { |hook| hx_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:hx) }].join
+          end
+
           def ruby_text(features)
             [*features.map { |feature| File.read(feature.file("rb"), encoding: Encoding::UTF_8).delete_prefix(RUBY_MAGIC_COMMENT) },
              *HOOKS.filter_map { |hook| ruby_dispatcher(hook, takers(hook, features)) if hook.languages.include?(:ruby) }].join
@@ -311,6 +350,15 @@ module VBlank
             answer = answer_text(hook, found, "null")
             body = hook.way == :each ? answer.map { |line| "  #{line};\n" }.join : "  return #{answer};\n"
             "function rg_hook_#{hook.name}(#{hook.params.join(', ')}) {\n#{body}}\n"
+          end
+
+          # Haxe: a hook is a typed function. An :each hook runs its takers' calls; :claim and :all
+          # answer a Bool; :one answers the taker's value, or the hook's default with none (+null+ for a
+          # default of :null, and a parameter's name for a default that is one).
+          def hx_dispatcher(hook, found)
+            answer = answer_text(hook, found, "null")
+            body = hook.way == :each ? answer.map { |line| "  #{line};\n" }.join : "  return #{answer};\n"
+            "static function #{hook.hx_signature} {\n#{body}}\n"
           end
 
           def ruby_dispatcher(hook, found)

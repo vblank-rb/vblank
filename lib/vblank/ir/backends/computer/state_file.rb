@@ -41,10 +41,15 @@ module VBlank
               "RG_MAX_SPRITES" => Picture.sprite_rows(program) }
           end
 
-          # The same as C defines, JavaScript constants and Ruby constants: a String quoted, a number
+          # The same as C defines, JavaScript constants, Haxe constants and Ruby constants: a String quoted, a number
           # as it is.
           def c_text(program) = values(program).map { |name, value| "#define #{name} #{value.inspect}\n" }.join
           def js_text(program) = values(program).map { |name, value| "const #{name} = #{value.inspect};\n" }.join
+
+          # Haxe constants, a number an Int and a string a String.
+          def hx_text(program)
+            values(program).map { |name, value| "static inline var #{name}:#{value.is_a?(String) ? 'String' : 'Int'} = #{value.inspect};\n" }.join
+          end
           # Strings frozen, so the constants can be shared with a game played in a Ractor.
           def ruby_text(program)
             values(program).map { |name, value| "#{name} = #{value.inspect}#{".freeze" if value.is_a?(String)}\n" }.join

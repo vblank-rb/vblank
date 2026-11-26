@@ -1,0 +1,82 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "tmpdir"
+require "zlib"
+
+# `vblank build --format=flash` writes a movie that shows the game's picture and answers its keys. The movie
+# is played in the Flash player's harness, which has no window, so it is built to trace the picture's check
+# number each time it paints (Flash#build_swf's trace_pictures), and that number is held to the
+# interpreter's picture for the same game.
+class TestFlashPage < Minitest::Test
+  Flash = VBlank::IR::Backends::Flash
+
+  GAME = VBlank.game "mover", consoles: %i[gba] do
+    x = var :x, 20
+    game_loop do
+      clear_screen :black
+      fill_rect x, 40, 8, 8, :green
+      x.increase!(2) if held(:right)
+      x.decrease!(2) if held(:left)
+    end
+  end
+
+  def setup
+    @folder = Dir.mktmpdir("vblank-flash-page")
+    @swf = Flash.new.build_swf(GAME, File.join(@folder, "mover.swf"), console: :gba, trace_pictures: true, err: StringIO.new)
+  end
+
+  def teardown
+    FileUtils.remove_entry(@folder)
+  end
+
+  def test_the_movie_is_written_where_it_was_asked_to_be
+    assert_path_exists @swf
+    assert_includes %w[FWS CWS], File.binread(@swf, 3)
+  end
+
+  def test_it_shows_the_picture_the_game_draws
+    painted = FlashPlayerHelper.painted(@swf, frames: 6)
+
+    refute_empty painted
+    assert_equal interpreter_pictures([]).first(painted.size), painted
+  end
+
+  def test_it_answers_its_keys
+    painted = FlashPlayerHelper.painted(@swf, frames: 40, keys: [[10, :right, :down]])
+    moving = interpreter_pictures([:right]) # the same game with the right key held from the first frame
+
+    assert_operator painted.uniq.size, :>, 1, "the picture changed once the key went down"
+    assert_includes moving, painted.last
+  end
+
+  def test_the_movie_is_for_the_size_of_the_screen_enlarged
+    movie = File.binread(@swf)
+    body = movie.start_with?("CWS") ? Zlib::Inflate.inflate(movie[8..]) : movie[8..]
+    bits = body.unpack1("B*")
+    size = bits[0, 5].to_i(2)
+    _min_x, max_x, _min_y, max_y = (0..3).map { |at| bits[5 + (at * size), size].to_i(2) }
+
+    assert_equal [240 * 3 * 20, 160 * 3 * 20], [max_x, max_y]
+  end
+
+  private
+
+  # The check number of the interpreter's picture after each of 40 frames with +buttons+ held.
+  def interpreter_pictures(buttons)
+    pictures = []
+    interpreter = VBlank::IR::Backends::Reference.new.hold(*buttons)
+    interpreter.each_vblank { pictures << format("%08x", Zlib.crc32(interpreter.screen.shown.pack("v*"))) }
+    interpreter.run(GAME.checked_program(console: :gba), frames: 40)
+    pictures
+  end
+
+  module FlashPlayerHelper
+    module_function
+
+    # The check number of the picture each time the movie painted it.
+    def painted(swf, frames:, keys: [])
+      VBlank::Diagnostics::FlashPlayer.play(swf, frames: frames, keys: keys, real_time: true).grep(/\Apicture-crc /).map { |line| line.delete_prefix("picture-crc ") }
+    end
+  end
+end

@@ -9,12 +9,20 @@ harness (`harness/`). The harness takes Ruffle's crates by path from `ruffle/`, 
 `Cargo.lock`, so the libraries are the ones that release was built with and nothing else is fetched
 but what that lock names.
 
-    flash_player_harness GAME.swf --frames N [--tape TAPE]
+    flash_player_harness GAME.swf --frames N [--tape TAPE] [--real-time]
 
 Each `trace()` the movie makes is printed to standard output, one line each. A tape has one key
 press a line, `FRAME KEY down` or `FRAME KEY up`; a key on frame F is pressed just before frame F
 runs. Frames count from 1: the movie's first frame, which builds it, comes before frame 1. Keys are
-`left right up down space enter escape tab backspace shift control f1`..`f9`, or one character.
+`left right up down space enter escape tab backspace shift control f1`..`f9`, or one character. A movie
+that plays by its own clock (`getTimer`, which is the machine's, not the player's) is given `--real-time`, which
+waits out each frame.
+
+    flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [OPTIONS...]
+
+For a game built to be tested (see `harness/src/bridge.rs`, and `runtime/rg_headless.hx` in the Flash build):
+it is told the frames and the options, answers the buttons the game asks for from standard input, writes the
+picture file when asked (the line `picture`), and exits with the code the game gives.
 
 ## Building it
 

@@ -37,11 +37,12 @@ module VBlank
 
       # Plays +swf+ for +frames+ frames and gives back the lines it traced. +harness+ names a harness to
       # use in place of the one built (harness_path).
-      def play(swf, frames:, keys: [], harness: nil)
+      def play(swf, frames:, keys: [], harness: nil, real_time: false)
         raise Error, "There is no program at #{swf}." unless File.file?(swf)
 
         Dir.mktmpdir("vblank-flash") do |dir|
           arguments = [harness_path(harness), swf, "--frames", frames.to_s]
+          arguments << "--real-time" if real_time
           unless keys.empty?
             tape = File.join(dir, "keys.tape")
             File.write(tape, keys.map { |frame, name, direction| "#{frame} #{name} #{direction}\n" }.join)

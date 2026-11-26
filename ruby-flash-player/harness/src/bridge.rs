@@ -1,0 +1,151 @@
+//! What a game built to be tested (runtime/rg_headless.hx) asks of the harness, and how it is answered.
+//!
+//! The movie registers three callbacks with ExternalInterface, and the harness calls them:
+//!
+//!   rg_start(text)     the frames to play, then each option on a line of its own, once, before frame 1
+//!   rg_buttons(line)   the buttons for the frame about to be played, as a line of numbers
+//!   rg_picture()       the picture as a string, a character for each pixel, for the picture file
+//!
+//! The movie traces "buttons?" when a frame has ended and it is waiting for the next frame's buttons. The
+//! harness then reads standard input a line at a time: the line "picture" asks it to write the picture
+//! file now (answered "picture-written"), and any other line is the buttons. The movie asks the harness to
+//! stop with fscommand("rg_exit", "CODE:MESSAGE"): the harness writes the picture file once more, says the
+//! message on standard error if there is one, and exits with CODE.
+use ruffle_core::Player;
+use ruffle_core::FloatDuration;
+use ruffle_core::context::UpdateContext;
+use ruffle_core::external::{ExternalInterfaceProvider, FsCommandProvider, Value};
+use std::cell::{Cell, RefCell};
+use std::io::{BufRead, Write};
+use std::process::exit;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
+/// The movie's request to stop: its exit code and what it has to say.
+#[derive(Default)]
+pub struct ExitRequest {
+    pub requested: Cell<bool>,
+    pub code: Cell<i32>,
+    pub message: RefCell<String>,
+}
+
+pub struct ExitCommand {
+    pub request: Rc<ExitRequest>,
+}
+
+impl FsCommandProvider for ExitCommand {
+    fn on_fs_command(&self, command: &str, args: &str) -> bool {
+        if command != "rg_exit" {
+            return false;
+        }
+        let (code, message) = args.split_once(':').unwrap_or((args, ""));
+        self.request.code.set(code.parse().unwrap_or(1));
+        *self.request.message.borrow_mut() = message.to_string();
+        self.request.requested.set(true);
+        true
+    }
+}
+
+/// Makes ExternalInterface available to the movie. It calls nothing out of the movie.
+pub struct Provider;
+
+impl ExternalInterfaceProvider for Provider {
+    fn call_method(&self, _context: &mut UpdateContext<'_>, _name: &str, _args: &[Value]) -> Value {
+        Value::Null
+    }
+
+    fn on_callback_available(&self, _name: &str) {}
+
+    fn get_id(&self) -> Option<String> {
+        None
+    }
+}
+
+fn picture_string(player: &Arc<Mutex<Player>>) -> String {
+    match player.lock().unwrap().call_internal_interface("rg_picture", []) {
+        Value::String(text) => text,
+        _ => String::new(),
+    }
+}
+
+/// Writes the picture file in place (the file is read by whoever is playing, through its own open
+/// handle, so the file itself must stay the same one): two bytes a pixel, low byte first.
+fn write_picture(path: &str, player: &Arc<Mutex<Player>>) {
+    let mut bytes = Vec::new();
+    for pixel in picture_string(player).encode_utf16() {
+        bytes.extend_from_slice(&pixel.to_le_bytes());
+    }
+    if std::fs::write(path, bytes).is_err() {
+        eprintln!("flash_player_harness: the picture could not be written to {path}");
+        exit(2);
+    }
+}
+
+fn finish(player: &Arc<Mutex<Player>>, picture_out: Option<&str>, exit_request: &ExitRequest) -> ! {
+    if let Some(path) = picture_out {
+        write_picture(path, player);
+    }
+    let _ = std::io::stdout().flush();
+    let message = exit_request.message.borrow();
+    if !message.is_empty() {
+        eprintln!("{message}");
+    }
+    exit(exit_request.code.get());
+}
+
+/// Plays the movie as a game built to be tested, frame by frame, until it asks to stop.
+pub fn play_headless(
+    player: &Arc<Mutex<Player>>,
+    frame_time: FloatDuration,
+    frames: u32,
+    options: &[String],
+    picture_out: Option<&str>,
+    asked_for_buttons: &Rc<Cell<bool>>,
+    exit_request: &Rc<ExitRequest>,
+) -> ! {
+    let mut start = frames.to_string();
+    for option in options {
+        start.push('\n');
+        start.push_str(option);
+    }
+    player.lock().unwrap().call_internal_interface("rg_start", [Value::String(start)]);
+
+    let stdin = std::io::stdin();
+    let mut input = stdin.lock();
+    // A frame the game plays ends at a frame boundary, so no more than the frames asked for, and a few
+    // for a frame a timer's handler holds up, can pass before it says it is over.
+    let most_frames = u64::from(frames) * 4 + 10_000;
+    for _ in 0..most_frames {
+        {
+            let mut player = player.lock().unwrap();
+            player.run_frame();
+            player.update_timers(frame_time);
+            player.audio_mut().tick();
+        }
+        if exit_request.requested.get() {
+            finish(player, picture_out, exit_request);
+        }
+        if !asked_for_buttons.replace(false) {
+            continue;
+        }
+        loop {
+            let mut line = String::new();
+            if input.read_line(&mut line).unwrap_or(0) == 0 {
+                line.clear();
+            }
+            let line = line.trim_end_matches(['\n', '\r']);
+            if line == "picture" {
+                if let Some(path) = picture_out {
+                    write_picture(path, player);
+                }
+                println!("picture-written");
+                let _ = std::io::stdout().flush();
+                continue;
+            }
+            player.lock().unwrap().call_internal_interface("rg_buttons", [Value::String(line.to_string())]);
+            break;
+        }
+    }
+    eprintln!("the game did not end after {frames} frames");
+    exit(4);
+}

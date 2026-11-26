@@ -1,11 +1,19 @@
 //! Plays a .swf in Ruffle with no window and no sound device, one frame at a time.
 //!
-//! flash_player_harness GAME.swf --frames N [--tape TAPE]
+//! flash_player_harness GAME.swf --frames N [--tape TAPE] [--real-time]
 //!
-//! Every trace() the movie makes is printed to stdout, one line each, as it happens. A tape has one
-//! line per key press: "FRAME KEY down" or "FRAME KEY up". A key on frame F is pressed just before
-//! frame F runs. Frames are numbered from 1; the movie's first, which builds it, is not counted.
+//! Every trace() the movie makes is printed to standard output, one line each, as it happens. A tape has one
+//! line per key press: "FRAME KEY down" or "FRAME KEY up". A key on frame F is pressed just before frame F
+//! runs. Frames are numbered from 1; the movie's first, which builds it, is not counted. The movie's own
+//! clock (getTimer) is the machine's, so a movie that plays by it is given --real-time, which waits out each
+//! frame's time before the next.
+//!
+//! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [OPTIONS...]
+//!
+//! The same, for a game built to be tested (see bridge.rs): what it asks of the harness is answered from
+//! standard input, a line at a time, and it is told FRAMES and the options it did not take itself.
 mod audio;
+mod bridge;
 mod keys;
 
 use ruffle_core::backend::log::LogBackend;
@@ -13,15 +21,26 @@ use ruffle_core::limits::ExecutionLimit;
 use ruffle_core::tag_utils::SwfMovieData;
 use ruffle_core::{FloatDuration, PlayerBuilder, PlayerEvent};
 use ruffle_input_format::AutomatedKey;
+use std::cell::Cell;
 use std::io::Write;
 use std::process::exit;
+use std::rc::Rc;
 
-struct PrintingLog;
+/// Prints each trace as it happens, and notes that the movie asked for buttons.
+struct PrintingLog {
+    asked_for_buttons: Rc<Cell<bool>>,
+}
 
 impl LogBackend for PrintingLog {
     fn avm_trace(&self, message: &str) {
+        if message == "buttons?" {
+            self.asked_for_buttons.set(true);
+        }
         let mut out = std::io::stdout().lock();
         let _ = writeln!(out, "{message}");
+        if message == "buttons?" {
+            let _ = out.flush();
+        }
     }
 
     fn avm_warning(&self, message: &str) {
@@ -98,9 +117,15 @@ fn read_tape(path: &str) -> Vec<KeyPress> {
 }
 
 fn main() {
+    tracing_subscriber::fmt().with_writer(std::io::stderr).with_max_level(tracing::Level::WARN).init();
+
     let mut swf_path = None;
     let mut frames: Option<u32> = None;
     let mut tape_path = None;
+    let mut headless = false;
+    let mut real_time = false;
+    let mut picture_out = None;
+    let mut movie_options: Vec<String> = Vec::new();
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -111,6 +136,18 @@ fn main() {
                 }
             }
             "--tape" => tape_path = arguments.next(),
+            "--real-time" => real_time = true,
+            "--headless" => {
+                headless = true;
+                frames = arguments.next().and_then(|value| value.parse().ok());
+                if frames.is_none() {
+                    fail("--headless needs the number of frames to play");
+                }
+            }
+            "--picture-out" if headless => {
+                picture_out = Some(arguments.next().unwrap_or_else(|| fail("--picture-out needs a file")));
+            }
+            other if headless && swf_path.is_some() => movie_options.push(other.to_string()),
             other if swf_path.is_none() && !other.starts_with("--") => swf_path = Some(other.to_string()),
             other => fail(&format!("unknown argument {other}")),
         }
@@ -124,9 +161,13 @@ fn main() {
         .unwrap_or_else(|error| fail(&format!("cannot read {swf_path} as a movie: {error}")));
     let frame_time = FloatDuration::from_millis(1000.0 / movie.frame_rate().to_f64());
 
+    let asked_for_buttons = Rc::new(Cell::new(false));
+    let exit_request = Rc::new(bridge::ExitRequest::default());
     let player = PlayerBuilder::new()
-        .with_log(PrintingLog)
+        .with_log(PrintingLog { asked_for_buttons: asked_for_buttons.clone() })
         .with_audio(audio::SilentAudioBackend::default())
+        .with_external_interface(Box::new(bridge::Provider))
+        .with_fs_commands(Box::new(bridge::ExitCommand { request: exit_request.clone() }))
         .with_movie(movie)
         .with_autoplay(true)
         .build();
@@ -147,6 +188,10 @@ fn main() {
         player.audio_mut().tick();
     }
 
+    if headless {
+        bridge::play_headless(&player, frame_time, frames, &movie_options, picture_out.as_deref(), &asked_for_buttons, &exit_request);
+    }
+
     let mut next_press = 0;
     let mut frame = 0;
     while frame < frames {
@@ -158,10 +203,15 @@ fn main() {
             player.lock().unwrap().handle_event(event);
             next_press += 1;
         }
-        let mut player = player.lock().unwrap();
-        player.run_frame();
-        player.update_timers(frame_time);
-        player.audio_mut().tick();
+        {
+            let mut player = player.lock().unwrap();
+            player.run_frame();
+            player.update_timers(frame_time);
+            player.audio_mut().tick();
+        }
+        if real_time {
+            std::thread::sleep(std::time::Duration::from_secs_f64(frame_time.as_millis() / 1000.0));
+        }
     }
     let _ = std::io::stdout().flush();
 }
