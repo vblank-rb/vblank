@@ -42,7 +42,8 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # +song+ a tune of three parts, a note on each every sixteenth, plays beside them. The effect plays
   # on the first pass +played_on+ frames from power-on or later: counted in frames, not passes, since
   # the build with the tune sends a longer sound program and starts its passes later, and its notes
-  # are compared with those of the build without at the same moments.
+  # are compared with those of the build without at the same moments. With +filled+ the game keeps
+  # that many more variables, each set once before the loop.
   private def game(**) = VBlank.build("STRIKES", console: :snes, out: nil, err: nil, &game_code(**))
 
   # ...as a program, for a checked run.
@@ -54,7 +55,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   end
 
   private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON,
-                          slow_once_on: nil)
+                          slow_once_on: nil, filled: 0)
     slow_once_turns = slow_work if slow_once_on
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
@@ -69,6 +70,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
         end
         play_song :tune
       end
+      Array.new(filled) { |n| var(:"filled_#{n}", 0) }.each_with_index { |kept, n| kept.store!(n) }
       sfx = sound_effects :sfx, { chime: effect }
       pass = var :pass, 0
       started = var :started, 0
@@ -131,6 +133,19 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   def test_notes_a_frame_and_a_fifth_of_ticks_apart_are_struck_as_far_apart_as_their_ticks
     assert_struck_apart(rate: 50, apart: 3, lasting: 1)
+  end
+
+  # A game whose variables fill the first 8K of work RAM keeps the runtime's tables past it
+  # (Memory#reserve_table), where each read of the line ahead is a byte longer (Memory#indexed). Its
+  # effects still build, and strike as far apart as their ticks.
+  FILLING = 2100
+
+  def test_a_game_that_fills_the_first_8k_strikes_its_notes_as_far_apart_as_their_ticks
+    assert_struck_apart(rate: 50, apart: 3, lasting: 1, filled: FILLING)
+  end
+
+  def test_a_game_that_fills_the_first_8k_plays_its_effect_as_the_interpreter_does
+    VBlank::IR::Backends::SNES::CheckedRun.new.run(game_program(rate: 50, apart: 3, lasting: 1, filled: FILLING), frames: PLAYED_ON + 30)
   end
 
   # Four ticks a frame: each note falls on whichever of its frame's ticks it does.

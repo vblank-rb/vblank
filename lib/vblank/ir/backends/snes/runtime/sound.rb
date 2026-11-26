@@ -1027,39 +1027,44 @@ module VBlank
             # cost the console as much as the sound unit's whole turn. Only a command still owed at
             # the queue's front (FRONT_LEFT) or one that becomes writes where it stands (START_NOTE to
             # FORGOTTEN) goes the queue's way.
+            #
+            # Every branch here is a long one, made short by the assembler where it reaches
+            # (W65816#shorten_long_branches): the loop is near the reach of a short branch, and in a
+            # game whose runtime tables are past the first 8K each read of the line is a byte longer
+            # (Memory#indexed), which takes the loop's edges out of it.
             def emit_ahead_sent_straight(asm, memory)
               h = Console::SNESHardware
               asm.ldy(Strikes::SENT_TRIES)
               asm.label("rt_sound_ahead_try")
               asm.lda(asm.abs(memory[FRONT_LEFT]))
-              asm.bne("rt_sound_ahead_queued")
+              asm.branch_long(:bne, "rt_sound_ahead_queued")
               asm.ldx(asm.abs(memory[AHEAD_HEAD]))
               asm.cpx(asm.abs(memory[AHEAD_TAIL]))
-              asm.beq("rt_sound_ahead_sent")
+              asm.branch_long(:beq, "rt_sound_ahead_sent")
               asm.lda(memory.indexed(asm, AHEAD, ENTRY_COMMAND))
               asm.and_a(COMMAND_BITS)
               asm.cmp(Strikes::TIMING)
-              asm.bne("rt_sound_ahead_not_timing")
+              asm.branch_long(:bne, "rt_sound_ahead_not_timing")
               asm.lda(asm.abs(memory[Frame::FRAMES_TAKEN])) # a pass of more than a frame has no wait to send in
               asm.cmp(1)
-              asm.bne("rt_sound_ahead_straight")
+              asm.branch_long(:bne, "rt_sound_ahead_straight")
               asm.lda(memory.indexed(asm, AHEAD, ENTRY_VALUE))
               asm.cmp(Strikes::FROM)
-              asm.bne("rt_sound_ahead_straight")
+              asm.branch_long(:bne, "rt_sound_ahead_straight")
               asm.lda(memory.indexed(asm, AHEAD, ENTRY_REGISTER))
               asm.cmp(Strikes::HELD_OFFSET)
-              asm.bcs("rt_sound_ahead_sent") # due later in the frame: sent from the wait
-              asm.bra("rt_sound_ahead_straight")
+              asm.branch_long(:bcs, "rt_sound_ahead_sent") # due later in the frame: sent from the wait
+              asm.jump("rt_sound_ahead_straight")
               asm.label("rt_sound_ahead_not_timing")
               asm.cmp(START_NOTE)
-              asm.bcc("rt_sound_ahead_straight")
+              asm.branch_long(:bcc, "rt_sound_ahead_straight")
               asm.cmp(HOLD_PITCH)
-              asm.bcc("rt_sound_ahead_queued")
+              asm.branch_long(:bcc, "rt_sound_ahead_queued")
               asm.label("rt_sound_ahead_straight")
               asm.sep(0x20)
               asm.lda(asm.abs(h::APUIO0))
               asm.cmp(asm.abs(memory[SENT]))
-              asm.bne("rt_sound_ahead_unanswered")
+              asm.branch_long(:bne, "rt_sound_ahead_unanswered")
               asm.lda(memory.indexed(asm, AHEAD, ENTRY_REGISTER))
               asm.sta(asm.abs(h::APUIO2))
               asm.lda(memory.indexed(asm, AHEAD, ENTRY_VALUE))
@@ -1076,17 +1081,17 @@ module VBlank
               asm.adc(ENTRY_BYTES)
               asm.and_a(AHEAD_MASK)
               asm.sta(asm.abs(memory[AHEAD_HEAD]))
-              asm.bra("rt_sound_ahead_try")
+              asm.jump("rt_sound_ahead_try")
               asm.label("rt_sound_ahead_unanswered")
               asm.widths(a16: false, xy16: true) # reached by the branch above, with A still 8 bits wide
               asm.rep(0x20)
               asm.dey
-              asm.bne("rt_sound_ahead_try")
-              asm.bra("rt_sound_ahead_sent")
+              asm.branch_long(:bne, "rt_sound_ahead_try")
+              asm.jump("rt_sound_ahead_sent")
               asm.label("rt_sound_ahead_queued")
               asm.jsl(asm.long("rt_sound_send_queued"))
               asm.dey
-              asm.bne("rt_sound_ahead_try")
+              asm.branch_long(:bne, "rt_sound_ahead_try")
               asm.label("rt_sound_ahead_sent")
             end
 
