@@ -277,3 +277,77 @@ class RgMixVoice {
 
   public function new() {}
 }
+
+/* A part of a song as the player walks it (rg_music.hx): where its notes are in rg_game_music, how many, how far it has
+ * come, and what voice it sounds on. */
+class RgPartWalk {
+  public var notes:Int;
+  public var count:Int;
+  public var next:Int = 0;
+  public var kind:Int;
+  public var voice:Int;
+  public var number:Int;
+  public var tone:Int;
+  public var fade:Int;
+
+  public function new(notes:Int, count:Int, kind:Int, voice:Int, number:Int, tone:Int, fade:Int) {
+    this.notes = notes;
+    this.count = count;
+    this.kind = kind;
+    this.voice = voice;
+    this.number = number;
+    this.tone = tone;
+    this.fade = fade;
+  }
+}
+
+/* A note held under the music volume, so a change of the volume sounds it again. */
+class RgHeldNote {
+  public var voice:Int;
+  public var lane:Int;
+  public var volume:Int;
+  public var wave_ticks:Int;
+  public var eighths_high:Int;
+  public var fade:Int;
+
+  public function new(voice:Int, lane:Int, volume:Int, wave_ticks:Int, eighths_high:Int, fade:Int) {
+    this.voice = voice;
+    this.lane = lane;
+    this.volume = volume;
+    this.wave_ticks = wave_ticks;
+    this.eighths_high = eighths_high;
+    this.fade = fade;
+  }
+}
+
+/* A pitch that wobbles, a square note's shape walk and a swelling note, each one a voice's. */
+class RgWobble {
+  public var vibrato:Int = 0;
+  public var wait:Int = 0;
+  public var left:Int = 0;
+  public var rising:Int = 0;
+  public var steps:Int = 0;
+  public var ticks:Int = 0;
+
+  public function new() {}
+}
+
+class RgShapeWalk {
+  public var bits:Int = 0;
+  public var frame:Int = 0;
+  public var steps:Int = 0;
+
+  public function new() {}
+}
+
+class RgSwell {
+  public var active:Int = 0;
+  public var step:Int = 0;
+  public var volume:Int = 0;
+  public var counted:Int = 0;
+  public var swelling:Int = 0;
+  public var wave_ticks:Int = 0;
+  public var eighths_high:Int = 0;
+
+  public function new() {}
+}

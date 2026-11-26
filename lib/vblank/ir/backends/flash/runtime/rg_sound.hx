@@ -23,13 +23,32 @@ static inline var RG_NOISE_VOICE:Int = 4;
 
 static inline var FADE_STEP_BITS:Int = 7;
 static inline var FADE_UP:Int = 8;
+static inline var HAS_FADE:Int = 16;
 static inline var PITCH_COUNT_TOP:Int = 2048;
+static inline var HAS_SLIDE:Int = 32;
+static inline var SLIDE_AT:Int = 6;
+static inline var SLIDE_BITS:Int = 0x7F;
 static inline var SLIDE_DOWN:Int = 8;
 static inline var SLIDE_SHIFT_BITS:Int = 7;
 static inline var SLIDE_EVERY_AT:Int = 4;
 static inline var SLIDE_EVERY_BITS:Int = 7;
+static inline var HAS_VIBRATO:Int = 1 << 13;
+static inline var VIBRATO_AT:Int = 14;
+static inline var VIBRATO_BITS:Int = 0xFFFF;
+static inline var VIBRATO_FOUR_BITS:Int = 0xF;
+static inline var VIBRATO_SPEED_AT:Int = 4;
+static inline var VIBRATO_AFTER_AT:Int = 8;
+static inline var PAN_AT:Int = 30;
+static inline var PAN_BITS:Int = 3;
 static inline var PAN_LEFT:Int = 1;
 static inline var PAN_RIGHT:Int = 2;
+static inline var HAS_DUTY:Int = 1 << 8;
+static inline var DUTY_BITS:Int = 0xFF;
+static inline var CARRIES_VIBRATO:Int = 1 << 9; // a vibrato that carries its swing on...
+static inline var VIBRATO_CARRIES_LOGGED:Int = 1 << 16; // ...and its bit in the log
+static inline var GLIDES:Int = 1 << 10; // a recorded note that carries on the one sounding
+static inline var GLIDE_KEEPS_LOUDNESS:Int = 1 << 29; // ...and with it where that note keeps its loudness, naming none
+static inline var NUMBERS_PER_NOTE_SOUND:Int = 8;
 static inline var NUMBERS_PER_BEEP:Int = 4;
 static inline var NUMBERS_PER_WAVE:Int = 3;
 static inline var NUMBERS_PER_HIT:Int = 4;
@@ -41,10 +60,14 @@ static function SQUARE_CLOCK_HZ():Int { return rg_game_sound_rules[0]; }
 static function WAVE_CLOCK_HZ():Int { return rg_game_sound_rules[1]; }
 static function NOISE_CLOCK_HZ():Int { return rg_game_sound_rules[2]; }
 static function OUTPUT_HZ():Int { return rg_game_sound_rules[3]; }
+static function FULL_LEVEL():Int { return rg_game_sound_rules[4]; }
+static function LEVEL_SHIFT():Int { return rg_game_sound_rules[5]; }
 static inline var WAVE_QUARTERS:Int = 6;
+static function COUNTED_A_FRAME():Int { return rg_game_sound_rules[WAVE_QUARTERS + VOLUMES + 1]; }
 // The main volume the game named, in 127ths, or -1 for none.
 static function MAIN_VOLUME():Int { return rg_game_sound_rules[WAVE_QUARTERS + VOLUMES + 2]; }
 static inline var MAIN_VOLUME_LOUDEST:Int = 127;
+static inline var LOUDEST:Int = VOLUMES - 1;
 
 // The whole mix at the main volume, rounded toward nought.
 static function at_main_volume(sum:Int):Int {
@@ -56,6 +79,7 @@ static inline var STEP_SIZE:Int = 1092;
 static inline var MIX_STEP:Int = 128;
 
 /* The sound chip's voices keep track of which a game struck; a console whose voices are worked out here has none. */
+static function voice_struck(voice:Int):Void {}
 static function game_voice_struck(voice:Int):Void {}
 static function spu_slide_started(voice:Int):Void {}
 static function spu_waveform_put_in(which:Int):Void {}
