@@ -186,6 +186,9 @@ module VBlank
           FileUtils.remove_entry(working)
           swf
         end
+
+        # A test builds a movie of its own from the pieces.
+        public :class_text, :compile
       end
     end
   end

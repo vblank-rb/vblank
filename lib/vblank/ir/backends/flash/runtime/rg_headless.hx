@@ -180,6 +180,11 @@ static function headless_on_frame(_:flash.events.Event):Void {
   } catch (stopped:RgStopped) {
     if (stopped.wentWrong) headless_exit(RG_GAME_WENT_WRONG, stopped.message);
     else headless_finish();
+  } catch (error:Dynamic) {
+    // Anything else the player raises (an index past a vector, a null routine) is the game going wrong too: a
+    // pass is not carried on from the middle of a step.
+    var said = Std.isOfType(error, flash.errors.Error) ? cast(error, flash.errors.Error).message : Std.string(error);
+    headless_exit(RG_GAME_WENT_WRONG, said);
   }
 }
 

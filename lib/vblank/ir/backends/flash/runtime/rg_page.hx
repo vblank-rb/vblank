@@ -114,6 +114,9 @@ static function page_on_frame(_:flash.events.Event):Void {
   } catch (stopped:RgStopped) {
     page_stopped = true;
     if (stopped.wentWrong) flash.Lib.trace(stopped.message);
+  } catch (error:Dynamic) {
+    page_stopped = true;
+    flash.Lib.trace(Std.string(error));
   }
   if (played == PAGE_MOST_PASSES) page_passes = due; // too far behind to catch up
 }
