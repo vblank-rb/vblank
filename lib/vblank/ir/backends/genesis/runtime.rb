@@ -76,7 +76,8 @@ module VBlank
           # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
           # +collision+ for a game that asks whether two sprites' pixels touch (Collide), and +saves+ for a game
-          # that keeps save memory (Saving), which moves whole lists to or from it with +list_moves+.
+          # that keeps save memory (Saving), which moves whole lists to or from it with +list_moves+. +six_buttons+ for a game that reads a
+          # six-button pad's X or Y (Frame.reads_six_buttons?).
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
           # +sound+ for a game that makes sound; +music+ the section of its songs (Genesis::Music#section),
@@ -88,7 +89,7 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, scene_backdrops: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil, saves: false, list_moves: false)
+                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil, saves: false, list_moves: false, six_buttons: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -96,7 +97,7 @@ module VBlank
                            counting: (Frame.counting_block(memory) if count_at), second: second_pad_places(memory),
                            team_player: Frame.team_player?(memory))
             Int32.emit(asm, fractions: fractions)
-            Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at)
+            Frame.emit(asm, memory, sound: sound, samples: !plays.nil?, count_at: count_at, six_buttons: six_buttons)
             Lists.emit(asm, memory)
             Picture.emit(asm, memory, picture: picture, columns: columns, camera: camera, colors: colors, backdrop: backdrop,
                                       scene_backdrops: scene_backdrops,

@@ -254,8 +254,9 @@ module VBlank
         entry: refused("`entry` is raw ARM for the Advance's processor, which a Genesis does not have."),
 
         # --- input ---
-        held: works("the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad. A Genesis pad has " \
-                    "no `:select`, `:l`, `:r`, `:x` or `:y`: use `:c` and `:start` for them. `player: 2` reads " \
+        held: works("the buttons a Genesis pad has: `:a`, `:b`, `:c`, `:start` and the D-pad, and `:x` and `:y` on a six-button " \
+                    "pad. On a three-button pad, `:x` and `:y` are never held. A Genesis pad has no `:select`, `:l` or `:r`: " \
+                    "use `:c` and `:start` for them. The six-button pad's Z and Mode buttons cannot be read. `player: 2` reads " \
                     "the second pad. `player: 3`, `player: 4` and `player: 5` read the pads in a Sega Team Player in " \
                     "the second port. `player: :any` reads all of them. The build refuses `player: 6` or more, " \
                     "and `players:` more than 5, because it reads five pads. If no Team Player is " \

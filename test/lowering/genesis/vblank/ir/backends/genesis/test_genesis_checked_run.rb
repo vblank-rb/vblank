@@ -157,6 +157,25 @@ class TestGenesisCheckedRun < Minitest::Test
     assert(counts.all? { |count| count >= 2 }, counts.inspect)
   end
 
+  # A six-button pad's X and Y too, on the console's own pad, each pressed at least twice.
+  SIX_BUTTONS = (BUTTONS + %i[x y]).freeze
+
+  def test_x_and_y_reach_the_game_under_their_own_names
+    run = Genesis::CheckedRun.new
+    run.input_each_frame { |frame| frame.even? ? [SIX_BUTTONS[(frame / 2) % SIX_BUTTONS.size]] : [] }
+    run.run(program_of do
+      SIX_BUTTONS.each do |button|
+        count = var :"#{button}_count", 0
+        game_loop_part = -> { count += 1 if pressed(button) }
+        once_a_frame(&game_loop_part)
+      end
+      game_loop {}
+    end, frames: 56)
+
+    counts = SIX_BUTTONS.map { |button| run[:"#{button}_count"] }
+    assert(counts.all? { |count| count >= 2 }, counts.inspect)
+  end
+
   def test_buttons_held_from_power_on_are_pressed_at_the_first_frame
     run = Genesis::CheckedRun.new.hold(:start, :b)
     run.run(program_of do

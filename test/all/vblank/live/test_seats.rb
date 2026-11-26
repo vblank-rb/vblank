@@ -48,7 +48,7 @@ class TestSeats < Minitest::Test
     held = ->(buttons) { Seats.second_player_buttons(down: ->(code) { down.include?(code) }, free: ->(_) { true }, buttons: buttons) }
 
     assert_equal %i[p2_a p2_x p2_y], held.call(VBlank::Console::SUPER_NINTENDO.buttons).sort
-    assert_equal %i[p2_a p2_c], held.call(VBlank::Console::GENESIS.buttons).sort
+    assert_equal %i[p2_a p2_c p2_x p2_y], held.call(VBlank::Console::GENESIS.buttons).sort
     assert_equal %i[p2_a], held.call(VBlank::Console::ADVANCE.buttons)
   end
 

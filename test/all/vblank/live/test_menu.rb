@@ -232,11 +232,11 @@ class TestMenu < Minitest::Test
     assert_equal :east, menu.controls.pad_of(:a)
   end
 
-  # The Keys heading lists the console's buttons: a Genesis pad's C, and no Select, L or R.
+  # The Keys heading lists the console's buttons: a Genesis pad's X, Y and C, and no Select, L or R.
   def test_the_keys_heading_lists_the_buttons_the_console_has
     controls = VBlank::Live::Settings.new(key_names: Menu::NumberedKeys.new, buttons: VBlank::Console::GENESIS.buttons)
 
-    assert_equal %w[A B Start Right Left Up Down C Reset], key_lines(Menu.new(controls: controls))
+    assert_equal %w[A B Start Right Left Up Down X Y C Reset], key_lines(Menu.new(controls: controls))
     assert_equal %w[A B Select Start Right Left Up Down R L Reset], key_lines(Menu.new)
   end
 
@@ -246,11 +246,11 @@ class TestMenu < Minitest::Test
     assert_equal VBlank::Console::ADVANCE.buttons, WindowMenu::ADVANCE_BUTTONS
   end
 
-  # Choosing a key for C, the eighth line of a Genesis menu, gives the key to C.
+  # Choosing a key for C, the tenth line of a Genesis menu, gives the key to C.
   def test_a_key_chosen_for_c_presses_c
     controls = VBlank::Live::Settings.new(key_names: Menu::NumberedKeys.new, buttons: VBlank::Console::GENESIS.buttons)
     menu = Menu.new(controls: controls)
-    on_key_line(menu, 7)
+    on_key_line(menu, 9)
     menu.press(:enter)
 
     assert_includes menu.controls.capture_prompt, "for C"

@@ -236,7 +236,8 @@ module VBlank
                                              poses: lowering.streams_poses?,
                                              blocks: picture == :tiled && lowering.writes_cell_blocks?, bends: bends,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted),
-                                             saves: SaveLayout.named_by?(program), list_moves: SaveListMoves.moved_in?(program))
+                                             saves: SaveLayout.named_by?(program), list_moves: SaveListMoves.moved_in?(program),
+                                             six_buttons: Runtime::Frame.reads_six_buttons?(program))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
@@ -247,7 +248,8 @@ module VBlank
                              routines: game_routines(lowering, linked))
           saves = SaveLayout.named_by?(program)
           refuse_saves_past_2mb!(linked.image) if saves
-          Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built, saves: saves)
+          Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built, saves: saves,
+                                         devices: (Runtime::Frame.reads_six_buttons?(program) ? "J6" : "J"))
         end
 
         # A Genesis cartridge keeps its save memory after the first 2 MB of its address space, so a game

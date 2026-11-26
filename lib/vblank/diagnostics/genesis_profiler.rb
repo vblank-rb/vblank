@@ -76,7 +76,8 @@ module VBlank
         shown_at = places.runtime.fetch(IR::Backends::Genesis::Runtime::Frame::SHOWN)
         Emulator.with_cartridge(rom, file_name: FILE_NAME) do |core|
           # A game for more than two is measured with a Team Player in, as it is played.
-          core.plug_in_team_player if IR::Backends::Genesis::Runtime::Frame.reads_team_player?(places.source_program)
+          frame = IR::Backends::Genesis::Runtime::Frame
+          core.plug_in_team_player(six_buttons: frame.reads_six_buttons?(places.source_program)) if frame.reads_team_player?(places.source_program)
           core.set_buttons(keys)
           core.run_frame while core.frames < MOST_FRAMES_TO_SETTLE && core.wram_read32(places.waits_counted_at) <= settle
           first = core.frames + 1

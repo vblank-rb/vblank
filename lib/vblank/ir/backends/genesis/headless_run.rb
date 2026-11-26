@@ -99,7 +99,8 @@ module VBlank
           # A game that reads the third, fourth or fifth player is played with a Team Player in the second
           # port, as a person playing it with five would have.
           def power_on
-            @core.plug_in_team_player if Runtime::Frame.reads_team_player?(@rom.built.source_program)
+            program = @rom.built.source_program
+            @core.plug_in_team_player(six_buttons: Runtime::Frame.reads_six_buttons?(program)) if Runtime::Frame.reads_team_player?(program)
             set_buttons(@held)
           end
 

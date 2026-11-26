@@ -177,6 +177,12 @@ module VBlank
               end
             end
 
+            # Whether +program+ reads a six-button pad's X or Y: a button of that name asked of a player. `:any`
+            # alone does not count, so a game that never names them reads the pads as before.
+            def reads_six_buttons?(program)
+              program.walk.any? { |node| %i[held pressed pulled].include?(node.kind) && %i[x y].include?(node.button) }
+            end
+
             # Whether the game whose places are in +memory+ reads a Team Player (#reserve).
             def team_player?(memory) = memory.reserved?(TAP_BUTTONS)
 
@@ -251,13 +257,13 @@ module VBlank
             # rt_sound_frame; +samples+ for one that plays recordings, whose interrupt reads the buttons
             # with the Z80 kept off the cartridge (Recordings#emit_z80_kept_off_for_pad).
             # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
-            # count, and nil for any other.
-            def emit(asm, memory, sound: false, samples: false, count_at: nil)
+            # count, and nil for any other. +six_buttons+ for a game that reads X or Y (#emit_pad_now).
+            def emit(asm, memory, sound: false, samples: false, count_at: nil, six_buttons: false)
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_interrupt(asm, at, samples, counting: !count_at.nil?, strikes: Strikes.strikes?(memory))
               emit_wait(asm, at, sound, memory.reserved?(LAST_PASS), strikes: Strikes.strikes?(memory))
               emit_show_pass(asm, at, count_at && asm.disp(5, Memory.displacement(count_at)), strikes: Strikes.strikes?(memory))
-              emit_buttons(asm, memory, at)
+              emit_buttons(asm, memory, at, six_buttons)
               emit_stopping(asm, at)
             end
 
@@ -427,13 +433,15 @@ module VBlank
             # The second pad is read the same way through the next port along ($A10005), in a game that
             # reads it (#reads_second_pad?). A port with nothing plugged in reads every line high, so no
             # button of it is down.
-            def emit_buttons(asm, memory, at)
+            def emit_buttons(asm, memory, at, six_buttons = false)
               h = Console::GenesisHardware
               second = second_pad?(memory)
               # rt_buttons_now: D0 = the first pad's buttons held now, a bit each in IR::Buttons's order;
               # rt_second_buttons_now the second's.
-              emit_pad_now(asm, "rt_buttons_now", h::PAD1_DATA)
-              emit_pad_now(asm, "rt_second_buttons_now", h::PAD2_DATA) if second
+              emit_pad_now(asm, "rt_buttons_now", h::PAD1_DATA, six_buttons: six_buttons)
+              # In a Team Player game the second port's routine reads the tap's ID, and more turns of the select
+              # line would break the tap's handshake: the tap hands X and Y over itself.
+              emit_pad_now(asm, "rt_second_buttons_now", h::PAD2_DATA, six_buttons: six_buttons && !team_player?(memory)) if second
 
               # In the interrupt, every frame: the buttons held now, and every one that went down
               # since the frame before added to those pressed during the pass.
@@ -455,7 +463,7 @@ module VBlank
               emit_read_buttons(asm, memory, at)
               return unless team_player?(memory)
 
-              emit_team_player_read(asm, at)
+              emit_team_player_read(asm, at, six_buttons)
               emit_tap_held_from_power_on(asm, at)
             end
 
@@ -483,7 +491,7 @@ module VBlank
             #
             # rt_tap_read: TAP_BUTTONS holds the second to fifth players' buttons, a bit each in
             # IR::Buttons's order. D0 to D3 are used.
-            def emit_team_player_read(asm, at)
+            def emit_team_player_read(asm, at, six_buttons = false)
               h = Console::GenesisHardware
               asm.label("rt_tap_read")
               asm.jsr(asm.abs_l("rt_second_buttons_now"))
@@ -541,12 +549,14 @@ module VBlank
               asm.or(:w, asm.d(0), asm.d(7))
               asm.tst(:b, asm.d(6))
               asm.branch(:eq, "rt_tap_read_three")
-              emit_tap_nibble(asm, "rt_tap_read_six") # mode, X, Y and Z, which a game cannot ask for yet
+              emit_tap_nibble(asm, "rt_tap_read_six") # mode, X, Y and Z, of which a game can ask for X and Y
+              asm.move(:b, asm.d(0), asm.d(1)) if six_buttons
               asm.label("rt_tap_read_three")
               asm.not(:b, asm.d(7))
               # D7's high byte is nought already: both nibbles came in as words of four bits.
               asm.add(:w, asm.d(7), asm.d(7))
               asm.move(:w, asm.idx(1, 0, 7, :w), asm.post(0))
+              emit_tap_x_and_y(asm) if six_buttons
               asm.dbra(asm.d(5), "rt_tap_read_plug")
               asm.bra("rt_tap_read_rest")
               asm.label("rt_tap_read_empty")
@@ -567,6 +577,23 @@ module VBlank
               # bit 1 where a button is down, to the buttons in IR::Buttons's order.
               asm.label("rt_tap_buttons_table")
               asm.data_words(Array.new(256) { |byte| tap_buttons(byte) })
+            end
+
+            # A six-button plug's third nibble, kept in D1 as it came (mode, X, Y and Z from the top, 0 where down):
+            # its X and Y added to the word just stored for the plug (A0 is past it). A three-button plug (D6 holds
+            # its kind, nought for three) has none.
+            def emit_tap_x_and_y(asm)
+              asm.tst(:b, asm.d(6))
+              asm.branch(:eq, "rt_tap_read_no_extra")
+              asm.not(:b, asm.d(1))
+              asm.btst(2, asm.d(1))
+              asm.branch(:eq, "rt_tap_read_no_x")
+              asm.or(:w, asm.imm(BUTTON_BITS.fetch(:x)), asm.disp(0, -2))
+              asm.label("rt_tap_read_no_x")
+              asm.btst(1, asm.d(1))
+              asm.branch(:eq, "rt_tap_read_no_extra")
+              asm.or(:w, asm.imm(BUTTON_BITS.fetch(:y)), asm.disp(0, -2))
+              asm.label("rt_tap_read_no_extra")
             end
 
             # One nibble of the Team Player, written in place, its labels named from +label+: TR set to
@@ -624,8 +651,14 @@ module VBlank
               end
             end
 
-            # +label+: D0 = the buttons held now on the pad whose data port is +data+. D1 and D2 are used.
-            def emit_pad_now(asm, label, data)
+            # +label+: D0 = the buttons held now on the pad whose data port is +data+. D1 to D3 are used.
+            #
+            # With +six_buttons+, the select line is turned over twice more after the two reads (a six-button pad
+            # counts its rising turns): the next low half answers 0000 where a three-button pad does not, which
+            # says it has six buttons, and the next high half hands over mode, X, Y and Z (plutiedev,
+            # "Controllers"). A pad that does not answer so has no X or Y. The port is left as the reads leave it
+            # without them, select low.
+            def emit_pad_now(asm, label, data, six_buttons: false)
               h = Console::GenesisHardware
               asm.label(label)
               asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(data))
@@ -634,6 +667,7 @@ module VBlank
               asm.move(:b, asm.imm(0), asm.abs_l(data))
               2.times { asm.nop }
               asm.move(:b, asm.abs_l(data), asm.d(2))
+              emit_pad_extra_reads(asm, h, data) if six_buttons
               asm.not(:b, asm.d(1))
               asm.not(:b, asm.d(2))
               asm.moveq(0, asm.d(0))
@@ -642,7 +676,40 @@ module VBlank
                 asm.branch_over(:eq, 4)
                 asm.or(:w, asm.imm(BUTTON_BITS.fetch(name)), asm.d(0))
               end
+              emit_pad_x_and_y(asm, label) if six_buttons
               asm.rts
+            end
+
+            # The two more turns of the select line a six-button pad is read with, into D3: the low half's byte
+            # above and the high half's below.
+            def emit_pad_extra_reads(asm, h, data)
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(data))
+              2.times { asm.nop }
+              asm.move(:b, asm.imm(0), asm.abs_l(data))
+              2.times { asm.nop }
+              asm.move(:b, asm.abs_l(data), asm.d(3))
+              asm.lsl(:w, 8, asm.d(3))
+              asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(data))
+              2.times { asm.nop }
+              asm.move(:b, asm.abs_l(data), asm.d(3))
+              asm.move(:b, asm.imm(0), asm.abs_l(data))
+            end
+
+            # X and Y added to D0 from D3, where the low half's byte is on top: a six-button pad answers 0000 in
+            # the low nibble of that byte (all four high once turned over), and any other leaves them out.
+            def emit_pad_x_and_y(asm, label)
+              asm.not(:w, asm.d(3))
+              asm.move(:w, asm.d(3), asm.d(2))
+              asm.and(:w, asm.imm(0x0F00), asm.d(2))
+              asm.cmp(:w, asm.imm(0x0F00), asm.d(2))
+              asm.branch(:ne, "#{label}_no_extra")
+              asm.btst(2, asm.d(3))
+              asm.branch_over(:eq, 4)
+              asm.or(:w, asm.imm(BUTTON_BITS.fetch(:x)), asm.d(0))
+              asm.btst(1, asm.d(3))
+              asm.branch_over(:eq, 4)
+              asm.or(:w, asm.imm(BUTTON_BITS.fetch(:y)), asm.d(0))
+              asm.label("#{label}_no_extra")
             end
 
             # D0, the buttons held now on a pad, kept in +held+ and +seen+, and those that were not

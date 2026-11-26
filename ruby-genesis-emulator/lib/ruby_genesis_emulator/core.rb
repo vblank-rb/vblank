@@ -63,6 +63,10 @@ module RubyGenesisEmulator
     RGB565 = 2
 
     JOYPAD = 1
+    # The core's "MD Joypad 3 Button" and "MD Joypad 6 Button": RETRO_DEVICE_MDPAD_3B and RETRO_DEVICE_MDPAD_6B,
+    # subclasses 0 and 1 of the joypad in the core's libretro/libretro.c.
+    MD_PAD_THREE_BUTTONS = 0x101
+    MD_PAD_SIX_BUTTONS = 0x201
     # The core's "MD Joypad 3 Button + Teamplayer": Sega's Team Player with a three-button pad in
     # each of its four plugs (RETRO_DEVICE_SUBCLASS of the joypad, in the core's libretro/libretro.c).
     TEAM_PLAYER = 0x601
@@ -121,6 +125,14 @@ module RubyGenesisEmulator
     # +six_buttons+ fills its plugs with six-button pads, which hand over a nibble more each.
     def plug_in_team_player(six_buttons: false)
       @frontend.set_controller_port_device(1, six_buttons ? TEAM_PLAYER_OF_SIX_BUTTON_PADS : TEAM_PLAYER)
+      self
+    end
+
+    # A pad of three buttons or of six in the port +port+ (0 for the first), in place of the one the core picks
+    # for itself, which is a six-button pad when the cartridge's header names one (Genesis Plus GX,
+    # core/input_hw/input.c). The cartridge reads a pad's X, Y, Z and Mode only from a six-button one.
+    def plug_in_pad(six_buttons:, port: 0)
+      @frontend.set_controller_port_device(port, six_buttons ? MD_PAD_SIX_BUTTONS : MD_PAD_THREE_BUTTONS)
       self
     end
 

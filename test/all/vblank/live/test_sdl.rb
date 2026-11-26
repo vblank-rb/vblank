@@ -467,7 +467,7 @@ class TestSDL < Minitest::Test
       press_key(SDL::MENU)
       window.show(Array.new(240 * 160, 0), 240, 160)
       %i[right right right].each { |key| press_key(SDL::MENU_KEYS.key(key)) }
-      8.times { press_key(SDL::MENU_KEYS.key(:down)) }
+      10.times { press_key(SDL::MENU_KEYS.key(:down)) }
       press_key(SDL::MENU_KEYS.key(:enter))
       window.show(Array.new(240 * 160, 0), 240, 160)
       press_key(7) # D
