@@ -130,12 +130,16 @@ module VBlank
             FROM_THIS_PASS = 1
             UNTIL_NOW_OWED = 2
             OFFSET = "rt strikes offset"
+            # ...and the first tick's, kept while a pass that starts effects strikes them at the
+            # frame's start (Music#emit_effect_pass).
+            TICK_OFFSET = "rt strikes tick offset"
 
             module_function
 
             def reserve(memory)
               memory.reserve(FROM_SENT, 2)
               memory.reserve(OFFSET, 2)
+              memory.reserve(TICK_OFFSET, 2)
             end
 
             # How many counts of the sound unit's timer a frame of the console lasts, exactly.
@@ -679,6 +683,17 @@ module VBlank
               asm.and_a(0xFF00)
               asm.clc
               asm.adc(asm.abs(memory[OFFSET]))
+              asm.sta(asm.abs(memory[OFFSET]))
+            end
+
+            # The first tick's OFFSET kept in TICK_OFFSET, and taken back from it, inline.
+            def emit_tick_offset_kept(asm, memory)
+              asm.lda(asm.abs(memory[OFFSET]))
+              asm.sta(asm.abs(memory[TICK_OFFSET]))
+            end
+
+            def emit_tick_offset_taken(asm, memory)
+              asm.lda(asm.abs(memory[TICK_OFFSET]))
               asm.sta(asm.abs(memory[OFFSET]))
             end
 

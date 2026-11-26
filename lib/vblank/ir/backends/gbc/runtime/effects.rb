@@ -161,7 +161,8 @@ module VBlank
             # first when its group cut it off; asked for, it starts from its first note, and a run
             # of the cartridge reads it starting at rt_sfx_started_N; past its last frame it lets its
             # voices go; and sounding, each part plays its note whose frame this is, on the voice its
-            # rank lets it take.
+            # rank lets it take. With the effects on a timer, one asked for is started by a pass of its
+            # own, at once (Music::EFFECTS_STARTING), which plays nothing else.
             def emit_frame(asm, memory, effect, bytes)
               n = effect.number
               at = memory[effect_state_place(effect)]
@@ -187,6 +188,11 @@ module VBlank
               asm.label("rt_sfx_started_#{n}")
               asm.jump("rt_sfx_#{n}_play")
               asm.label("rt_sfx_#{n}_sounding")
+              if memory.reserved?(Music::EFFECTS_STARTING) # a pass that starts what was asked for plays nothing else
+                asm.load(:a, [memory[Music::EFFECTS_STARTING]])
+                asm.and_a(:a)
+                asm.ret(:nz)
+              end
               asm.load(:a, [at + RUNNING])
               asm.and_a(:a)
               asm.ret(:z)

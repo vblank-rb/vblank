@@ -445,6 +445,12 @@ module VBlank
               asm.bne("rt_sfx_above_live")
               asm.rts # nothing live: nothing here or in rt_sfx_below has a thing to do
               asm.label("rt_sfx_above_live")
+              # Taken up once a frame: with the effects on a timer rt_sfx_above is called again for the
+              # tick (Music#emit_effect_pass), after the effects below the tune still have theirs to start.
+              if memory.reserved?(Music::EFFECTS_STARTING)
+                asm.lda(asm.abs(memory[Music::EFFECTS_STARTING]))
+                asm.branch_long(:beq, "rt_sfx_asked_live_done")
+              end
               emit_live_walk(asm, at, memory, "rt_sfx_asked") do
                 asm.lda(asm.abs_y(memory[STATES], ASKED))
                 asm.sta(asm.abs_y(memory[STATES], ASKED_NOW))
@@ -502,7 +508,9 @@ module VBlank
             # rt_sfx_frame: one frame of the effect selected (Reference::Player#play_effect_frame).
             # Cut off, it stops first; asked for, it starts from its first note; at its end, it lets
             # go of its voices; sounding, each part plays its note whose frame has come, on the voice
-            # its rank lets it take.
+            # its rank lets it take. With the effects on a timer, one asked for is started by a pass of
+            # its own, at once (Music::EFFECTS_STARTING), which plays nothing else, and moves on from
+            # its first frame on the tick's pass.
             def emit_frame(asm, at, memory, level_at, recorded)
               m = SNES::Music
               state = ->(field) { asm.abs_y(memory[STATES], field) }
@@ -512,6 +520,7 @@ module VBlank
               asm.jsr(asm.abs("rt_sfx_frame_played"))
               asm.stz(at.call(Sound::ASKING_AHEAD))
               asm.rts
+              timed = memory.reserved?(Music::EFFECTS_STARTING)
               asm.label("rt_sfx_frame_played")
               asm.lda(state.call(STOPPING))
               asm.beq("rt_sfx_frame_not_cut")
@@ -522,6 +531,10 @@ module VBlank
               asm.label("rt_sfx_frame_not_cut")
               asm.lda(state.call(ASKED_NOW))
               asm.beq("rt_sfx_frame_not_asked")
+              if timed
+                asm.lda(0) # started: the tick's pass after this one moves it on, from its first frame
+                asm.sta(state.call(ASKED_NOW))
+              end
               asm.lda(1)
               asm.sta(state.call(RUNNING))
               asm.lda(0)
@@ -533,6 +546,12 @@ module VBlank
               asm.jsr(asm.abs("rt_sound_group"))
               asm.bra("rt_sfx_frame_sounding")
               asm.label("rt_sfx_frame_not_asked")
+              if timed # a pass that starts what was asked for plays nothing else
+                asm.lda(asm.abs(memory[Music::EFFECTS_STARTING]))
+                asm.beq("rt_sfx_frame_ticked")
+                asm.rts
+                asm.label("rt_sfx_frame_ticked")
+              end
               asm.lda(state.call(RUNNING))
               asm.beq("rt_sfx_frame_sounding")
               asm.ldx(at.call(RECORD))

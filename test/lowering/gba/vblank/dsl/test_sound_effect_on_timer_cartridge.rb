@@ -16,8 +16,8 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
   VOLUMES = [15, 13, 11, 9, 7].freeze
 
   # Five strikes three and two ticks apart, each at a volume of its own so the voice says which it
-  # is on: at 50 ticks a second by default.
-  private def program(tempo: 125, ticks_per_beat: 24)
+  # is on: at 50 ticks a second by default, asked for on the pass counted +asked_on+.
+  private def program(tempo: 125, ticks_per_beat: 24, asked_on: 7)
     notes = VOLUMES.zip([0, 3, 5, 8, 10]).map { |volume, at| Note.new(at: at, key: :A5, volume: volume) }
     effect = Score.new(tempo: tempo, ticks_per_beat: ticks_per_beat, length: 20, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: notes)])
@@ -30,7 +30,7 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
       list = sound_effects :sfx, { chime: effect }
       count = var(:count, 0)
       game_loop do
-        list.play :chime if count == 7
+        list.play :chime if count == asked_on
         count.store! count + 1
         wait_vblank
       end
@@ -51,7 +51,7 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
         (probe.read32(VOICE) & 0xFFFF) >> 12
       end
       probe.close
-      volumes.drop_while(&:zero?)
+      volumes
     end
   end
 
@@ -66,12 +66,12 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
       logged = run.audio.size
     end
     run.run(game, frames: FRAMES)
-    volumes.drop_while(&:zero?)
+    volumes
   end
 
   # Where the voice's volume changes to a note's, as [frames since the last change, the volume].
   private def changes(volumes)
-    volumes.each_with_index.chunk_while { |(a, _), (b, _)| a == b }.map { |run| [run.first.last, run.first.first] }
+    volumes.drop_while(&:zero?).each_with_index.chunk_while { |(a, _), (b, _)| a == b }.map { |run| [run.first.last, run.first.first] }
            .each_cons(2).map { |(was, _), (now, volume)| [now - was, volume] }.select { |_, volume| volume.positive? }
   end
 
@@ -81,6 +81,21 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
     assert_equal 4, heard.size
     assert_equal heard, changes(cartridge_volumes(game))
+  end
+
+  # At 50 ticks a second every sixth frame holds no tick, and the pass counted 5 is taken up on one:
+  # the effect starts there at once, a frame before the timer's next tick, as on the interpreter. The
+  # voice is read a frame later on the cartridge than in the interpreter's log, as the pass counted 7
+  # shows, whose frame holds a tick.
+  def test_an_effect_asked_for_on_a_frame_without_a_tick_starts_there
+    game = program(asked_on: 5)
+    expected = interpreter_volumes(game)
+    got = cartridge_volumes(game)
+    lag = cartridge_volumes(program).index(&:positive?) - interpreter_volumes(program).index(&:positive?)
+
+    assert_equal 4, changes(expected).size
+    assert_equal expected.index(&:positive?) + lag, got.index(&:positive?), "the frame the first note sounds on"
+    assert_equal changes(expected), changes(got)
   end
 
   # At 240 ticks a second a frame holds four or five ticks, and two notes can fall in one: the voice

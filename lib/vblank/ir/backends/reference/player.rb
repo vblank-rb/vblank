@@ -187,21 +187,21 @@ module VBlank
           # its voice to one due on the same frame is never written at all, rather than written
           # and then covered — whoever writes a voice first on a frame is whoever keeps it.
           #
-          # In a game whose sound effects are on a timer (IR::Tunes.effect_clock_step), they play only
-          # on the timer's ticks, each tick as far as one tick: on a frame with none they do nothing,
-          # and an effect asked for waits for the tick, as one of its group to be cut off does. A
+          # In a game whose sound effects are on a timer (IR::Tunes.effect_clock_step), an effect asked
+          # for starts at once, on the frame it is taken up, as a sound driver strikes an effect's
+          # first note the moment it is told; from there it moves on only on the timer's ticks, each
+          # tick as far as one tick, the frame's own ticks included (#play_effects_first_pass). A
           # frame with several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
           def advance(level: nil)
             switch_to_wanted_song
             ticks = step_effect_clock
             asked = @asked.uniq
             @asked.clear
-            @asked.concat(asked) if ticks.zero?
             tune = @playing ? IR::Tunes.song_rank(@songs[@playing]) : -1
             above, below = ranked_effects.partition { |_, rank| rank > tune }
-            above.each { |name, rank| play_effect_frame(name, rank, asked) } if ticks.positive?
+            play_effects_first_pass(above, asked, ticks)
             play_song_frame(level) if @playing
-            below.each { |name, rank| play_effect_frame(name, rank, asked) } if ticks.positive?
+            play_effects_first_pass(below, asked, ticks)
             (ticks - 1).times { (above + below).each { |name, rank| play_effect_frame(name, rank, []) } }
             step_swells
             step_wobbles
@@ -210,6 +210,17 @@ module VBlank
           end
 
           private
+
+          # One side of the tune in the frame's first pass over the effects. Counted in frames, each
+          # effect plays its frame, what was asked for starting. On a timer, what was asked for starts
+          # at once, with what it cuts off of its group, and then, on a frame with a tick, every effect
+          # moves on that tick, one that has just started included.
+          def play_effects_first_pass(side, asked, ticks)
+            return side.each { |name, rank| play_effect_frame(name, rank, asked) } unless @effect_clock_step
+
+            side.each { |name, rank| play_effect_frame(name, rank, asked) if asked.include?(name) || @stopping.include?(name) }
+            side.each { |name, rank| play_effect_frame(name, rank, []) } if ticks.positive?
+          end
 
           # The sound effects' timer moved on a frame: how many ticks the frame has, one on every frame
           # in a game whose effects count frames.

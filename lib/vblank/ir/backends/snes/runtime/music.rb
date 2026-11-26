@@ -25,9 +25,11 @@ module VBlank
           # end.
           module Music
             # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
-            # its count, a word from power-on, and whether the frame playing now has a tick.
+            # its count, a word from power-on, and whether the frame playing now has a tick; and while a
+            # pass over the effects starts what was asked for, at once, and plays nothing else, not nought.
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
+            EFFECTS_STARTING = "rt sfx starting"
             NAMED = "rt music named" # The tune the game named last (SNES::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -116,7 +118,7 @@ module VBlank
             # +effects+ how many sound effects the game has (Effects).
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
                         slides: false, sides: false, effect_clock_step: nil)
-              [EFFECT_CLOCK, EFFECT_TICKED].each { |name| memory.reserve(name, 2) } if effect_clock_step
+              [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 2) } if effect_clock_step
               memory.reserve(TUNE_HELD, 2) if holds
               memory.reserve(LOUDNESS_LIST, 2) if sides
               memory.reserve(SLIDE_CURSOR, 2) if slides
@@ -777,20 +779,22 @@ module VBlank
             # (Effects).
             #
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
-            # step), and on a frame with no tick neither pass over the effects is made.
+            # step), and each side of the tune is two passes over the effects (#emit_effect_pass): what
+            # was asked for starts, and then, on a frame with a tick, every effect moves on that tick.
             def emit_frames(asm, at, sharing, memory, clock_step = nil)
               strikes = clock_step && memory.reserved?(Strikes::FROM_SENT)
               asm.label("rt_music_frame")
               asm.jsr(asm.abs("rt_music_switch"))
               asm.jsl(asm.long("rt_strikes_mark")) if strikes
               Strikes.emit_first_offset(asm, memory, EFFECT_CLOCK, clock_step) if strikes
+              Strikes.emit_tick_offset_kept(asm, memory) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
-              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
+              emit_effect_pass(asm, at, memory, "rt_sfx_above", clock_step, strikes: strikes) if sharing
               asm.lda(at.call(PLAYING))
               asm.beq("rt_music_frame_played")
               asm.jsr(asm.abs("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
+              emit_effect_pass(asm, at, memory, "rt_sfx_below", clock_step, strikes: strikes) if sharing
               emit_later_ticks(asm, at, memory, clock_step, strikes) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
               asm.jsr(asm.abs("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs("rt_music_slides")) if slides?(memory)
@@ -813,17 +817,29 @@ module VBlank
               asm.sta(at.call(EFFECT_TICKED))
             end
 
-            # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one. With +strikes+ the pass's notes are
-            # struck inside the frame (Strikes), and UNTIL_NOW follows what it sent.
-            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
+            # A call of one of the passes over the effects, +routine+, inline. When they are on a timer it
+            # is two: one that starts what was asked for at once, as a sound driver strikes an effect's
+            # first note the moment it is told (EFFECTS_STARTING, Effects#emit_frame), and then, past it on
+            # a frame the effects' timer has no tick, one that moves every effect on the tick. With
+            # +strikes+ the pass's notes are struck inside the frame (Strikes), the starting pass's at
+            # the frame's start, and UNTIL_NOW follows what each sent. The sound unit does its list in the
+            # order it was told, so the starting pass below the tune, told after the tick's pass above it,
+            # is struck at that tick where the pass above sent something for it.
+            def emit_effect_pass(asm, at, memory, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jsr(asm.abs(routine))
                 return
               end
 
+              asm.lda(1)
+              asm.sta(at.call(EFFECTS_STARTING))
+              asm.stz(asm.abs(memory[Strikes::OFFSET])) if strikes
+              asm.jsr(asm.abs(routine))
+              asm.jsl(asm.long("rt_strikes_close")) if strikes
+              asm.stz(at.call(EFFECTS_STARTING))
               asm.lda(at.call(EFFECT_TICKED))
               asm.beq("#{routine}_untimed")
+              Strikes.emit_tick_offset_taken(asm, memory) if strikes
               asm.jsr(asm.abs(routine))
               asm.jsl(asm.long("rt_strikes_close")) if strikes
               asm.label("#{routine}_untimed")

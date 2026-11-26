@@ -20,7 +20,7 @@ class TestEffectOnTimerThisFrameGuardrail < Minitest::Test
 
     assert_equal 1, findings.length
     assert findings.first.error?
-    assert_match(/next tick of the timer/, findings.first.message)
+    assert_match(/next frame's sound/, findings.first.message)
   end
 
   def test_an_effect_on_a_timer_started_at_its_tick_is_quiet

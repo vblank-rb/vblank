@@ -415,9 +415,11 @@ module VBlank
       # their rate, running from power-on, as a cartridge's own sound engine counts them on a timer
       # of its sound chip's. Every player keeps the timer the same way, once a frame from the first,
       # as the frame's sound effects are about to play: it adds this step to a count of 16 bits, and
-      # the frame has a tick each time the count goes past the top and comes round. On a frame with
-      # no tick the sound effects do nothing at all, and what was asked for waits; on one with a
-      # tick each plays one tick, as it plays a frame in a game with no timer.
+      # the frame has a tick each time the count goes past the top and comes round. An effect asked
+      # for starts at once, on the frame the player takes the ask up, as a sound driver strikes an
+      # effect's first note the moment it is told, whether or not the frame has a tick; on a frame
+      # with a tick every effect sounding then plays one tick, as it plays a frame in a game with no
+      # timer, one that has just started included (Reference::Player#play_effects_first_pass).
       #
       # The step is the part of a tick a frame is, in 65536ths, rounded down: the console's own
       # frame (Console::Description#frame_seconds), not a round sixty a second, since the timer

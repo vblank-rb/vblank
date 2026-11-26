@@ -141,10 +141,12 @@ module VBlank
 
             # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
             # its count, two bytes from power-on, and whether the frame playing now has a tick (not
-            # nought) or none. On a frame with none the effects are not played at all, and what was
-            # asked for waits for the tick.
+            # nought) or none; and while a pass over the effects starts what was asked for, at once, and
+            # plays nothing else, not nought. Each side of the tune is two such passes (#emit_tick): what
+            # was asked for starts, and then, on a frame with a tick, every effect moves on that tick.
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
+            EFFECTS_STARTING = "rt sfx starting"
 
             def reserve(memory, effects: [], slides: false, pans: false, wobbles: false, shapes: false, waves: false, swells: false,
                         noise_swells: false, banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
@@ -152,6 +154,7 @@ module VBlank
               if effect_clock_step
                 memory.reserve(EFFECT_CLOCK, 2)
                 memory.reserve(EFFECT_TICKED, 1)
+                memory.reserve(EFFECTS_STARTING, 1)
               end
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
@@ -808,6 +811,22 @@ module VBlank
               asm.and_a(:a)
             end
 
+            # One side of the tune's effects played to start what was asked for, at once, as a sound
+            # driver strikes an effect's first note the moment it is told (EFFECTS_STARTING,
+            # Effects#emit_frame). Struck inside the frame, its writes are due at the frame's start, so
+            # a frame caught up on strikes them a frame after the one before's, as it does its ticks. The
+            # list is written in the order it was made, so the side below the tune, listed after the tick's
+            # pass above it, is struck at that tick where the pass above listed something for it.
+            def emit_starting_side(asm, memory, side)
+              asm.call("rt_strikes_frame_start") if Strikes.any?(memory)
+              asm.load(:a, 1)
+              asm.load([memory[EFFECTS_STARTING]], :a)
+              asm.call(sfx_side(memory, side))
+              asm.xor_a(:a)
+              asm.load([memory[EFFECTS_STARTING]], :a)
+              asm.call("rt_strikes_this_tick") if Strikes.any?(memory)
+            end
+
             # Each later tick of a frame the effects' timer ticks more than once on, after the first's
             # rt_sfx_below: both passes again (IR::Tunes, "Several ticks in one frame").
             def emit_later_ticks(asm, memory)
@@ -864,8 +883,12 @@ module VBlank
                 if clock_step
                   asm.call("rt_strikes_frame") if Strikes.any?(memory)
                   emit_step_effect_clock(asm, memory, clock_step)
+                  emit_starting_side(asm, memory, "above")
+                  asm.load(:a, [memory[EFFECT_TICKED]])
+                  asm.and_a(:a)
                   asm.call(:nz, sfx_side(memory, "above"))
                   asm.call("rt_music_song_frame")
+                  emit_starting_side(asm, memory, "below")
                   asm.load(:a, [memory[EFFECT_TICKED]])
                   asm.and_a(:a)
                   asm.ret(:z)

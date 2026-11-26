@@ -759,6 +759,8 @@ module VBlank
             # rt_strikes_frame (+clock+'s count, before it moves on): BASE, the frame's first line; and
             # the first tick's line, as the count's 65536ths still to go to it (its complement) times
             # a tick's lines. rt_strikes_next_tick: the next tick's, a tick's lines on. Both set DUE.
+            # rt_strikes_frame_start: DUE the frame's start, for a pass that starts the effects asked for
+            # (Music#emit_starting_side); rt_strikes_this_tick: DUE the tick playing's line again.
             def emit_frame(asm, memory, step)
               clock = memory[Music::EFFECT_CLOCK]
               lines, fraction_bits = tick_lines(step)
@@ -806,6 +808,20 @@ module VBlank
               asm.load(:b, :a)
               asm.load(:de, lines)
               asm.call("rt_strikes_multiply")
+              asm.jump_relative("rt_strikes_tick_at")
+
+              asm.label("rt_strikes_frame_start")
+              asm.load(:a, [base])
+              asm.load([memory[DUE]], :a)
+              asm.load(:a, [base + 1])
+              asm.load([memory[DUE] + 1], :a)
+              asm.ret
+
+              asm.label("rt_strikes_this_tick")
+              asm.load(:a, [accum])
+              asm.load(:l, :a)
+              asm.load(:a, [accum + 1])
+              asm.load(:h, :a)
               asm.jump_relative("rt_strikes_tick_at")
 
               asm.label("rt_strikes_next_tick")

@@ -34,9 +34,11 @@ module VBlank
           # but in s0 to s2, which a routine that uses them keeps on the stack.
           module Music
             # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
-            # its count, 16 bits from power-on, and whether the frame playing now has a tick (1) or none.
+            # its count, 16 bits from power-on, and whether the frame playing now has a tick (1) or none;
+            # and while a pass over the effects starts what was asked for, at once, and plays nothing else, 1.
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
+            EFFECTS_STARTING = "rt sfx starting"
             NAMED = "rt music named" # The tune the game named last (PS1::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -136,7 +138,7 @@ module VBlank
             # +holds+ for one that holds its tune; and what its notes do as they play.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
                         slides: false, effect_clock_step: nil)
-              [EFFECT_CLOCK, EFFECT_TICKED].each { |name| memory.reserve(name, 4) } if effect_clock_step
+              [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 4) } if effect_clock_step
               memory.reserve(TUNE_HELD, 4) if holds
               memory.reserve(SLIDE_CURSOR, 4) if slides
               memory.reserve(WOBBLES, CONSOLE_PARTS * VOICE_BYTES) if wobbles
@@ -672,7 +674,8 @@ module VBlank
             #
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
             # step): the step added to its count, whose 17th bit is then the frame's tick, and the count
-            # kept to 16 bits. On a frame with no tick neither pass over the effects is made.
+            # kept to 16 bits. Each side of the tune is two passes over the effects (#emit_effect_pass): what
+            # was asked for starts, and then, on a frame with a tick, every effect moves on that tick.
             def emit_frame(asm, at, sharing, memory, clock_step = nil)
               asm.label("rt_music_frame")
               enter(asm)
@@ -728,15 +731,25 @@ module VBlank
               asm.sw(:t1, at.call(EFFECT_TICKED), :gp)
             end
 
-            # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one. With +strikes+ its keys are struck at its
-            # tick's own line (Strikes).
+            # A call of one of the passes over the effects, +routine+, inline. When they are on a timer it is
+            # two: one that starts what was asked for at once, as a sound driver strikes an effect's first
+            # note the moment it is told (EFFECTS_STARTING, #emit_sfx_frame), and then, past it on a frame
+            # the effects' timer has no tick, one that moves every effect on the tick. With +strikes+ the
+            # first's keys are struck at the frame's start and the second's at its tick's own line (Strikes).
+            # The list is struck in the order it was made, so the starting pass below the tune, listed after
+            # the tick's pass above it, is struck at that tick where the pass above listed something for it.
             def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jal(routine)
                 return
               end
 
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(EFFECTS_STARTING), :gp)
+              Strikes.emit_striking_from_frame_start(asm, at) if strikes
+              asm.jal(routine)
+              Strikes.emit_striking_off(asm, at) if strikes
+              asm.sw(:zero, at.call(EFFECTS_STARTING), :gp)
               asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
               asm.beq(:t0, :zero, "#{routine}_untimed")
               Strikes.emit_striking_on(asm, at, clock_step) if strikes
@@ -1271,7 +1284,7 @@ module VBlank
             def emit_effects(asm, at, count, level_at, memory)
               emit_effect_holds(asm, at)
               emit_sfx_game_side(asm, at, count)
-              emit_sfx_passes(asm, at, count)
+              emit_sfx_passes(asm, at, count, memory)
               emit_sfx_frame(asm, at, level_at, memory)
               emit_sfx_finish(asm, at, memory)
               emit_claim(asm, at)
@@ -1390,15 +1403,22 @@ module VBlank
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
             # since the last frame. rt_sfx_select_ranked: the effect at place WALK of the rank order, selected,
             # its number in v0.
-            def emit_sfx_passes(asm, at, count)
+            def emit_sfx_passes(asm, at, count, memory)
               m = PS1::Music
               asm.label("rt_sfx_above")
+              # Taken up once a frame: with the effects on a timer rt_sfx_above is called again for the
+              # tick (#emit_effect_pass), after the effects below the tune still have theirs to start.
+              if memory.reserved?(EFFECTS_STARTING)
+                asm.lw(:t0, at.call(EFFECTS_STARTING), :gp)
+                asm.beq(:t0, :zero, "rt_sfx_asked_taken")
+              end
               count.times do |effect|
                 place = at.call(STATES) + (effect * STATE_BYTES)
                 asm.lw(:t0, place + ASKED, :gp)
                 asm.sw(:t0, place + ASKED_NOW, :gp)
                 asm.sw(:zero, place + ASKED, :gp)
               end
+              asm.label("rt_sfx_asked_taken") if memory.reserved?(EFFECTS_STARTING)
               asm.sw(:zero, at.call(TUNE_RANK), :gp)
               asm.lw(:t0, at.call(PLAYING), :gp)
               asm.beq(:t0, :zero, "rt_sfx_above_tune")
@@ -1448,8 +1468,11 @@ module VBlank
             # rt_sfx_frame: one frame of the effect selected (Reference::Player#play_effect_frame). Cut off, it
             # stops first; asked for, it starts from its first note; at its end, it lets go of its voices;
             # sounding, each part plays its note whose frame has come, on the voice its rank lets it take.
+            # With the effects on a timer, one asked for is started by a pass of its own, at once
+            # (EFFECTS_STARTING), which plays nothing else, and moves on from its first frame on the tick's pass.
             def emit_sfx_frame(asm, at, level_at, memory)
               m = PS1::Music
+              timed = memory.reserved?(EFFECTS_STARTING)
               asm.label("rt_sfx_frame")
               enter(asm)
               asm.lw(:t1, at.call(STATE), :gp)
@@ -1461,6 +1484,7 @@ module VBlank
               asm.lw(:t1, at.call(STATE), :gp)
               asm.lw(:t0, ASKED_NOW, :t1)
               asm.beq(:t0, :zero, "rt_sfx_frame_not_asked")
+              asm.sw(:zero, ASKED_NOW, :t1) if timed # started: the tick's pass moves it on from its first frame
               asm.li(:t0, 1)
               asm.sw(:t0, RUNNING, :t1)
               asm.sw(:zero, SFX_FRAME, :t1)
@@ -1468,6 +1492,10 @@ module VBlank
               emit_group_at(asm, at, RECORD, m::EFFECT_START_LOG)
               asm.b("rt_sfx_frame_sounding")
               asm.label("rt_sfx_frame_not_asked")
+              if timed # a pass that starts what was asked for plays nothing else
+                asm.lw(:t0, at.call(EFFECTS_STARTING), :gp)
+                asm.bne(:t0, :zero, "rt_sfx_frame_end")
+              end
               asm.lw(:t0, RUNNING, :t1)
               asm.beq(:t0, :zero, "rt_sfx_frame_sounding")
               emit_field(asm, at, :t2, RECORD, m::EFFECT_LENGTH)

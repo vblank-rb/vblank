@@ -357,6 +357,16 @@ module VBlank
             # ...and played, inline: STRIKING off.
             def emit_striking_off(asm, at) = asm.sw(:zero, at.call(STRIKING), :gp)
 
+            # A pass that starts the effects asked for is about to play, inline: DUE the frame's start,
+            # BASE, and STRIKING on, so a frame caught up on strikes it a frame after the one before's.
+            def emit_striking_from_frame_start(asm, at)
+              asm.lw(:t0, at.call(BASE), :gp)
+              asm.andi(:t0, :t0, 0xFFFF)
+              asm.sw(:t0, at.call(DUE), :gp)
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(STRIKING), :gp)
+            end
+
             # The next tick of the frame, inline: a whole count further to go.
             def emit_next_tick(asm, at)
               asm.lw(:t0, at.call(REMAINING), :gp)

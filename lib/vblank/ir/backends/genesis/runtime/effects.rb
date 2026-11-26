@@ -106,7 +106,7 @@ module VBlank
               at = ->(name, plus = 0) { asm.disp(5, memory.displacement(name) + plus) }
               emit_game_side(asm, at)
               emit_live_list(asm, at)
-              emit_passes(asm, at)
+              emit_passes(asm, at, memory)
               emit_frame(asm, at, memory, level_at, recorded)
               emit_finish(asm, at, memory, recorded)
               emit_recorded_parts(asm, at, glides: memory.reserved?(Recordings::GLIDES)) if recorded
@@ -355,7 +355,7 @@ module VBlank
             # rt_sfx_above and rt_sfx_below: a frame's effects that outrank the tune, played before its parts,
             # and the rest, after (Reference::Player#advance). rt_sfx_above takes up first what was asked for
             # since the last frame.
-            def emit_passes(asm, at)
+            def emit_passes(asm, at, memory)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
               asm.label("rt_sfx_above")
@@ -367,6 +367,12 @@ module VBlank
               asm.branch(:ne, "rt_sfx_above_live")
               asm.rts # nothing live: nothing here or in rt_sfx_below has a thing to do
               asm.label("rt_sfx_above_live")
+              # Taken up once a frame: with the effects on a timer rt_sfx_above is called again for the
+              # tick (Music#emit_effect_pass), after the effects below the tune still have theirs to start.
+              if memory.reserved?(Music::EFFECTS_STARTING)
+                asm.tst(:w, at.call(Music::EFFECTS_STARTING))
+                asm.branch(:eq, "rt_sfx_asked_live_done")
+              end
               emit_live_walk(asm, at, "rt_sfx_asked") do
                 asm.move(:w, state.call(ASKED), state.call(ASKED_NOW))
                 asm.clr(:w, state.call(ASKED))
@@ -421,9 +427,13 @@ module VBlank
             # rt_sfx_frame: one frame of the effect selected (Reference::Player#play_effect_frame). Cut off, it
             # stops first; asked for, it starts from its first note; at its end, it lets go of its voices;
             # sounding, each part plays its note whose frame has come, on the voice its rank lets it take.
+            # With the effects on a timer, one asked for is started by a pass of its own, at once
+            # (Music::EFFECTS_STARTING), which plays nothing else, and moves on from its first frame on the
+            # tick's pass.
             def emit_frame(asm, at, memory, level_at, recorded)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
+              timed = memory.reserved?(Music::EFFECTS_STARTING)
               asm.label("rt_sfx_frame")
               asm.movea(:l, at.call(STATE), asm.a(1))
               asm.tst(:w, state.call(STOPPING))
@@ -434,12 +444,19 @@ module VBlank
               asm.label("rt_sfx_frame_not_cut")
               asm.tst(:w, state.call(ASKED_NOW))
               asm.branch(:eq, "rt_sfx_frame_not_asked")
+              asm.clr(:w, state.call(ASKED_NOW)) if timed # started: the tick's pass moves it on from its first frame
               asm.move(:w, asm.imm(1), state.call(RUNNING))
               asm.clr(:w, state.call(FRAME))
               m::PARTS.times { |part| asm.clr(:w, state.call(CURSORS + (part * 2))) }
               Music.emit_group_at(asm, at.call(RECORD), m::EFFECT_START_LOG)
               asm.bra("rt_sfx_frame_sounding")
               asm.label("rt_sfx_frame_not_asked")
+              if timed # a pass that starts what was asked for plays nothing else
+                asm.tst(:w, at.call(Music::EFFECTS_STARTING))
+                asm.branch(:eq, "rt_sfx_frame_ticked")
+                asm.rts
+                asm.label("rt_sfx_frame_ticked")
+              end
               asm.tst(:w, state.call(RUNNING))
               asm.branch(:eq, "rt_sfx_frame_sounding")
               asm.movea(:l, at.call(RECORD), asm.a(0))

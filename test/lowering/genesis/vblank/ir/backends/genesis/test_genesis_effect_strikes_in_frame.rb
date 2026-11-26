@@ -102,12 +102,14 @@ class TestGenesisEffectStrikesInFrame < Minitest::Test
   private def assert_struck_apart(rate:, apart:, lasting:, notes: NOTES, lead_in: false, **)
     sound = heard(game(rate: rate, apart: apart, lasting: lasting, notes: notes, lead_in: lead_in, **))
     yield sound if block_given?
-    onsets = lead_in ? sound.onsets.drop(1) : sound.onsets
+    # The first note is struck as the effect starts, at the frame's start (Reference::Player#advance);
+    # the notes after it are struck on their ticks.
+    onsets = sound.onsets.drop(1)
     frame_seconds = VBlank::Console::GENESIS.frame_seconds
     off = onsets.each_with_index.map { |at, n| ((at - onsets.first) * frame_seconds) - Rational(n * apart, rate) }
     shown = off.map { |seconds| (seconds * 1000).to_f.round(2) }
 
-    assert_equal notes, onsets.size, "every note heard on its own: #{onsets.map { |at| at.to_f.round(3) }.inspect}"
+    assert_equal lead_in ? notes : notes - 1, onsets.size, "every note heard on its own: #{onsets.map { |at| at.to_f.round(3) }.inspect}"
     assert_operator off.max - off.min, :<=, NEAR_SPREAD_SECONDS,
                     "notes #{apart} ticks apart at #{rate} a second, milliseconds from their ticks against the first: #{shown.inspect}"
   end

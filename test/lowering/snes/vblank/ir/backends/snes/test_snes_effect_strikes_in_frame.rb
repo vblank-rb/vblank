@@ -43,7 +43,7 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   # on the first pass +played_on+ frames from power-on or later: counted in frames, not passes, since
   # the build with the tune sends a longer sound program and starts its passes later, and its notes
   # are compared with those of the build without at the same moments. With +filled+ the game keeps
-  # that many more variables, each set once before the loop.
+  # that many more variables, each set once before the loop. Without +on_timer+ the effect counts frames.
   private def game(**) = VBlank.build("STRIKES", console: :snes, out: nil, err: nil, &game_code(**))
 
   # ...as a program, for a checked run.
@@ -55,10 +55,10 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   end
 
   private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON,
-                          slow_once_on: nil, filled: 0)
+                          slow_once_on: nil, filled: 0, on_timer: true)
     slow_once_turns = slow_work if slow_once_on
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
-    effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: true,
+    effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: on_timer,
                        parts: [Part.new(notes: struck)])
     proc do
       enable_sound
@@ -126,7 +126,9 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     expected = apart * sound.pairs_a_second / rate
 
     assert_equal notes, sound.onsets.size, "every note heard on its own: #{sound.onsets.inspect}"
-    sound.onsets.each_cons(2) do |was, now|
+    # The first note is struck as the effect starts, at the frame's start (Reference::Player#advance);
+    # the notes after it are struck on their ticks.
+    sound.onsets.drop(1).each_cons(2) do |was, now|
       assert_in_delta expected, now - was, NEAR, "notes #{apart} ticks apart at #{rate} a second: #{sound.onsets.inspect}"
     end
   end
@@ -146,6 +148,21 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
 
   def test_a_game_that_fills_the_first_8k_plays_its_effect_as_the_interpreter_does
     VBlank::IR::Backends::SNES::CheckedRun.new.run(game_program(rate: 50, apart: 3, lasting: 1, filled: FILLING), frames: PLAYED_ON + 30)
+  end
+
+  # A sound driver strikes an effect's first note the moment it is told, whatever its timer is doing:
+  # so the effect is first heard on the frame it is taken up, the frame the same effect counted in
+  # frames is first heard on. Asked for on six frames running, each holding the timer's tick at a
+  # different place, or none.
+  FIRST_HEARD_FROM = (10..15)
+  def test_the_first_note_is_heard_on_the_frame_the_effect_is_taken_up
+    FIRST_HEARD_FROM.each do |played_on|
+      timed = heard(game(rate: 50, apart: 3, lasting: 1, played_on: played_on))
+      framed = heard(game(rate: 50, apart: 3, lasting: 1, played_on: played_on, on_timer: false))
+      frame_of = ->(sound) { sound.onsets.first * FRAMES / sound.left.size }
+
+      assert_equal frame_of.call(framed), frame_of.call(timed), "asked for from frame #{played_on}"
+    end
   end
 
   # Four ticks a frame: each note falls on whichever of its frame's ticks it does.

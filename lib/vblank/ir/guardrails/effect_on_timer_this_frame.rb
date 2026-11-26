@@ -7,11 +7,12 @@ module VBlank
         # An error about a sound effect on a timer asked to start on the frame it is asked for:
         #
         # > Sound effect list :<list> is played with `this_frame: true`, and its sound effects have
-        # > `on_timer: true`. An effect on the timer starts on the next tick of the timer. Remove
+        # > `on_timer: true`. An effect on the timer starts when the next frame's sound plays. Remove
         # > `this_frame:`.
         #
-        # An effect on a timer starts on the timer's next tick, so it has no first frame to play where
-        # it is asked. The build stops at the line that asks.
+        # An effect on a timer starts as the player plays the next frame, where the frame's ticks of the
+        # timer are counted, so it has no first frame to play where it is asked. The build stops at the
+        # line that asks.
         #
         #--
         # Builder#play_sound_effect refuses the same as the game is written; this holds a tree made
@@ -40,7 +41,7 @@ module VBlank
 
           def message(list)
             "Sound effect list :#{list} is played with `this_frame: true`, and its sound effects have `on_timer: true`. " \
-              "An effect on the timer starts on the next tick of the timer. Remove `this_frame:`."
+              "An effect on the timer starts when the next frame's sound plays. Remove `this_frame:`."
           end
         end
       end

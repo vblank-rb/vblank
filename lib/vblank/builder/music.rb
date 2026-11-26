@@ -283,13 +283,13 @@ module VBlank
           "same `tempo:` and `ticks_per_beat:`."
       end
 
-      # `this_frame:` starts an effect on the frame it is asked for, and an effect on the timer starts on
-      # the timer's next tick.
+      # `this_frame:` starts an effect where it is asked for, and an effect on the timer starts as the
+      # player plays the next frame, where that frame's ticks of the timer are counted.
       private def refuse_this_frame_on_timer!(name, this_frame)
         return unless this_frame && defined?(@effect_timer_rate) && @effect_timer_rate
 
         raise ArgumentError, "Sound effect list :#{name} is played with `this_frame: true`, and its sound effects " \
-                             "have `on_timer: true`. An effect on the timer starts on the next tick of the timer. " \
+                             "have `on_timer: true`. An effect on the timer starts when the next frame's sound plays. " \
                              "Remove `this_frame:`."
       end
 

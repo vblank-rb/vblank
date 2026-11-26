@@ -119,7 +119,9 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
     shown = sound.onsets.map { |at| at.to_f.round(3) }
 
     assert_equal notes, sound.onsets.size, "every note heard on its own: #{shown.inspect}"
-    sound.onsets.each_cons(2) do |was, now|
+    # The first note is struck as the effect starts, at the frame's start (Reference::Player#advance);
+    # the notes after it are struck on their ticks.
+    sound.onsets.drop(1).each_cons(2) do |was, now|
       assert_in_delta expected, now - was, NEAR_SECONDS / frame_seconds,
                       "notes #{apart} ticks apart at #{rate} a second, #{expected.to_f.round(3)} frames: #{shown.inspect}"
     end

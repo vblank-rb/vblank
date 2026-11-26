@@ -743,27 +743,43 @@ def rg_move_asked_effects_to_tick
   end
 end
 
+# One side of the tune in the frame's first pass over the effects, the effects by rank from +from+
+# up to +to+ (rg_music.c's play_effects_first_pass).
+def rg_play_effects_first_pass(by_rank, from, to, ticks)
+  timed = !rg_effect_clock_step.zero?
+  at = from
+  while timed && at < to
+    effect = @rg_game_effects[by_rank + at]
+    rg_play_effect_frame(effect) if @rg_effect_asked_now[effect] || @rg_effect_stopping[effect]
+    @rg_effect_asked_now[effect] = false
+    at += 1
+  end
+  return if timed && ticks.zero?
+
+  at = from
+  while at < to
+    rg_play_effect_frame(@rg_game_effects[by_rank + at])
+    at += 1
+  end
+end
+
 # The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
-# and the effects below it. On a frame the effects' timer has no tick, the effects do nothing; a
-# frame of several ticks plays its later ones after the song (IR::Tunes, "Several ticks in one frame").
+# and the effects below it. An effect asked for starts at once, and moves on with each tick of the
+# effects' timer from there; a frame of several ticks plays its later ones after the song
+# (IR::Tunes, "Several ticks in one frame").
 def rg_music_sound_frame
   @rg_level = rg_full_level if @rg_level < 0
   rg_refuse_too_many_effects
   rg_switch_to_wanted_song
   ticks = rg_step_effect_clock
-  rg_move_asked_effects_to_tick if ticks.positive?
+  rg_move_asked_effects_to_tick
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
   by_rank = rg_effects_by_rank
-  at = ticks.positive? ? 0 : rg_effect_count
-  while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
-    rg_play_effect_frame(@rg_game_effects[by_rank + at])
-    at += 1
-  end
+  at = 0
+  at += 1 while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
+  rg_play_effects_first_pass(by_rank, 0, at, ticks)
   rg_play_song_frame if @rg_playing >= 0
-  while at < rg_effect_count
-    rg_play_effect_frame(@rg_game_effects[by_rank + at])
-    at += 1
-  end
+  rg_play_effects_first_pass(by_rank, at, rg_effect_count, ticks)
   (ticks - 1).times do
     rg_move_asked_effects_to_tick
     rg_effect_count.times { |place| rg_play_effect_frame(@rg_game_effects[by_rank + place]) }

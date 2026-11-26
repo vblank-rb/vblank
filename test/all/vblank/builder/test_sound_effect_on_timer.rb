@@ -11,9 +11,10 @@ require "test_helper"
 # power-on each frame adds the step, the part of a tick a frame lasts on the console played, to a
 # count of 16 bits, and the frame whose addition takes the count past the top holds a tick. The step
 # is rounded down, so over a long run the ticks fall a frame later than exact fractions put them; the
-# runs here are long enough to cross frames where the two disagree. The effect starts on the first
-# tick after it is asked for, and the note at tick t sounds on the frame that holds the effect's t-th
-# tick after that one.
+# runs here are long enough to cross frames where the two disagree. The effect starts at once on the
+# frame the player takes the ask up, as a sound driver strikes an effect's first note when it is
+# told, and the note at tick t sounds on the frame that holds the timer's t-th tick from that frame's
+# start: that frame's own ticks are the first.
 class TestSoundEffectOnTimer < Minitest::Test
   Score = VBlank::Audio::Score
   Part = Score::Part
@@ -94,7 +95,8 @@ class TestSoundEffectOnTimer < Minitest::Test
     ticks = ticking_frames(program, console_played(program), through: frames)
     asks = (asked_on...frames).step(ASKED_EVERY)
     runs = asks.filter_map do |count|
-      own = ticks.select { |n| n >= first_frame_after(count) }
+      start = first_frame_after(count)
+      own = [start] + ticks.select { |n| n >= start }
       [own.first, NOTE_TICKS.zip(PITCHES).filter_map { |tick, pitch| [own[tick], pitch] if own[tick] }] if own.first
     end
     [runs.map(&:first), runs.flat_map(&:last)]
@@ -109,7 +111,9 @@ class TestSoundEffectOnTimer < Minitest::Test
     assert_equal struck, notes
   end
 
-  def test_an_effect_asked_for_between_ticks_starts_on_the_next
+  # Asked for on a pass whose frame holds no tick, it starts there all the same, and its next note
+  # waits for the timer's next tick.
+  def test_an_effect_asked_for_between_ticks_starts_on_the_frame_it_is_taken_up
     program, started, notes = played(effect, asked_on: 7)
     starts, struck = expected(program, asked_on: 7)
 
@@ -129,6 +133,44 @@ class TestSoundEffectOnTimer < Minitest::Test
       assert_equal starts, started, "#{rate} a second"
       assert_equal struck, notes, "#{rate} a second"
     end
+  end
+
+  # An effect ranked below the tune that is playing starts on the frame it is taken up, whether or
+  # not that frame has a tick, as one above the tune does. Asked for every seventh pass, so the asks
+  # fall on frames of every kind.
+  BELOW_ASKED_EVERY = 7
+  BELOW_FRAMES = 90
+
+  def test_an_effect_below_the_tune_starts_on_the_frame_it_is_taken_up
+    tune = Score.new(tempo: 150, priority: 200, parts: [Part.new(notes: [Note.new(at: 0, key: :C4, length: 8)])])
+    quiet = Score.new(tempo: 125, ticks_per_beat: 24, length: LENGTH, plays_once: true, on_timer: true, priority: 10,
+                      parts: [Part.new(notes: [Note.new(at: 0, key: :E5), Note.new(at: 3, key: :A5)])])
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      music = songs :music, [tune]
+      list = sound_effects :sfx, { chime: quiet }
+      count = var(:count, 0)
+      game_loop do
+        music.play 0
+        list.play :chime if count % BELOW_ASKED_EVERY == 3
+        count.store! count + 1
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    player = game_player
+    started = []
+    logged = 0
+    player.each_vblank do |frame|
+      started << frame if player.audio.drop(logged).include?([:sound_effect, :"sfx.chime"])
+      logged = player.audio.size
+    end
+    player.run(b.program, frames: BELOW_FRAMES)
+
+    asks = (3...BELOW_FRAMES).step(BELOW_ASKED_EVERY).map { |count| first_frame_after(count) }.select { |frame| frame <= BELOW_FRAMES }
+    assert_equal asks, started
   end
 
   def test_an_effect_not_on_the_timer_counts_frames
@@ -177,6 +219,6 @@ class TestSoundEffectOnTimer < Minitest::Test
     score = effect
     error = assert_raises(ArgumentError) { Builder.new.instance_eval { sound_effects(:sfx, { a: score }).play(:a, this_frame: true) } }
 
-    assert_match(/next tick of the timer/, error.message)
+    assert_match(/next frame's sound/, error.message)
   end
 end

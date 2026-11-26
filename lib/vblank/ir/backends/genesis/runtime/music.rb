@@ -24,9 +24,12 @@ module VBlank
           # note as addresses in the song table, which A0 and A1 are loaded from as each is wanted.
           module Music
             # The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step):
-            # its count, a word from power-on, and how many ticks the frame playing now has, a word.
+            # its count, a word from power-on, and how many ticks the frame playing now has, a word; and
+            # while a pass over the effects starts what was asked for, at once, and plays nothing else,
+            # not nought.
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
+            EFFECTS_STARTING = "rt sfx starting"
             NAMED = "rt music named" # The tune the game named last (Genesis::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -85,7 +88,7 @@ module VBlank
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
                         slides: false, sides: false, effect_clock_step: nil)
-              [EFFECT_CLOCK, EFFECT_TICKED].each { |name| memory.reserve(name, 2) } if effect_clock_step
+              [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 2) } if effect_clock_step
               memory.reserve(TUNE_HELD, 2) if holds
               memory.reserve(LOUDNESS_LIST, 2) if sides
               memory.reserve(SLIDE_CURSOR, 4) if slides
@@ -279,7 +282,8 @@ module VBlank
             #
             # In a game whose sound effects are on a timer, the timer moves on first (+clock_step+, its
             # step): ADDI sets the carry as its count comes round, and SCS keeps that as the frame's
-            # tick. On a frame with no tick neither pass over the effects is made.
+            # tick. Each side of the tune is two passes over the effects (#emit_effect_pass): what was
+            # asked for starts, and then, on a frame with a tick, every effect moves on that tick.
             #
             # With Strikes, a tick's pass lists its chips' writes to be made at the tick's own line, and once
             # the frame has played what is due already is made.
@@ -333,15 +337,22 @@ module VBlank
               asm.label("rt_sfx_later_ticks_done")
             end
 
-            # A call of one of the passes over the effects, +routine+, inline: past it on a frame the
-            # effects' timer has no tick, when they are on one. With +strikes+ its writes are made at its
-            # tick's own line (Strikes).
+            # A call of one of the passes over the effects, +routine+, inline. When they are on a timer it
+            # is two: one that starts what was asked for at once, as a sound driver strikes an effect's
+            # first note the moment it is told (EFFECTS_STARTING, Effects#emit_frame), and then, past it on
+            # a frame the effects' timer has no tick, one that moves every effect on the tick. With
+            # +strikes+ the first's writes are made at once and the second's at its tick's own line
+            # (Strikes). Listed at the frame's start instead, they put the game's own sound on an effect's
+            # voice two frames late (test_genesis_effect_strikes_in_frame.rb, the game's wave).
             def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
               unless clock_step
                 asm.jsr(asm.abs_l(routine))
                 return
               end
 
+              asm.move(:w, asm.imm(1), at.call(EFFECTS_STARTING))
+              asm.jsr(asm.abs_l(routine))
+              asm.clr(:w, at.call(EFFECTS_STARTING))
               asm.tst(:w, at.call(EFFECT_TICKED))
               asm.branch(:eq, "#{routine}_untimed")
               Strikes.emit_striking_on(asm, at, clock_step) if strikes

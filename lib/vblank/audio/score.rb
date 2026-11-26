@@ -65,10 +65,11 @@ module VBlank
     # timer of its sound chip's, not in frames, so a tick that is not a whole number of frames falls
     # part way through one, and the frames between its notes are not all alike. `on_timer: true` on
     # an effect's Score plays it that way: its ticks are a timer's, at the rate its tempo and
-    # +ticks_per_beat+ set, running from power-on. The effect starts on the timer's first tick after
-    # it is asked for, and each note sounds on the frame its tick falls in; a timer faster than the
-    # frames gives a frame several ticks (IR::Tunes, "Several ticks in one frame"). The timer runs
-    # at one rate, and a game's effects are all on it or none is
+    # +ticks_per_beat+ set, running from power-on. The effect starts at once on the frame after it is
+    # asked for, as a sound driver strikes an effect's first note the moment it is told, and each
+    # later note sounds on the frame its tick of the timer falls in, counted from there; a timer
+    # faster than the frames gives a frame several ticks (IR::Tunes, "Several ticks in one frame").
+    # The timer runs at one rate, and a game's effects are all on it or none is
     # (Builder#sound_effects), since a cartridge's engine has the one timer.
     #
     # A song whose length is in the player's data pack. A port reading its original's songs as the
