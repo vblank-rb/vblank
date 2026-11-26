@@ -9,7 +9,9 @@ module VBlank
     #
     # It is the first of three. The desktop build has this same menu written in C, line for line
     # from this one (runtime/rg_window_menu.c), and test_native_window_menu.rb holds the two to
-    # drawing the same thing after every key; the web page is to have it in JavaScript.
+    # drawing the same thing after every key. The web page has it in JavaScript
+    # (runtime/rg_page_menu.js), which lays out its own words, and test_js_page_menu.rb holds it to
+    # saying the same words.
     #
     # It opens on the bar along the top, on the first heading, with that heading's lines showing
     # and none of them chosen. Left and right on the bar go from heading to heading; down, or
@@ -29,6 +31,8 @@ module VBlank
 
       # What the box about the settings file says above the problems themselves.
       SETTINGS_PROBLEMS_INTRO = "The window cannot use some of the settings file. It uses the rest, and the game plays as usual."
+      # The title of that box.
+      SETTINGS_PROBLEMS_TITLE = "The settings file"
       # What the OK of a box says beside it.
       CLOSE_CAPTION = "Press a button to close this."
       # The title a shell's refusals are told under (#tell), the shell's Load ROM line.
@@ -41,16 +45,14 @@ module VBlank
       # one is being chosen the window hands it the next key or gamepad button (#capture_key).
       # +states+ answers #text_for(slot) with the words for a place a state is kept (when it was
       # taken, or that it is empty); a menu given none has no Save or Load heading, which is how a
-      # match with other players has none. +developer+ false leaves out the Developer heading, as a
-      # frontend with no window of the game's variables does (WindowMenu.headings).
+      # match with other players has none.
       #
       # +match_players+ is the most players the game takes, for a window that can start a match from
       # its menu (WindowMenu::MATCH_HEADING); nil for none.
       def initialize(settings: WindowMenu::STARTING, picture: [240, 160], scales: WindowMenu::SCALES,
-                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, developer: true, match_players: nil)
+                     controls: Settings.new(key_names: NumberedKeys.new), states: nil, match_players: nil)
         @scales = scales
         @controls = controls
-        @developer = developer
         @match_most = match_players
         @match_players = WindowMenu::MATCH_PLAYERS.min # how many a host waits for, the Players line's
         @match_request = nil
@@ -177,7 +179,15 @@ module VBlank
       # next button pressed answers both (#answer_messages). Nothing waits for them: the game plays
       # on under them, and what happens once one is answered is the teller's.
       def problems=(text)
+        show_problems(text)
+      end
+
+      # The same, under a +title+ and an +intro+ of the frontend's own: a web page keeps its settings in
+      # the browser's storage, not in a file.
+      def show_problems(text, title: SETTINGS_PROBLEMS_TITLE, intro: SETTINGS_PROBLEMS_INTRO)
         @problems = (text unless text.nil? || text.empty?)
+        @problems_title = title
+        @problems_intro = intro
       end
 
       def tell(words, title: SHELL_TOLD_TITLE)
@@ -249,7 +259,7 @@ module VBlank
         draw_status(width, top, held, fast_forward, frame_rate, frame_work, notice)
         draw_message(@told_title, [@told], width, told_width(width)) { |high| height - size(:message_gap) - high } if @told
         if @problems
-          draw_message("The settings file", problems_texts, width, problems_width(width)) { |high| (height - high) / 2 }
+          draw_message(@problems_title, problems_texts, width, problems_width(width)) { |high| (height - high) / 2 }
         end
         if @open
           draw_bar(width)
@@ -323,14 +333,14 @@ module VBlank
       # How wide the settings file's box is: its own width, or as wide as the window has room for.
       def problems_width(width) = [size(:message_width), width - (2 * size(:status_gap))].min
 
-      def problems_texts = [SETTINGS_PROBLEMS_INTRO, @problems]
+      def problems_texts = [@problems_intro, @problems]
 
       def lines = @headings[@heading].lines
 
       # The headings shown, for the states, the console's buttons and the match offered now, from the
       # first heading.
       def show_headings
-        @headings = WindowMenu.headings(states: @states ? true : false, developer: @developer, match: !@match_most.nil?,
+        @headings = WindowMenu.headings(states: @states ? true : false, match: !@match_most.nil?,
                                         buttons: IR::Buttons::NAMES.select { |button| @controls.console_has?(button) })
         @heading = 0
         @row = -1

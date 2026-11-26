@@ -2,6 +2,7 @@
 
 require "json"
 require_relative "../../../live/window_menu"
+require_relative "../../../live/menu"
 
 module VBlank
   module IR
@@ -21,6 +22,10 @@ module VBlank
           STOPPED_LINES = ["Stopped.", "Reload to play again."].freeze
           STOPPED_LINE_GAP = 3 # Pixels between the lines
           TEXT_KINDS = %i[draw_text draw_digit].freeze
+          # The box over the picture that shows what the page could not use of the settings it kept in
+          # the browser's storage, as Live::Menu shows it for a settings file (Menu#show_problems).
+          PROBLEMS_TITLE = "Stored settings"
+          PROBLEMS_INTRO = "The page cannot use some of its stored settings. It uses the rest, and the game plays as usual."
 
           StoppedWords = Data.define(:width, :height, :points)
 
@@ -38,11 +43,12 @@ module VBlank
 
           def description(states, buttons, font)
             window_menu = Live::WindowMenu
-            # The page has no window of the game's variables yet, so no Developer heading.
-            shown = window_menu.headings(states: states, buttons: buttons, developer: false)
+            shown = window_menu.headings(states: states, buttons: buttons)
             { headings: shown.map { |heading| heading_of(heading) },
               buttons: window_menu::BUTTON_NAMES, hotkeys: window_menu::HOTKEY_NAMES,
               colors: window_menu::COLORS.transform_values { |(red, green, blue, opacity)| "rgba(#{red},#{green},#{blue},#{opacity / 255.0})" },
+              variable_rows: window_menu::VARIABLE_ROWS, filter_most: window_menu::FILTER_MOST,
+              problems: { title: PROBLEMS_TITLE, intro: PROBLEMS_INTRO, close: Live::Menu::CLOSE_CAPTION },
               stopped: stopped_words(font).to_h }
           end
 

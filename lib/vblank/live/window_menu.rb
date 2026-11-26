@@ -4,9 +4,9 @@ module VBlank
   module Live
     # The menu over the window a game is played in, written down once: what it holds, the keys and
     # gamepad buttons that work it, and how it looks. vblank run draws it (Menu says how it
-    # behaves, SDL draws it), and so does the desktop build, which is handed all of this as C data
-    # (IR::Backends::Native::MenuData); the web page is to draw it too. A line added here becomes a
-    # line in each. Cartridges have none.
+    # behaves, SDL draws it), and so do the desktop build, which is handed all of this as C data
+    # (IR::Backends::Native::MenuData), and the web page, handed it as JavaScript data
+    # (IR::Backends::JS::MenuData). A line added here becomes a line in each. Cartridges have none.
     #
     # It is a dark menu bar: a bar along the top with a heading for each part, the open heading's
     # lines in a box under it, a slider for a number and a check mark for a setting that is on.
@@ -96,8 +96,7 @@ module VBlank
       # that fits on the screen it is on.
       SCALES = (1..10)
 
-      # The heading of what a game's author reads as it plays, which a frontend leaves out until it
-      # can show the game's variables.
+      # The heading of what a game's author reads as it plays.
       DEVELOPER = "Developer"
 
       HEADINGS = Ractor.make_shareable([
@@ -204,12 +203,10 @@ module VBlank
 
       # The headings a window shows: Keys has a line for each of the console's +buttons+ (by their
       # names in IR::Buttons::NAMES), so a Genesis game's window lists C and no Select, and +states+
-      # false leaves out Save and Load. +developer+ false leaves out Developer, for a frontend that
-      # has no window of the game's variables yet. +match+ true puts MATCH_HEADING after Game. A line
-      # keeps its +place+ among every button's.
-      def self.headings(states: true, buttons: ADVANCE_BUTTONS, developer: true, match: false)
+      # false leaves out Save and Load. +match+ true puts MATCH_HEADING after Game. A line keeps its
+      # +place+ among every button's.
+      def self.headings(states: true, buttons: ADVANCE_BUTTONS, match: false)
         shown = states ? HEADINGS : HEADINGS.reject(&:states?)
-        shown = shown.reject { |heading| heading.name == DEVELOPER } unless developer
         shown = [shown.first, MATCH_HEADING, *shown.drop(1)] if match
         shown.map do |heading|
           lines = heading.lines.select { |line| line.kind != :button || buttons.include?(IR::Buttons::NAMES.fetch(line.place)) }

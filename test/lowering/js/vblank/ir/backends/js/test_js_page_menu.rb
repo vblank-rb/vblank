@@ -32,8 +32,13 @@ class TestJSPageMenu < Minitest::Test
   # A key on the page, and what it is in the Ruby copy: a key for the menu, or a key being chosen.
   MOVES = { right: "ArrowRight", left: "ArrowLeft", up: "ArrowUp", down: "ArrowDown", enter: "Enter" }.freeze
   CHOSEN = { 20 => "KeyQ", 26 => "KeyW", 29 => "KeyZ", 19 => "KeyP", Live::Settings::ESCAPE => "Escape" }.freeze
+  # Keys typed into the window of the game's variables, by the browser's names, and SDL's numbers for them.
+  TYPED = { "KeyS" => 22, "KeyC" => 6, "KeyO" => 18, "Minus" => 45, "Digit1" => 30, "Backspace" => 42 }.freeze
+  # The window of variables scrolled and shut with the menu closed, and the key that does it on the page.
+  ON_VARIABLES = { scroll_up: [:up, "ArrowUp"], scroll_down: [:down, "ArrowDown"], shut: [:close, "Escape"] }.freeze
 
-  private def page_with_menu(game = walking_game, more: "")
+  # +before+ is script run before the game is made: what a browser kept from an earlier visit.
+  private def page_with_menu(game = walking_game, more: "", before: "")
     factory, = JS.new.factory_and_data_file(game.program, title: game.title, menu: game.menu?)
     <<~HTML
       <!doctype html>
@@ -41,6 +46,7 @@ class TestJSPageMenu < Minitest::Test
       <script>
       (function () {
       "use strict";
+      #{before}
       #{factory}
       window.games = [createGame({ canvas: document.getElementById("one"), menu: true #{more} })];
       })();
@@ -49,58 +55,163 @@ class TestJSPageMenu < Minitest::Test
   end
 
   private def asked_of_page = "js JSON.stringify(games[0].menu)"
+  private def asked_with_variables = "js JSON.stringify([games[0].menu, games[0].readState({ lists: false }).vars])"
 
-  # What the page's menu holds after each of +steps+.
-  private def page_says(steps, game = walking_game)
-    played = steps.flat_map { |code| ["down #{code}", "up #{code}", asked_of_page] }
-    played_page([asked_of_page, *played], html: page_with_menu(game)).grep(/\Ajs /).map { |line| JSON.parse(line.delete_prefix("js ")) }
+  # What the page's menu holds after each of +steps+, with the game's variables then as "read_vars". A
+  # step "play N" plays N frames rather than pressing a key.
+  private def page_says(steps, game = walking_game, before: "")
+    played = steps.flat_map { |code| code.start_with?("play ") ? [code, asked_with_variables] : ["down #{code}", "up #{code}", asked_with_variables] }
+    lines = played_page([asked_with_variables, *played], html: page_with_menu(game, before: before)).grep(/\Ajs /)
+    lines.map do |line|
+      shown, vars = JSON.parse(line.delete_prefix("js "))
+      shown.merge("read_vars" => vars)
+    end
   end
 
   # The Ruby copy's the same, as the page says it. A page has no window size, and its controllers
-  # are numbered as a browser numbers them, so those two are left out.
-  private def ruby_says(menu, headings)
-    lines = headings.find { |each| each.name == (menu.open_heading || "Game") }.lines.reject { |line| line.setting == :scale }
-    [menu.open_heading, menu.chosen_line, lines.map { |line| [line.label, words_of(menu, line)] }, menu.controls.notice]
+  # are numbered as a browser numbers them, so those two are left out. What is over the game is
+  # compared too: the words Live::Menu#drawing writes, in the order it writes them, given the
+  # variables the page read and its frame time, the game held while the menu is open. A page lays
+  # out its own text, so where a line breaks is left out: the words are compared one by one. While
+  # the menu is open, Ruby's words go on with the menu's own, which the open heading's lines stand
+  # for here.
+  private def ruby_says(menu, headings, shown)
+    lines = headings.find { |each| each.name == menu.open_heading }&.lines&.reject { |line| line.setting == :scale }
+    [menu.open_heading, menu.chosen_line, lines&.map { |line| [line.label, words_of(menu, line)] }, menu.controls.notice,
+     words_over(menu, shown)]
   end
+
+  private def words_over(menu, shown)
+    drawn = menu.drawing(width: 720, height: 480, density: 1.0, held: menu.open?, variables: shown.fetch("read_vars").to_a,
+                         frame_work: (shown.fetch("frame_work") if menu.settings.frame_time))
+    words = drawn.grep(Live::WindowMenu::Words).map(&:text).join(" ").split
+    menu.open? ? words.first(page_words_over(shown).size) : words
+  end
+
+  private def page_words_over(shown) = shown.fetch("over").join(" ").split
 
   private def words_of(menu, line)
     menu.controls.text_for(line).to_s.split(" / ").first if %i[button hotkey].include?(line.kind)
   end
 
   private def page_as_ruby_says(shown, headings)
-    words = shown.fetch("lines").zip(page_kinds(shown, headings)).map { |(label, right), bound| [label, (right.split(" / ").first if bound)] }
-    [shown.fetch("heading"), shown.fetch("chosen"), words, shown.fetch("notice")]
+    open = shown.fetch("open")
+    words = shown.fetch("lines").zip(page_kinds(shown, headings)).map { |(label, right), bound| [label, (right.split(" / ").first if bound)] } if open
+    [shown.fetch("heading"), shown.fetch("chosen"), words, shown.fetch("notice"), page_words_over(shown)]
   end
 
   private def page_kinds(shown, headings)
-    name = shown.fetch("heading") || "Game"
-    headings.find { |each| each.name == name }.lines.reject { |line| line.setting == :scale }.map { |line| %i[button hotkey].include?(line.kind) }
+    headings.find { |each| each.name == shown.fetch("heading") }.lines.reject { |line| line.setting == :scale }.map { |line| %i[button hotkey].include?(line.kind) }
   end
 
-  # Plays +walk+ through both and fails at the first step they differ.
-  private def assert_same_menu(walk, game = walking_game)
+  # Plays +walk+ through both and fails at the first step they differ. A step is a key for the menu,
+  # :toggle, a key chosen for a button (a number), a key typed into the window of variables (its
+  # browser name), a key for that window (ON_VARIABLES), "play N" for frames of the game, or
+  # :console_button, a console button pressed, which answers what is shown over the picture.
+  # +before+ is script run before the page's game is made, and +problems+ what the page is to show
+  # it could not use of what it had stored.
+  private def assert_same_menu(walk, game = walking_game, before: "", problems: nil)
+    buttons = VBlank::Console.described(game.consoles.first).buttons
+    headings = Live::WindowMenu.headings(buttons: buttons)
+    said = page_says(walk.map { |step| page_code(step) }, game, before: before)
+    menu = new_ruby_menu(game, problems)
+    [nil, *walk].each_with_index do |step, at|
+      play_in_ruby(menu, step) if step
+      assert_equal ruby_says(menu, headings, said.fetch(at)), page_as_ruby_says(said.fetch(at), headings), "after step #{at}, #{step}"
+    end
+    said
+  end
+
+  # The Ruby copy as a page of +game+ starts, saying +problems+ over the picture if there are any.
+  private def new_ruby_menu(game, problems)
     controls = VBlank::IR::ComputerControls.runtime_numbers(game.program.computer_controls)
     buttons = VBlank::Console.described(game.consoles.first).buttons
-    # The page has no window of the game's variables yet, and so no Developer heading.
-    headings = Live::WindowMenu.headings(buttons: buttons, developer: false)
     settings = Live::Settings.new(key_names: KeyNames.new, game_controls: controls, buttons: buttons)
-    menu = Live::Menu.new(controls: settings, states: EmptySlots.new, developer: false)
-    expected = [ruby_says(menu, headings)]
-    codes = walk.map do |step|
-      case step
-      when :toggle then menu.toggle
-      when Integer then menu.controls.capture_key(step)
-      else menu.press(step)
-      end
-      expected << ruby_says(menu, headings)
-      step == :toggle ? "F1" : step.is_a?(Integer) ? CHOSEN.fetch(step) : MOVES.fetch(step)
+    menu = Live::Menu.new(controls: settings, states: EmptySlots.new)
+    menu.show_problems(problems, title: JS::MenuData::PROBLEMS_TITLE, intro: JS::MenuData::PROBLEMS_INTRO) if problems
+    menu
+  end
+
+  # +step+ played through the Ruby menu.
+  private def play_in_ruby(menu, step)
+    case step
+    when :toggle then menu.toggle
+    when Integer then menu.controls.capture_key(step)
+    when :console_button then menu.answer_messages
+    when *ON_VARIABLES.keys then menu.press_on_variables(ON_VARIABLES.fetch(step).first)
+    when /\Aplay / then nil
+    when String then menu.type_key(TYPED.fetch(step))
+    else menu.press(step)
     end
-    said = page_says(codes, game)
-    expected.each_with_index { |want, at| assert_equal want, page_as_ruby_says(said.fetch(at), headings), "after step #{at}, #{walk[at - 1]}" }
+  end
+
+  # What the page is handed for +step+: a key's name, or frames to play.
+  private def page_code(step)
+    case step
+    when :toggle then "F1"
+    when Integer then CHOSEN.fetch(step)
+    when :console_button then "ArrowRight"
+    when *ON_VARIABLES.keys then ON_VARIABLES.fetch(step).last
+    when String then step
+    else MOVES.fetch(step)
+    end
   end
 
   def test_the_page_menu_walks_as_the_ruby_menu_does
     assert_same_menu([:toggle, :right, :right, :down, :down, :up, :up, :left, :left, :left, :left, :right, :toggle])
+  end
+
+  # --- Developer: the window of the game's variables, the frame time, and the stored settings' box ---
+
+  # More variables than the window shows at once, one of them counting frames, so the window is
+  # scrolled and read as the game plays.
+  private def many_variables_game
+    VBlank.game "MANY VARS", consoles: %i[gba] do
+      screen :bitmap
+      frames = var :frames, 0
+      %w[score lives ball_x ball_y paddle_x speed level best_score timer state hits misses].each_with_index do |name, at|
+        var name.to_sym, (at * 37) - 100
+      end
+      game_loop do
+        frames += 1
+        clear_screen :black
+      end
+    end
+  end
+
+  # Developer is the last heading, so left from Game reaches it.
+  TO_DEVELOPER = %i[toggle left down].freeze
+
+  # The window opened from its line, read after frames, scrolled past its end and back, found by
+  # typed letters (S, C, O, an underscore, a digit, Backspace), the menu opened over it, and shut by
+  # Escape and by its line; then Show frame time switched on, read after a second of frames, and off.
+  def test_the_variables_window_and_the_frame_time_go_as_they_do_in_ruby
+    steps_shown = assert_same_menu([*TO_DEVELOPER, :enter, "play 3", *[:scroll_down] * 4, :scroll_up, "KeyS", "KeyC", "KeyO", "Backspace",
+                      "Backspace", "Minus", "Digit1", "Backspace", "Backspace", "Backspace", "play 2", :toggle, :toggle,
+                      :shut, *TO_DEVELOPER, :enter, *TO_DEVELOPER, :enter,
+                      *TO_DEVELOPER, :down, :enter, :toggle, "play 70", *TO_DEVELOPER, :down, :enter, :toggle], many_variables_game)
+    over = steps_shown.map { |shown| shown.fetch("over").join(" ") }
+
+    assert over.any? { |words| words.include?("lives -63") }, "a variable read as the game plays"
+    assert over.any? { |words| words.include?("1 to 12 of 16") }
+    assert_includes over, "Game variables sc Name Value score -100 best_score 159 1 to 2 of 2", "found by the letters typed"
+    assert over.any? { |words| words.match?(/\A\d+\.\d\d ms of work a frame\z/) }, "the frame time, after a second of frames"
+  end
+
+  # What the page kept that it cannot use is shown over the picture, named, until a console button
+  # answers it; the rest of what it kept is used.
+  def test_stored_settings_the_page_cannot_use_are_shown_until_a_button_answers
+    kept = { volume: 300, muted: "yes", fast_forward_speed: 6, frame_time: 1, keys: { right: "KeyQ" }, pads: "x" }
+    problems = "vblank-settings, in this site's storage:\n" \
+               "volume is a whole number from 0 to 100, not 300.\n" \
+               "muted is on or off, not \"yes\".\n" \
+               "frame_time is on or off, not 1.\n" \
+               "pads is the controller buttons of each button by name, not \"x\", so all of them stay as they were.\n" \
+               "keys.right is a list of keys, not \"KeyQ\", so Right keeps the keys it had."
+    before = "localStorage.setItem(\"vblank-settings\", #{JSON.generate(JSON.generate(kept))});"
+    assert_same_menu(["play 2", :toggle, :toggle, :console_button, "play 1"], before: before, problems: problems)
+    shown = page_says(["F1"], before: before).last
+    assert_includes shown.fetch("lines"), ["Fast forward", "6x"], "what the page could use is used"
   end
 
   def test_choosing_keys_on_the_page_goes_as_it_does_in_ruby
