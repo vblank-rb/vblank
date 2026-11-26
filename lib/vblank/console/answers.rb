@@ -120,8 +120,17 @@ module VBlank
       # refused first, in its own answer's words, and the lines of the verb underneath are then
       # passed over: they would say the same thing again in words about something the author did
       # not write.
+      #
+      # The step that tells the console a layer's amounts again before each frame (`:see_through`) is
+      # passed over for a layer whose amounts are numbers. The framework puts one in for every
+      # see-through layer of a game with more than one, since the screens take turns (Builder's
+      # finalize_layer_blend), but numbers never change: each console sets a screen's own mix as the
+      # screen comes up, so such a step asks nothing of it that the layer itself does not.
       def refusals(nodes, console)
         nodes = nodes.to_a
+        fixed = nodes.select { |node| node.kind == :layers }.flat_map(&:see_through)
+                     .select { |layer| IR::SeeThrough.fixed?(layer) }.map(&:name)
+        nodes = nodes.reject { |node| node.kind == :see_through && fixed.include?(node.layer) }
         written = nodes.select { |node| node.kind == :program }.flat_map do |program|
           Questions.verb_questions(program).reject { |question| answer(question.verb).works? }
                    .map { |question| [question.verb, Refusal.new(program, refusal_words(question, console))] }

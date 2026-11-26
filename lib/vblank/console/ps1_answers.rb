@@ -275,21 +275,13 @@ module VBlank
       UNMADE_VERBS = %i[fade].freeze
 
       # Answers#refusals, less the lines whose verb is one of UNMADE_VERBS, and with each see-through layer
-      # whose amounts the graphics chip cannot mix (#see_through_refusals).
-      #
-      # The step that tells the console a layer's amounts again before each frame (`:see_through`) is
-      # passed over for a layer whose amounts are numbers, which the framework puts in for every
-      # see-through layer of a game with more than one: each background is drawn by its own layer's way
-      # whichever screen is up (Backends::PS1::Lowering::Picture#plane_mix_word), so there is nothing to
-      # tell again.
+      # whose amounts the graphics chip cannot mix (#see_through_refusals). Each background is drawn by its
+      # own layer's way whichever screen is up (Backends::PS1::Lowering::Picture#plane_mix_word).
       def self.refusals(nodes, console)
         nodes = nodes.to_a
-        layers = see_through_layers(nodes)
-        fixed = layers.select { |layer| IR::SeeThrough.fixed?(layer) }.map(&:name)
         super.reject do |refusal|
-          UNMADE_VERBS.include?(Questions.question_for(refusal.node, console)&.verb) ||
-            (refusal.node.kind == :see_through && fixed.include?(refusal.node.layer))
-        end + see_through_refusals(layers)
+          UNMADE_VERBS.include?(Questions.question_for(refusal.node, console)&.verb)
+        end + see_through_refusals(see_through_layers(nodes))
       end
 
       # Every see-through layer the layers' declaration in +nodes+ names.
