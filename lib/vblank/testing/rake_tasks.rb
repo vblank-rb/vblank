@@ -28,6 +28,7 @@ module VBlank
     #   rake test:lowering:native    the game built as C, checked against the interpreter (needs zig)
     #   rake test:lowering:js        the game built as JavaScript, checked the same way (needs node)
     #   rake test:lowering:ruby      the game built as Ruby, checked the same way
+    #   rake test:lowering:flash     the game built as a Flash movie, played in Ruffle and checked the same way (needs haxe)
     #   rake test TEST=<file>        one file, on each lowering whose run loads it
     #
     # FAIL_FAST=1 rake test:all stops at the first failing test and keeps a record of what passed.

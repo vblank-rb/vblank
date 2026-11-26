@@ -148,6 +148,7 @@ rake test:lowering:native                                       # the native low
 rake test:lowering:native:gbc                                   # the native lowering's run as one console (and js:, ruby:)
 rake test:lowering:js                                           # the JavaScript lowering's run alone (takes TEST= too)
 rake test:lowering:ruby                                         # the Ruby lowering's run alone (takes TEST= too)
+rake test:lowering:flash                                        # the Flash lowering's run alone, once per console (takes TEST= too; needs haxe and rake compile_flash_player)
 rake test:lowering:gbc                                          # the Game Boy Color lowering's run alone (takes TEST= too)
 rake test:lowering:ps1                                          # the PlayStation lowering's run alone (takes TEST= too)
 CONSOLE=gbc rake test:all                                       # only the runs that play games as one console (any task, TEST= too)
