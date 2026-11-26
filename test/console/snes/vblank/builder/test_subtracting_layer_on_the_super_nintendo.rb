@@ -33,4 +33,31 @@ class TestSubtractingLayerOnTheSuperNintendo < Minitest::Test
       assert_equal rgb5(*ARENA), screen.pixel(*DARK_ARENA), "the arena where there is no light, #{amounts}"
     end
   end
+
+  # A see-through layer on each of two screens that never show together: the title's words added
+  # to the sand behind them, then the arena's light taking the sand away. The colour maths is told
+  # each screen's own layers as the screen arrives, and the checked run holds every pass to the
+  # interpreter, the passes just after the change among them.
+  private def title_then_arena_pixels(title)
+    game = title_then_lit_arena(**title)
+    at_title = game_player.run(game, frames: 4).screen.pixel(*LIT_ARENA)
+    at_arena = game_player.input_each_frame { |frame| frame == 5 ? [:a] : [] }.run(game, frames: 10).screen
+    [at_title, at_arena.pixel(*LIT_ARENA), at_arena.pixel(*LIT_WALKER), at_arena.pixel(*DARK_ARENA)]
+  end
+
+  def test_each_screen_shows_its_own_see_through_layer_added_then_subtracted
+    title, lit, walker, dark = title_then_arena_pixels(shows: 100, shows_behind: 100)
+
+    assert_equal rgb5(31, 18, 31), title, "the title's words added to the sand, stopped at the brightest"
+    assert_equal rgb5(18, 6, 27), lit, "the arena's light, the sand taken away"
+    assert_equal rgb5(24, 0, 29), walker, "the arena's light over the walker"
+    assert_equal rgb5(*ARENA), dark, "the arena where there is no light"
+  end
+
+  def test_a_half_see_through_title_then_a_subtracting_arena
+    title, lit, = title_then_arena_pixels(transparency: 50)
+
+    assert_equal rgb5(19, 9, 17), title, "half the title's words over half the sand"
+    assert_equal rgb5(18, 6, 27), lit, "the arena's light, the sand taken away"
+  end
 end

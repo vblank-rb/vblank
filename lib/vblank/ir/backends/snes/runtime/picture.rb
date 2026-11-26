@@ -230,7 +230,8 @@ module VBlank
 
             # +bar+ for a game with a status bar, +bends+ for one with a background bent row by row,
             # +tile_runs+ the bytes of each run of tiles a game paints from a list.
-            # What CGADSUB is told in the blank, in a game that turns a see-through layer solid.
+            # What CGADSUB (low byte) and TS (high byte) are told in the blank, in a game that turns a
+            # see-through layer solid or changes its colour math as scenes take over.
             MATH = "rt see-through math"
 
             # What BGMODE is told in the next blank, in a game with a layer whose scenes show tiles of
@@ -421,12 +422,15 @@ module VBlank
             # behind away (`subtract: true`) sets bit 7, halved or not: the sub screen is taken from the
             # main screen a channel at a time, and a channel stops at nothing. A game can turn that
             # off and on again: CGADSUB takes the number it was last told, from the blank, so the
-            # layer turns solid between two pictures (+math_turns+, rt_see_through_math).
+            # layer turns solid between two pictures (+math_turns+, rt_see_through_math). TS is told
+            # again from the same place, so a game with a see-through layer on each of several
+            # screens has each screen's layers mixed and behind as that screen arrives.
             def emit_see_through(asm, memory, see_through, math_turns)
               h = Console::SNESHardware
               mixed, behind = see_through
               asm.lda(behind)
               asm.sta(asm.abs(h::TS))
+              asm.sta(asm.abs(memory[MATH] + 1)) if math_turns
               asm.lda(0x02)
               asm.sta(asm.abs(h::CGWSEL))
               asm.lda(mixed)
@@ -434,7 +438,8 @@ module VBlank
               asm.sta(asm.abs(memory[MATH])) if math_turns
             end
 
-            # rt_see_through_math(math): what CGADSUB is told in the next blank.
+            # rt_see_through_math(math): what CGADSUB (the low byte) and TS (the high byte) are told
+            # in the next blank.
             def emit_see_through_math(asm, memory)
               asm.label("rt_see_through_math")
               asm.lda(asm.direct(Memory.register(0)))
@@ -1818,6 +1823,8 @@ module VBlank
                 asm.sep(0x20)
                 asm.lda(asm.abs(memory[MATH]))
                 asm.sta(asm.abs(h::CGADSUB))
+                asm.lda(asm.abs(memory[MATH] + 1))
+                asm.sta(asm.abs(h::TS))
                 asm.rep(0x20)
               end
               if memory.reserved?(TILE_SIZES)

@@ -2160,24 +2160,42 @@ module VBlank
             # the console adds its fixed colour instead and does not halve, so a background that
             # covers every pixel must be behind the layer.
             #
-            # A layer a scene owns, or one over a background a scene puts up, is on that scene alone:
-            # the scenes showing it share one sub screen, since that is told once at power-on, and
-            # each scene taking over tells the math what it has to mix, which for any other scene is
-            # nothing (#emit_see_through_for_scene).
+            # A layer a scene owns, or one over a background a scene puts up, is on that scene alone,
+            # and a game can have one on each of its screens, in scenes never up together. The
+            # colour math is told at power-on what the first of them mixes, and each scene taking
+            # over tells it again what that scene has to mix (which layers, and which are behind
+            # them on the sub screen), or nothing at all on a scene with no see-through layer
+            # (#emit_see_through_for_scene).
             def refuse_unmade_see_through!
-              layers = SeeThrough.layers(@program)
-              return if layers.empty?
+              @see_through_sprites = []
+              @see_through_maths = SeeThrough.layers(@program).filter_map { |layer| see_through_math_for(layer) }
+              refuse_shared_see_through_screen!
+              first = @see_through_maths.first
+              @see_through_layers = first && [first.mixed, first.under]
+            end
 
-              layer = layers.first
+            # One see-through layer as the colour math shows it: +mixed+, what CGADSUB is told (the
+            # layers mixed, and whether to halve and to subtract), +under+, what TS is told (the
+            # layers behind it on the sub screen), and +scenes+, the numbers of the scenes it is up
+            # on, or nil for a layer every screen shows alike.
+            SeeThroughMath = Data.define(:layer, :mixed, :under, :scenes) do
+              # CGADSUB in the low byte and TS above it, as rt_see_through_math is handed them.
+              def registers_word = mixed | (under << 8)
+
+              def sprites? = mixed.anybits?(SPRITES_BIT)
+            end
+
+            # The colour math +layer+ needs, or nil for a layer with nothing in it.
+            def see_through_math_for(layer)
               refuse_unmade_moving_see_through!(layer)
               parts = Picture.see_through_parts(@program, layer, @cache.stacking)
               seen_through = parts.seen_through
               sprites = parts.sprites
-              @see_through_sprites = sprites.map(&:name)
+              @see_through_sprites = see_through_sprites + sprites.map(&:name)
               return if seen_through.empty? && sprites.empty?
               refuse_unmade!("a see-through layer of both backgrounds and sprites") unless seen_through.empty? || sprites.empty?
 
-              behind = see_through_behind_in_its_scenes(parts)
+              behind, scenes = see_through_behind_in_its_scenes(parts)
               # Adding or subtracting whole, an empty sub screen adds or takes away the fixed colour,
               # nothing: the layer whole, as the interpreter shows it over the black backdrop. Only
               # halving needs something behind.
@@ -2196,7 +2214,23 @@ module VBlank
                              end
               mixed |= Runtime::Picture::MATH_HALVES unless adds
               mixed |= Runtime::Picture::MATH_SUBTRACTS if layer.subtract
-              @see_through_layers = [mixed, under]
+              SeeThroughMath.new(layer: layer, mixed: mixed, under: under, scenes: scenes)
+            end
+
+            # The console has one colour math, so a screen shows one see-through layer, and a game
+            # with several needs each on scenes of its own. The build's check of that
+            # (Guardrails::Checks::SeeThroughPerScreen) asks only a console that blends, so this is
+            # the one that holds the Super Nintendo to it, a game with no scenes included.
+            def refuse_shared_see_through_screen!
+              return if @see_through_maths.length < 2
+
+              scenes = @see_through_maths.map(&:scenes)
+              return if scenes.none?(&:empty?) && scenes.flatten.uniq.length == scenes.flatten.length
+
+              names = @see_through_maths.map { |math| ":#{math.layer.name}" }.join(" and ")
+              raise LoweringError, "Layers #{names} are see-through on one screen. A Super Nintendo has one colour " \
+                                   "math, so it can show one see-through layer on a screen. To fix this, put each " \
+                                   "see-through layer in a scene of its own."
             end
 
             SeeThroughParts = Data.define(:seen_through, :sprites, :behind)
@@ -2222,21 +2256,29 @@ module VBlank
                                   behind: scenery.select { |bg| bg.layer.nil? || picture.stack.index(bg.layer) < at })
             end
 
-            # Whether +program+'s see-through layer is on some scenes only, or over a background only
-            # some scenes put up, so the colour math changes as scenes take over.
+            # Whether +program+'s colour math changes as scenes take over: a see-through layer on some
+            # scenes only, or over a background only some scenes put up, or one on each of several
+            # screens.
             def self.see_through_in_scene?(program, picture = Stacking.picture(program))
-              layer = SeeThrough.layers(program).first
-              return false unless layer
+              layers = SeeThrough.layers(program)
+              layers.length > 1 || layers.any? { |layer| parts_in_scene?(see_through_parts(program, layer, picture)) }
+            end
 
-              parts = see_through_parts(program, layer, picture)
+            # Whether a see-through layer made of +parts+ is on some scenes only, or over a background
+            # only some scenes put up.
+            def self.parts_in_scene?(parts)
               own = parts.seen_through + parts.sprites
               !own.empty? && (own + parts.behind).any?(&:scene)
             end
 
-            # The backgrounds behind the see-through layer on the scenes that show it, one lot, and
-            # which those scenes are (@see_through_scenes, nil for a layer every screen shows alike).
+            # The backgrounds behind a see-through layer made of +parts+ on the scenes that show it,
+            # one lot, and the numbers of those scenes: nil for a layer every screen shows alike, in a
+            # game whose colour math never changes.
             def see_through_behind_in_its_scenes(parts)
-              return parts.behind unless Picture.see_through_in_scene?(@program, @cache.stacking)
+              return [parts.behind, nil] unless Picture.see_through_in_scene?(@program, @cache.stacking)
+              # Several layers in a game with no scenes are on its one screen together, up on no scene
+              # of their own (#refuse_shared_see_through_screen!).
+              return [parts.behind, []] if @scenes.empty?
 
               own = parts.seen_through + parts.sprites
               names = own.filter_map(&:scene).uniq
@@ -2245,29 +2287,34 @@ module VBlank
               unless lots.map { |lot| lot.map { |bg| layer_of(bg) }.sort }.uniq.one?
                 refuse_unmade!("a see-through layer over backgrounds on different layers in different scenes")
               end
-              @see_through_scenes = showing.map { |scene| @scenes.fetch(scene) }
-              lots.first
+              [lots.first, showing.map { |scene| @scenes.fetch(scene) }]
             end
+
+            # Whether the colour math changes as scenes take over (#see_through_behind_in_its_scenes).
+            def see_through_by_scene? = see_through_maths.any?(&:scenes)
+
+            def see_through_maths = @see_through_maths || []
 
             # A scene taking over: the colour math told what this scene has to mix, its layer's
-            # amount as the game left it, or nothing at all on a scene that does not show the layer.
+            # amount as the game left it, or nothing at all on a scene with no see-through layer.
             def emit_see_through_for_scene(scene)
-              return unless @see_through_scenes
+              return unless see_through_by_scene?
 
-              shows = @see_through_scenes.include?(@scenes.fetch(scene))
-              runtime_call("rt_see_through_math", [shows ? see_through_math_now : Build.int(0)])
+              number = @scenes.fetch(scene)
+              math = see_through_maths.find { |candidate| candidate.scenes.include?(number) }
+              runtime_call("rt_see_through_math", [math ? see_through_math_now(math) : Build.int(0)])
             end
 
-            # What the colour math is to be told for the amount the layer stands at now.
-            def see_through_math_now
-              on = Build.binop(:!=, SeeThrough.layers(@program).first.behind.copy, Build.int(0))
-              Build.binop(:*, on, Build.int(@see_through_layers.first))
+            # What the colour math is to be told for the amount +math+'s layer stands at now.
+            def see_through_math_now(math)
+              on = Build.binop(:!=, math.layer.behind.copy, Build.int(0))
+              Build.binop(:*, on, Build.int(math.registers_word))
             end
 
             # Whether +layer+ shows the whole of itself over the whole of what is behind it, which the
-            # console's colour math does with no halving, adding what is behind or taking it away. What is behind may be a number the game
-            # works out, for a layer it turns solid: that is the one amount it can change, and it is
-            # 100 or 0 (#emit_see_through_amount).
+            # console's colour math does with no halving, adding what is behind or taking it away. What
+            # is behind may be a number the game works out, for a layer it turns solid: that is the one
+            # amount it can change, and it is 100 or 0 (#emit_see_through_amount).
             def added_to_what_is_behind?(layer)
               return false if layer.split || layer.shows.kind != :int
 
@@ -2281,8 +2328,9 @@ module VBlank
               program.walk.any? { |node| node.kind == :place_bar && node.covers }
             end
 
-            # Whether +program+ turns a see-through layer solid as it runs, which the runtime then keeps
-            # what the colour math is told in (Runtime::Picture's rt_see_through_math).
+            # Whether +program+ turns a see-through layer solid as it runs, or changes its colour math
+            # as scenes take over, which the runtime then keeps what the colour math is told in
+            # (Runtime::Picture's rt_see_through_math).
             def self.see_through_turns_solid?(program, picture = Stacking.picture(program))
               SeeThrough.layers(program).any? { |layer| !layer.split && layer.behind.kind != :int } ||
                 see_through_in_scene?(program, picture)
@@ -2290,20 +2338,23 @@ module VBlank
 
             # Reference#exec_see_through: the colour math on while what is behind shows, and off, the
             # layer solid, at nought. An amount between shows as 100 does: the console adds or it does
-            # not. It is told in the next blank, with the frame's sprites.
+            # not. It is told in the next blank, with the frame's sprites. A layer whose amounts are
+            # numbers is told nothing here: the framework puts the step in for every see-through layer
+            # of a game with several, and each scene taking over has told the math already.
             def emit_see_through_amount(node)
-              return unless @see_through_layers
-              return emit_see_through_amount_while_up unless @see_through_scenes.nil?
+              math = see_through_maths.find { |candidate| candidate.layer.name == node.layer }
+              return if math.nil? || SeeThrough.fixed?(math.layer)
+              return emit_see_through_amount_while_up(math) if math.scenes
 
-              runtime_call("rt_see_through_math", [see_through_math_now])
+              runtime_call("rt_see_through_math", [see_through_math_now(math)])
             end
 
             # ...and on a layer some scenes show, only while one of them is up: the next to take
             # over tells the math again.
-            def emit_see_through_amount_while_up
+            def emit_see_through_amount_while_up(math)
               past = fresh("see_through_away")
               up = fresh("see_through_up")
-              @see_through_scenes.each do |number|
+              math.scenes.each do |number|
                 other = fresh("see_through_not_scene")
                 jump_unless(Build.binop(:==, Build.var_ref(@scene), Build.int(number)), other)
                 @asm.brl(up)
@@ -2311,39 +2362,38 @@ module VBlank
               end
               @asm.brl(past)
               @asm.label(up)
-              runtime_call("rt_see_through_math", [see_through_math_now])
+              runtime_call("rt_see_through_math", [see_through_math_now(math)])
               @asm.label(past)
             end
 
             # The sprites' bit of the colour math's registers (TS, CGADSUB).
             SPRITES_BIT = 0x10
 
-            # The names of the sprites in the see-through layer, drawn from the palettes the
-            # colour math reaches (Art#split_sprite_palettes!).
+            # The names of the sprites in a see-through layer, drawn from the palettes the colour
+            # math reaches (Art#split_sprite_palettes!).
             def see_through_sprites = @see_through_sprites || []
 
-            # The scenes the see-through layer is not on, whose colour math is off while they are up
-            # (#emit_see_through_for_scene); none for a layer every screen shows.
+            # The scenes no see-through layer of sprites is on, whose colour math reaches no sprite
+            # while they are up (#emit_see_through_for_scene); none for a game whose colour math
+            # never changes.
             def scenes_without_see_through
-              return [] unless @see_through_scenes
+              return [] unless see_through_by_scene?
 
-              @scenes.keys.reject { |scene| @see_through_scenes.include?(@scenes.fetch(scene)) }
+              mixing = see_through_maths.select(&:sprites?).flat_map(&:scenes)
+              @scenes.keys.reject { |scene| mixing.include?(@scenes.fetch(scene)) }
             end
 
             # Half of the layer and half of what is behind, which the colour math makes by halving the
             # sum or the difference.
             HALF = [SeeThrough::STEPS / 2, SeeThrough::STEPS / 2].freeze
 
-            # The amounts of the game's see-through layer, asked before the kinds a Super Nintendo
+            # The amounts of the game's see-through layers, asked before the kinds a Super Nintendo
             # cannot do (Lowering#refuse_what_snes_lacks!), so the framework's step that tells the
             # console an amount again (`:see_through`, put in for an amount worked out as the game
-            # runs, or for more than one see-through layer) is refused in words about the amount.
+            # runs) is refused in words about the amount. A game can have one on each of its
+            # screens (#refuse_unmade_see_through!).
             def refuse_see_through_amounts!
-              layers = SeeThrough.layers(@program)
-              return if layers.empty?
-
-              refuse_unmade!("more than one see-through layer") if layers.length > 1
-              refuse_see_through_amount!(layers.first)
+              SeeThrough.layers(@program).each { |layer| refuse_see_through_amount!(layer) }
             end
 
             def refuse_see_through_amount!(layer)

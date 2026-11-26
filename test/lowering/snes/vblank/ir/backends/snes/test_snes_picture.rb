@@ -459,6 +459,25 @@ class TestSNESPicture < Minitest::Test
     assert_match(/behind a background that every screen shows/, error.message)
   end
 
+  # The console has one colour math, so two see-through layers on one screen are refused, in a game
+  # with no scenes too, where nothing else asks.
+  def test_two_see_through_layers_on_one_screen_are_refused_in_plain_words
+    error = assert_raises(SNES::LoweringError) do
+      SNES.new.build(program_of do
+        screen :tiled
+        image(:sand, "#" => :gray) { "########\n" * 8 }
+        tiles :sands, "#" => :sand
+        layers :back, :words, :light
+        layer(:back) { background :floor, tiles: :sands, map: Array.new(32) { "#" * 32 } }
+        layer(:words, shows: 100, shows_behind: 100) { sprite :sand, at: [8, 8] }
+        layer(:light, shows: 100, shows_behind: 100, subtract: true) { background :lamp, tiles: :sands, map: ["#"] }
+        game_loop { wait_vblank }
+      end)
+    end
+
+    assert_match(/:words and :light are see-through on one screen/, error.message)
+  end
+
   # A background bent row by row: each of the screen's rows shown at its own sideways offset, worked
   # out by the game at every frame boundary for the frame after, on top of the layer's own scroll.
   # The block counts its rows too, which the checked run holds to the interpreter's count: 224 at
