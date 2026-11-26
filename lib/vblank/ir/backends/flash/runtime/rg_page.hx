@@ -9,15 +9,26 @@
  * each ENTER_FRAME plays as many passes as are due, so the game runs at the console's speed whatever rate
  * the movie is woken at.
  *
- * Built with the define rg_trace_pictures, it traces the picture's check number each time it paints (Flash#build_swf's
- * trace_pictures), which is how a test sees what the stage would show.
+ * The sound is the game's own, made where each frame ends (rg_sound_render_frame) and played through a Sound the player
+ * asks for samples (see the sound's section below).
  *
- * What it does not do yet: sound, a menu, a gamepad. Left out of the movie, a game that needs one is
- * refused by name before it is built (Flash#runtime_gaps).
+ * Built with the define rg_trace_pictures, it traces the picture's check number each time it paints (Flash#build_swf's
+ * trace_pictures), which is how a test sees what the stage would show. Built with rg_trace_sound, it traces the check
+ * number of each frame's sound and what the sound device would be given, and takes the device's samples itself, a frame's
+ * worth after each pass the game plays, for the harness has no device to ask (and its Ruffle sends no sampleData events at
+ * all).
+ *
+ * What it does not do yet: a menu, a gamepad.
  */
 
 /* The most passes one ENTER_FRAME plays to catch up, so a stall does not turn into a long run of them. */
 static inline var PAGE_MOST_PASSES:Int = 4;
+
+/* The sound device's rate: a Sound that is made as it plays always plays at this, and asks for at least PAGE_SOUND_ASKED
+ * samples a time (fewer ends the sound). */
+static inline var PAGE_DEVICE_RATE:Int = 44100;
+static inline var PAGE_SOUND_ASKED:Int = 2048;
+static inline var PAGE_RING_SIZE:Int = 96000; // two seconds of the game's samples
 
 static var page_bitmap:flash.display.BitmapData = null;
 static var page_colors:Vector<Int> = null;
@@ -26,6 +37,15 @@ static var page_started_at:Int = 0;
 static var page_passes:Int = 0;
 static var page_stopped:Bool = false;
 static var page_shared:flash.net.SharedObject = null;
+static var page_left:Vector<Int> = new Vector<Int>(RG_SOUND_FRAME_MOST);
+static var page_right:Vector<Int> = new Vector<Int>(RG_SOUND_FRAME_MOST);
+static var page_ring_left:Vector<Float> = new Vector<Float>(PAGE_RING_SIZE);
+static var page_ring_right:Vector<Float> = new Vector<Float>(PAGE_RING_SIZE);
+static var page_written:Float = 0; // the game's samples taken in, ever
+static var page_read:Float = 0; // how far through them the device has got: a fraction, the game's samples being read in between
+static var page_priming:Bool = true; // waiting for a little sound to be ready before playing
+static var page_sound_held_up:Bool = false;
+static var page_heard:Vector<Float> = new Vector<Float>(PAGE_SOUND_ASKED * 2);
 
 /* The 15-bit colours as the opaque 24-bit ones the picture shows, each channel widened by repeating its top
  * bits underneath ((c << 3) | (c >> 2)), so the brightest is 255 and not 248. */
@@ -54,6 +74,87 @@ static function page_paint():Void {
   flash.Lib.trace("picture-crc " + rg_picture_crc(rg_screen_shown()));
   #end
 }
+
+/* --- the sound ---
+ *
+ * The frame's sound is made where the frame ends, at the game's own rate (RG_SOUND_RATE), and kept in a ring. The device
+ * asks for samples at its own rate and each it is given is read from between two of the game's, which plays the sound at
+ * the right pitch whatever the device runs at. A device that ran dry waits for a little sound to be ready before it starts
+ * again, and one with more waiting than it should have lets the oldest go, so the sound never falls far behind the game
+ * (rg_page.js's worklet does the same). */
+
+/* The frame's sound, taken in after the frame before's. */
+static function page_play_sound():Void {
+  var count = rg_sound_render_frame(page_left, page_right);
+  if (count == 0) return;
+  var at = Std.int(page_written % PAGE_RING_SIZE);
+  for (i in 0...count) {
+    page_ring_left[at] = page_left[i] / 32768.0;
+    page_ring_right[at] = page_right[i] / 32768.0;
+    at++;
+    if (at == PAGE_RING_SIZE) at = 0;
+  }
+  page_written += count;
+  if (page_written - page_read > RG_SOUND_RATE * 0.25) page_read = page_written - RG_SOUND_RATE * 0.05;
+  #if rg_trace_sound
+  page_trace_frame_sound(count);
+  #end
+}
+
+/* +count+ samples for the device, a left and a right one each, in +into+ (twice as many numbers). */
+static function page_sound_heard(count:Int, into:Vector<Float>):Void {
+  var step:Float = RG_SOUND_RATE / PAGE_DEVICE_RATE; // the game's samples used up for each one the device is given
+  for (i in 0...count) {
+    var waiting = page_written - page_read;
+    if (page_priming && waiting >= RG_SOUND_RATE * 0.05) page_priming = false;
+    if (page_priming || waiting < 2) {
+      page_priming = true;
+      into[i * 2] = 0;
+      into[i * 2 + 1] = 0;
+      continue;
+    }
+    var first = rg_floor(page_read);
+    var share = page_read - first;
+    var a = Std.int(first % PAGE_RING_SIZE);
+    var b = Std.int((first + 1) % PAGE_RING_SIZE);
+    into[i * 2] = page_ring_left[a] + (page_ring_left[b] - page_ring_left[a]) * share;
+    into[i * 2 + 1] = page_ring_right[a] + (page_ring_right[b] - page_ring_right[a]) * share;
+    page_read += step;
+  }
+}
+
+static function page_sound_asked(event:flash.events.SampleDataEvent):Void {
+  page_sound_heard(PAGE_SOUND_ASKED, page_heard);
+  for (i in 0...PAGE_SOUND_ASKED * 2) event.data.writeFloat(page_heard[i]);
+}
+
+#if rg_trace_sound
+/* The check number of the frame's sound (the left and right sample in turn, each as the 16 bits a file keeps it in, low
+ * byte first), and the loudest sample the device was given for the frame that has just been played (what a device would
+ * ask for in the 1/60 of a second). */
+static function page_trace_frame_sound(count:Int):Void {
+  var table = rg_crc_table_made();
+  var crc = -1;
+  for (i in 0...count) {
+    for (sample in [page_left[i], page_right[i]]) {
+      crc = table[(crc ^ sample) & 0xFF] ^ (crc >>> 8);
+      crc = table[(crc ^ (sample >> 8)) & 0xFF] ^ (crc >>> 8);
+    }
+  }
+  flash.Lib.trace("sound-frame " + count + " " + StringTools.hex(crc ^ -1, 8).toLowerCase());
+}
+
+static function page_trace_device_heard():Void {
+  var asked = Std.int(PAGE_DEVICE_RATE / 60);
+  page_sound_heard(asked, page_heard);
+  var loudest:Float = 0;
+  for (i in 0...asked * 2) {
+    var size = page_heard[i] < 0 ? -page_heard[i] : page_heard[i];
+    if (size > loudest) loudest = size;
+  }
+  flash.Lib.trace("sound-heard " + Std.int(loudest * 32768));
+}
+#end
 
 /* The buttons each player holds now: a number each, a bit a button, from the keys that are down. */
 static function page_masks():Array<Int> {
@@ -88,12 +189,16 @@ static function page_play_pass():Void {
       return;
     }
     if (rg_frame_ends_late() != 0) {
+      page_play_sound();
       rg_frame_begins();
       page_paint();
       page_store_saves();
       return;
     }
-    if (rg_frame_begins() == 0) {
+    if (!page_sound_held_up) page_play_sound();
+    var held_up = rg_frame_begins();
+    page_sound_held_up = held_up != 0;
+    if (held_up == 0) {
       page_paint();
       page_store_saves();
       return;
@@ -103,12 +208,15 @@ static function page_play_pass():Void {
 
 static function page_on_frame(_:flash.events.Event):Void {
   if (page_stopped) return;
-  var elapsed:Float = flash.Lib.getTimer() - page_started_at; // a float: the milliseconds times the console clock pass 32 bits in a tenth of a second
+  var elapsed:Float = flash.Lib.getTimer() - page_started_at; // a float: the milliseconds times the console's clock pass 32 bits in a tenth of a second
   var due = Std.int(elapsed * RG_CONSOLE_TICKS_A_SECOND / (1000.0 * RG_CONSOLE_TICKS_A_FRAME));
   var played = 0;
   try {
     while (page_passes < due && played < PAGE_MOST_PASSES && !page_stopped) {
       page_play_pass();
+      #if rg_trace_sound
+      page_trace_device_heard();
+      #end
       page_passes++;
       played++;
     }
@@ -158,6 +266,9 @@ static function main():Void {
   stage.addEventListener(flash.events.KeyboardEvent.KEY_DOWN, function(event:flash.events.KeyboardEvent) { page_key(event, true); });
   stage.addEventListener(flash.events.KeyboardEvent.KEY_UP, function(event:flash.events.KeyboardEvent) { page_key(event, false); });
   page_keep_saves();
+  var sound = new flash.media.Sound();
+  sound.addEventListener(flash.events.SampleDataEvent.SAMPLE_DATA, page_sound_asked);
+  sound.play();
   page_started_at = flash.Lib.getTimer();
   stage.addEventListener(flash.events.Event.ENTER_FRAME, page_on_frame);
 }

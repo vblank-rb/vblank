@@ -98,9 +98,11 @@ module VBlank
         # +game+ as a Flash movie, written to +path+ (game.swf): the game checked as a cartridge build checks it,
         # written as Haxe and compiled with the runtime that draws on a stage, which a person plays with the
         # keyboard (runtime/rg_page.hx). +scale+ is how many times the console's picture is enlarged.
-        # +console+ is the one the game is built as, the first it names when left out.
+        # +console+ is the one the game is built as, the first it names when left out. A test builds the movie to
+        # trace what it paints (+trace_pictures+) or the sound it makes (+trace_sound+), which a harness with no screen
+        # and no sound device cannot see otherwise.
         def build_swf(game, path, console: nil, settings: {}, scale: 3, err: $stderr, progress: Messages::Progress.silent,
-                      pack_at_start: false, trace_pictures: false)
+                      pack_at_start: false, trace_pictures: false, trace_sound: false)
           raise LoweringError, "#{path} is a folder, so the game cannot be written there. Name a file instead." if File.directory?(path)
 
           program = Computer::CheckedProgram.build(game, console: console, settings: settings, err: err, progress: progress,
@@ -115,7 +117,7 @@ module VBlank
           progress.step("Compiling with Haxe")
           width, height = program.described_console.framed_screen_size
           source = class_text(lowering, text, PAGE_DRIVER, extra: page_text(program, scale))
-          defines = trace_pictures ? %w[rg_trace_pictures] : []
+          defines = [("rg_trace_pictures" if trace_pictures), ("rg_trace_sound" if trace_sound)].compact
           FileUtils.cp(compile(source, width: width * scale, height: height * scale, defines: defines), path)
           progress.done
           path
