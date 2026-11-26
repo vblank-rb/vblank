@@ -197,6 +197,7 @@ rows), `many_rooms_game.rb` (a scene of many rooms with sprite pictures grouped 
 `palette_walk_tests.rb` (a fade or tint walked and repeated, played by each console that walks its colours itself),
 `see_through_scenery_tests.rb` (a background layer half see-through under a fade or a tint and in a scene of its own, played by each console that mixes it with what is behind: the Advance and the PlayStation),
 `layer_over_sprites_tests.rb` (a see-through background over sprites behind it and in front of it, played by the same two),
+`subtracting_layer_games.rb` (a dark arena and a walker under a light that takes what is behind it away, `subtract: true`, for the Super Nintendo's test and the refusal each other console gives),
 `pixelate_backgrounds_tests.rb` (the backgrounds in blocks and the sprites as drawn, `pixelate ..., sprites: false`, played by each console whose display shows it: the Advance and the Super Nintendo),
 `ruby_answers.rb` (plain Ruby game code run as plain Ruby and as the game, its names compared, for
 `test_plain_ruby_answers.rb`) and `ruby_answers_parts.rb` (that suite's Structs and parts, a game file),

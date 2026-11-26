@@ -2133,8 +2133,9 @@ module VBlank
               refuse_unmade!("a see-through layer of both backgrounds and sprites") unless seen_through.empty? || sprites.empty?
 
               behind = see_through_behind_in_its_scenes(parts)
-              # Adding, an empty sub screen adds the fixed colour, nothing: the layer whole, as the
-              # interpreter shows it over the black backdrop. Only halving needs something behind.
+              # Adding or subtracting whole, an empty sub screen adds or takes away the fixed colour,
+              # nothing: the layer whole, as the interpreter shows it over the black backdrop. Only
+              # halving needs something behind.
               adds = added_to_what_is_behind?(layer)
               raise LoweringError, see_through_uncovered_message(layer) unless adds || behind.any? { |bg| covers_screen?(bg) }
 
@@ -2148,7 +2149,9 @@ module VBlank
                                # mixed pixel anywhere it is drawn, so has no say.
                                [bits.call(seen_through), bits.call(behind) | SPRITES_BIT]
                              end
-              @see_through_layers = [adds ? mixed : mixed | Runtime::Picture::MATH_HALVES, under]
+              mixed |= Runtime::Picture::MATH_HALVES unless adds
+              mixed |= Runtime::Picture::MATH_SUBTRACTS if layer.subtract
+              @see_through_layers = [mixed, under]
             end
 
             SeeThroughParts = Data.define(:seen_through, :sprites, :behind)
@@ -2217,7 +2220,7 @@ module VBlank
             end
 
             # Whether +layer+ shows the whole of itself over the whole of what is behind it, which the
-            # console's colour math does with no halving. What is behind may be a number the game
+            # console's colour math does with no halving, adding what is behind or taking it away. What is behind may be a number the game
             # works out, for a layer it turns solid: that is the one amount it can change, and it is
             # 100 or 0 (#emit_see_through_amount).
             def added_to_what_is_behind?(layer)
@@ -2282,6 +2285,8 @@ module VBlank
               @scenes.keys.reject { |scene| @see_through_scenes.include?(@scenes.fetch(scene)) }
             end
 
+            # Half of the layer and half of what is behind, which the colour math makes by halving the
+            # sum or the difference.
             HALF = [SeeThrough::STEPS / 2, SeeThrough::STEPS / 2].freeze
 
             # The amounts of the game's see-through layer, asked before the kinds a Super Nintendo
@@ -2301,12 +2306,14 @@ module VBlank
 
               worked_out = [layer.shows, layer.behind].any? { |amount| amount.kind != :int }
               raise LoweringError, SEE_THROUGH_WORKED_OUT if worked_out
-              return if SeeThrough.weights(layer, layer.shows.value, layer.behind.value) == HALF
+              return if SeeThrough.weights(layer, layer.shows.value, layer.behind.value).map(&:abs) == HALF
 
               said = layer.split ? "`transparency: #{layer.behind.value}`" : "`shows: #{layer.shows.value}, shows_behind: #{layer.behind.value}`"
+              said += ", `subtract: true`" if layer.subtract
               raise LoweringError, "Layer :#{layer.name} is see-through by #{said}. A Super Nintendo can show a layer " \
                                    "half see-through only: `transparency:` from 50 to 56, or `shows: 50, shows_behind: " \
                                    "50`. It can also add a layer to what is behind it: `shows: 100, shows_behind: 100`. " \
+                                   "With `subtract: true`, it takes what is behind away by the same amounts. " \
                                    "To fix this, use one of those amounts for the Super Nintendo, for example " \
                                    "`transparency: console.mixes_by_half ? 50 : 40`."
             end

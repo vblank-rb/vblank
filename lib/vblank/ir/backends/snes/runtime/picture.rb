@@ -241,6 +241,9 @@ module VBlank
             # CGADSUB's bit that halves the sum.
             MATH_HALVES = 0x40
 
+            # CGADSUB's bit that takes the sub screen away from the main screen instead of adding it.
+            MATH_SUBTRACTS = 0x80
+
             # A scene's own sprite tiles, in a game whose sprites do not fit video memory all at once,
             # waiting for the next blank to go in: where they are on the cartridge (three bytes and
             # a spare), how many bytes are left, where the next goes in video memory, and the byte
@@ -414,7 +417,9 @@ module VBlank
             # the fixed colour unhalved, which is why the build wants a background covering the
             # screen behind the layer.
             #
-            # A layer added to what is behind it is the same with bit 6 clear. A game can turn that
+            # A layer added to what is behind it is the same with bit 6 clear, and one that takes what is
+            # behind away (`subtract: true`) sets bit 7, halved or not: the sub screen is taken from the
+            # main screen a channel at a time, and a channel stops at nothing. A game can turn that
             # off and on again: CGADSUB takes the number it was last told, from the blank, so the
             # layer turns solid between two pictures (+math_turns+, rt_see_through_math).
             def emit_see_through(asm, memory, see_through, math_turns)
