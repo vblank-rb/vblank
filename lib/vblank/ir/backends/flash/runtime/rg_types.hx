@@ -413,3 +413,19 @@ class RgMixedSides {
     unders = new Vector<Int>(cells);
   }
 }
+
+/* One edge of a face between two corners (Reference::FaceEdges.edge): the rows it crosses, and where it is on its first
+ * row and how far it moves each row after, as x, u, v, w and shade (rg_faces.hx). */
+class RgFaceEdge {
+  public var first_row:Int;
+  public var past_row:Int;
+  public var at:Array<Int>;
+  public var step:Array<Int>;
+
+  public function new(first_row:Int, past_row:Int, at:Array<Int>, step:Array<Int>) {
+    this.first_row = first_row;
+    this.past_row = past_row;
+    this.at = at;
+    this.step = step;
+  }
+}
