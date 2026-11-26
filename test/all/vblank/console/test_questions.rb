@@ -46,6 +46,25 @@ class TestQuestions < Minitest::Test
     end
   end
 
+  # A cell in front covers every sprite on the Color, so a sprite told `in_front: true` has nothing to go
+  # over, and is told why.
+  def test_a_sprite_in_front_on_the_color_is_refused_saying_why
+    b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: :gbc))
+    b.instance_eval do
+      screen :tiled
+      image(:dot, "#" => :red) { Minitest::Test::SOLID_TILE }
+      sprite :dot, at: [0, 0], in_front: true
+      game_loop { nil }
+    end
+    b.finalize_program
+    program = b.program
+
+    words = VBlank::Console::ColorAnswers.refusals(program.walk, VBlank::Console.described(:gbc)).map(&:words).join(" ")
+
+    assert_match(/in_front: true/, words)
+    assert_match(/over every sprite/, words)
+  end
+
   # A background :room and a status bar, each with a cell written now.
   private def program_for(console)
     b = VBlank::Builder.new(options: VBlank::Cartridge::Options.new(console: console))

@@ -8,4 +8,5 @@ require "pack_cells_in_front_tests"
 # The tests themselves are in test/pack_cells_in_front_tests.rb.
 class TestPackCellsInFrontOnTheGenesis < Minitest::Test
   include PackCellsInFrontTests
+  include PackSpritesInFrontTests
 end

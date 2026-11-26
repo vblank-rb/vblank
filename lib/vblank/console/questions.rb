@@ -22,6 +22,10 @@ module VBlank
         def initialize(verb:, words:, can:, reason: nil) = super
       end
 
+      # Why a console that draws a cell in front over every sprite refuses a sprite told `in_front: true`.
+      COVERED_BY_CELLS_IN_FRONT = "it draws a background cell marked in front over every sprite. " \
+                                  "To fix this, take away `in_front: true`."
+
       # A verb written in other verbs leaves no step of its own: a `pulse` is a sprite's size walked
       # every frame, an iris is the game's light closing. The steps alone would have a console
       # answer for the verb underneath, in words about a sprite that resizes or a light, which is
@@ -146,9 +150,10 @@ module VBlank
             Question.new(:sprite, "This sprite turns or resizes (`scale`, `face_angle`, `turn`, `pulse`)",
                          console.turning_sprites)
           elsif node.in_front
-            # The same part of the console as a background's cells in front: a priority bit in each sprite.
+            # A console whose cell covers every sprite has no sprite to put over it (its +cells_in_front+ is
+            # true and its +sprites_over_cells_in_front+ false), and says why.
             Question.new(:sprite, "This sprite is drawn in front of a background's cells marked in front (`in_front: true`)",
-                         console.cells_in_front)
+                         console.sprites_over_cells_in_front, console.cells_in_front ? COVERED_BY_CELLS_IN_FRONT : nil)
           end
         end
       end

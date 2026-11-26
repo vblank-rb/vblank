@@ -154,6 +154,9 @@ module VBlank
     # +cells_in_front+ marks that the console's build draws a background's cells marked in front of
     # the sprites in front of them (`cells_in_front: true`), as a console whose map keeps a priority
     # bit in each cell does. Where it is false the build refuses such a background (Console::Questions).
+    # +sprites_over_cells_in_front+ marks that a sprite told `in_front: true` is drawn over those cells.
+    # Where it is false the build refuses such a sprite: a console whose cell covers every sprite
+    # (the Color's) has no sprite to put over it.
     #
     # +area_clips_called_routines+ marks that a routine called from inside `inside` has its drawing held to
     # that area, as the interpreter holds it: the console's build keeps the area as numbers in memory
@@ -167,7 +170,7 @@ module VBlank
     # smallest its records fit in (IR::SaveLayout.chosen), never the EEPROM unasked. The Advance's
     # are every size a game can name (ADVANCE_SAVE_MEMORIES), which is the default.
     Description = Data.define(:name, :title, :screen_width, :screen_height, :buttons, :controllers,
-                              :holds_background_above_row, :background_box, :cells_in_front, :area_clips_called_routines,
+                              :holds_background_above_row, :background_box, :cells_in_front, :sprites_over_cells_in_front, :area_clips_called_routines,
                               :glides_recordings, :sets_main_volume, :sprites, :sprite_places,
                               :sprites_a_row, :sprite_pieces_drawn_a_line, :sprite_slivers_drawn_a_line,
                               :sprite_pixels_drawn_a_line, :sprite_piece_shape, :sprite_pieces_drawn_a_screen,
@@ -269,7 +272,7 @@ module VBlank
                      voices_read_sound_memory: false, big_background_tiles: false, shown_rows: nil,
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
-                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false,
+                     save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false, sprites_over_cells_in_front: false,
                      sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
@@ -441,7 +444,8 @@ module VBlank
     # each verb does on it is Console::ColorAnswers's to say.
     COLOR = Description.new(name: :gbc, title: "Game Boy Color", screen_width: 160, screen_height: 144,
                             buttons: %i[a b select start right left up down].freeze, controllers: 1,
-                            holds_background_above_row: false, background_box: nil, glides_recordings: false, sets_main_volume: true, sprites: 40, sprite_places: 40,
+                            holds_background_above_row: false, background_box: nil, cells_in_front: true, sprites_over_cells_in_front: false,
+                            glides_recordings: false, sets_main_volume: true, sprites: 40, sprite_places: 40,
                             # rt_paint_area keeps the area in memory (GBC::Lowering::Picture#emit_inside).
                             area_clips_called_routines: true,
                             # The first ten pieces its table holds on a line, every other left out
@@ -602,7 +606,8 @@ module VBlank
     # Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 5,
-                              holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
+                              holds_background_above_row: false, background_box: nil, cells_in_front: true,
+                              sprites_over_cells_in_front: true, glides_recordings: true,
                               sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,

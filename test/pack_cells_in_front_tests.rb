@@ -271,35 +271,6 @@ module PackCellsInFrontTests
     end
   end
 
-  # A sprite in front is drawn over the cells in front as well as over the walker, though it was
-  # declared first; through its see-through places the walker shows, or the cell in front over it.
-  def test_a_sprite_in_front_is_drawn_over_the_cells_in_front
-    Dir.mktmpdir do |folder|
-      %i[console map_cells].each do |map|
-        screen = game_player.run(front_game(folder, map: map, pointer: true), frames: 3).screen
-        wanted = wanted_pixels(pointer: true)
-
-        assert_equal wanted, shown_pixels(screen, wanted), "a map of #{map}"
-      end
-    end
-  end
-
-  # Two sprites in front take turns in front of each other a frame each, and each frame the one in
-  # front covers every pixel under it, the cells in front's drawn pixels too.
-  def test_two_sprites_in_front_take_turns_over_the_cells_in_front
-    Dir.mktmpdir do |folder|
-      program = turns_game(folder)
-      shown = (4..7).map do |frames|
-        screen = game_player.run(program, frames: frames).screen
-        spots_under_sprites.map { |x, y| screen.pixel(x, y) }.uniq
-      end
-
-      shown.each { |colors| assert_equal 1, colors.length, "one sprite covers every pixel under it: #{colors.inspect}" }
-      assert_includes [[POINTER_COLOR, HAND_COLOR], [HAND_COLOR, POINTER_COLOR]], shown.first(2).flatten
-      assert_equal shown.first(2) * 2, shown, "the two take turns in front a frame each"
-    end
-  end
-
   # A background walking between areas marks each area's cells in front, and a cell a slot told it,
   # written in each area, brings its mark: over one slot of tiles, or a slot an area.
   def test_cells_in_front_follow_the_area_showing_and_the_cells_written_there
@@ -349,6 +320,55 @@ module PackCellsInFrontRefusedTests
     end
   end
 
+  def test_a_background_not_told_cells_in_front_is_played_with_every_cell_behind_the_sprites
+    Dir.mktmpdir do |folder|
+      screen = game_player.run(front_game(folder, cells_in_front: nil), frames: 3).screen
+      wanted = wanted_pixels(fronts: false)
+
+      assert_equal wanted, shown_pixels(screen, wanted)
+    end
+  end
+end
+
+# Played on each console whose build draws a sprite told `in_front: true` over the cells in front.
+module PackSpritesInFrontTests
+  include PackCellsInFrontGames
+
+  # A sprite in front is drawn over the cells in front as well as over the walker, though it was
+  # declared first; through its see-through places the walker shows, or the cell in front over it.
+  def test_a_sprite_in_front_is_drawn_over_the_cells_in_front
+    Dir.mktmpdir do |folder|
+      %i[console map_cells].each do |map|
+        screen = game_player.run(front_game(folder, map: map, pointer: true), frames: 3).screen
+        wanted = wanted_pixels(pointer: true)
+
+        assert_equal wanted, shown_pixels(screen, wanted), "a map of #{map}"
+      end
+    end
+  end
+
+  # Two sprites in front take turns in front of each other a frame each, and each frame the one in
+  # front covers every pixel under it, the cells in front's drawn pixels too.
+  def test_two_sprites_in_front_take_turns_over_the_cells_in_front
+    Dir.mktmpdir do |folder|
+      program = turns_game(folder)
+      shown = (4..7).map do |frames|
+        screen = game_player.run(program, frames: frames).screen
+        spots_under_sprites.map { |x, y| screen.pixel(x, y) }.uniq
+      end
+
+      shown.each { |colors| assert_equal 1, colors.length, "one sprite covers every pixel under it: #{colors.inspect}" }
+      assert_includes [[POINTER_COLOR, HAND_COLOR], [HAND_COLOR, POINTER_COLOR]], shown.first(2).flatten
+      assert_equal shown.first(2) * 2, shown, "the two take turns in front a frame each"
+    end
+  end
+end
+
+# Played on each console whose build does not draw a sprite over the cells in front: a sprite told
+# `in_front: true` is refused in words naming the console.
+module PackSpriteInFrontRefusedTests
+  include PackCellsInFrontGames
+
   def test_a_sprite_in_front_is_refused_naming_the_console
     Dir.mktmpdir do |folder|
       built_for_console = front_game(folder, cells_in_front: nil, pointer: true).copy.tap { |program| program.console = game_console }
@@ -358,15 +378,6 @@ module PackCellsInFrontRefusedTests
 
       assert_includes error.message, "in_front: true"
       assert_includes error.message, VBlank::Console.described(game_console).title
-    end
-  end
-
-  def test_a_background_not_told_cells_in_front_is_played_with_every_cell_behind_the_sprites
-    Dir.mktmpdir do |folder|
-      screen = game_player.run(front_game(folder, cells_in_front: nil), frames: 3).screen
-      wanted = wanted_pixels(fronts: false)
-
-      assert_equal wanted, shown_pixels(screen, wanted)
     end
   end
 end

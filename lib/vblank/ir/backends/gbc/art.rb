@@ -1181,8 +1181,9 @@ module VBlank
                                  "draws see-through."
           end
 
-          # The number of a grid of 32×32 cells, each [tile number, palette number] or nil for a
-          # cell with nothing in it, which shows the backdrop. +rows+ is how many of its rows a map
+          # The number of a grid of 32×32 cells, each [tile number, palette number, in front] or nil for a
+          # cell with nothing in it, which shows the backdrop. A cell in front (the third, true; missing or
+          # nil means behind) has its priority bit set, so it covers every sprite. +rows+ is how many of its rows a map
           # reaches, counting from the top, the rows a cell the game changes can be in; every row
           # past them is empty. Putting the grid up copies those rows alone, and the empty rows past
           # them only where the grid up before had cells there (Runtime::Picture, GRID_ROWS).
@@ -1191,8 +1192,8 @@ module VBlank
             attributes = cells.flatten(1).map do |cell|
               next 0 unless cell
 
-              tile, palette = cell
-              palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
+              tile, palette, in_front = cell
+              palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0) | (in_front ? Console::GBCHardware::ATTR_IN_FRONT : 0)
             end
             bytes = tiles.map { |tile| tile & 0xFF } + attributes
             number = @grids.index(bytes) || (@grids << bytes).length - 1
@@ -1201,8 +1202,8 @@ module VBlank
           end
 
           # The number of a map bigger than the grid (Runtime::BigMaps), kept whole: +cells+ is its
-          # rows, each cell [tile number, palette number] or nil for one with nothing in it, and every
-          # cell is two bytes, its tile and its colours, a row after another. +repeats+ for a map that
+          # rows, each cell [tile number, palette number, in front] or nil for one with nothing in it (the third as
+          # in #grid), and every cell is two bytes, its tile and its colours, a row after another. +repeats+ for a map that
           # comes round past its edges, as one that fits a grid of 64 cells does (IR::TileMap.streams?).
           def big_map(cells, repeats: false)
             cols = cells.map(&:length).max.to_i
@@ -1213,10 +1214,11 @@ module VBlank
 
             bytes = cells.flat_map do |row|
               Array.new(cols) do |col|
-                tile, palette = row[col]
+                tile, palette, in_front = row[col]
                 next [0, 0] unless tile
 
-                [tile & 0xFF, palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)]
+                [tile & 0xFF, palette | (tile >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0) |
+                              (in_front ? Console::GBCHardware::ATTR_IN_FRONT : 0)]
               end.flatten
             end
             entry = [bytes, cols, cells.length, nil, repeats]

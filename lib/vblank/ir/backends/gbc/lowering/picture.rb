@@ -1238,7 +1238,7 @@ module VBlank
               @big_maps[[bg, which]] ||= begin
                 refuse_background!(bg)
                 cells = bg.every_map.fetch(which).map do |row|
-                  Array(row).map { |tile| tile.nil? || tile.negative? ? nil : background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg, which)) }
+                  Array(row).map { |tile| tile.nil? || tile.negative? ? nil : placed_cell_of(bg, tile, tile_room(bg, which)) }
                 end
                 @art.big_map(cells, repeats: !bg.streams?)
               end
@@ -1510,8 +1510,15 @@ module VBlank
             def grid_cell_of(bg, tile)
               number, palette = background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg))
               colours = palette | (number >= 256 ? Console::GBCHardware::ATTR_TILE_BANK : 0)
+              colours |= Console::GBCHardware::ATTR_IN_FRONT if cell_in_front?(bg, tile)
               (number & 0xFF) | (colours << 8)
             end
+
+            # The cell of +bg+'s map showing tile +tile+, [tile number, palette, in front]: the third true where
+            # the tile is one of the background's in front of the sprites (Nodes::Background#in_front).
+            def placed_cell_of(bg, tile, room) = [*background_tile_named(bg.tiles.fetch(tile), bg, room), cell_in_front?(bg, tile)]
+
+            def cell_in_front?(bg, tile) = bg.in_front&.include?(tile) || false
 
             # A tile picked as the game runs (Nodes::SetTile#picked_by) is a cell read from a table, as a
             # console's own game writes its text: the number, less the one the list starts at, is a
@@ -2119,7 +2126,7 @@ module VBlank
                     tile = map[row] && map[row][col]
                     next nil if tile.nil? || tile.negative?
 
-                    background_tile_named(bg.tiles.fetch(tile), bg, tile_room(bg, which))
+                    placed_cell_of(bg, tile, tile_room(bg, which))
                   end
                 end
                 # A cell the game changes is on one of its maps, so no row past the tallest holds one.

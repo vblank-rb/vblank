@@ -162,7 +162,8 @@ module VBlank
                       "than 256 tiles, with the pictures that every scene shows, is refused. A sprite with " \
                       "`over_picture: true` is shown over a painted screen, as on the Advance. The sprites are " \
                       "then copied to the console in each blank. So less of each blank is left to copy " \
-                      "the painted screen's tiles."),
+                      "the painted screen's tiles. `in_front: true` is refused: a Game Boy Color draws a background cell " \
+                      "marked in front over every sprite."),
         draw_in_order: works,
         hide_sprites: works("on the next frame, no sprite shows. On the frame after, every sprite shows where it is."),
         picture_groups: works("the Color copies a group's pictures into its sprite memory when the group comes " \
@@ -174,7 +175,7 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works("tiles of four colours each."),
-        background: works("`cells_in_front: true` is refused: this build does not make it yet. A Game Boy Color keeps a priority bit for each cell of its map. " \
+        background: works("With `cells_in_front: true`, each cell that the map marks is in front of every sprite, as the console draws a cell with its priority bit set. " \
                           "one background at a time, scrolled and changed as on the Advance, and bent " \
                           "row by row with `scroll_each_row`. `above_row:` is refused: this build does not " \
                           "make it yet. `hide` and `show` are refused: this build does not make them yet. " \
