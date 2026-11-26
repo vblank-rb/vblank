@@ -8,7 +8,8 @@ require "test_helper"
 # its first slot (it is a ring), slots of each width, a run that crosses 8K of save memory (a bank's
 # end on the Color), and a list with nothing in it.
 #
-# Included by each console whose lowering moves the block itself, which says its console
+# Included by each console whose lowering moves the block itself (the Color, the Super Nintendo and the
+# Genesis), which says its console
 # (+moved_on+) and its checked run (+checked_run+).
 module SaveListMoveTests
   include VBlank::IR::Build
