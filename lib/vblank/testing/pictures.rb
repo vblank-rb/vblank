@@ -60,13 +60,15 @@ module VBlank
       #
       # A Game Boy Color cartridge's picture is a pass later: the Color's runtime copies a pass's
       # picture to the screen in the blank after the pass, whatever the screen, so what is showing is
-      # the pass before the last one finished. A Super Nintendo cartridge does the same. Neither has a
-      # turning screen here.
+      # the pass before the last one finished. A Super Nintendo cartridge and a Genesis cartridge do
+      # the same. None has a turning screen here. The Genesis's painted screen needs seven frames to
+      # show a program with no loop, measured; eight is kept.
       #
-      # So a moving picture on either is lined up by its count of passes alone
+      # So a moving picture on any of them is lined up by its count of passes alone
       # (#console_picture_past_pass): the console plays until it has counted the pass after the one
-      # asked for, however long it took to set up, and test_pictures_on_each_console_interpreter.rb
-      # and test_pictures_on_the_super_nintendo_interpreter.rb fail if one is compared at any other
+      # asked for, however long it took to set up, and test_pictures_on_each_console_interpreter.rb,
+      # test_pictures_on_the_super_nintendo_interpreter.rb and
+      # test_pictures_on_the_genesis_interpreter.rb fail if one is compared at any other
       # frame. Their +boot_frames+ are only room enough to set up a program with no loop to count,
       # and the start of a run given +console_frames:+; more than enough is harmless there.
       LineUp = Data.define(:boot_frames, :shows_pass_before_last)
@@ -75,7 +77,9 @@ module VBlank
                                          gbc: LineUp.new(boot_frames: { bitmap: 9, tiled: 6 },
                                                          shows_pass_before_last: true),
                                          snes: LineUp.new(boot_frames: { bitmap: 8, tiled: 6 },
-                                                          shows_pass_before_last: true)
+                                                          shows_pass_before_last: true),
+                                         genesis: LineUp.new(boot_frames: { bitmap: 8, tiled: 6 },
+                                                             shows_pass_before_last: true)
                                        })
 
       class OverBudget < StandardError; end
