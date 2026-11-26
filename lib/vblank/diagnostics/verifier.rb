@@ -1311,8 +1311,9 @@ module VBlank
         @cartridge_file.removing_save(save_path) if @save_dir == SAVE_DIR
         ObjectSpace.define_finalizer(self, @cartridge_file)
         @rom.write(@cartridge_file.path)
+        @cartridge_file.removing_files_written(kit.files_written(@rom, @cartridge_file.path))
         write_save_memory if @save
-        @probe = kit.open_probe(@cartridge_file.path, save_dir: @save_dir, multitap: multitap?)
+        @probe = kit.open_probe(kit.played_path(@rom, @cartridge_file.path), save_dir: @save_dir, multitap: multitap?)
         @cartridge_file.playing_in(@probe)
         read_picture_size
         @probe.clock_at(@clock, set: @clock_set) if @clock

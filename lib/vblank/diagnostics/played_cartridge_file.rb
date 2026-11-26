@@ -39,6 +39,7 @@ module VBlank
       def initialize(path)
         @path = path
         @save_path = nil
+        @also_written = []
         @emulator = nil
         @closed = false
       end
@@ -56,13 +57,19 @@ module VBlank
         self
       end
 
+      # Files the cartridge was written as besides #path (a disc's image and cue sheet), removed with it.
+      def removing_files_written(paths)
+        @also_written = paths - [@path]
+        self
+      end
+
       # Shut the emulator, then remove the files. Running it twice does nothing more.
       def close
         return if @closed
 
         @closed = true
         @emulator.close if @emulator.respond_to?(:close) && !@emulator.closed?
-        [@path, @save_path].compact.each { |file| remove_file(file) }
+        [@path, *@also_written, @save_path].compact.each { |file| remove_file(file) }
         nil
       end
 

@@ -42,14 +42,20 @@ module VBlank
       # What the build worked out about the program, for the tools that read a running one back, or nil.
       attr_reader :built
 
-      # +image+ is the linked code and data, loaded at +load_at+; +entry+ is where it starts.
-      def initialize(image, title:, entry:, load_at: EXE_AT, built: nil)
+      # The disc the program is on (PS1Disc), for a game that keeps data to read from one as it runs
+      # (`table_groups`), or nil for a program that plays from its EXE alone.
+      attr_reader :disc
+
+      # +image+ is the linked code and data, loaded at +load_at+; +entry+ is where it starts. +disc_data+
+      # is what the program reads from the disc as it runs, for a game that does (PS1Disc::DATA_AT on).
+      def initialize(image, title:, entry:, load_at: EXE_AT, built: nil, disc_data: nil)
         @built = built
         body = image.b
         body += "\0".b * ((-body.bytesize) % BLOCK)
         raise ArgumentError, "a PlayStation program holds #{PROGRAM_END - load_at} bytes, not #{body.bytesize}" if load_at + body.bytesize > PROGRAM_END
 
         @bytes = header(title, entry, load_at, body.bytesize) + body
+        @disc = PS1Disc.new(program: @bytes, data: disc_data, title: title, stack: STACK_TOP) if disc_data
       end
 
       def size = @bytes.bytesize
@@ -68,7 +74,21 @@ module VBlank
       # The game's title as the header holds it.
       def title = header_title.delete("\0").rstrip
 
-      def write(path) = File.binwrite(path, @bytes)
+      # Writes the program to +path+. A program on a disc is written as the disc instead: an image of
+      # its sectors beside +path+ (.bin) and the cue sheet an emulator opens (.cue), as #played_path
+      # names it; the EXE alone would play without the data it reads.
+      def write(path)
+        return File.binwrite(path, @bytes) unless @disc
+
+        @disc.write(played_path(path))
+      end
+
+      # The file an emulator opens for the program written as +path+: +path+ itself, or for a program on
+      # a disc, the cue sheet with its name.
+      def played_path(path) = @disc ? path.sub(/\.\w+\z/, "") + ".cue" : path
+
+      # Every file #write writes for +path+.
+      def files_written(path) = @disc ? [played_path(path), PS1Disc.bin_path_for(played_path(path))] : [path]
 
       include ProfileNotes::WithRoutineSizes
 

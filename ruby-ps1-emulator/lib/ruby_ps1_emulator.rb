@@ -25,4 +25,5 @@ end
 RubyPS1Emulator.refuse_out_of_date_build! if checkout_build
 
 require_relative "ruby_ps1_emulator/kept_copy"
+require_relative "ruby_ps1_emulator/disc_program"
 require_relative "ruby_ps1_emulator/core"

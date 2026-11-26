@@ -1939,7 +1939,9 @@ module VBlank
                            variant: variant)
       path = options[:output] || File.join(File.dirname(File.expand_path(game_file)), game.default_filename(console: console))
       rom.write(path)
-      say "Built #{File.basename(path)} (#{rom.size} bytes)"
+      # A PlayStation game that reads a disc as it runs is written as the disc, its cue sheet the file to open.
+      played = VBlank::Console.for(console).played_path(rom, path)
+      say "Built #{File.basename(played)} (#{rom.size} bytes#{' of program, on a disc' unless played == path})"
       # A sound chip with a memory of its own that the game fills: how full it is.
       say rom.sound_memory.line if rom.respond_to?(:sound_memory) && rom.sound_memory
       # What asset packing and the quick memory did is said for a console whose build does them:

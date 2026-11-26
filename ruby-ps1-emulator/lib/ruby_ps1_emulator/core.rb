@@ -455,16 +455,26 @@ module RubyPS1Emulator
     end
 
     # Hands the core the program's path and bytes, and plugs a pad into the first port. Where the
-    # program's code goes in RAM is read from its header: the address at 18h and the length at 1Ch.
+    # program's code goes in RAM is read from its header: the address at 18h and the length at 1Ch. A
+    # disc image (+exe_path+ a .cue sheet) is started by the BIOS from the disc, as a console starts
+    # one, and its program is the one the disc's SYSTEM.CNF names (DiscProgram).
     def load_program(exe_path)
       bytes = File.binread(exe_path)
       loaded = @frontend.load_game(File.expand_path(exe_path), bytes)
       raise ArgumentError, "Beetle PSX would not load #{exe_path}" unless loaded
 
-      load_at, length = bytes.byteslice(EXE_TEXT_AT, 8).unpack("VV")
-      @program_code = (load_at...(load_at + length)).freeze
+      @program_code = if Core.disc?(exe_path)
+                        DiscProgram.code_of(exe_path)
+                      else
+                        load_at, length = bytes.byteslice(EXE_TEXT_AT, 8).unpack("VV")
+                        load_at...(load_at + length)
+                      end.freeze
       @frontend.set_controller_port_device(0, JOYPAD)
     end
+
+    # Whether +path+ is a disc image's cue sheet, which a console starts through its BIOS, rather than a
+    # program.
+    def self.disc?(path) = File.extname(path).casecmp?(".cue")
 
     # Where a PS-X EXE's header keeps the address its code is loaded at, and the length after it.
     EXE_TEXT_AT = 0x18

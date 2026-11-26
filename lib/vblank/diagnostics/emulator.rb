@@ -278,7 +278,7 @@ module VBlank
           rom.write(path)
           layout = kit.save_file_of(rom)
           File.binwrite(sav, layout.file_of(save.to_sav, save.clock_state)) if save
-          core = kit.open_core(path, save_dir: dir)
+          core = kit.open_core(kit.played_path(rom, path), save_dir: dir)
           begin
             yield core
           ensure

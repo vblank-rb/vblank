@@ -130,6 +130,14 @@ module VBlank
       def open_core(path, save_dir:) = Diagnostics::Emulator.open(path, save_dir: save_dir)
       def save_file_extension = ".sav"
 
+      # The file the core opens for +cartridge+ written as +path+: the cartridge file itself, unless the
+      # console's games can be written as more than one file (a PlayStation game on a disc).
+      def played_path(_cartridge, path) = path
+
+      # Every file +cartridge+ written as +path+ is: the cartridge file alone, unless the console's
+      # games can be written as more than one.
+      def files_written(_cartridge, path) = [path]
+
       # Where the save memory is in that file for +cartridge+ (a Verifier::SaveFileLayout): the
       # reading's SAVE_FILE, unless one kind of the console's boards keeps it elsewhere.
       def save_file_of(_cartridge) = reading::SAVE_FILE
@@ -483,6 +491,8 @@ module VBlank
       def cartridge = Cartridge::PS1EXE
       def reading = Diagnostics::PS1Reading
       def open_core(path, save_dir:) = Diagnostics::Emulator.open_ps1(path, save_dir: save_dir)
+      def played_path(cartridge, path) = cartridge.played_path(path)
+      def files_written(cartridge, path) = cartridge.files_written(path)
       def open_probe(path, save_dir:, multitap: false) = Diagnostics::PS1Probe.new(path, save_dir: save_dir, multitap: multitap)
       def multitap_name = "Multitap"
       def load_emulator! = Diagnostics::Emulator.load_ps1!
