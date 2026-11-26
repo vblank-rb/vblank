@@ -29,7 +29,7 @@ module VBlank
 
           def further_difference(program, before)
             difference = self.class.sounds_difference(@interpreter_sounds, audio_played)
-            difference ||= dsp_difference
+            difference ||= dsp_difference(strikes: !IR::Tunes.effect_clock_step(program, program.described_console).nil?)
             difference || (self.class.save_difference(before, @save) if SaveLayout.named_by?(program))
           end
 
@@ -52,7 +52,11 @@ module VBlank
           # interpreter's mix puts it (Runtime::Recordings), which the log does not say: those voices'
           # registers are not held to it, nor their bits of the key-on and key-off registers, which
           # they share. Which recordings sound is held instead, at every moment (HeadlessRun#active_samples).
-          def dsp_difference
+          #
+          # In a game whose sound effects are struck inside the frame (+strikes+, Runtime::Strikes), KON is not
+          # held to it either: it holds whichever voice was keyed on last, and a note struck at its tick's own
+          # time is keyed after a tune's note the log puts later in the frame. Each key-on is still in the log.
+          def dsp_difference(strikes: false)
             voicing = rom.built.sound_voicing
             recordings = !rom.built.recording_names.empty?
             console_bits = rom.built.console_voice_bits
@@ -64,6 +68,7 @@ module VBlank
             dsp_reads.each_with_index do |(logged, held), i|
               expected = DSPWrites.after(logged_entries.take(logged), voicing)
               expected = DSPWrites.console_voices_only(expected, console_bits) if recordings
+              expected = expected.except(DSPWrites::KEY_ON) if strikes
               wrong = expected.filter_map do |register, value|
                 got = held.getbyte(register)
                 got &= console_bits if recordings && register == DSPWrites::KEY_OFF
