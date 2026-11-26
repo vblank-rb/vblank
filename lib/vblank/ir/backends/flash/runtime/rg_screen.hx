@@ -78,7 +78,7 @@ static function paintable(x:Int, y:Int):Bool {
 static function set_pixel(x:Int, y:Int, color:Int):Void {
   if (!paintable(x, y)) return;
   picture_touched = 1;
-  pixels[y * RG_SCREEN_WIDTH + x] = color & 0xFFFF;
+  pixels[y * RG_SCREEN_WIDTH + x] = faded_as_painted(color);
 }
 
 /* Framebuffer#fill_rect */
@@ -102,7 +102,7 @@ static function clear_to(color:Int):Void {
     return;
   }
   picture_touched = 1;
-  var painted = color & 0xFFFF;
+  var painted = faded_as_painted(color);
   for (at in 0...RG_CELLS) pixels[at] = painted;
 }
 
@@ -227,6 +227,97 @@ static function rg_screen_blit_pose(poses:Vector<Int>, count:Int, pose:Int, x:In
   if (pose >= 0 && pose < count) blit_image(poses[pose], x, y);
 }
 
+/* --- what a feature reads of the screen --- */
+
+static inline var RG_SOLID:Int = -1;
+static inline var RG_SEE_THROUGH:Int = 0xFFFF;
+static inline var RG_SIZE_REBUILT_WHOLE:Int = 3;
+static inline var NOBODY_ASKED:Int = -1;
+
+/* Whether the scenery was stamped onto the copy kept to put back under sprites (Reference @scenery_kept). */
+static var scenery_kept:Int = 0;
+
+static function rebuilt_whole():Int { return rg_game_picture_sizes[RG_SIZE_REBUILT_WHOLE]; }
+
+/* What is painted from here on goes through the colour table a placed fade in force asks for it
+ * (rg_hook_paint_fade_for), or as drawn where there is none. */
+static var paint_fade:RgShownFilter = null;
+
+static function fade_unless_left_as_drawn(fade_place:Int):Void { paint_fade = rg_hook_paint_fade_for(fade_place); }
+static function fade_nothing():Void { paint_fade = null; }
+
+/* Reference#placed_fade_in_picture?: a placed fade in force changes the backdrop, which is behind everything. */
+static function placed_fade_in_picture():Bool { return rg_hook_paint_fade_for(RG_NO_LAYER) != null; }
+
+/* Framebuffer#apply_placed_fade: a colour as it is painted while a placed fade reaches it. */
+static function faded_as_painted(color:Int):Int {
+  var masked = color & 0xFFFF;
+  if (paint_fade == null) return masked;
+  var faded = paint_fade.table[masked];
+  return faded < 0 ? paint_fade.fill(masked) : faded;
+}
+
+/* What mixing a layer into the cells under it asks of the screen: nothing yet, since a game with a see-through
+ * layer calls rg_see_through_*, which are refused by name before the game is played. */
+static function mix_as_layer(layer:Int):Void {}
+static function mix_nothing():Void {}
+
+/* Framebuffer#paint_row, a cell at a time */
+static function lay_scenery(px:Int, py:Int, color:Int):Void {
+  pixels[py * RG_SCREEN_WIDTH + px] = faded_as_painted(color);
+}
+
+/* A rebuild that request_repaint would have owed, left out because nothing moved. */
+static function skip_repaint():Void {
+  if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0) return;
+  rebuild_skipped = 1;
+}
+
+/* IR::Affine.matrix */
+static function affine_matrix(angle:Int, size:Int):Array<Int> {
+  var scale_one = rg_game_turn_rules[0];
+  var one_th = rg_game_turn_rules[1];
+  var most = rg_game_turn_rules[2];
+  var least_size = rg_game_turn_rules[3];
+  var scale = size < least_size ? least_size : size;
+  var recip = Std.int((scale_one * 1.0 * one_th) / scale);
+  if (recip > most) recip = most;
+  return [rg_floor_div(rg_game_sines[angle + 90] * recip, one_th), rg_floor_div(rg_game_sines[angle] * recip, one_th)];
+}
+
+static inline function floor_mod(a:Int, b:Int):Int { return a - rg_floor_div(a, b) * b; }
+static inline function clamp_number(value:Int, low:Int, high:Int):Int { return value < low ? low : (value > high ? high : value); }
+
+/* What the game has painted (Reference @bitmaps, for the tiles and pictures of a run): where each run's places are
+ * kept, the places of the tiles a game paints from its lists. */
+static inline var RG_RUN_TILES:Int = 0;
+static inline var RG_RUN_WIDTH:Int = 1;
+static inline var RG_RUN_HEIGHT:Int = 2;
+static inline var RG_RUN_PLACES:Int = 3;
+static inline var RG_RUN_FIRST_IMAGE:Int = 4;
+static inline var RG_RUN_IMAGES:Int = 5;
+static inline var RG_RUN_PLANES:Int = 6;
+static inline var RG_RUN_FIELDS:Int = 7;
+static inline var RG_RUN_IMAGE_FIELDS:Int = 17;
+static inline var RG_SIZE_BACKGROUNDS:Int = 0;
+static inline var RG_SIZE_ALWAYS_UP:Int = 2;
+static inline var RG_SIZE_RUNS:Int = 7;
+static inline var RG_SIZE_RUN_PIXELS:Int = 8;
+static inline var RUN_TILE_SIDE:Int = 8;
+static inline var RUN_TILE_PIXELS:Int = 64;
+static inline var PLACES_IN_RUN_COLORS:Int = 16;
+static var painted_places:Vector<Int> = null;
+
+static function run_field(run:Int, field:Int):Int { return rg_game_tile_runs[RG_RUN_FIELDS * run + field]; }
+
+/* Where a run's places start in painted_places. */
+static function places_of(run:Int):Int {
+  if (painted_places == null) painted_places = new Vector<Int>(rg_game_picture_sizes[RG_SIZE_RUN_PIXELS] + 1);
+  return run_field(run, RG_RUN_PLACES);
+}
+
+static function painted_places_at(at:Int):Int { return painted_places[at]; }
+
 /* Reference#request_repaint (rg_hook_repaint_requested is where a feature hears of it) */
 static function request_repaint():Void {
   if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0) return;
@@ -296,6 +387,7 @@ static function rg_screen_frame_ended():Void {
 static function show_backdrop(color:Int):Void {
   if (color < 0 || color == backdrop) return;
   backdrop = color;
+  scenery_kept = 0;
   if (rg_hook_scenery_up()) request_repaint();
   else clear_to(backdrop);
 }
@@ -306,6 +398,7 @@ static function rg_screen_set(new_kind:Int, two_pages:Int, new_backdrop:Int):Int
   if (crossing) {
     if (new_backdrop >= 0) backdrop = new_backdrop;
     clear_to(backdrop);
+    scenery_kept = 0;
   } else {
     show_backdrop(new_backdrop);
   }
@@ -434,13 +527,15 @@ static function rg_screen_shown():Vector<Int> {
  * border with the picture as shown over its middle. */
 static var rg_screen_bordered:Bool = RG_WHOLE_WIDTH != RG_SCREEN_WIDTH || RG_WHOLE_HEIGHT != RG_SCREEN_HEIGHT;
 static var framed:Vector<Int> = null;
-static function rg_screen_framed():Vector<Int> {
-  if (!rg_screen_bordered) return framed_scene_screen(rg_screen_shown());
+static function rg_screen_framed():Vector<Int> { return rg_screen_framed_from(rg_screen_shown()); }
+
+/* The same, from a picture as it was shown. */
+static function rg_screen_framed_from(game:Vector<Int>):Vector<Int> {
+  if (!rg_screen_bordered) return framed_scene_screen(game);
   if (framed == null) {
     framed = new Vector<Int>(RG_WHOLE_WIDTH * RG_WHOLE_HEIGHT);
     for (at in 0...framed.length) framed[at] = rg_game_border_pixels[at];
   }
-  var game = rg_screen_shown();
   for (y in 0...RG_SCREEN_HEIGHT) {
     for (x in 0...RG_SCREEN_WIDTH) framed[(y + RG_GAME_TOP) * RG_WHOLE_WIDTH + RG_GAME_LEFT + x] = game[y * RG_SCREEN_WIDTH + x];
   }

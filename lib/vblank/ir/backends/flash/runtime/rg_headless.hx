@@ -28,6 +28,9 @@ static var headless_waiting_for_buttons:Bool = false;
 static var headless_over:Bool = false;
 static var headless_sound_held_up:Int = 0;
 
+/* The picture as the last moment showed it. */
+static var headless_shown_now:Vector<Int> = new Vector<Int>(RG_CELLS);
+
 static function headless_print(text:String):Void { flash.Lib.trace(text); }
 
 /* The harness's way of ending the run: the code it exits with, and a sentence for a game that went wrong. */
@@ -54,10 +57,12 @@ static function headless_add_pixels(parts:Array<String>, pixels:Vector<Int>, cou
 
 static function headless_picture_string():String {
   var parts:Array<String> = [];
-  headless_add_pixels(parts, rg_screen_shown(), RG_CELLS);
+  // The picture as shown is the one the moment printed, read before anything owed was painted, then the stored one,
+  // as rg_headless.js writes them.
+  headless_add_pixels(parts, headless_shown_now, RG_CELLS);
   headless_add_pixels(parts, rg_screen_stored(), RG_CELLS);
   if (rg_screen_bordered || RG_SCREEN_OF_ITS_OWN != 0) {
-    var whole = rg_screen_framed();
+    var whole = rg_screen_framed_from(headless_shown_now);
     headless_add_pixels(parts, whole, whole.length);
   }
   return parts.join("");
@@ -78,6 +83,7 @@ static function headless_print_moment(heading:String, with_picture:Bool):Void {
   headless_print("camera " + rg_screen_camera_x() + " " + rg_screen_camera_y());
   headless_print("motor " + rg_motor_on());
   var shown_pixels = rg_screen_shown();
+  for (i in 0...RG_CELLS) headless_shown_now[i] = shown_pixels[i];
   if (with_picture) headless_print_pixels("picture", shown_pixels);
   else headless_print("picture-crc " + rg_picture_crc(shown_pixels));
 }
