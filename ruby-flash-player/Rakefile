@@ -1,0 +1,34 @@
+# frozen_string_literal: true
+
+require "fileutils"
+
+# THE HARNESS: a Rust program that plays a .swf in Ruffle (see README.md). Ruffle's source is
+# ruffle/, unpacked from the release zip the first time it is wanted, and never downloaded:
+# the harness is built against one Ruffle, the one that zip is.
+HARNESS_DIR = File.expand_path("harness", __dir__)
+RUFFLE_DIR = File.expand_path("ruffle", __dir__)
+HARNESS_BINARY = File.join(HARNESS_DIR, "target", "release", "flash_player_harness")
+HARNESS_SOURCES = Dir[File.join(HARNESS_DIR, "src", "*.rs")] + [File.join(HARNESS_DIR, "Cargo.toml")]
+
+desc "Unpack Ruffle's source from the zip RUFFLE_SOURCE_ZIP names, if it is not unpacked"
+task :unpack_ruffle do
+  next if File.file?(File.join(RUFFLE_DIR, "Cargo.toml"))
+
+  zip = ENV["RUFFLE_SOURCE_ZIP"]
+  abort "Ruffle's source is not in #{RUFFLE_DIR}. Set RUFFLE_SOURCE_ZIP to the release zip " \
+        "(ruffle-nightly-2026_11_24-reproducible-source.zip) and run rake unpack_ruffle." unless zip && File.file?(zip)
+
+  FileUtils.mkdir_p(RUFFLE_DIR)
+  sh "unzip", "-q", "-o", zip, "-d", RUFFLE_DIR
+  FileUtils.cp(File.join(RUFFLE_DIR, "Cargo.lock"), File.join(HARNESS_DIR, "Cargo.lock"))
+end
+
+file HARNESS_BINARY => [:unpack_ruffle, *HARNESS_SOURCES] do
+  abort "cargo was not found. Install Rust: curl https://sh.rustup.rs -sSf | sh -s -- -y" unless system("cargo", "--version", out: File::NULL)
+
+  Dir.chdir(HARNESS_DIR) { sh "cargo", "build", "--release" }
+  FileUtils.touch(HARNESS_BINARY)
+end
+
+desc "Build the harness that plays a .swf in Ruffle, if its source changed"
+task compile: HARNESS_BINARY

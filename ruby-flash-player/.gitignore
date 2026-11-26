@@ -1,0 +1,5 @@
+# Ruffle's source, unpacked by `rake unpack_ruffle` from the release zip (see ../README.md)
+/ruffle/
+
+# What cargo builds
+/harness/target/

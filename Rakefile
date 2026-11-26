@@ -68,6 +68,14 @@ task :compile_ps1_core do
   Dir.chdir("ruby-ps1-emulator") { sh "rake", "compile", "compile_core" }
 end
 
+# THE FLASH PLAYER: Ruffle, run with no window by a small Rust program (ruby-flash-player/harness). It
+# is built from the Ruffle source in ruby-flash-player/ruffle (`rake unpack_ruffle` in that folder says
+# how it gets there), only when its source changed; the Flash run is the only one that plays a movie.
+desc "Build the Ruffle harness the Flash run plays its games in, if its source changed"
+task :compile_flash_player do
+  Dir.chdir("ruby-flash-player") { sh "rake", "compile" }
+end
+
 # SimpleCov merges every result it finds in coverage/.resultset.json that is younger
 # than its merge timeout, and each run files its slice under a name of its
 # own — so without this a second run within a few minutes reports the UNION of both

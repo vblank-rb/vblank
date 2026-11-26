@@ -13,6 +13,7 @@ require_relative "diagnostics/func_dumper"
 require_relative "diagnostics/sm83_listing"      # A routine of a Game Boy Color cartridge
 require_relative "diagnostics/missing_emulator"  # Why the emulator would not load, and what to do about it
 require_relative "diagnostics/emulator"          # The one seam to the emulator backend; swap emulators here
+require_relative "diagnostics/flash_player"       # A Flash program played in Ruffle with no window, and what it traced
 require_relative "diagnostics/screen_questions"  # A whole screen's questions in Ruby, for an emulator not the Advance's
 require_relative "diagnostics/frame_sound"       # One frame's samples and the loudest of them
 require_relative "diagnostics/fast_fourier"      # Samples as the frequencies they hold, and back

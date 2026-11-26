@@ -1,0 +1,19 @@
+[package]
+name = "ruby_flash_player_harness"
+version = "0.1.0"
+edition = "2024"
+description = "Plays a .swf in Ruffle with no window, a frame at a time, and prints what it traces"
+license = "MIT"
+
+# Its own workspace: Ruffle's crates are taken by path from ruffle/ (see ../Rakefile), and
+# Cargo.lock is Ruffle's own, so the libraries are the ones that release was built with.
+[workspace]
+
+[[bin]]
+name = "flash_player_harness"
+path = "src/main.rs"
+
+[dependencies]
+ruffle_core = { path = "../ruffle/core", features = ["audio", "mp3", "default_font"] }
+ruffle_render = { path = "../ruffle/render" }
+ruffle_input_format = { path = "../ruffle/tests/input-format" }
