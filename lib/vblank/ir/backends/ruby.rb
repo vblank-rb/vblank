@@ -139,8 +139,8 @@ module VBlank
         # folder its save states and save memory are kept in (WrittenGame#state_folder); nil keeps none.
         # +match+ is #match_facts, or nil for a game written with none.
         def script(program, title:, menu: true, code: nil, shell: nil, match: nil)
-          [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) },
-           *(shell ? SHELL_PARTS.map { |part| File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8) } : []),
+          [SCRIPT_TOP, *SCRIPT_PARTS.map { |part| read_part(part) },
+           *(shell ? SHELL_PARTS.map { |part| read_part(part) } : []),
            "VBlank::Graphics::MenuFont::CARRIED = <<'#{FONT_END}'\n#{File.read(Graphics::MenuFont::PATH, encoding: Encoding::UTF_8)}#{FONT_END}\n",
            "module VBlankScript\n", WrittenGame::PART_BEGINS,
            "  TITLE = #{title.to_s.inspect}\n  CONSOLE_TITLE = #{program.described_console.title.inspect}\n  MENU = #{menu}\n",
@@ -196,6 +196,10 @@ module VBlank
         end
 
         private
+
+        # A library file's text for a script, without its magic comment: Ruby reads that line only at the
+        # top of a file, and SCRIPT_TOP has it.
+        def read_part(part) = File.read(VBlank.root.join("lib", part), encoding: Encoding::UTF_8).delete_prefix(MAGIC_COMMENT)
 
         # +text+ as a heredoc ending at the line +ending+, which no line of it may be; +after+ is what
         # follows it on the line it starts on (a comma between arguments).
