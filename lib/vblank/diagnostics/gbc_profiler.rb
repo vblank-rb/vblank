@@ -82,8 +82,12 @@ module VBlank
       end
 
       # WHAT TapeProfile asks of the console it plays a tape on (see TapeProfile.play): the file
-      # name, the buttons put down, the runtime's two words, and one frame played and measured.
+      # name, the adapter plugged in, the buttons put down, the runtime's two words, and one frame
+      # played and measured.
       def file_name = FILE_NAME
+
+      # One controller: nothing to plug in.
+      def plug_in_controllers(_core) = nil
 
       def hold(core, buttons) = core.set_keys(IR::Buttons.mask(buttons))
 

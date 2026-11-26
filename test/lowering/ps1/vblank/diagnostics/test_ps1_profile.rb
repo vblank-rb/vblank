@@ -199,5 +199,35 @@ class TestPS1Profile < Minitest::Test
     assert_equal still.game.first.routine, taped.readings.first.game.first.routine
   end
 
+  # A game that does more work while player 3 holds B, and a tape that holds it.
+  THIRD_WALKER = VBlank.game("THIRD", consoles: %i[ps1]) do
+    total = 0
+    func(:walk) { repeat(400) { total += 3 } }
+    func(:stand) { repeat(20) { total += 3 } }
+    game_loop do
+      call :stand
+      call :walk if held(:b, player: 3)
+    end
+  end
+
+  THIRD_PRESSES = VBlank::Playthroughs::Tape.parse(<<~TAPE)
+    vblank tape 1
+    recorded on: THIRD 0x00000000
+    starts from: power-on
+
+    100 -
+    20 p3_b
+    20 -
+  TAPE
+
+  # The third player's presses go to the adapter that carries a third controller.
+  def test_a_third_players_presses_on_a_tape_reach_the_game
+    result = THIRD_WALKER.build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
+                         .profile(out: StringIO.new, tape: THIRD_PRESSES, frames: 90..115)
+
+    assert_operator result.frame(110).lines_spare, :<, result.frame(90).lines_spare
+    assert_match(/walk/, result.frame(110).game.first.routine.to_s)
+  end
+
   private def rom(game) = game.build_rom(console: :ps1, out: StringIO.new, err: StringIO.new, profile: false)
 end

@@ -95,13 +95,24 @@ module VBlank
         Emulator.load_ps1!
         meter = Meter.new(time: time_by_routine(places), file_name: FILE_NAME,
                           shown_at: places.runtime.fetch(IR::Backends::PS1::Runtime::Frame::SHOWN),
-                          passes_at: places.waits_counted_at, routines: routines)
+                          passes_at: places.waits_counted_at, routines: routines,
+                          multitap: IR::Backends::PS1::Runtime::Pads.reads_multitap?(places.source_program))
         TapeProfile.play(rom, tape: tape, frames: frames, meter: meter)
       end
 
       # A tape's frames measured on the PlayStation's core, which reads main RAM rather than a work
-      # memory and takes the pad's own names for its buttons.
+      # memory and takes the pad's own names for its buttons. A game for more than two is played with
+      # a Multitap in, as it is played.
       class Meter < TapeProfile::ProcessorTimeMeter
+        def initialize(multitap: false, **options)
+          super(**options)
+          @multitap = multitap
+        end
+
+        def plug_in_controllers(core)
+          core.plug_in_multitap if @multitap
+        end
+
         def hold(core, buttons)
           IR::Backends::PS1::HeadlessRun.pad_buttons_by_port(buttons).each_with_index do |held, port|
             core.set_buttons(held, port: port)

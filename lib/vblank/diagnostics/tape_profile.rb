@@ -93,6 +93,9 @@ module VBlank
           @counting = false
         end
 
+        # Two controllers, the console's own ports: nothing to plug in.
+        def plug_in_controllers(_core) = nil
+
         def hold(core, buttons)
           first, second = IR::Buttons.by_controller(buttons)
           core.set_buttons(first)
@@ -194,13 +197,15 @@ module VBlank
 
       # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1, with
       # the console's +meter+. A meter answers four things: +file_name+, what the cartridge is
-      # written as for its emulator; hold(core, buttons), to put the buttons down for the next
-      # frame; words(core), the runtime's Frame::PASSES and Frame::SHOWN as they stand; and
-      # play_frame(core, measured:), which plays one frame and answers its FrameCost when it is
-      # measured, nil when not.
+      # written as for its emulator; plug_in_controllers(core), to plug in the console's adapter for
+      # more controllers before the first frame, for a game that reads them; hold(core, buttons), to
+      # put the buttons down for the next frame; words(core), the runtime's Frame::PASSES and
+      # Frame::SHOWN as they stand; and play_frame(core, measured:), which plays one frame and answers
+      # its FrameCost when it is measured, nil when not.
       def self.play(rom, tape:, frames:, meter:)
         held_on = buttons_by_frame(tape, frames.end)
         Emulator.with_cartridge(rom, file_name: meter.file_name) do |core|
+          meter.plug_in_controllers(core)
           before = POWER_ON_WORDS
           readings = (1..frames.end).filter_map do |number|
             buttons = held_on[number - 1] || []
