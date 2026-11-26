@@ -103,7 +103,8 @@ static function page_play_pass():Void {
 
 static function page_on_frame(_:flash.events.Event):Void {
   if (page_stopped) return;
-  var due = Std.int((flash.Lib.getTimer() - page_started_at) * RG_CONSOLE_TICKS_A_SECOND / (1000.0 * RG_CONSOLE_TICKS_A_FRAME));
+  var elapsed:Float = flash.Lib.getTimer() - page_started_at; // a float: the milliseconds times the console clock pass 32 bits in a tenth of a second
+  var due = Std.int(elapsed * RG_CONSOLE_TICKS_A_SECOND / (1000.0 * RG_CONSOLE_TICKS_A_FRAME));
   var played = 0;
   try {
     while (page_passes < due && played < PAGE_MOST_PASSES && !page_stopped) {

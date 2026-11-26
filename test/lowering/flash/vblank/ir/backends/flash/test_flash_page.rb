@@ -66,6 +66,14 @@ class TestFlashPage < Minitest::Test
     assert_match(/07000000/, saved.last, "the number 7, low byte first, is in what was kept")
   end
 
+# The movie plays by the clock, so it goes on: a count of the milliseconds times the console clock that passed 32 bits
+# stopped it after a tenth of a second.
+def test_it_keeps_playing_past_the_first_tenth_of_a_second
+  painted = FlashPlayerHelper.painted(@swf, frames: 16)
+
+  assert_operator painted.size, :>, 12
+end
+
   def test_the_movie_is_for_the_size_of_the_screen_enlarged
     movie = File.binread(@swf)
     body = movie.start_with?("CWS") ? Zlib::Inflate.inflate(movie[8..]) : movie[8..]
