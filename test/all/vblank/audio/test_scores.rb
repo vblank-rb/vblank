@@ -391,6 +391,12 @@ class TestScores < Minitest::Test
     assert_equal [NOTES[:C4], NOTES[:E4]], i.audio.select { |entry| entry[0] == :note }.map(&:last).reject(&:zero?)
   end
 
+  def test_a_note_fade_out_longer_than_a_frame_is_a_friendly_error
+    error = assert_raises(ArgumentError) { Score.new(note_fade_out: 0.1, parts: [Part.new(notes: [Note.new(at: 0, key: :C4)])]).to_song }
+
+    assert_match(/at most a frame/, error.message)
+  end
+
   def test_a_name_the_list_does_not_have_is_a_friendly_error
     song = notes_every_ten_ticks(:C4)
     assert_match(/:credits/, build_error { songs(:music, { title: song }).play :credits })

@@ -219,7 +219,8 @@ module VBlank
                                       notes_apart: lowered[:music].notes_apart?, effect_clock_step: carries.effect_clock_step,
                                       effect_tempo_step: carries.effect_tempo_step)
             end
-            Recordings.emit(asm, memory, voices: carries.recording_voices, cuts: carries.effects_cut_notes) if lowered[:plays]
+            Recordings.emit(asm, memory, voices: carries.recording_voices, cuts: carries.effects_cut_notes,
+                                          fades: carries.note_fades) if lowered[:plays]
           end
 
           # What a game needs before its first line: its variables that do not start at nought (the

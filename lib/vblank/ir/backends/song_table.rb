@@ -597,6 +597,7 @@ module VBlank
           row_options = part.events.any? { |note| IR::Tunes.glides?(note) } ? { walks: true } : {}
           chip = IR::Tunes.said_chip_envelope(part, event)
           row_options = row_options.merge(chip_envelope: chip) if chip
+          row_options = row_options.merge(fade_out: song.note_fade_out) if song.note_fade_out
           pan = IR::Tunes.note_pan(part, event)
           row_options = row_options.merge(pan: pan) unless VBlank::Audio::Pan.centered?(pan)
           if sounds

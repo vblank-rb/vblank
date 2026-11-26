@@ -73,6 +73,10 @@ module VBlank
       # volume on a held note from the part's own settings, refused where the game sets that volume.
       NOTE_VOICES = "A note on the noise voice can have its own `metallic:`, and a note on the wave voice can " \
                     "have its own `wave:`. The note sets them when it starts."
+      # What a Score's `note_fade_out:` does on a console that mixes its recordings and moves a note's
+      # level once a frame (Audio::Score#parts_without_release).
+      NOTE_FADE_MIXED = "A recorded note of a Score with `note_fade_out:` falls to silence over the frame after it " \
+                        "ends, the nearest the mixer can come to a shorter fade."
       NOTE_VOICES_NOT_UNDER_VOLUME = "#{NOTE_VOICES} If the game sets its music volume, such a note is refused: " \
                                      "this build does not make it yet."
 

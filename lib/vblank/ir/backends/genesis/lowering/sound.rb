@@ -102,9 +102,10 @@ module VBlank
             # row whose place is walked a sample at a time, for a part with a note that glides: every place here is.
             # A glide that names no side of its own (+keeps_side+) keeps the note's: its row's side is
             # Runtime::Recordings::SIDE_KEPT. A loudness is the log's alone here, kept or not (+keeps_loudness+).
+            # +fade_out+ (Audio::Score's +note_fade_out+) is in the notes' shapes already; a recording here has none.
             def recorded_note_row(name, frequency, _volume, envelope = nil, chip_envelope: nil, pan: nil, walks: false,
-                                  keeps_loudness: false, keeps_side: false)
-              _ = [walks, keeps_loudness]
+                                  keeps_loudness: false, keeps_side: false, fade_out: nil)
+              _ = [walks, keeps_loudness, fade_out]
               info = Assets::Sample.of(declared_sample(name))
               shape = envelope || info.envelope
               if shape && !shape.plain?

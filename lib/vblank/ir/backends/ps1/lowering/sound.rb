@@ -137,9 +137,10 @@ module VBlank
             #
             # A glide that names no volume (+keeps_loudness+) or no side (+keeps_side+) of its own keeps the
             # note's: its row holds Runtime::Recordings::KEPT there, which the glide leaves as it was.
+            # +fade_out+ (Audio::Score's +note_fade_out+) is in the notes' shapes already: a release of nought.
             def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil,
-                                  keeps_loudness: false, keeps_side: false)
-              _ = [walks, chip_envelope]
+                                  keeps_loudness: false, keeps_side: false, fade_out: nil)
+              _ = [walks, chip_envelope, fade_out]
               info = Assets::Sample.of(declared_sample(name))
               loudness = keeps_loudness ? Runtime::Recordings::KEPT : IR::Tunes.mix_loudness(volume)
               play_row(name, frequency, info.loop_length, loudness, envelope || info.envelope,

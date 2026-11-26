@@ -318,7 +318,9 @@ module VBlank
                      "as many banks as they need. Each note or rest takes 16 bytes, and a song that repeats " \
                      "keeps its notes two times. The songs of a game can have 65536 notes and rests. If they have " \
                      "more, the build stops and gives the number."),
-        sound_effects: works("see `song`."),
+        sound_effects: works("see `song`. A recorded note shaped by the chip's own bytes (`SNESEnvelope`), " \
+                             "in a Score with `note_fade_out:`, ends by falling back to a GAIN that falls in even " \
+                             "steps at the rate nearest that time, not by a key-off. #{Answers::NOTE_FADE_MIXED}"),
         sample: works("each recording plays on a voice of the sound chip. The sound chip has eight voices. Four " \
                       "always play recordings, and each of the other four does when the game never uses it for a " \
                       "beep, a wave, noise or a song's own part. If every one of those plays a recording, the next " \

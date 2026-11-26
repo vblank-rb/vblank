@@ -52,7 +52,8 @@ module VBlank
           # count frames (IR::Tunes.effect_clock_step), and +effect_tempo_step+ what their tempo adds on each
           # of a driver's interrupts, or nil where they name none (IR::Tunes.effect_tempo_step).
           # +effects_cut_notes+ puts each recorded note of an effect's part in the place of the part's note
-          # before it (IR::Tunes.effects_cut_notes?).
+          # before it (IR::Tunes.effects_cut_notes?). +note_fades+ for a song or effect whose notes fade out
+          # (Audio::Score's +note_fade_out+; Runtime::Recordings#fade_gain).
           Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
@@ -60,7 +61,7 @@ module VBlank
                                 :scene_background_tiles, :extra_buttons, :controllers, :counts_players, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
                                 :doubled, :boxes, :sprites_over_picture, :effect_clock_step, :effect_tempo_step,
-                                :effects_cut_notes) do
+                                :effects_cut_notes, :note_fades) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -103,7 +104,8 @@ module VBlank
                   sprites_over_picture: Lowering::Paint.sprites_over_picture?(program),
                   effect_clock_step: IR::Tunes.effect_clock_step(program, program.described_console),
                   effect_tempo_step: IR::Tunes.effect_tempo_step(program),
-                  effects_cut_notes: IR::Tunes.effects_cut_notes?(program))
+                  effects_cut_notes: IR::Tunes.effects_cut_notes?(program),
+                  note_fades: program.walk.any? { |node| node.kind == :song && node.note_fade_out })
             end
 
             # A Super FX on the board (Chip).

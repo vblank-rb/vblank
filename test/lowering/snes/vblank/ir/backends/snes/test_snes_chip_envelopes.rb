@@ -175,6 +175,32 @@ class TestSNESChipEnvelopes < Minitest::Test
     assert_operator early[ENVX], :<, later[ENVX], "GAIN climbs by itself"
   end
 
+  # A note of a Score that says `note_fade_out:` ends as a sound driver often ends one: its voice is
+  # told a GAIN that falls in even steps, at the rate nearest the time given, then ADSR1 nought, so it
+  # falls back to that GAIN; no key-off. Four milliseconds is 128 samples, 64 steps two samples apart:
+  # GAIN 0x9E. The same note with no fade is keyed off, its ADSR bytes left as they were.
+  def test_a_note_that_fades_out_falls_back_to_a_falling_gain
+    fading = Score.new(tempo: 150, length: 90, plays_once: true, note_fade_out: 0.004,
+                       parts: [Score::Part.new(plays: :tone, notes: [note])])
+    faded = first_voice_registers(song_game(ADSR, fading), frames: NOTE_FRAMES + 6)
+    keyed_off = first_voice_registers(song_game(ADSR), frames: NOTE_FRAMES + 6)
+
+    assert_equal [0x00, 0x60, 0x9E], envelope_bytes(faded)
+    assert_equal 0, faded[ENVX], "silent by the end of the frame"
+    assert_equal [0xB5, 0x60, 0x12], envelope_bytes(keyed_off)
+  end
+
+  def test_a_sound_effects_note_that_fades_out_falls_back_to_a_falling_gain
+    effect = Score.new(tempo: 150, length: 90, plays_once: true, note_fade_out: 0.004,
+                       parts: [Score::Part.new(plays: :tone, notes: [note])])
+    program = game(ADSR) do
+      sounds = sound_effects :sfx, { ding: effect }
+      sounds.play :ding
+    end
+
+    assert_equal [0x00, 0x60, 0x9E], envelope_bytes(first_voice_registers(program, frames: NOTE_FRAMES + 10))
+  end
+
   def test_only_a_game_with_a_chip_envelope_carries_the_routines_for_one
     ordinary = VBlank::Audio::Envelope.new(attack: 16, decay: 250, sustain: 100, release: 250)
 

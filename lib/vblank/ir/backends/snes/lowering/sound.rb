@@ -203,8 +203,11 @@ module VBlank
             #
             # A glide that names no volume (+keeps_loudness+) or no side (+keeps_side+) of its own keeps the
             # note's: its row holds Runtime::Recordings::KEPT there, which the glide leaves as it was.
+            #
+            # +fade_out+ (Audio::Score's +note_fade_out+) ends a note with the chip's own bytes by a fall of
+            # GAIN's (Runtime::Recordings, "fading out").
             def recorded_note_row(name, frequency, volume, envelope = nil, walks: false, chip_envelope: nil, pan: nil,
-                                  keeps_loudness: false, keeps_side: false)
+                                  keeps_loudness: false, keeps_side: false, fade_out: nil)
               declared = declared_sample(name)
               info = Assets::Sample.of(declared)
               clock = Console::SUPER_NINTENDO.sample_clock(declared.rate)
@@ -218,7 +221,7 @@ module VBlank
                 volume: keeps_loudness ? Runtime::Recordings::KEPT : (IR::Tunes.mix_loudness(volume) * DSPWrites::VOICE_VOLUME_LOUDEST / IR::Tunes::MIX_FULL.to_f).round,
                 length: info.length, back: back, advance: step * clock.samples_a_frame,
                 logged: Runtime::Recordings::NOT_LOGGED, name: @samples.keys.index(name), shape: shape_of(envelope || info.envelope),
-                walks: walks, chip_envelope: chip_envelope_number(envelope ? chip_envelope : declared.chip_envelope)
+                walks: walks, chip_envelope: chip_envelope_number(envelope ? chip_envelope : declared.chip_envelope, fade_out)
               )
               play_number(row, pan, keeps_side: keeps_side)
             end
@@ -483,10 +486,10 @@ module VBlank
 
             # The row of "recording_chip_envelopes" that holds +envelope+ (an Audio::SNESEnvelope's
             # three bytes, a recording's or a note's), the next row the first time; nought for nil.
-            def chip_envelope_number(envelope)
+            def chip_envelope_number(envelope, fade_out = nil)
               return 0 unless envelope
 
-              row = Runtime::Recordings.chip_envelope_row(envelope)
+              row = Runtime::Recordings.chip_envelope_row(envelope, fade_out)
               @chip_envelopes << row unless @chip_envelopes.include?(row)
               @chip_envelopes.index(row)
             end

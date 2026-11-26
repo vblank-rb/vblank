@@ -129,6 +129,15 @@ module SoundEffectRecordingGames
     game([score]) { |sfx, pass| sfx.play 0 if pass == 3 }
   end
 
+  # An effect of one note with a long release, its note ending on pass 13 and falling away after;
+  # with +fade+ it says `note_fade_out:` that many seconds.
+  private def long_release_note(fade:)
+    score = Score.new(tempo: 150, length: 60, note_fade_out: fade, parts: [Part.new(plays: :piano, envelope: { release: 0.5 }, notes: [
+      Note.new(at: 0, key: :C4, length: 10),
+    ])])
+    game([score]) { |sfx, pass| sfx.play 0 if pass == 3 }
+  end
+
   # The effect's voice through a restart, its own restart, its end, and a shaped end: each game,
   # whose each mixer voice is, and how many frames in.
   private def effect_voices_kept_and_let_go
@@ -312,6 +321,13 @@ module SoundEffectRecordingTests
   def test_an_effect_that_cuts_its_own_notes_plays_them_on_one_voice
     assert_equal [[:"sfx.0", 0]] * 2, game_player.run(two_quick_shaped_notes(cuts: false), frames: 9).sound_owners
     assert_equal [[:"sfx.0", 0]], game_player.run(two_quick_shaped_notes(cuts: true), frames: 9).sound_owners
+  end
+
+  # A note with a long release falls away over many frames after its end; with `note_fade_out:` it is
+  # silent within a frame of it, its voice free.
+  def test_a_note_that_fades_out_quickly_is_silent_a_frame_after_its_end
+    assert_equal [[:"sfx.0", 0]], game_player.run(long_release_note(fade: nil), frames: 20).sound_owners
+    assert_empty game_player.run(long_release_note(fade: 0.004), frames: 20).sound_owners
   end
 
   # The effect's voice through a restart, its own restart, its end, and a shaped end.

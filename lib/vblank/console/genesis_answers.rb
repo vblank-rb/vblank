@@ -307,7 +307,8 @@ module VBlank
         songs: works("see `song`. #{Answers::GLIDES_CARRY_ON} It moves to the nearest speaker, as `song` says, and its " \
                      "new loudness is not heard, as no recording's is. #{Answers::NOTE_VOICES_NOT_UNDER_VOLUME}"),
         sound_effects: works("see `song`. A recording has no shape here, so a part's next note takes its " \
-                             "voice whether or not the effects say `cuts_own_notes: true`."),
+                             "voice whether or not the effects say `cuts_own_notes: true`, and a note stops at its end whatever " \
+                             "`note_fade_out:` says."),
         sample: works("a recording is played on the FM chip's sixth voice, which can play a recording of eight " \
                       "bits. The sound processor sounds about 13300 samples a second, and plays each recording at " \
                       "the rate it was recorded at. Only one recording plays at a time, and a recording cannot " \

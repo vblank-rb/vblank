@@ -43,6 +43,7 @@ and a test fails when the two differ.
 - `enable_sound` — works: `main_volume:` sets the main volume of the sound chip to the nearest of its eight steps, from an eighth to all. At 0, the sound stays off. The square, wave and noise voices can also play at a half or a quarter of each step, so a quiet main volume is nearer. Recordings play at half or at all, whichever is nearer.
 - `song` — works: a part can sit between the speakers. A square, wave or noise part between the speakers (`pan -0.7`) plays from one speaker if that side is two or more times as loud as the other side. If not, it plays from both speakers. A part that plays a recording plays from both speakers, wherever `pan` puts it: all recordings are mixed into one sound, and both speakers play it.
 - `songs` — works: A recorded note with `glides: true` carries on the note sounding at a new pitch, loudness and side: it goes on from where it has got to, and the voice is not struck again. A note on the noise voice can have its own `metallic:`, and a note on the wave voice can have its own `wave:`. The note sets them when it starts.
+- `sound_effects` — works: A recorded note of a Score with `note_fade_out:` falls to silence over the frame after it ends, the nearest the mixer can come to a shorter fade.
 
 These work as their group files say:
 
@@ -59,4 +60,4 @@ These work as their group files say:
 `clock`, `saves_keep_everything`, `part`, `start_over`, `list`, `func`, `call`, `scene`,
 `max_players`, `seed`, `randomize`, `roll`, `rand`, `chance`, `random_numbers`, `define_sound`,
 `beep`, `noise`, `wave`, `stop_wave`, `play_song`, `stop_music`, `hold_music`, `release_music`,
-`music_volume`, `fade_music_in`, `fade_music_out`, `sound_effects`, `sample`, `instrument`.
+`music_volume`, `fade_music_in`, `fade_music_out`, `sample`, `instrument`.

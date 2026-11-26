@@ -150,7 +150,7 @@ module VBlank
             # interpreter keeps and what says when the place comes free. Only what the voice hears
             # differs: its volume registers hold the note's loudness whole, never scaled by the
             # level, and once the note has ended its voice is keyed off, where the chip takes the
-            # level down itself.
+            # level down itself, or falls back to a GAIN that fades it out ("Fading out", below).
             #
             # Kept in a game with such a recording, whose runtime then tells every note's voice the
             # three bytes of its row of "recording_chip_envelopes": row nought is ADSR off and GAIN
@@ -173,8 +173,26 @@ module VBlank
 
             module_function
 
-            # A row of "recording_chip_envelopes" for +envelope+ (an Audio::SNESEnvelope).
-            def chip_envelope_row(envelope) = [envelope.adsr1, envelope.adsr2, envelope.gain, 0]
+            # A row of "recording_chip_envelopes" for +envelope+ (an Audio::SNESEnvelope), and its fourth
+            # byte the GAIN its note ends on for a +fade_out+ in seconds (#fade_gain), nought for a key-off.
+            def chip_envelope_row(envelope, fade_out = nil) = [envelope.adsr1, envelope.adsr2, envelope.gain, fade_out ? fade_gain(fade_out) : 0]
+
+            # ### Fading out
+            #
+            # A sound driver often ends a note not with a key-off, whose release falls a fixed 8 levels a
+            # sample, but by clearing ADSR1's top bit, so its voice falls back to GAIN, set to fall in even
+            # steps: 32 levels each time its rate's wait is up, 64 steps from the top (fullsnes, "ADSR/Gain
+            # (and Noise) Rates"). The GAIN byte for a fall lasting +seconds+ from the top: linear decrease
+            # (top bit set, mode nought) at the rate whose 64 waits come nearest. The note's voice is told it,
+            # then ADSR1 nought, where it would be keyed off (#emit_chip_envelope_heard).
+            def fade_gain(seconds)
+              samples = seconds * Audio::SNESEnvelope::SAMPLE_RATE / LINEAR_STEPS
+              rate = (1...Audio::SNESEnvelope::RATE_SAMPLES.size).min_by { |r| (Audio::SNESEnvelope::RATE_SAMPLES[r] - samples).abs }
+              GAIN_LINEAR_DECREASE | rate
+            end
+
+            GAIN_LINEAR_DECREASE = 0x80 # GAIN's top bit, and its mode bits nought: down in even steps
+            LINEAR_STEPS = 64           # Steps of 32 from the top of a voice's level to nothing
 
             # A play's row of "recording_plays", as words: its voice's +source+, +pitch+ and +volume+;
             # the recording's +length+ and the +back+ it reads at its end (32 bits each); the +advance+
@@ -226,7 +244,8 @@ module VBlank
 
             # +voices+ is the sound chip's voices recordings play on, the first place's first.
             # +cuts+ for a game whose sound effects cut their own notes (IR::Tunes.effects_cut_notes?).
-            def emit(asm, memory, voices:, cuts: false)
+            # +fades+ for a game whose notes say `note_fade_out:` (#fade_gain).
+            def emit(asm, memory, voices:, cuts: false, fades: false)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               heard = voices.size * PLACE_BYTES
               emit_play(asm, at, memory, heard)
@@ -236,7 +255,7 @@ module VBlank
               emit_stop(asm, at, memory, heard)
               emit_frame(asm, at, memory)
               emit_kept_for_pass(asm, memory)
-              emit_shapes(asm, at, memory, heard)
+              emit_shapes(asm, at, memory, heard, fades: fades)
               emit_voice_of_place(asm, at, voices)
             end
 
@@ -955,7 +974,7 @@ module VBlank
             # to spare empties the sound queue slowly. Seven notes would add seven entries a frame, it
             # would fill, and the game would wait for room. One word waiting about a place is enough,
             # since it is worked out from the level when it reaches the front of the queue.
-            def emit_shapes(asm, at, memory, heard)
+            def emit_shapes(asm, at, memory, heard, fades: false)
               place = place_field(asm, memory)
               h = Console::SNESHardware
               asm.label("rt_recordings_shapes")
@@ -1015,7 +1034,7 @@ module VBlank
                 asm.cpy(heard)
                 asm.branch_long(:bcs, next_place)
                 asm.sty(at.call(PLACE))
-                emit_chip_envelope_heard(asm, at, memory, place, next_place)
+                emit_chip_envelope_heard(asm, at, memory, place, next_place, fades: fades)
                 emit_told_new_volume(asm, at, memory, place, next_place)
                 asm.ldy(at.call(PLACE))
               end
@@ -1093,15 +1112,20 @@ module VBlank
             # while the note sounds, since the chip moves the level itself; and once the note has
             # ended, its key-off, from where the chip takes the level down. Any other note falls
             # through to be told its loudness.
-            def emit_chip_envelope_heard(asm, at, memory, place, past)
+            #
+            # With +fades+, a note whose row names a GAIN to end on (#fade_gain) is told that GAIN and then
+            # ADSR1 nought in place of its key-off.
+            def emit_chip_envelope_heard(asm, at, memory, place, past, fades: false)
               return unless memory.reserved?(CHIP_ENVELOPES)
 
               asm.lda(place.call(PLACE_SHAPED))
               asm.and_a(CHIP_ENVELOPE_BITS)
-              asm.beq(scaled = "rt_recordings_shapes_scaled_#{asm.here}")
+              scaled = "rt_recordings_shapes_scaled_#{asm.here}"
+              fades ? asm.branch_long(:beq, scaled) : asm.beq(scaled) # the fade's writes are past a short branch
               asm.lda(place.call(PHASE))
               asm.cmp(FALLING)
               asm.branch_long(:bcc, past)
+              emit_fade_out(asm, at, place, past) if fades
               emit_voice_bit(asm, at)
               asm.sta(asm.direct(Sound::R0))
               asm.sta(asm.direct(Sound::R1))
@@ -1109,6 +1133,33 @@ module VBlank
               asm.ldy(at.call(PLACE))
               asm.brl(past)
               asm.label(scaled)
+            end
+
+            # The place's note fades out, inline, Y the place: where its row of "recording_chip_envelopes"
+            # names a GAIN to end on, its voice told that GAIN, then ADSR1 nought (#fade_gain), and on to
+            # +past+; where it names none, on to the key-off that follows.
+            def emit_fade_out(asm, at, place, past)
+              dsp = DSPWrites
+              gain = lambda do
+                asm.ldy(at.call(PLACE))
+                asm.lda(place.call(PLACE_SHAPED))
+                asm.xba
+                asm.and_a(0xFF)
+                asm.asl
+                asm.asl
+                asm.tax
+                asm.lda(asm.long_x("recording_chip_envelopes", 3))
+                asm.and_a(0xFF)
+              end
+              gain.call
+              asm.beq(keyed_off = "rt_recordings_key_off_#{asm.here}")
+              emit_registers(asm, at)
+              emit_voice_write(asm, at, dsp::GAIN, &gain)
+              emit_voice_write(asm, at, dsp::ADSR1) { asm.lda(0) }
+              asm.ldy(at.call(PLACE))
+              asm.brl(past)
+              asm.label(keyed_off)
+              asm.ldy(at.call(PLACE))
             end
 
             # The voice of the place at PLACE told its loudness, with Y that place. In a game with a

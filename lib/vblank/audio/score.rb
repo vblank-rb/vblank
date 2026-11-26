@@ -80,7 +80,16 @@ module VBlank
     # falling away, so its notes never overlap (Reference::Mixer#start_music_note). A game's effects
     # all cut their notes or none does (Builder#sound_effects); a song's Score refuses it.
     #
-    # The interrupt a sound driver counts its tempo on.  Many a cartridge's sound driver runs on an
+    # A note's end as a quick fade. A cartridge's sound driver often ends a note by switching its
+    # voice to a short fall of a set length, a few milliseconds, rather than letting it go into the
+    # voice's own release. `note_fade_out: 0.004` on a Score says each of its notes falls to silence
+    # that many seconds after it ends, at most a frame: the players move a note's level once a frame,
+    # so every one but a console that falls inside the frame takes the frame after the note's end,
+    # with no release of its own (#parts_without_release); a shape the recording was declared with keeps its
+    # release, so give the shape on the part or the note. A Super Nintendo note shaped by the chip's own
+    # bytes falls at the chip's nearest linear rate.
+    #
+    # The interrupt a sound driver counts its tempo on. Many a cartridge's sound driver runs on an
     # interrupt of its own, a fixed number of times a second, and adds its tempo up on each one: a tick
     # falls on the interrupt where the sum comes round, so every note it strikes lands on that
     # interrupt's grid. `interrupts_per_second:` beside `on_timer: true` says how often the original's
@@ -99,7 +108,7 @@ module VBlank
     # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
                         :low_notes_intended, :keeps_voices, :longest, :on_timer, :interrupts_per_second,
-                        :cuts_own_notes)
+                        :cuts_own_notes, :note_fade_out)
 
     class Score
       # Frames a second, the rate the music is played at — the same round figure a song block's
@@ -116,7 +125,8 @@ module VBlank
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
                      priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil,
-                     on_timer: false, interrupts_per_second: nil, cuts_own_notes: false)
+                     on_timer: false, interrupts_per_second: nil, cuts_own_notes: false,
+                     note_fade_out: nil)
         super
       end
 
@@ -132,6 +142,26 @@ module VBlank
         Rational(tempo.is_a?(Array) ? tempo.first.last : tempo) * ticks_per_beat / 60
       end
 
+      # The parts, with +note_fade_out+, with no release in the shape each note or part gives, since the
+      # note falls away within a frame of its end. A shape a recording was declared with keeps its
+      # release. A chip's own bytes (SNESEnvelope) are already played elsewhere with none, and fade on
+      # their console as the setting says (IR::Backends::SNES::Runtime::Recordings, "fading out").
+      def parts_without_release
+        return parts unless note_fade_out
+
+        parts.map do |part|
+          part.with(envelope: Score.without_release(part.envelope, "a part"),
+                    notes: part.notes.map { |note| note.with(envelope: Score.without_release(note.envelope, "a note")) })
+        end
+      end
+
+      # +envelope+ as written, with a release of nought; nil and a chip's own bytes as they are.
+      def self.without_release(envelope, where)
+        return envelope if envelope.nil? || envelope.is_a?(SNESEnvelope)
+
+        Envelope.of(envelope, where).with(release: 0)
+      end
+
       # The score as the plain data every backend replays: each part's events as [frame,
       # frequency in Hz, instrument, volume] — a frequency of 0 a rest, and a nil instrument or
       # volume meaning the part's own — the song's length in frames, its priority and group, and
@@ -141,13 +171,14 @@ module VBlank
         frames = Timing.new(frame_timing)
         ticks = length || last_tick
         total = [frames.at(ticks), 1].max
-        song = { voices: parts.each_with_index.map { |part, n| part.to_voice(frames, total, "Part #{n} of a Score") },
+        song = { voices: parts_without_release.each_with_index.map { |part, n| part.to_voice(frames, total, "Part #{n} of a Score") },
                  total_frames: total,
                  priority: priority, group: group, low_notes_intended: low_notes_intended,
                  plays_once: plays_once, keeps_voices: keeps_voices }
         song[:timer_rate] = timer_rate if on_timer
         song[:interrupt_rate] = Rational(interrupts_per_second) if interrupts_per_second
         song[:cuts_own_notes] = true if cuts_own_notes
+        song[:note_fade_out] = Rational(note_fade_out) if note_fade_out
         return song unless loop_from
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
@@ -398,17 +429,28 @@ module VBlank
           plays_once!(score)
           on_timer!(score)
           interrupts!(score)
+          true_or_false!(:cuts_own_notes, score.cuts_own_notes)
+          note_fade_out!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
         end
 
         # A timer ticks at one rate, so a Score on one keeps one tempo.
         def on_timer!(score)
           true_or_false!(:on_timer, score.on_timer)
-          true_or_false!(:cuts_own_notes, score.cuts_own_notes)
           return unless score.on_timer && score.tempo.is_a?(Array) && score.tempo.map(&:last).uniq.size > 1
 
           raise ArgumentError, "A Score has `on_timer: true` and a tempo that changes. A timer ticks at one " \
                                "rate. Give `tempo:` one number, or remove `on_timer:`."
+        end
+
+        # A note's fade at its end lasts at most a frame: the players move a note's level once a frame.
+        def note_fade_out!(score)
+          fade = score.note_fade_out
+          return if fade.nil? || (fade.is_a?(Numeric) && fade.positive? && fade <= Rational(1, FRAME_RATE))
+
+          raise ArgumentError, "A Score has `note_fade_out: #{fade.inspect}`. It is how long a note takes to fall " \
+                               "to silence at its end, in seconds, more than 0 and at most a frame (1/#{FRAME_RATE}). " \
+                               "For a longer fall, give the notes an `envelope:` with a `release:`."
         end
 
         # A driver counts its tempo on its interrupt, so the interrupt is on a timer and comes more often than
