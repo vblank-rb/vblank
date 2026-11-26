@@ -190,8 +190,8 @@ module VBlank
           # In a game whose sound effects are on a timer (IR::Tunes.effect_clock_step), an effect asked
           # for starts at once, on the frame it is taken up, as a sound driver strikes an effect's
           # first note the moment it is told; from there it moves on only on the timer's ticks, each
-          # tick as far as one tick, the frame's own ticks included (#play_effects_first_pass). A
-          # frame with several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
+          # tick as far as one tick, from the frame after (#play_effects_first_pass). A frame with
+          # several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
           def advance(level: nil)
             switch_to_wanted_song
             ticks = step_effect_clock
@@ -202,7 +202,8 @@ module VBlank
             play_effects_first_pass(above, asked, ticks)
             play_song_frame(level) if @playing
             play_effects_first_pass(below, asked, ticks)
-            (ticks - 1).times { (above + below).each { |name, rank| play_effect_frame(name, rank, []) } }
+            later = (above + below).reject { |name, _| @effect_clock_step && asked.include?(name) }
+            (ticks - 1).times { later.each { |name, rank| play_effect_frame(name, rank, []) } }
             step_swells
             step_wobbles
             step_shapes
@@ -213,13 +214,16 @@ module VBlank
 
           # One side of the tune in the frame's first pass over the effects. Counted in frames, each
           # effect plays its frame, what was asked for starting. On a timer, what was asked for starts
-          # at once, with what it cuts off of its group, and then, on a frame with a tick, every effect
-          # moves on that tick, one that has just started included.
+          # at once, with what it cuts off of its group, and then, on a frame with a tick, every other
+          # effect moves on that tick. One that has just started does not: a tick in the frame it starts
+          # on falls too soon after its start, and a sound driver striking its notes on its own
+          # interrupt never moves an effect on in the moment it starts it, so the first note always
+          # lasts past the frame. It moves on from the next frame's ticks.
           def play_effects_first_pass(side, asked, ticks)
             return side.each { |name, rank| play_effect_frame(name, rank, asked) } unless @effect_clock_step
 
             side.each { |name, rank| play_effect_frame(name, rank, asked) if asked.include?(name) || @stopping.include?(name) }
-            side.each { |name, rank| play_effect_frame(name, rank, []) } if ticks.positive?
+            side.each { |name, rank| play_effect_frame(name, rank, []) unless asked.include?(name) } if ticks.positive?
           end
 
           # The sound effects' timer moved on a frame: how many ticks the frame has, one on every frame

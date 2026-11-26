@@ -94,6 +94,7 @@ def rg_music_setup
   # the sound effects
   @rg_effect_asked = Array.new(RG_EFFECTS_MOST, false)
   @rg_effect_asked_now = Array.new(RG_EFFECTS_MOST, false)
+  @rg_effect_started_now = Array.new(RG_EFFECTS_MOST, false) # rg_music.c's effect_started_now
   @rg_effect_stopping = Array.new(RG_EFFECTS_MOST, false)
   @rg_effect_running = Array.new(RG_EFFECTS_MOST, false)
   @rg_effect_frame = Array.new(RG_EFFECTS_MOST, 0)
@@ -750,6 +751,7 @@ def rg_play_effects_first_pass(by_rank, from, to, ticks)
   at = from
   while timed && at < to
     effect = @rg_game_effects[by_rank + at]
+    @rg_effect_started_now[effect] = @rg_effect_asked_now[effect]
     rg_play_effect_frame(effect) if @rg_effect_asked_now[effect] || @rg_effect_stopping[effect]
     @rg_effect_asked_now[effect] = false
     at += 1
@@ -758,7 +760,8 @@ def rg_play_effects_first_pass(by_rank, from, to, ticks)
 
   at = from
   while at < to
-    rg_play_effect_frame(@rg_game_effects[by_rank + at])
+    effect = @rg_game_effects[by_rank + at]
+    rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
     at += 1
   end
 end
@@ -782,7 +785,10 @@ def rg_music_sound_frame
   rg_play_effects_first_pass(by_rank, at, rg_effect_count, ticks)
   (ticks - 1).times do
     rg_move_asked_effects_to_tick
-    rg_effect_count.times { |place| rg_play_effect_frame(@rg_game_effects[by_rank + place]) }
+    rg_effect_count.times do |place|
+      effect = @rg_game_effects[by_rank + place]
+      rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
+    end
   end
   rg_step_swells
   rg_step_wobbles

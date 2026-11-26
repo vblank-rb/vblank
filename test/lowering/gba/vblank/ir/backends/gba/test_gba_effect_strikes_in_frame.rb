@@ -132,12 +132,16 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one
   # wobbling or stepping its shape from its first frame: the frame's end moves the voice's pitch or
-  # shape for it before the strike comes. The note before keeps its own until the strike: the
-  # sound is the same as the same notes without the wobble or the shapes until then. Where the strike
-  # comes is where the sound first parts from the note before alone, ended by a rest at that tick.
+  # shape for it before the strike comes. Folded into the strike's own listed writes, it does not
+  # reach the voice before the strike: until the frame of the strike the writes to the sound chip
+  # are those of the same notes without the wobble or the shapes, and on that frame they are the same
+  # registers, in the same order, the strike's values carrying the change.
+  #
+  # Read as writes, frame by frame (Verifier#watch_sound), not as sound: two builds of different
+  # length strike a note a few cycles apart, which moves its wave by part of a sample.
   FIRST = Note.new(at: 0, key: :E5, length: 3, volume: 15)
 
-  private def samples_of_notes(*notes)
+  private def writes_of_notes(*notes)
     effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 12, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: notes)])
     cartridge = VBlank.build("STRIKES", console: :gba, out: nil, err: nil) do
@@ -150,24 +154,24 @@ class TestGBAEffectStrikesInFrame < Minitest::Test
       end
     end
     reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
-    left = []
-    (PLAYED_ON + 30).times do
+    reader.watch_sound
+    Array.new(PLAYED_ON + 30) do
       reader.step(1)
-      left.concat(reader.last_frame_samples.each_slice(2).map(&:first))
+      reader.sound_writes.map { |write| [write.address, write.value] }
     end
-    left
   ensure
     reader&.close
   end
 
   private def assert_unchanged_until_struck(second)
-    alone = samples_of_notes(FIRST)
-    plain = samples_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 9, volume: 10))
-    changed = samples_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 9, volume: 10, **second))
-    struck = alone.zip(plain).index { |was, now| was != now }
-    apart = plain.zip(changed).index { |was, now| was != now }
+    plain = writes_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 9, volume: 10))
+    changed = writes_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 9, volume: 10, **second))
+    struck = plain.zip(writes_of_notes(FIRST)).index { |with, without| with != without }
 
-    assert_operator apart, :>=, struck, "the note before changed at pair #{apart}, before the strike at #{struck}"
+    refute_nil struck, "the second note is struck"
+    assert_equal plain.first(struck), changed.first(struck), "the writes before the strike's frame"
+    assert_equal plain[struck].map(&:first), changed[struck].map(&:first), "the registers the strike's frame writes"
+    refute_equal plain[struck], changed[struck], "the strike carries the change"
   end
 
   def test_a_wobble_stepped_before_its_note_is_struck_waits_for_the_strike

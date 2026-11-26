@@ -13,8 +13,9 @@ require "test_helper"
 # is rounded down, so over a long run the ticks fall a frame later than exact fractions put them; the
 # runs here are long enough to cross frames where the two disagree. The effect starts at once on the
 # frame the player takes the ask up, as a sound driver strikes an effect's first note when it is
-# told, and the note at tick t sounds on the frame that holds the timer's t-th tick from that frame's
-# start: that frame's own ticks are the first.
+# told, and the note at tick t sounds on the frame that holds the timer's t-th tick after that frame:
+# a tick falling in the frame it starts on is too close to its start to move it on, so its first note
+# always lasts past the frame, as a driver's own does.
 class TestSoundEffectOnTimer < Minitest::Test
   Score = VBlank::Audio::Score
   Part = Score::Part
@@ -96,7 +97,7 @@ class TestSoundEffectOnTimer < Minitest::Test
     asks = (asked_on...frames).step(ASKED_EVERY)
     runs = asks.filter_map do |count|
       start = first_frame_after(count)
-      own = [start] + ticks.select { |n| n >= start }
+      own = [start] + ticks.select { |n| n > start }
       [own.first, NOTE_TICKS.zip(PITCHES).filter_map { |tick, pitch| [own[tick], pitch] if own[tick] }] if own.first
     end
     [runs.map(&:first), runs.flat_map(&:last)]
@@ -171,6 +172,44 @@ class TestSoundEffectOnTimer < Minitest::Test
 
     asks = (3...BELOW_FRAMES).step(BELOW_ASKED_EVERY).map { |count| first_frame_after(count) }.select { |frame| frame <= BELOW_FRAMES }
     assert_equal asks, started
+  end
+
+  # A first note one tick long, then a second, asked for every few passes while the last still
+  # sounds: each ask starts it again, and its first note is the only one on the frame it starts, so it
+  # is heard past that frame, whatever the timer does in it.
+  STEP_ASKED_EVERY = 13
+  STEP_FRAMES = 120
+
+  def test_a_one_tick_first_note_is_alone_on_its_frame_on_every_ask
+    step = Score.new(tempo: 125, ticks_per_beat: 24, length: 14, plays_once: true, on_timer: true,
+                     parts: [Part.new(notes: [Note.new(at: 0, key: :E5, length: 1), Note.new(at: 1, key: :B5, length: 2)])])
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      enable_sound
+      list = sound_effects :sfx, { step: step }
+      count = var(:count, 0)
+      game_loop do
+        list.play :step if count % STEP_ASKED_EVERY == 3
+        count.store! count + 1
+        wait_vblank
+      end
+    end
+    b.finalize_program
+    player = game_player
+    by_frame = Hash.new { |hash, frame| hash[frame] = [] }
+    logged = 0
+    player.each_vblank do |frame|
+      player.audio.drop(logged).each { |entry| by_frame[frame] << entry[2] if entry.first == :note && entry[1] == :"sfx.step" }
+      logged = player.audio.size
+    end
+    player.run(b.program, frames: STEP_FRAMES)
+
+    first = 659 # E5, as the log writes it
+    starts = by_frame.select { |_, pitches| pitches.include?(first) }
+    asks = (0...STEP_FRAMES).count { |count| count % STEP_ASKED_EVERY == 3 && first_frame_after(count) <= STEP_FRAMES }
+    assert_equal asks, starts.size, by_frame.inspect
+    starts.each { |frame, pitches| assert_equal [first], pitches, "the first note alone on frame #{frame}" }
   end
 
   def test_an_effect_not_on_the_timer_counts_frames

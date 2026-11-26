@@ -428,8 +428,8 @@ module VBlank
             # stops first; asked for, it starts from its first note; at its end, it lets go of its voices;
             # sounding, each part plays its note whose frame has come, on the voice its rank lets it take.
             # With the effects on a timer, one asked for is started by a pass of its own, at once
-            # (Music::EFFECTS_STARTING), which plays nothing else, and moves on from its first frame on the
-            # tick's pass.
+            # (Music::EFFECTS_STARTING), which plays nothing else, and moves on from the next frame's ticks: a
+            # tick's pass leaves one still asked for this frame (ASKED_NOW).
             def emit_frame(asm, at, memory, level_at, recorded)
               m = Genesis::Music
               state = ->(field) { asm.disp(1, field) }
@@ -444,7 +444,15 @@ module VBlank
               asm.label("rt_sfx_frame_not_cut")
               asm.tst(:w, state.call(ASKED_NOW))
               asm.branch(:eq, "rt_sfx_frame_not_asked")
-              asm.clr(:w, state.call(ASKED_NOW)) if timed # started: the tick's pass moves it on from its first frame
+              # Started on this frame: the tick's passes leave it, and the next frame's move it on. An effect
+              # on the timer is never started where the game asks (rt_sfx_play_now, `this_frame:`), which
+              # Guardrails::EffectOnTimerThisFrame refuses, so this is not reached outside a starting pass.
+              if timed
+                asm.tst(:w, at.call(Music::EFFECTS_STARTING))
+                asm.branch(:ne, "rt_sfx_frame_starting")
+                asm.rts
+                asm.label("rt_sfx_frame_starting")
+              end
               asm.move(:w, asm.imm(1), state.call(RUNNING))
               asm.clr(:w, state.call(FRAME))
               m::PARTS.times { |part| asm.clr(:w, state.call(CURSORS + (part * 2))) }

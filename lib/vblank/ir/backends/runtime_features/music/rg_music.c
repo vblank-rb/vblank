@@ -782,6 +782,7 @@ static void play_note(part_walk *part, const int32_t *note) {
  * walking its parts as a song does, from its first note each time it is asked for. */
 static uint8_t effect_asked[EFFECTS_MOST];     /* asked for since the last frame */
 static uint8_t effect_asked_now[EFFECTS_MOST]; /* ...as this frame found it */
+static uint8_t effect_started_now[EFFECTS_MOST]; /* started on this frame, on a timer: not moved on until the next */
 static uint8_t effect_stopping[EFFECTS_MOST];  /* cut off by another of its group, on this frame */
 static uint8_t effect_running[EFFECTS_MOST];
 static int32_t effect_frame[EFFECTS_MOST];
@@ -974,7 +975,7 @@ static void move_asked_effects_to_tick(void) {
 /* One side of the tune in the frame's first pass over the effects, the effects by rank from +from+
  * up to +to+ (Reference::Player#play_effects_first_pass). Counted in frames, each plays its frame.
  * On a timer, what was asked for starts at once, with what it cuts off, and then, on a frame with a
- * tick, every effect moves on that tick, one that has just started included. */
+ * tick, every other effect moves on that tick: one just started moves on from the next frame. */
 static void play_effects_first_pass(const int32_t *by_rank, int32_t from, int32_t to, int32_t ticks) {
   if (EFFECT_CLOCK_STEP == 0) {
     for (int32_t at = from; at < to; at++) play_effect_frame(by_rank[at]);
@@ -982,10 +983,13 @@ static void play_effects_first_pass(const int32_t *by_rank, int32_t from, int32_
   }
   for (int32_t at = from; at < to; at++) {
     int32_t effect = by_rank[at];
+    effect_started_now[effect] = effect_asked_now[effect];
     if (effect_asked_now[effect] || effect_stopping[effect]) play_effect_frame(effect);
     effect_asked_now[effect] = 0;
   }
-  for (int32_t at = from; ticks > 0 && at < to; at++) play_effect_frame(by_rank[at]);
+  for (int32_t at = from; ticks > 0 && at < to; at++) {
+    if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+  }
 }
 
 /* Sound effects play around the song, highest rank first (IR::Tunes.effects_by_rank): the effects
@@ -1008,7 +1012,9 @@ static void rg_music_sound_frame(void) {
   play_effects_first_pass(by_rank, at, EFFECT_COUNT, ticks);
   for (int32_t tick = 1; tick < ticks; tick++) {
     move_asked_effects_to_tick();
-    for (at = 0; at < EFFECT_COUNT; at++) play_effect_frame(by_rank[at]);
+    for (at = 0; at < EFFECT_COUNT; at++) {
+      if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+    }
   }
   step_swells();
   step_wobbles();

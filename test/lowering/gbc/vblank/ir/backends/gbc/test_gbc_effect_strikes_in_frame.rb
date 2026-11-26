@@ -20,7 +20,7 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
   Part = Score::Part
   Note = Score::Note
 
-  HEARD_ABOVE = 400
+  HEARD_ABOVE = 1000 # well under a note, and above the voice ringing as it falls quiet after a rest
   SILENCE = 120 # pairs no louder than that in a row: longer than any wave of the note passing nought
   PLAYED_ON = 10
   FRAMES = 120
@@ -282,14 +282,17 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
 
   # A note struck part way through a frame on a voice still sounding the note before, the new one
   # wobbling or stepping its shape from its first frame: the frame's end moves the voice's pitch or
-  # shape for it before the strike comes. The note before keeps its own until the strike: the
-  # sound is the same as the same notes without the wobble or the shapes until then. Where the strike
-  # comes is where the sound first parts from the note before alone, ended by a rest at that tick.
-  # A last note wobbling or stepping too is in all three, so the frame's end writes the voice in all
-  # three alike.
+  # shape for it before the strike comes. Folded into the strike's own listed writes, it does not
+  # reach the voice before the strike: until the frame of the strike the writes to the sound chip
+  # are those of the same notes without the wobble or the shapes, and on that frame they are the same
+  # registers, in the same order, the strike's values carrying the change. A last note wobbling or
+  # stepping too is in both, so the frame's end writes the voice in both alike.
+  #
+  # Read as writes, frame by frame (Verifier#watch_sound), not as sound: two builds of different
+  # length strike a note a few cycles apart, which moves its wave by part of a sample.
   FIRST = Note.new(at: 0, key: :E5, length: 3, volume: 15)
 
-  private def samples_of_notes(*notes)
+  private def writes_of_notes(*notes)
     effect = Score.new(tempo: 50, ticks_per_beat: 60, length: 12, plays_once: true, on_timer: true,
                        parts: [Part.new(notes: notes)])
     cartridge = VBlank.build("STRIKES", console: :gbc, out: nil, err: nil) do
@@ -302,25 +305,25 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
       end
     end
     reader = VBlank::Diagnostics::Verifier.new(cartridge, frames: 0)
-    left = []
-    (PLAYED_ON + 30).times do
+    reader.watch_sound
+    Array.new(PLAYED_ON + 30) do
       reader.step(1)
-      left.concat(reader.last_frame_samples.each_slice(2).map(&:first))
+      reader.sound_writes.map { |write| [write.address, write.value] }
     end
-    left
   ensure
     reader&.close
   end
 
   private def assert_unchanged_until_struck(second)
     last = Note.new(at: 11, key: :C5, length: 1, volume: 10, **second)
-    alone = samples_of_notes(FIRST, last)
-    plain = samples_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 8, volume: 10), last)
-    changed = samples_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 8, volume: 10, **second), last)
-    struck = alone.zip(plain).index { |was, now| was != now }
-    apart = plain.zip(changed).index { |was, now| was != now }
+    plain = writes_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 8, volume: 10), last)
+    changed = writes_of_notes(FIRST, Note.new(at: 3, key: :A5, length: 8, volume: 10, **second), last)
+    struck = plain.zip(writes_of_notes(FIRST, last)).index { |with, without| with != without }
 
-    assert_operator apart, :>=, struck, "the note before changed at pair #{apart}, before the strike at #{struck}"
+    refute_nil struck, "the second note is struck"
+    assert_equal plain.first(struck), changed.first(struck), "the writes before the strike's frame"
+    assert_equal plain[struck].map(&:first), changed[struck].map(&:first), "the registers the strike's frame writes"
+    refute_equal plain[struck], changed[struck], "the strike carries the change"
   end
 
   def test_a_wobble_stepped_before_its_note_is_struck_waits_for_the_strike
@@ -344,5 +347,41 @@ class TestGBCEffectStrikesInFrame < Minitest::Test
 
   def test_the_tune_taking_back_a_voice_the_effect_lets_go_is_heard_on
     assert_tune_heard_after_effect_lets_go(:gbc)
+  end
+
+  # A game of many effects on the timer keeps them in the banks and plays them from rows
+  # (Runtime::EffectTable, whose start is rt_sfx_started), which start and move on what was asked for
+  # as the routines each effect has of its own do. Forty effects of twelve notes, some asked for while
+  # they still sound, checked against the interpreter pass by pass.
+  TABLE_EFFECTS = 40
+  TABLE_KEYS = %i[C5 E5 G5 B5].freeze
+
+  private def table_game
+    effects = Array.new(TABLE_EFFECTS) do |n|
+      notes = (0...12).map { |k| Note.new(at: k * 2, key: TABLE_KEYS[(n + k) % TABLE_KEYS.size], length: 1) }
+      [:"e#{n}", Score.new(tempo: 125, ticks_per_beat: 24, length: 24, plays_once: true, on_timer: true, parts: [Part.new(notes: notes)])]
+    end.to_h
+    proc do
+      enable_sound
+      list = sound_effects :sfx, effects
+      count = var(:count, 0)
+      game_loop do
+        list.play count % TABLE_EFFECTS if count % 5 == 2
+        list.play 0 if count % 7 == 3
+        count.store! count + 1
+      end
+    end
+  end
+
+  def test_effects_kept_in_the_banks_start_and_move_on_as_the_interpreter_does
+    code = table_game
+    built = VBlank.build("TABLE", console: :gbc, out: nil, err: nil, &code)
+    builder = Builder.new
+    builder.instance_eval(&code)
+    builder.finalize_program
+    program = builder.program.copy.tap { |copy| copy.console = :gbc }
+
+    assert built.built.code.key?("rt_sfx_started"), "the effects are played from their rows"
+    VBlank::IR::Backends::GBC::CheckedRun.new.run(program, frames: 200) # raises where the two part
   end
 end

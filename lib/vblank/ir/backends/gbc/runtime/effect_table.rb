@@ -284,7 +284,7 @@ module VBlank
               asm.xor_a(:a)
               asm.load([:hli], :a)
               asm.inc(:hl)
-              asm.load(:a, 1)
+              asm.load(:a, memory.reserved?(Music::EFFECTS_STARTING) ? Effects::STARTED_THIS_FRAME : 1)
               asm.load([:hli], :a) # RUNNING
               asm.xor_a(:a)
               (STATE_STRIDE - Effects::FRAME).times { asm.load([:hli], :a) }
@@ -294,6 +294,7 @@ module VBlank
               asm.label("rt_sfx_frame_sounding")
               asm.inc(:hl)
               asm.inc(:hl)
+              Effects.emit_left_while_starting(asm, memory, "rt_sfx_frame_ticking") if memory.reserved?(Music::EFFECTS_STARTING)
               asm.load(:a, [:hli]) # RUNNING
               asm.and_a(:a)
               asm.ret(:z)

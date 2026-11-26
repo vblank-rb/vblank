@@ -29,6 +29,9 @@ module VBlank
             ASKED = 0
             STOPPING = 1
             RUNNING = 2
+            # What RUNNING holds, with the effects on a timer, on the frame an effect starts: the tick's
+            # passes leave it, and it moves on from the next frame's ticks (Reference::Player#advance).
+            STARTED_THIS_FRAME = 2
             FRAME = 3 # 16 bits
             CURSORS = 5 # Each part's next note, 16 bits each
             STATE_BYTES = CURSORS
@@ -162,11 +165,33 @@ module VBlank
             # of the cartridge reads it starting at rt_sfx_started_N; past its last frame it lets its
             # voices go; and sounding, each part plays its note whose frame this is, on the voice its
             # rank lets it take. With the effects on a timer, one asked for is started by a pass of its
-            # own, at once (Music::EFFECTS_STARTING), which plays nothing else.
+            # own, at once (Music::EFFECTS_STARTING), which plays nothing else, and left by the tick's passes
+            # of that frame (STARTED_THIS_FRAME).
+            # Inline, for an effect not asked for, HL at its RUNNING, with the effects on a timer: in the pass
+            # that starts what was asked for, nothing played, and one started on the frame before marked as
+            # an ordinary one sounding; in a tick's pass, one started this frame left as it is. Goes on at
+            # +ticking+ for one to play. Uses A and the flags.
+            def emit_left_while_starting(asm, memory, ticking)
+              asm.load(:a, [memory[Music::EFFECTS_STARTING]])
+              asm.and_a(:a)
+              asm.jump_relative(:z, ticking)
+              asm.load(:a, [:hl])
+              asm.cp_a(STARTED_THIS_FRAME)
+              asm.ret(:nz)
+              asm.load(:a, 1)
+              asm.load([:hl], :a)
+              asm.ret
+              asm.label(ticking)
+              asm.load(:a, [:hl])
+              asm.cp_a(STARTED_THIS_FRAME)
+              asm.ret(:z)
+            end
+
             def emit_frame(asm, memory, effect, bytes)
               n = effect.number
               at = memory[effect_state_place(effect)]
               frame = at + FRAME
+              timed = memory.reserved?(Music::EFFECTS_STARTING)
               asm.label("rt_sfx_frame_#{n}")
               asm.load(:a, [at + STOPPING])
               asm.and_a(:a)
@@ -181,17 +206,16 @@ module VBlank
               asm.xor_a(:a)
               asm.load([at + ASKED], :a)
               asm.load(:hl, at + RUNNING)
-              asm.load(:a, 1)
+              asm.load(:a, timed ? STARTED_THIS_FRAME : 1)
               asm.load([:hli], :a)
               asm.xor_a(:a)
               (2 + (2 * effect.parts.length)).times { asm.load([:hli], :a) }
               asm.label("rt_sfx_started_#{n}")
               asm.jump("rt_sfx_#{n}_play")
               asm.label("rt_sfx_#{n}_sounding")
-              if memory.reserved?(Music::EFFECTS_STARTING) # a pass that starts what was asked for plays nothing else
-                asm.load(:a, [memory[Music::EFFECTS_STARTING]])
-                asm.and_a(:a)
-                asm.ret(:nz)
+              if timed
+                asm.load(:hl, at + RUNNING)
+                Effects.emit_left_while_starting(asm, memory, "rt_sfx_#{n}_ticking")
               end
               asm.load(:a, [at + RUNNING])
               asm.and_a(:a)

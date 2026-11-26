@@ -1469,7 +1469,8 @@ module VBlank
             # stops first; asked for, it starts from its first note; at its end, it lets go of its voices;
             # sounding, each part plays its note whose frame has come, on the voice its rank lets it take.
             # With the effects on a timer, one asked for is started by a pass of its own, at once
-            # (EFFECTS_STARTING), which plays nothing else, and moves on from its first frame on the tick's pass.
+            # (EFFECTS_STARTING), which plays nothing else, and moves on from the next frame's ticks: a tick's
+            # pass leaves one still asked for this frame (ASKED_NOW).
             def emit_sfx_frame(asm, at, level_at, memory)
               m = PS1::Music
               timed = memory.reserved?(EFFECTS_STARTING)
@@ -1484,7 +1485,13 @@ module VBlank
               asm.lw(:t1, at.call(STATE), :gp)
               asm.lw(:t0, ASKED_NOW, :t1)
               asm.beq(:t0, :zero, "rt_sfx_frame_not_asked")
-              asm.sw(:zero, ASKED_NOW, :t1) if timed # started: the tick's pass moves it on from its first frame
+              # Started on this frame: the tick's passes leave it, and the next frame's move it on. An effect
+              # on the timer is never started where the game asks (rt_sfx_play_now, `this_frame:`), which
+              # Guardrails::EffectOnTimerThisFrame refuses, so this is not reached outside a starting pass.
+              if timed
+                asm.lw(:t0, at.call(EFFECTS_STARTING), :gp)
+                asm.beq(:t0, :zero, "rt_sfx_frame_end")
+              end
               asm.li(:t0, 1)
               asm.sw(:t0, RUNNING, :t1)
               asm.sw(:zero, SFX_FRAME, :t1)

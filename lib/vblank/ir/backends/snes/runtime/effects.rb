@@ -510,7 +510,7 @@ module VBlank
             # go of its voices; sounding, each part plays its note whose frame has come, on the voice
             # its rank lets it take. With the effects on a timer, one asked for is started by a pass of
             # its own, at once (Music::EFFECTS_STARTING), which plays nothing else, and moves on from
-            # its first frame on the tick's pass.
+            # the next frame's ticks: a tick's pass leaves one still asked for this frame (ASKED_NOW).
             def emit_frame(asm, at, memory, level_at, recorded)
               m = SNES::Music
               state = ->(field) { asm.abs_y(memory[STATES], field) }
@@ -531,9 +531,14 @@ module VBlank
               asm.label("rt_sfx_frame_not_cut")
               asm.lda(state.call(ASKED_NOW))
               asm.beq("rt_sfx_frame_not_asked")
+              # Started on this frame: the tick's passes leave it, and the next frame's move it on. An effect
+              # on the timer is never started where the game asks (rt_sfx_play_now, `this_frame:`), which
+              # Guardrails::EffectOnTimerThisFrame refuses, so this is not reached outside a starting pass.
               if timed
-                asm.lda(0) # started: the tick's pass after this one moves it on, from its first frame
-                asm.sta(state.call(ASKED_NOW))
+                asm.lda(asm.abs(memory[Music::EFFECTS_STARTING]))
+                asm.bne("rt_sfx_frame_starting")
+                asm.rts
+                asm.label("rt_sfx_frame_starting")
               end
               asm.lda(1)
               asm.sta(state.call(RUNNING))

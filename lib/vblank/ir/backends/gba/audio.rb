@@ -1582,11 +1582,7 @@ module VBlank
             e.emit_branch(:b, play)
 
             e.place_label(sounding)
-            if @effect_clock_step # a walk that only starts what was asked for (#emit_effects_walk)
-              @primitives.load_var(ACC, EFFECTS_MOVE_ON)
-              e.emit(ASM.cmp_imm(ACC, 0))
-              e.emit_branch(:bcond, onward, cond: :eq)
-            end
+            emit_effect_left_while_starting(frame, slot, onward) if @effect_clock_step
             e.emit(ASM.ldr_offset(frame, slot, EFFECT_FRAME))
             e.emit(ASM.ldr_offset(ACC, entry, EFFECT_LENGTH))
             e.emit(ASM.cmp_reg(frame, ACC))
@@ -1627,7 +1623,40 @@ module VBlank
               e.place_label(skip)
             end
             e.emit(ASM.add_imm(frame, frame, 1))
+            if @effect_clock_step # started by this walk: marked, for the tick's walks to leave
+              started = e.gensym
+              @primitives.load_var(ACC, EFFECTS_MOVE_ON)
+              e.emit(ASM.cmp_imm(ACC, 0))
+              e.emit_branch(:bcond, started, cond: :ne)
+              e.emit(ASM.orr_imm(frame, frame, STARTED_THIS_FRAME))
+              e.place_label(started)
+            end
             e.emit(ASM.str_offset(frame, slot, EFFECT_FRAME))
+          end
+
+          # A bit of EFFECT_FRAME, with the effects on a timer, on an effect started by this frame's first
+          # walk (#emit_effects_walk): the tick's walks of that frame leave it, so a tick falling in the
+          # frame it starts on, too soon after its start, never moves it on, and its first note lasts
+          # past the frame (Reference::Player#play_effects_first_pass). The next frame's first walk takes
+          # the bit off. Kept in the frame rather than the state, which the game reads as it asks.
+          STARTED_THIS_FRAME = 0x4000_0000
+
+          # Inline, for an effect sounding, with the effects on a timer: on to +onward+ in the first walk
+          # of a frame (EFFECTS_MOVE_ON nought), taking STARTED_THIS_FRAME off where it is on; on to
+          # +onward+ in a tick's walk for one that has it. +frame+ is free.
+          def emit_effect_left_while_starting(frame, slot, onward)
+            e = @emitter
+            ticking = e.gensym
+            @primitives.load_var(ACC, EFFECTS_MOVE_ON)
+            e.emit(ASM.ldr_offset(frame, slot, EFFECT_FRAME))
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, ticking, cond: :ne)
+            e.emit(ASM.bic_imm(frame, frame, STARTED_THIS_FRAME))
+            e.emit(ASM.str_offset(frame, slot, EFFECT_FRAME))
+            e.emit_branch(:b, onward)
+            e.place_label(ticking)
+            e.emit(ASM.tst_imm(frame, STARTED_THIS_FRAME))
+            e.emit_branch(:bcond, onward, cond: :ne)
           end
 
           # Where an effect's waveform sits in its entry, after where its lanes start — and how
