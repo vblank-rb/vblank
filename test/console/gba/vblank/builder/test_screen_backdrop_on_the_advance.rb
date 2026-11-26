@@ -30,4 +30,48 @@ class TestScreenBackdropOnTheAdvance < Minitest::Test
     refute_equal ScreenBackdropGames::SKY, game_player.run(tinted, frames: 3).screen.pixel(100, 100)
     assert_backends_agree(tinted, frames: [2, 3, 7, 8, 12], name: "TINTDROPS")
   end
+
+  # Under a tint that moves each pass, the scene's own backdrop is tinted from the scene's colour, not
+  # the game's, on every pass, and the game's comes back tinted when the board takes over.
+  def test_a_scenes_backdrop_follows_a_tint_that_moves_every_pass
+    assert_backends_agree(tinted_sky_title(:moving), frames: [3, 5, 7, 9, 11, 14, 16], name: "MOVINGDROP")
+  end
+
+  # A fade takes the tint's place (the colour tables are put back as drawn, then faded), and the scene's
+  # own backdrop is put back and faded with them, not the game's.
+  def test_a_fade_taking_a_tints_place_fades_the_scenes_own_backdrop
+    assert_backends_agree(tinted_sky_title(:fading), frames: [3, 5, 7, 9, 11, 14, 16], name: "FADEDROP")
+  end
+
+  # A sky-blue title, which names its own backdrop and sends no colours of its own, for twelve passes,
+  # then a board that names none. +kind+ :moving tints toward red by four more each pass; :fading holds a
+  # tint for five passes, then fades toward black, the fade taking the tint's place.
+  private def tinted_sky_title(kind)
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      ScreenBackdropGames.declare_corner_tile(self)
+      state = var :state, 0
+      tick = 0
+      scene(:title) do
+        screen(:tiled, backdrop: ScreenBackdropGames::SKY)
+        background :title, tiles: :corner_set, map: ["c"]
+      end
+      scene(:board) { background :board, tiles: :corner_set, map: ["c"] }
+      game_loop do
+        tick += 1
+        if kind == :moving
+          tint :red, tick * 4
+        elsif tick < 6
+          tint :red, 50
+        else
+          fade :black, tick * 3
+        end
+        state = 1 if tick == 12
+        call({ 0 => :title, 1 => :board }, number: :state)
+      end
+    end
+    b.finalize_program
+    b.program
+  end
 end
