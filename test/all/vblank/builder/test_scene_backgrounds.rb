@@ -908,4 +908,54 @@ class TestSceneBackgrounds < Minitest::Test
     assert_equal RED, game_player.run(prog, frames: 4).screen.pixel(*MIDDLE)
     assert_backends_agree(prog, frames: [4], name: "SCNBENT")
   end
+
+  # One name declared in a scene the game picks and in one it never picks, in either order. The
+  # never-picked scene's line never runs, so the name is the picked scene's alone.
+  private def a_name_in_a_picked_and_a_never_picked_scene(never_first:)
+    tile = SOLID_TILE
+    program do
+      screen :tiled
+      image(:red_art, "#" => :red) { tile }
+      image(:blue_art, "#" => :blue) { tile }
+      tiles :red_set, "#" => :red_art
+      tiles :blue_set, "#" => :blue_art
+      map = Array.new(20) { "#" * 30 }
+      var :state, 0
+      play = -> { scene(:play) { background :room, tiles: :red_set, map: map } }
+      never = -> { scene(:never) { background :room, tiles: :blue_set, map: map } }
+      never_first ? [never, play].each(&:call) : [play, never].each(&:call)
+      game_loop { call({ 0 => :play }, number: :state) }
+    end
+  end
+
+  def test_a_name_in_a_picked_scene_and_a_never_picked_one_shows_the_picked_one
+    [false, true].each do |never_first|
+      prog = a_name_in_a_picked_and_a_never_picked_scene(never_first: never_first)
+
+      assert_equal RED, game_player.run(prog, frames: 4).screen.pixel(*MIDDLE), "never picked first: #{never_first}"
+      assert_backends_agree(prog, frames: [4], name: "SCNTWICE")
+    end
+  end
+
+  # A name outside every scene shows in all of them, and a never-picked scene's line that shares it
+  # never runs, so the game builds and shows the outside one.
+  def test_a_name_outside_every_scene_and_in_a_never_picked_one_shows_the_outside_one
+    tile = SOLID_TILE
+    prog = program do
+      screen :tiled
+      image(:red_art, "#" => :red) { tile }
+      image(:blue_art, "#" => :blue) { tile }
+      tiles :red_set, "#" => :red_art
+      tiles :blue_set, "#" => :blue_art
+      map = Array.new(20) { "#" * 30 }
+      background :room, tiles: :red_set, map: map
+      var :state, 0
+      scene(:play) { nil }
+      scene(:never) { background :room, tiles: :blue_set, map: map }
+      game_loop { call({ 0 => :play }, number: :state) }
+    end
+
+    assert_equal RED, game_player.run(prog, frames: 4).screen.pixel(*MIDDLE)
+    assert_backends_agree(prog, frames: [4], name: "SCNOUT")
+  end
 end

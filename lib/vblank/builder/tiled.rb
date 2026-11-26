@@ -497,7 +497,10 @@ module VBlank
       # declaration outside every scene is on screen in all of them, so beside a scene's own it
       # would be two backgrounds up together under one name. And a bend or a turn is kept once for
       # each name by every lowering, so a second scene's would be lost or would land on the first.
+      # A declaration in a scene the game never picks never runs, so it shares a name with nothing.
       def refuse_name_in_two_places!(name, declared)
+        return if body_of_unpicked_scene? || declared.scene_gates.empty?
+
         if declared.scene_gates.include?(nil) != @current_scene_gate.nil?
           raise ArgumentError,
                 "background :#{name} is declared in a scene and also outside every scene. A background " \
@@ -627,8 +630,8 @@ module VBlank
         #
         # A name declared in several scenes belongs to each of them, and is written for while
         # any of them is up. A declaration outside every scene (a nil gate) is there in all of
-        # them.
-        declared.scene_gates = (declared.scene_gates || []) | [@current_scene_gate]
+        # them. A declaration in a scene never picked adds no gate.
+        declared.scene_gates = (declared.scene_gates || []) | (body_of_unpicked_scene? ? [] : [@current_scene_gate])
 
         # The window's top-left, in pixels, tracked in two hidden variables (cleared at
         # boot since console RAM isn't zero at power-on). A background that never

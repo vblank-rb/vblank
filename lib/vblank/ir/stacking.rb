@@ -70,7 +70,8 @@ module VBlank
       # that a line that can run still names is kept. The builder puts a scene's scroll in the
       # game loop, for one. A bend and a timer's handler stand from power-on wherever they are
       # written (Reference#collect_definitions), so the routines they call are reached
-      # (Reach.routines). A bend of a background left out bends nothing (RowBends).
+      # (Reach.routines). A bend of a background left out bends nothing (RowBends). A name that a
+      # declaration a run reaches also puts up is counted once, for that declaration.
       def scenery_reached(program)
         declared = program.walk.select { |node| node.kind == :background }
         funcs = program.walk.select { |node| node.kind == :func }
@@ -83,7 +84,8 @@ module VBlank
 
         named = program.walk.reject { |node| unreached.include?(node) || node.kind == :func }
                        .flat_map { |node| node.named_operands.flat_map { |_, held| Array(held).flatten } }
-        declared.reject { |node| unreached.include?(node) && !named.include?(node.name) }
+        put_up = declared.reject { |node| unreached.include?(node) }.to_set(&:name)
+        declared.reject { |node| unreached.include?(node) && (put_up.include?(node.name) || !named.include?(node.name)) }
       end
 
       # --- one screenful at a time ---

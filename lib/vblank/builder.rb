@@ -1977,6 +1977,9 @@ module VBlank
     # as a name, which is what something deciding what has to be in memory at once needs.
     def declaring_scene = @building_scene
 
+    # A scene's body that no dispatch picks, whose lines never run.
+    def body_of_unpicked_scene? = !@scene_laid_out.nil? && @current_scene_gate.nil?
+
     def gated_by_scene(active_node)
       return active_node unless @current_scene_gate
 
@@ -1998,7 +2001,9 @@ module VBlank
     # several scenes is written for while any of them is. A nil among them is a declaration
     # outside every scene, which is there in all of them.
     def while_any_scene_up(gates, node)
-      return node if gates.include?(nil)
+      # A background declared only in scenes never picked has no gates, and is written as one
+      # outside every scene is.
+      return node if gates.empty? || gates.include?(nil)
 
       Build.if_(gates.map { |gate| scene_up(gate) }.reduce { |either, other| Build.binop(:or, either, other) }, node)
     end
