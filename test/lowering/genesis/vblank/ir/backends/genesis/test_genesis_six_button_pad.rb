@@ -4,7 +4,7 @@ require "test_helper"
 require "stringio"
 
 # The six-button pad's X and Y on a Sega Genesis (Genesis::Runtime::Frame#emit_pad_now): read after the
-# pad's two usual halves, by three more turns of the select line (plutiedev, "Controllers"). A cartridge
+# pad's two usual halves, by two more turns of the select line (plutiedev, "Controllers"). A cartridge
 # says it reads one in its header ("6" in the devices), and the emulator then plugs a six-button pad in.
 class TestGenesisSixButtonPad < Minitest::Test
   Genesis = VBlank::IR::Backends::Genesis
@@ -53,10 +53,10 @@ class TestGenesisSixButtonPad < Minitest::Test
     rows.select { |row| row.routine.to_s == "rt_buttons_now" }.sum { |row| row.share * 262 }
   end
 
-  # The six added turns of the select line cost about 310 cycles of the 68000 by the M68000 User's Manual's
-  # tables (six move.b #imm,abs.l writes at 20, twelve nops at 4, two move.b abs.l,d3 reads at 16, the
-  # shift, the mask, the compare and two btst and or.w pairs), 7 core cycles each over 3420 a line: 0.64 of a
-  # line. Derived, not measured.
+  # The two added turns of the select line cost about 250 cycles of the 68000 by the M68000 User's Manual's
+  # tables (four move.b #imm,abs.l writes at 20, six nops at 4, two move.b abs.l,d3 reads at 16, the
+  # shift, the mask, the compare and two btst and or.w pairs), 7 core cycles each over 3420 a line: about
+  # half a line. Derived, not measured; the budget of a line leaves room for the branches taken.
   def test_reading_x_and_y_costs_under_a_line_a_frame
     extra = read_lines(:x) - read_lines(:a)
 

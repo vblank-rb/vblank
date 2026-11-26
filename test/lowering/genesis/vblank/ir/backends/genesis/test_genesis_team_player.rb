@@ -126,8 +126,6 @@ class TestGenesisTeamPlayer < Minitest::Test
     end
   end
 
-  # The Verifier plugs no tap in: Genesis Plus GX has a plain pad in the second port. The game
-  # finds no tap and reads none of the third and fourth players.
   # A Team Player of six-button pads hands over a third nibble for each plug: the game reads the X of the
   # third player and the Y of the fourth through it, as the interpreter has them.
   def test_a_team_player_of_six_button_pads_hands_over_x_and_y
@@ -145,6 +143,8 @@ class TestGenesisTeamPlayer < Minitest::Test
     assert_operator run[:ys], :>, 0
   end
 
+  # The Verifier plugs no tap in: Genesis Plus GX has a plain pad in the second port. The game
+  # finds no tap and reads none of the third and fourth players.
   def test_with_no_team_player_the_third_and_fourth_players_hold_nothing
     rom = built(4)
     reader = VBlank::Diagnostics::Verifier.new(rom, frames: 4, vars: rom.var_addresses)
