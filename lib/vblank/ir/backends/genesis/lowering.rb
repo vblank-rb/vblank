@@ -46,7 +46,7 @@ module VBlank
           include Division
           include Products
           include ControlFlow
-          include ListPacking::Loops
+          include ListPackBlocks
           include SceneryWrites
           include MeasuredOnCopies
           include TileRuns
@@ -287,6 +287,11 @@ module VBlank
           # Whether the game holds numbers with a fraction, which is when the cartridge carries the
           # routines that work them out (Runtime::Int32.emit_fractions).
           def fractions? = @program.walk.any? { |node| %i[mul_fix div_fix].include?(node.kind) }
+
+          # Whether the game copies a list's items into a list of bytes as one run, so its runtime
+          # carries the routine that moves it (Runtime::Lists#emit_pack), once #sections has placed
+          # the lists.
+          def packs_lists? = @reachable.any? { |node| node.kind == :list_pack && list_pack_block?(node) }
 
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
@@ -1590,6 +1595,22 @@ module VBlank
           # there, or puts it back.
           def lists_dropped_from_front(program)
             program.walk.filter_map { |node| node.name if node.kind == :list_drop && node.from == :front }.uniq
+          end
+
+          # A list_pack's run moved by the runtime (ListPackBlocks): D0 is the list read, D1 the list written
+          # into and D2 the first slot written, a run the step's fit test has seen fits.
+          def emit_list_pack_block(node) = list_call("rt_list_pack", node, Build.int(@lists.fetch(node.into).first), node.at)
+
+          # Whether the slots of a list_pack's two lists are a copy's (ListPackBlocks): the list read
+          # kept at the width it declares and the one written into in bytes, each one run of slots
+          # from just after its header, and the one written into never taken from its front, so its
+          # slot nought is the first after its header. A list of halves read back with no sign is a
+          # list of words to the step, kept in two bytes, so the width alone sends it to the loop.
+          def list_pack_block?(node)
+            return false if @slot_places.key?(node.name) || @slot_places.key?(node.into)
+
+            @lists.fetch(node.name)[2] == ListPacking::WIDTH_BYTES.fetch(node.width) && @lists.fetch(node.into)[2] == 1 &&
+              !@lists_dropped_from_front.include?(node.into)
           end
 
           # A run of a table's entries copied into a list: the table's place and how it keeps its

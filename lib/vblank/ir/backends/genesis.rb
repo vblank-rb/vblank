@@ -237,7 +237,8 @@ module VBlank
                                              blocks: picture == :tiled && lowering.writes_cell_blocks?, bends: bends,
                                              count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted),
                                              saves: SaveLayout.named_by?(program), list_moves: SaveListMoves.moved_in?(program),
-                                             six_buttons: Runtime::Frame.reads_six_buttons?(program))
+                                             six_buttons: Runtime::Frame.reads_six_buttons?(program),
+                                             packs_lists: lowering.packs_lists?)
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },

@@ -25,7 +25,7 @@ module VBlank
         # Every cartridge lowering that writes list_pack its own way, by the lowering's name, with why
         # its way is cheaper there: the ones that mix this module in, and the Advance's, which tests the
         # run in its own instructions (GBA::Lists#emit_list_pack). A lowering not named here takes the
-        # loop (IR::ListPacking::Loops); test_list_pack_blocks.rb holds the five to this list, both
+        # loop (IR::ListPacking::Loops); test_list_pack_blocks.rb holds every lowering to this list, both
         # ways. The measurement behind each is in the commit that added it.
         OWN_WAYS = Ractor.make_shareable(
           {
@@ -39,7 +39,12 @@ module VBlank
             "SNES" => "The 65816 stores a 16-bit number lowest byte first, so a slot keeps its bytes in the stage's order " \
                       "(Runtime::Saving#emit_list_moves copies slots as save memory's bytes for the same reason), and " \
                       "SNES::Lowering#emit_list_pack_block moves each run with one MVN, seven cycles a byte " \
-                      "(fullsnes, \"65XX Block Move\"), where the loop is two runtime calls a byte."
+                      "(fullsnes, \"65XX Block Move\"), where the loop is two runtime calls a byte.",
+            "Genesis" => "The 68000 keeps a number highest byte first (M68000 Programmer's Reference, \"Data Organization " \
+                          "in Memory\") and the stage wants lowest first, so the slots are not the stage's bytes. " \
+                          "Runtime::Lists' rt_list_pack moves each item's bytes last to first with MOVE.B -(A2),(A1)+, " \
+                          "one instruction a byte, where the loop is a list_get and a list_set a byte, each a call " \
+                          "into the runtime."
           }
         )
 

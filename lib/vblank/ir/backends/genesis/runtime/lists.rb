@@ -40,7 +40,7 @@ module VBlank
 
             module_function
 
-            def emit(asm, memory)
+            def emit(asm, memory, pack: false)
               emit_start(asm)
               emit_empty(asm)
               emit_push(asm)
@@ -48,6 +48,7 @@ module VBlank
               emit_get_and_set(asm)
               emit_fill(asm)
               emit_copy(asm)
+              emit_pack(asm) if pack
               emit_slot_access(asm)
               emit_faults(asm, memory)
             end
@@ -129,6 +130,72 @@ module VBlank
               asm.label("rt_list_drop_front")
               asm.move(:w, asm.d(2), asm.disp(0, FRONT))
               asm.label("rt_list_drop_done")
+              asm.rts
+            end
+
+            # rt_list_pack(list, into, at): a list_pack's items (the list's items into a list of bytes, each
+            # item's bytes lowest first, Reference#exec_list_pack): D0 = the list read, D1 = the list
+            # written into, D2 = the first slot written, a run the lowering has seen fits. The list
+            # written into is never taken from its front, so its slot nought is the first byte after its
+            # header. The list read goes round its slots like a ring, so its items are at most two runs:
+            # from the oldest item to the last slot or the last item, and what is left from the first slot
+            # (rt_save_store_list splits a list the same way). Each run is rt_list_pack_items, which takes
+            # each item's bytes last to first, since the 68000 keeps a number highest byte first.
+            def emit_pack(asm)
+              asm.label("rt_list_pack")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.movea(:l, asm.d(1), asm.a(1))
+              asm.add(:l, asm.d(2), asm.a(1))
+              asm.lea(asm.disp(1, HEADER), asm.a(1))
+              asm.moveq(0, asm.d(2))
+              asm.move(:w, asm.disp(0, LENGTH), asm.d(2))
+              asm.branch(:ne, "rt_list_pack_some")
+              asm.rts
+              asm.label("rt_list_pack_some")
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.disp(0, SHIFT), asm.d(6))
+              # The first run: from the oldest item to the last slot, or the last item if that comes first.
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, asm.disp(0, FRONT), asm.d(4))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, asm.disp(0, CAPACITY), asm.d(5))
+              asm.sub(:l, asm.d(4), asm.d(5)) # the slots from the oldest to the end
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.cmp(:l, asm.d(5), asm.d(1))
+              asm.branch(:ls, "rt_list_pack_first")
+              asm.move(:l, asm.d(5), asm.d(1))
+              asm.label("rt_list_pack_first")
+              asm.sub(:l, asm.d(1), asm.d(2)) # what is left for the second run
+              asm.lsl(:l, asm.d(6), asm.d(4))
+              asm.lea(asm.disp(0, HEADER), asm.a(2))
+              asm.add(:l, asm.d(4), asm.a(2))
+              asm.jsr(asm.abs_l("rt_list_pack_items"))
+              # The second run: what is left, from the first slot.
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.branch(:eq, "rt_list_pack_done")
+              asm.lea(asm.disp(0, HEADER), asm.a(2))
+              asm.jsr(asm.abs_l("rt_list_pack_items"))
+              asm.label("rt_list_pack_done")
+              asm.rts
+
+              # rt_list_pack_items: D1 items (not nought) from A2, the first slot of the run, into A1, the
+              # first byte written, both moved on past what is copied. D6 is the list's shift. D3 to D5 are
+              # used; D2 and D6 are kept. One instruction a byte, no call for an item or a byte.
+              asm.label("rt_list_pack_items")
+              asm.moveq(1, asm.d(3))
+              asm.lsl(:l, asm.d(6), asm.d(3)) # the bytes of an item
+              asm.move(:l, asm.d(3), asm.d(5))
+              asm.add(:l, asm.d(5), asm.d(5)) # and two items' bytes: from the end of one to the end of the next
+              asm.add(:l, asm.d(3), asm.a(2)) # the end of the first item
+              asm.subq(:w, 1, asm.d(3))
+              asm.subq(:w, 1, asm.d(1))
+              asm.label("rt_list_pack_items_item")
+              asm.move(:w, asm.d(3), asm.d(4))
+              asm.label("rt_list_pack_items_byte")
+              asm.move(:b, asm.pre(2), asm.post(1))
+              asm.dbra(asm.d(4), "rt_list_pack_items_byte")
+              asm.add(:l, asm.d(5), asm.a(2))
+              asm.dbra(asm.d(1), "rt_list_pack_items_item")
               asm.rts
             end
 
