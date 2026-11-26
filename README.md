@@ -2,6 +2,8 @@
 
 **Write a retro game in plain Ruby, and build it for the consoles it was made for.**
 
+[Documentation](https://vblank.app/docs/)
+
 ![Six games built with VBlank, running at once in an emulator: Pac-Man, a first-person maze, a walk through a scrolling world, Breakout, a shooter, and a lantern-lit cave](assets/examples.gif)
 
 > Six of the [examples](examples/), each a real Game Boy Advance cartridge running in an emulator.
