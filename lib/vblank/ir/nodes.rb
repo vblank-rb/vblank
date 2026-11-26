@@ -1253,12 +1253,16 @@ module VBlank
       # them — fog that thickens, water that gets murkier the deeper you swim. A number
       # settled while authoring is written once and never again; one the program works out
       # is read again every frame (see SeeThrough).
+      #
+      # +subtract+ marks a layer that takes what is behind it away from itself instead of adding
+      # it: each channel is +shows+ of the layer less +behind+ of what is behind, and stops at
+      # nothing, which is how a light the game draws darkens what it does not cover.
       class SeeThroughLayer
         include Node
         kind :see_through_layer
         declaration!
         category :data
-        operands name: :name, shows: :value, behind: :value, split: :flag
+        operands name: :name, shows: :value, behind: :value, split: :flag, subtract: :flag
       end
 
       # How see-through +layer+ is, RIGHT NOW.

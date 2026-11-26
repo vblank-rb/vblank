@@ -255,6 +255,14 @@ class TestLayerTwoAmounts < Minitest::Test
     assert_match(/two ways to say one thing/, refused(transparency: 40, shows: 94, shows_behind: 63).message)
   end
 
+  def test_subtracting_with_no_amounts_is_a_friendly_error
+    assert_match(/`subtract: true` but no amounts/, refused(subtract: true).message)
+  end
+
+  def test_subtracting_takes_true_or_false
+    assert_match(/takes `true` or `false`/, refused(transparency: 50, subtract: :yes).message)
+  end
+
   def test_an_amount_past_100_is_a_friendly_error
     assert_match(/shows_behind: 120` is outside 0 to 100/, refused(shows: 50, shows_behind: 120).message)
   end

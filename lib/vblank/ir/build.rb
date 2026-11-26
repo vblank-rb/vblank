@@ -701,17 +701,19 @@ module VBlank
       end
 
       # Layer +name+ can be seen through: +shows+ of itself and +behind+ of what is behind
-      # it, each 0 to 100.
-      def see_through_layer(name, shows:, behind:)
-        Nodes.build(:see_through_layer, name: name, shows: to_value_node(shows), behind: to_value_node(behind), split: false)
+      # it, each 0 to 100. With +subtract+, what is behind is taken away from the layer
+      # instead of added to it.
+      def see_through_layer(name, shows:, behind:, subtract: false)
+        Nodes.build(:see_through_layer, name: name, shows: to_value_node(shows), behind: to_value_node(behind),
+                                        split: false, subtract: subtract)
       end
 
       # The one-number form: +behind+ of what is behind layer +name+ shows through it, and
       # the layer shows the rest.
-      def see_through_split(name, behind)
+      def see_through_split(name, behind, subtract: false)
         amount = to_value_node(behind)
         rest = amount.kind == :int ? int(100 - amount.value) : binop(:-, int(100), amount.copy)
-        Nodes.build(:see_through_layer, name: name, shows: rest, behind: amount, split: true)
+        Nodes.build(:see_through_layer, name: name, shows: rest, behind: amount, split: true, subtract: subtract)
       end
 
       # Set again how see-through +layer+ is, just before a frame is drawn.

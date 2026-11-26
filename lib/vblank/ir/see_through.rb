@@ -10,6 +10,9 @@ module VBlank
     # not add to a whole — past one, the mix is brighter than either side and a channel
     # stops at its brightest.
     #
+    # A layer can also take what is behind it away from itself (SeeThroughLayer#subtract): then
+    # the share of what is behind is a negative one, and a channel stops at nothing.
+    #
     # Every backend reads the amounts through here, so the rounding from what the author
     # wrote (0 to 100) to steps is decided once.
     module SeeThrough
@@ -37,19 +40,21 @@ module VBlank
       end
 
       # The two shares, in steps, for a layer whose amounts are +shows+ and +behind+
-      # (numbers, 0 to 100): [how much of the layer, how much of what is behind].
+      # (numbers, 0 to 100): [how much of the layer, how much of what is behind]. For a layer
+      # that subtracts, the second is below nought: what is behind is taken away.
       #
       # The one-number form keeps the arithmetic it always had: what is behind is its
       # share rounded down, and the layer takes whatever is left of a whole. Two amounts
       # are each rounded to the nearest step, so 94 and 63 are the 15 and 10 a cartridge
       # that was drawn in steps gives.
       def weights(layer, shows, behind)
-        if layer.split
-          far = floor_steps(behind)
-          return [STEPS - far, far]
-        end
-
-        [nearest_steps(shows), nearest_steps(behind)]
+        near, far = if layer.split
+                      far = floor_steps(behind)
+                      [STEPS - far, far]
+                    else
+                      [nearest_steps(shows), nearest_steps(behind)]
+                    end
+        [near, layer.subtract ? -far : far]
       end
 
       # Whether both of +layer+'s amounts are numbers the author wrote, which never change.

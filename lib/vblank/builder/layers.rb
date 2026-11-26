@@ -246,6 +246,17 @@ module VBlank
       # end
       # ```
       #
+      # To take what is behind the layer away from it, add `subtract: true`. Each colour channel is
+      # then `shows:` of the layer less `shows_behind:` of what is behind it, and stops at nothing.
+      # A light the game draws over a dark arena shows the arena through it that way, darker where
+      # the light is dim, as the Super Nintendo's colour maths does.
+      #
+      # ```ruby
+      # layer :light, shows: 100, shows_behind: 100, subtract: true do
+      #   background :lamp, tiles: :glow, map: LIGHT
+      # end
+      # ```
+      #
       # A screen has one see-through layer, and a layer sets its amounts once. A game can have one
       # on each of its screens, in scenes that never show together. A see-through layer needs
       # `screen :tiled`: a bitmap screen paints its whole picture into one place before the
@@ -256,11 +267,12 @@ module VBlank
       #   something the game works out.
       # * `shows:` - how much of the layer itself shows, from 0 to 100.
       # * `shows_behind:` - how much of what is behind it shows, from 0 to 100.
-      def layer(name, transparency: nil, shows: nil, shows_behind: nil, &block)
+      # * `subtract:` - `true` to take what is behind away from the layer instead of adding it.
+      def layer(name, transparency: nil, shows: nil, shows_behind: nil, subtract: false, &block)
         raise ArgumentError, "`layer :#{name}` needs a block: `layer :#{name} do ... end`." unless block
 
         check_layer_can_open!(name)
-        amounts = see_through_amounts(name, transparency, shows, shows_behind)
+        amounts = see_through_amounts(name, transparency, shows, shows_behind, subtract)
         make_layer_transparent(name, amounts) if amounts
 
         @current_layer = name
@@ -355,10 +367,10 @@ module VBlank
         return if transparency_repeated!(name, amounts)
 
         layer = if amounts.split
-                  Build.see_through_split(name, DSL::Value.node_for(amounts.behind))
+                  Build.see_through_split(name, DSL::Value.node_for(amounts.behind), subtract: amounts.subtract)
                 else
                   Build.see_through_layer(name, shows: DSL::Value.node_for(amounts.shows),
-                                                behind: DSL::Value.node_for(amounts.behind))
+                                                behind: DSL::Value.node_for(amounts.behind), subtract: amounts.subtract)
                 end
         @layers_node.see_through = @layers_node.see_through + [layer]
         @transparency_written[name] = amounts
@@ -366,24 +378,42 @@ module VBlank
       end
 
       # What the author wrote about how see-through a layer is, as they wrote it: +word+ is
-      # the keyword to name in a message, and +split+ is the one-number form.
-      SeeThroughWords = Data.define(:word, :shows, :behind, :split)  # :nodoc:
+      # the keyword to name in a message, +split+ is the one-number form, and +subtract+ takes
+      # what is behind away.
+      SeeThroughWords = Data.define(:word, :shows, :behind, :split, :subtract)  # :nodoc:
 
       # The amounts a `layer` block was given, checked, or nil for a layer that is not
       # see-through. One number, or two that go together, and never both.
-      def see_through_amounts(name, transparency, shows, behind)
-        return nil if transparency.nil? && shows.nil? && behind.nil?
+      def see_through_amounts(name, transparency, shows, behind, subtract)
+        refuse_non_boolean_subtract!(name, subtract)
+        if transparency.nil? && shows.nil? && behind.nil?
+          refuse_subtract_without_amounts!(name) if subtract
+          return nil
+        end
 
         unless transparency.nil?
           refuse_transparency_with_shows!(name) unless shows.nil? && behind.nil?
           check_transparency_amount!(name, "transparency", transparency)
-          return SeeThroughWords.new(word: "transparency", shows: nil, behind: transparency, split: true)
+          return SeeThroughWords.new(word: "transparency", shows: nil, behind: transparency, split: true, subtract: subtract)
         end
 
         refuse_unpaired_shows!(name, shows.nil? ? "shows_behind" : "shows") if shows.nil? || behind.nil?
         check_transparency_amount!(name, "shows", shows)
         check_transparency_amount!(name, "shows_behind", behind)
-        SeeThroughWords.new(word: "shows", shows: shows, behind: behind, split: false)
+        SeeThroughWords.new(word: "shows", shows: shows, behind: behind, split: false, subtract: subtract)
+      end
+
+      def refuse_non_boolean_subtract!(name, subtract)
+        return if [true, false].include?(subtract)
+
+        raise ArgumentError, "`layer :#{name}, subtract:` takes `true` or `false`. You gave #{subtract.inspect}."
+      end
+
+      def refuse_subtract_without_amounts!(name)
+        raise ArgumentError,
+              "`layer :#{name}` was given `subtract: true` but no amounts. `subtract: true` takes what is " \
+              "behind a see-through layer away from it. To fix this, give the amounts too, for example " \
+              "`layer :#{name}, shows: 100, shows_behind: 100, subtract: true`."
       end
 
       def refuse_transparency_with_shows!(name)
@@ -432,9 +462,10 @@ module VBlank
       # How see-through the layer was asked to be, as the author wrote it — a number, or
       # the name of what the game works it out from. For a message about it.
       def transparency_as_written(words)
-        return "#{as_written(words.behind)} see-through" if words.split
+        taken = words.subtract ? ", taking it away" : ""
+        return "#{as_written(words.behind)} see-through#{taken}" if words.split
 
-        "showing #{as_written(words.shows)} of itself and #{as_written(words.behind)} of what is behind"
+        "showing #{as_written(words.shows)} of itself and #{as_written(words.behind)} of what is behind#{taken}"
       end
 
       def as_written(amount) = (DSL::Value.fixed_number(amount) || Messages::PlainWords.words_for_given(amount)).to_s
@@ -469,7 +500,7 @@ module VBlank
       end
 
       def same_see_through_words?(was, now)
-        was.split == now.split && was.shows.equal?(now.shows) && was.behind.equal?(now.behind)
+        was.split == now.split && was.subtract == now.subtract && was.shows.equal?(now.shows) && was.behind.equal?(now.behind)
       end
 
       def check_stack_not_declared!

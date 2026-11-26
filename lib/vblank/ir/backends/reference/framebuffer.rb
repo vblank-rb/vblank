@@ -713,7 +713,8 @@ module VBlank
           # A see-through layer's color over what is under it: +near+ steps of the one and
           # +far+ of the other, added channel by channel, and only then is the sixteenth
           # dropped. The two shares need not add to a whole, and past one a channel stops at
-          # its brightest, as the display's does.
+          # its brightest, as the display's does. A layer that subtracts has a +far+ below nought
+          # (SeeThrough.weights): what is behind is taken away, and a channel stops at nothing.
           #
           # Each channel is widened to eight bits first, the way the emulator this is checked
           # against mixes: five bits become eight by repeating the top ones underneath
@@ -731,7 +732,7 @@ module VBlank
               shift = channel * 5
               have = widen_channel((color >> shift) & CHANNEL_MAX)
               below = widen_channel((under >> shift) & CHANNEL_MAX)
-              packed |= ([((have * near) + (below * far)) / FADE_STEPS, 255].min >> 3) << shift
+              packed |= ((((have * near) + (below * far)) / FADE_STEPS).clamp(0, 255) >> 3) << shift
             end
             packed
           end
