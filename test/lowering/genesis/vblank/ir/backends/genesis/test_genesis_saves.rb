@@ -129,6 +129,26 @@ class TestGenesisSaves < Minitest::Test
     end
   end
 
+  def test_a_game_that_saves_and_is_bigger_than_2mb_is_refused
+    build = VBlank::IR::Build
+    big = build.table(:big, Array.new(0x200000, 1), width: :byte, signed: false)
+    program = build.program(big, build.save_write(build.int(0), build.table_get(:big, build.int(0))), build.halt,
+                            console: :genesis)
+
+    error = assert_raises(VBlank::BuildError) { Genesis.new.build(program) }
+    assert_includes error.message, "fit in 2 MB"
+  end
+
+  # A length so long the place and it pass the largest number is past the save too.
+  def test_a_sum_whose_end_passes_the_largest_number_stops_as_the_interpreter_does
+    build = VBlank::IR::Build
+    program = build.program(build.set(:sum, build.save_sum(build.int(0x7FFF), build.int(0x7FFFFFFF))), build.halt)
+    expected = assert_raises(VBlank::IR::ProgramError) { Reference.new.run(program, frames: 1) }
+    error = assert_raises(VBlank::IR::ProgramError) { Genesis::HeadlessRun.new.run(program, frames: 1) }
+
+    assert_equal expected.message, error.message
+  end
+
   def test_an_odd_byte_save_file_holds_the_save_memory_on_its_odd_bytes
     layout = GenesisReading::SAVE_FILE
 

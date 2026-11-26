@@ -86,6 +86,7 @@ module VBlank
               asm.branch(:mi, "rt_save_sum_outside")
               asm.move(:l, asm.d(0), asm.d(5))
               asm.add(:l, asm.d(1), asm.d(5))
+              asm.branch(:vs, "rt_save_sum_outside") # an end past the largest number is past the save too
               asm.cmp(:l, asm.imm(SIZE), asm.d(5))
               asm.branch(:gt, "rt_save_sum_outside")
               asm.tst(:l, asm.d(1))
