@@ -107,6 +107,32 @@ class TestGenesisBentRows < Minitest::Test
     game_player.run(rippled("RIPPLE WRAPS", true, phase_from: 65_500, phase_step: -7).program(console: :genesis), frames: 12)
   end
 
+  # The near miss: a block reading three variables holds the first two in registers, and the third, added
+  # to the row, stays in work memory. Its high word is not nought, so the ripple reads the interpreter's
+  # entries only if the word sum leaves it alone and works it out at full width.
+  def test_a_ripple_whose_phase_stays_in_work_memory_shows_what_the_interpreter_shows
+    game = VBlank.game("RIPPLE IN MEMORY", consoles: %i[genesis]) do
+      screen :tiled
+      image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
+      tiles :stripes, "#" => :bar
+      water = background :water, tiles: :stripes, map: Array.new(28) { "#" * 40 }
+      ripple = table :ripple, (0...64).map { |i| (i * 7) % 13 }
+      tilt = var :tilt, 5
+      lean = var :lean, 9
+      sum = var :sum, 0
+      phase = var :phase, 70_000
+      water.scroll_each_row do |row|
+        sum = tilt + lean
+        ripple[(row + phase) & 63]
+      end
+      game_loop do
+        phase += 3
+        tilt += sum & 1
+      end
+    end
+    game_player.run(game.program(console: :genesis), frames: 8)
+  end
+
   # A block that writes a variable it reads, with a loop of its own, is held only in what it never
   # writes: the count goes on from row to row, and the loop takes the register after the rows'.
   def test_a_block_that_counts_and_loops_shows_what_the_interpreter_shows
