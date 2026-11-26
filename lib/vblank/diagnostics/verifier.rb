@@ -62,14 +62,19 @@ module VBlank
       # A cartridge whose save memory is only part of the RAM the emulator keeps, past RAM of a
       # chip's own (a Super FX board's), has it +memory_at+ bytes into the file, +whole+ bytes of
       # it, and nought for every byte before it when the file is written for a run.
-      SaveFileLayout = Data.define(:whole, :clock_bytes, :memory_at) do
-        def initialize(whole:, clock_bytes:, memory_at: 0) = super
+      #
+      # A cartridge whose save memory is on the odd bytes of its RAM (+odd_bytes+, a Genesis cartridge's) has
+      # it in every second byte of the file, and the even bytes between hold $FF, as an erased chip does.
+      SaveFileLayout = Data.define(:whole, :clock_bytes, :memory_at, :odd_bytes) do
+        def initialize(whole:, clock_bytes:, memory_at: 0, odd_bytes: false) = super
 
         # The save memory in +file+ (the bytes of the emulator's file), without the clock's bytes.
         #
         # A file no bigger than the save memory is the save memory alone, written on its own (a
         # playthrough's save written with SaveImage#write_sav), and is handed back as it is.
         def memory_in(file)
+          return file.bytes.each_slice(2).map(&:last).pack("C*") if odd_bytes
+
           return file.byteslice(memory_at, whole) if memory_at.positive? && file.bytesize > whole
           return file unless file.bytesize % whole == clock_bytes
 
@@ -86,6 +91,8 @@ module VBlank
         # The emulator's file holding +memory+ (the bytes of the save memory), for a run to start
         # from, with the +clock+'s bytes after it where a run before left some (#clock_in).
         def file_of(memory, clock = nil)
+          return memory.bytes.flat_map { |byte| [0xFF, byte] }.pack("C*") if odd_bytes
+
           ("\0".b * memory_at) + memory + (clock || "".b)
         end
       end

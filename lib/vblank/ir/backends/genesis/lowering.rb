@@ -41,6 +41,7 @@ module VBlank
           include Paint
           include Picture
           include Collision
+          include Saving
           include Sound
           include Division
           include Products
@@ -64,7 +65,7 @@ module VBlank
             halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group screen
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
-            TileRuns::STATEMENT_KINDS +
+            Saving::STATEMENT_KINDS + TileRuns::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
           def emit_statement(node)
@@ -113,6 +114,7 @@ module VBlank
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
             when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
             when *Sound::STATEMENT_KINDS then emit_sound_statement(node)
+            when *Saving::STATEMENT_KINDS then emit_saving_statement(node)
             when *TileRuns::STATEMENT_KINDS then emit_tile_runs_statement(node)
             else emit_declaration_or_refuse(node)
             end
@@ -129,7 +131,7 @@ module VBlank
           VALUE_KINDS = (%i[
             int var_ref binop neg bit_not absolute clamped shift_right held pressed pulled list_get list_len
             table_get timer_ticks chance mul_fix div_fix data_byte players_connected local_player
-          ] + Collision::VALUE_KINDS).freeze
+          ] + Collision::VALUE_KINDS + Saving::VALUE_KINDS).freeze
 
           def value_of_kind(node)
             case node.kind
@@ -155,6 +157,7 @@ module VBlank
             when :players_connected then value_of_players_connected(node)
             when :local_player then value_of_local_player(node)
             when *Collision::VALUE_KINDS then value_of_collision_kind(node)
+            when *Saving::VALUE_KINDS then value_of_saving_kind(node)
             else raise LoweringError, "no writer here for #{node.kind.inspect}"
             end
           end
@@ -166,8 +169,7 @@ module VBlank
                                                     "the status bar" => %i[place_bar],
                                                     "sprite tiles the game loads" => %i[load_sprite_tiles],
                                                     "layers see-through" => %i[see_through],
-                                                    "save memory" => %i[save_init save_store save_write save_erase
-                                                                        save_read save_sum save_load_list save_store_list]
+                                                    "save memory" => %i[save_erase save_sum save_load_list save_store_list]
                                                   })
 
           # How the runtime's list copy knows each way of keeping an entry (Runtime::Lists::KEPT), by
@@ -289,6 +291,7 @@ module VBlank
           # the program itself.
           def sections
             @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet, makes_poses_of_banks: true)
+            refuse_unsupported_save_memory!
             refuse_unmade_picture!
             refuse_unmade_tile_runs!
             assign_background_layers unless painted?

@@ -197,6 +197,11 @@ module VBlank
       RAM_START_AT = 0x1A8
       RAM_END_AT = 0x1AC
       REGION_AT = 0x1F0
+      # The header's word for the memory a cartridge adds, at $1B0: "RA", $F8 and $20 (battery-backed RAM on
+      # odd bytes), then where that RAM is, first byte and last (Genesis Plus GX, core/cart_hw/sram.c).
+      SAVE_HEADER_AT = 0x1B0
+      SAVE_RAM_FIRST = 0x200001
+      SAVE_RAM_LAST = 0x20FFFF
       CODE_AT = 0x200
       TITLE_LENGTH = 48
 

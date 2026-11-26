@@ -22,10 +22,10 @@ module VBlank
       # Four lists of sixteen colours, shared by the backgrounds and the sprites.
       PALETTE = Verifier::PaletteLayout.new(half: 0, group: 16)
 
-      # A Genesis cartridge's save memory is the emulator's save RAM, handed over through libretro and
-      # not kept in a file, so there is nothing after it: the whole file is the memory (nothing is
-      # made to save yet, which Lowering::NOT_LOWERED_YET says).
-      SAVE_FILE = Verifier::SaveFileLayout.new(whole: 0x10000, clock_bytes: 0)
+      # A Genesis cartridge's save memory is the emulator's save RAM, handed over through libretro. The
+      # emulator's gem keeps it in a file as a frontend does (RubyGenesisEmulator::Core#destroy): 64K, the
+      # save memory on its odd bytes, and nothing after it.
+      SAVE_FILE = Verifier::SaveFileLayout.new(whole: 0x10000, clock_bytes: 0, odd_bytes: true)
 
       # How far the video chip moves a sprite's place, across and down, so a sprite placed at nought
       # is off the screen.

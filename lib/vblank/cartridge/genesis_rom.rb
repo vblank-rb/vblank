@@ -43,11 +43,13 @@ module VBlank
       # back, or nil.
       attr_reader :built
 
+      # +saves+ for a game that keeps save memory, whose header then names the battery-backed RAM.
       # +image+ is the linked code and data, from $200. +vectors+ names where each vector points, by
       # Console::GenesisHardware::VECTORS's names (:stack is the one that is not an address of code);
       # one not named points where reset does.
-      def initialize(image, title:, vectors:, built: nil)
+      def initialize(image, title:, vectors:, built: nil, saves: false)
         @built = built
+        @saves = saves
         unknown = vectors.keys - VECTORS.keys
         raise ArgumentError, "a Genesis has no #{unknown.join(', ')} vector" unless unknown.empty?
 
@@ -146,7 +148,8 @@ module VBlank
         @bytes[SERIAL_AT, 14] = "GM 00000000-00"
         @bytes[DEVICES_AT, 16] = "J".ljust(16, " ")
         @bytes[ROM_START_AT, 16] = [0, size - 1, WRAM, WRAM + WRAM_SIZE - 1].pack("N4")
-        @bytes[0x1B0, 12] = " " * 12 # the memory the cartridge adds: none
+        # The memory the cartridge adds: 32K of battery-backed RAM on odd bytes, or none.
+        @bytes[SAVE_HEADER_AT, 12] = @saves ? "RA\xF8\x20".b + [SAVE_RAM_FIRST, SAVE_RAM_LAST].pack("N2") : " " * 12
         @bytes[0x1BC, 12] = " " * 12 # a modem: none
         @bytes[0x1C8, 40] = " " * 40
         @bytes[REGION_AT, 16] = "JUE".ljust(16, " ")

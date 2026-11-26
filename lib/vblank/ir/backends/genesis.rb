@@ -26,6 +26,7 @@ require_relative "genesis/runtime"
 require_relative "genesis/lowering/picture"
 require_relative "genesis/lowering/paint"
 require_relative "genesis/lowering/collision"
+require_relative "genesis/lowering/saving"
 require_relative "genesis/lowering/sound"
 require_relative "genesis/lowering/division"
 require_relative "genesis/lowering/products"
@@ -234,7 +235,8 @@ module VBlank
                                              runs: picture == :tiled && lowering.paints_tiles?,
                                              poses: lowering.streams_poses?,
                                              blocks: picture == :tiled && lowering.writes_cell_blocks?, bends: bends,
-                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
+                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted),
+                                             saves: SaveLayout.named_by?(program))
           linked = Linker.new(runtime + game).link
           built = Places.new(variables: lowering.variables, lists: lowering.lists,
                              runtime: memory.places.select { |name, _| name.start_with?("rt ") },
@@ -243,7 +245,19 @@ module VBlank
                              sound_voicing: lowering.sound_voicing, recording_names: lowering.recording_names,
                              video_tiles: lowering.video_tiles, slot_places: lowering.slot_places,
                              routines: game_routines(lowering, linked))
-          Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built)
+          saves = SaveLayout.named_by?(program)
+          refuse_saves_past_2mb!(linked.image) if saves
+          Cartridge::GenesisROM.new(linked.image, title: title, vectors: vectors(linked), built: built, saves: saves)
+        end
+
+        # A Genesis cartridge keeps its save memory after the first 2 MB of its address space, so a game
+        # that saves must fit in them.
+        def refuse_saves_past_2mb!(image)
+          return unless Console::GenesisHardware::CODE_AT + image.bytesize > Console::GenesisHardware::SAVE_RAM_FIRST - 1
+
+          raise LoweringError, "This game saves, and its cartridge is bigger than 2 MB. A Genesis cartridge keeps its " \
+                               "save memory after the first 2 MB, so a game that saves must fit in 2 MB. To fix this, " \
+                               "make the game smaller."
         end
 
         def game_routines(lowering, linked)

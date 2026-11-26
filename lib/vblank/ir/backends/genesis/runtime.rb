@@ -9,6 +9,7 @@ require_relative "runtime/tiles"
 require_relative "runtime/tint"
 require_relative "runtime/picture"
 require_relative "runtime/collide"
+require_relative "runtime/saving"
 require_relative "runtime/sound"
 require_relative "runtime/strikes"
 require_relative "runtime/music"
@@ -74,7 +75,8 @@ module VBlank
           # +count_at+ is where a game that reads how many frames it has shown since power-on keeps that
           # count, which then counts setting up too (Boot#emit), and nil for any other.
           # +fractions+ for a game that holds numbers with a fraction (Int32).
-          # +collision+ for a game that asks whether two sprites' pixels touch (Collide).
+          # +collision+ for a game that asks whether two sprites' pixels touch (Collide), and +saves+ for a game
+          # that keeps save memory (Saving).
           # +registers+ is how many words of the video chip's register table the game writes
           # ("rt_vdp_registers", which the lowering makes).
           # +sound+ for a game that makes sound; +music+ the section of its songs (Genesis::Music#section),
@@ -86,7 +88,7 @@ module VBlank
           def sections(memory, main:, registers:, frame_begins: nil, picture: :none, columns: 32, collision: false, fractions: false, camera: false,
                          colors: false, sound: false, music: nil, music_level_at: nil, effects: 0, plays: nil, recorded_parts: false,
                          backdrop: false, scene_backdrops: false, sprites_over_picture: false, scene_tiles: false, scene_colors: false, runs: false,
-                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil)
+                         poses: false, blocks: false, bends: false, count_at: nil, effect_clock_step: nil, saves: false)
             entry = M68000.new("runtime entry")
             Boot.emit_vectors(entry)
             asm = M68000.new("runtime")
@@ -101,6 +103,7 @@ module VBlank
                                       sprites: sprites_over_picture, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                       samples: !plays.nil?, runs: runs, poses: poses, blocks: blocks, bends: bends)
             Collide.emit(asm, memory) if collision
+            Saving.emit(asm, memory) if saves
             Sound.emit(asm, memory, songs: !music.nil?, samples: !plays.nil?) if sound
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, recorded: recorded_parts,
                                     effect_clock_step: effect_clock_step) if music

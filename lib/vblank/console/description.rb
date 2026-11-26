@@ -13,6 +13,10 @@ module VBlank
     SNES_PLAIN_SAVE_MEMORIES = Ractor.make_shareable([[32, :battery]])
     SNES_SUPER_FX_SAVE_MEMORIES = Ractor.make_shareable([[64, :battery]])
 
+    # A Genesis cartridge's: 32K of battery-backed RAM on the odd bytes of the cartridge's address space
+    # past the first 2 MB (Genesis::Runtime::Saving).
+    GENESIS_SAVE_MEMORIES = Ractor.make_shareable([[32, :battery]])
+
     # What a console is, as far as a game can tell: how big its screen is, which buttons it has, how
     # many sprites it shows, and which of the picture's tricks it can do at all. The builder, the
     # build checks and the interpreter read these, so a game is laid out, checked and played for the
@@ -607,7 +611,7 @@ module VBlank
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
                               buttons: %i[a b c start right left up down].freeze, controllers: 5,
                               holds_background_above_row: false, background_box: nil, cells_in_front: true,
-                              sprites_over_cells_in_front: true, glides_recordings: true,
+                              sprites_over_cells_in_front: true, save_memories: GENESIS_SAVE_MEMORIES, glides_recordings: true,
                               sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).
                               area_clips_called_routines: true,

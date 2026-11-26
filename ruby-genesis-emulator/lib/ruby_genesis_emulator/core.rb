@@ -88,8 +88,8 @@ module RubyGenesisEmulator
 
     attr_reader :frames, :width, :height
 
-    # +rom_path+ is the cartridge. +save_dir+ is where the core is told to keep files; a core made
-    # without one keeps them in a folder of its own that is gone with it. +settings+ are core settings
+    # +rom_path+ is the cartridge. +save_dir+ is where the core's save file is kept (#destroy writes it, as a
+    # frontend does for this core); a core made without one keeps no save file. +settings+ are core settings
     # by libretro's names, over SETTINGS: "genesis_plus_gx_psg_channel_0_volume" => "0" silences the
     # first square voice. The core reads them as it loads the cartridge, so they hold for its life.
     def initialize(rom_path, save_dir: nil, settings: {})
@@ -99,8 +99,10 @@ module RubyGenesisEmulator
       @audio = "".b
       @width = WIDTH
       @height = HEIGHT
+      @save_path = (File.join(save_dir, "#{File.basename(rom_path, '.*')}.srm") if save_dir)
       start_frontend(save_dir || @dir, SETTINGS.merge(settings))
       load_cartridge(rom_path)
+      read_save_file
     end
 
     # The buttons down on controller +port+ (0 for the first), by name (BUTTONS). Ports 2 to 4 are
@@ -234,7 +236,8 @@ module RubyGenesisEmulator
 
     # The cartridge's save memory, a byte for each odd address from $200000, as far as the last byte
     # written that is not $FF (what the chip holds where nothing was saved): empty for a cartridge that
-    # saved nothing. The core keeps it only in memory and writes no file of it.
+    # saved nothing. The core keeps it only in memory and writes no file of it: this class does, as
+    # #destroy shuts the core, as RetroArch does for the core, and reads it back as the core starts.
     def save_ram = memory(SAVE_RAM)
 
     # Unloads the cartridge, shuts the core and lets go of its library.
@@ -242,6 +245,7 @@ module RubyGenesisEmulator
       return unless @shutdown
 
       ObjectSpace.undefine_finalizer(self)
+      write_save_file
       @shutdown.call
       @shutdown = nil
     end
@@ -276,6 +280,25 @@ module RubyGenesisEmulator
     private
 
     def memory(id) = @frontend.memory(id)
+
+    # The save file, if there is one, put into the cartridge's save memory: as much of it as the core keeps.
+    def read_save_file
+      return unless @save_path && File.file?(@save_path)
+
+      room = @frontend.memory_size(SAVE_RAM)
+      return unless room.positive?
+
+      @frontend.memory_write(SAVE_RAM, 0, File.binread(@save_path).byteslice(0, room))
+    end
+
+    # The save memory the run left, written as a file of the 64K the cartridge's RAM is, the bytes past what
+    # the core hands over $FF as an erased chip holds them. A cartridge that saved nothing writes none.
+    def write_save_file
+      kept = save_ram
+      return unless @save_path && !kept.empty?
+
+      File.binwrite(@save_path, kept.ljust(0x10000, "\xFF".b))
+    end
 
     # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format
     # PIXEL_COLORS reads.

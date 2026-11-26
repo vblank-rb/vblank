@@ -434,7 +434,7 @@ module VBlank
 
     # The Sega Genesis's. Its cartridges play in Genesis Plus GX, through ruby-genesis-emulator,
     # which keeps no battery-backed RAM in a file of its own: a Genesis cartridge's save memory
-    # is the emulator's save RAM (the lowering does not make saves yet).
+    # is the emulator's save RAM, which the gem writes to a file as it shuts the core (SAVE_FILE).
     class GenesisKit < CheckedKit
       def answers = GenesisAnswers
       def answers_page = answers.reference(not_yet: IR::Backends::Genesis::Lowering::NOT_LOWERED_YET)
