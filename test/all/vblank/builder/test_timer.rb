@@ -475,4 +475,38 @@ class TestTimer < Minitest::Test
 
     assert_equal [0, 10], [i[:first], i[:second]]
   end
+
+  # The new timer counts from the frame the handler started it, as a timer the game's own code starts
+  # does.
+  def test_a_handler_can_start_a_timer_for_the_first_time
+    b = Builder.new
+    b.instance_eval do
+      screen :bitmap
+      started = 0
+      snap = 0
+      seen = 0
+      beat = timer :beat, per_second: 60
+      beat.on_tick do
+        if started == 0
+          started = 1
+          timer :other, per_second: 60
+        end
+      end
+      other = VBlank::DSL::Timer.new(self, :other)
+      fc = 0
+      game_loop do
+        wait_vblank
+        fc += 1
+        snap = other.ticks
+        seen = fc if snap == 1 && seen == 0
+        halt if fc == 10
+      end
+    end
+    b.finalize_program
+    i = game_player.run(b.program, frames: 11)
+
+    assert_equal 1, i[:started]
+    assert_equal 1, i[:seen]
+    assert_equal 10, i[:snap]
+  end
 end

@@ -1475,7 +1475,7 @@ module VBlank
           # A running timer overflows hz times a second, so it gains hz FRAME_RATE-ths of an
           # overflow this frame (see #accrue_timer) — the whole ones are what timer_ticks reads
           # back, and each whole overflow crossed this frame runs its on_tick handler once.
-          @timers.each { |name, t| accrue_timer(name, t) if t[:running] }
+          accrue_every_timer
           # The mix, the tune and every sounding note's shape all move on once for every frame
           # that really passed, not once for the pass: the console does all of it from the
           # screen's own interrupts, which keep real time. So a recording a game plays ends after
@@ -1627,6 +1627,20 @@ module VBlank
           handler = @timer_handlers[name] or return
           (whole_overflows(timer) - before).times do
             handler.children.each { |child| exec(child) }
+          end
+        end
+
+        # Moves every running timer on, in the order each was first started. A tick handler can start a
+        # timer: one started for the first time joins the end of the walk and moves on this frame, as a
+        # timer the game's own code starts does, since this runs after that code. A Hash keeps a key's
+        # place when it is set again, so a timer started again keeps its place. The computer builds'
+        # runtime walks its timers the same way (rg_runtime.c, walk_timers).
+        def accrue_every_timer
+          place = 0
+          while place < @timers.size
+            name, timer = @timers.to_a[place]
+            accrue_timer(name, timer) if timer[:running]
+            place += 1
           end
         end
 
