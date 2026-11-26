@@ -15,7 +15,9 @@ class TestSuitesSplit < Minitest::Test
              VBlank::IR::Backends::Native::HeadlessRun, VBlank::Testing::JSCheckedPlayer,
              VBlank::IR::Backends::JS::CheckedRun, VBlank::IR::Backends::JS::HeadlessRun,
              VBlank::Testing::RubyCheckedPlayer, VBlank::IR::Backends::Ruby::CheckedRun,
-             VBlank::IR::Backends::Ruby::HeadlessRun, VBlank::IR::Backends::GBC::HeadlessRun,
+             VBlank::IR::Backends::Ruby::HeadlessRun, VBlank::Testing::FlashCheckedPlayer,
+             VBlank::IR::Backends::Flash::CheckedRun, VBlank::IR::Backends::Flash::HeadlessRun,
+             VBlank::IR::Backends::GBC::HeadlessRun,
              # Every console whose own cartridge a run plays: its player, and the checked run it
              # is made from.
              *VBlank::Console.kits.grep(VBlank::Console::CheckedKit).flat_map do |kit|
@@ -142,7 +144,7 @@ class TestSuitesSplit < Minitest::Test
 
     assert_equal :gbc, VBlank::Testing::Lowering.console_from({ "CONSOLE" => "gbc" }, color)
     error = assert_raises(ArgumentError) { VBlank::Testing::Lowering.console_from({ "CONSOLE" => "snes" }, color) }
-    assert_match(/native, js or ruby/, error.message)
+    assert_match(/native, js, ruby or flash/, error.message)
   end
 
   # A runtime's player plays a program that names no console as one for the run's console, as a
