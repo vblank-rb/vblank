@@ -201,6 +201,28 @@ module VBlank
       def gap_reason(gap) = "Ruby's runtime does not have yet: #{gap.part}"
     end
 
+    # The same, on the Flash lowering's run: the game built as a Flash movie and played in Ruffle with no window
+    # (Flash::CheckedRun), checked against the interpreter on every frame by the same check. What its runtime
+    # cannot do yet is a skip naming it, so the run's count of skips by reason says what is left to do. A game
+    # Haxe refuses is a failure: the printed game is the lowering's to get right.
+    class FlashCheckedPlayer < IR::Backends::Flash::CheckedRun
+      include DisagreementFailsTest
+      include PlaysRunConsole
+
+      def run(program, max_steps: nil, frames: nil)
+        super
+      rescue IR::Backends::Flash::RuntimeGap => e
+        raise MissingFeature, "Flash's runtime does not have yet: #{e.part}"
+      rescue IR::Backends::RunComparison::CannotAnswer => e
+        raise MissingFeature, e.message
+      end
+
+      private
+
+      # What the movie cannot be asked yet, asked by a test before the run starts, is a skip too.
+      def refuse_unmade!(what) = raise(MissingFeature, "Flash's runtime does not have yet: #{what}")
+    end
+
     # The same, on the run of a console whose own cartridge is played — the Game Boy Color's, the
     # Super Nintendo's: the game built as that console's cartridge and played in the emulator (the
     # checked run its kit names, Console::CheckedKit#checked_run), checked against the interpreter

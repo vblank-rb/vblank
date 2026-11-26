@@ -84,6 +84,10 @@ module VBlank
                                      Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true, ractors: false,
                                              does: "the game built as Ruby, checked against the interpreter",
                                              needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true, roomy_heap: false),
+                                     Run.new(name: :flash, title: "Flash", console: :gba, checked: true, ractors: false,
+                                             does: "the game built as a Flash movie, played in Ruffle and checked against the interpreter",
+                                             needs: "haxe and the Flash player (rake compile_flash_player)",
+                                             player: "Testing::FlashCheckedPlayer", yjit: true, roomy_heap: false),
                                      Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true, ractors: false,
                                              does: "the game built as a Game Boy Color cartridge, played in the " \
                                                    "emulator and checked against the interpreter",

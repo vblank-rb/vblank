@@ -158,6 +158,8 @@ task "test:lowering:native:gba" => :compile_emulator
 task "test:lowering:snes" => :compile_snes_core
 task "test:lowering:genesis" => :compile_genesis_core
 task "test:lowering:ps1" => :compile_ps1_core
+task "test:lowering:flash" => :compile_flash_player
+VBlank::Console::KITS.each_key { |console| task "test:lowering:flash:#{console}" => :compile_flash_player }
 
 namespace :release do
   # Not one of the test tasks and not run by CI: it needs Docker and takes minutes, and it asks of
