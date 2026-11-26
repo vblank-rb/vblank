@@ -214,8 +214,8 @@ module VBlank
                             "build. If the game draws sprites in pieces of 8×16, each piece " \
                             "of a pose is an even tile of the set with the next tile under it."),
         layers: works("a layer holds a background or sprites; a background in front of a sprite " \
-                      "works. `transparency:` is refused: a Game Boy Color cannot show one layer " \
-                      "through another."),
+                      "works. `transparency:`, `shows:`, `shows_behind:` and `subtract: true` are refused: " \
+                      "a Game Boy Color cannot show one layer through another."),
         layer: works("see `layers`."),
 
         # --- text ---

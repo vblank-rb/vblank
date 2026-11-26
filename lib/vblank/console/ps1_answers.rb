@@ -42,7 +42,9 @@ module VBlank
                             "second is all of the layer added to all of what is behind it: `shows: 100, " \
                             "shows_behind: 100`. The third is a quarter of the layer added to all of what is " \
                             "behind it: `shows: 25, shows_behind: 100`. A layer can also be solid (`transparency: " \
-                            "0`) or not seen at all (`transparency: 100`). The build refuses other amounts."
+                            "0`) or not seen at all (`transparency: 100`). The build refuses other amounts. " \
+                            "`subtract: true` is refused too. The graphics chip can take a layer away from what " \
+                            "is behind it, but it cannot take what is behind away from the layer."
 
       ANSWERS = Ractor.make_shareable({
         # --- building, the screen and settings ---
@@ -296,8 +298,12 @@ module VBlank
       # A see-through layer at an amount the chip does not mix, one Refusal each of +layers+. Console::Questions
       # lets a layer through on a console that mixes by halves and leaves the amounts to the console, since
       # which it mixes is the console's own.
+      #
+      # A layer that subtracts is not one of them: Console::Questions refuses it, since the chip
+      # subtracts the other way round (PS1Hardware::SEMI_TRANSPARENCY_MODES, psx-spx: mode 2 is
+      # what is behind less the layer).
       def self.see_through_refusals(layers)
-        layers.filter_map do |layer|
+        layers.reject(&:subtract).filter_map do |layer|
           unless IR::SeeThrough.fixed?(layer)
             next Answers::Refusal.new(layer, "This game works out how see-through layer :#{layer.name} is as the " \
                                              "game runs. A PlayStation cannot mix a layer by every amount. " \

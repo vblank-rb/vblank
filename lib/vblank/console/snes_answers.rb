@@ -106,7 +106,9 @@ module VBlank
         pixelate_out: works("see `pixelate`."),
         pixelate_size: works,
         spotlight: refused("a light darkens everything outside a circle by degrees, and a Super Nintendo's " \
-                           "colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen."),
+                           "colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen. " \
+                           "For a light that the game draws itself, use a layer that takes what is behind it " \
+                           "away: `layer :light, shows: 100, shows_behind: 100, subtract: true`."),
         iris_in: refused("the iris is the game's light closing (see `spotlight`). Use `fade_out` and `fade_in`."),
         iris_out: refused("see `iris_in`."),
         iris_shut?: refused("see `iris_in`."),
@@ -216,9 +218,10 @@ module VBlank
                       "from 50 to 56, or `shows: 50, shows_behind: 50`. It can also be added to what is " \
                       "behind it: `shows: 100, shows_behind: 100`, and there `shows_behind:` can be a " \
                       "number the game changes between 100 and 0, which turns the layer solid in one " \
-                      "frame. A number between shows as 100. A Super Nintendo mixes one layer into " \
-                      "another only by half or by adding, never by the Advance's sixteen steps, so other " \
-                      "amounts are refused."),
+                      "frame. A number between shows as 100. With `subtract: true`, the layer takes what is " \
+                      "behind it away by the same amounts: half of each, or all of each. Each colour stops " \
+                      "at black. A Super Nintendo mixes one layer into another only by half, by adding or " \
+                      "by subtracting, never by the Advance's sixteen steps, so other amounts are refused."),
         layer: works("see `layers`."),
 
         # --- text ---

@@ -73,7 +73,9 @@ module VBlank
     # in the sixteen levels Backends::FadeSteps.dimmed gives. +mixes_by_half+ marks whether, without blending by degrees, it can still show a
     # layer half see-through — the Super Nintendo's colour math adds what is behind a layer to it
     # and halves the sum — which an amount the build rounds to an even half asks for, and nothing
-    # else. +list_colors+ is how many places a list of colours holds. +painted_pages+ is
+    # else. +subtracts_behind+ marks whether its display can take what is behind a layer away from
+    # the layer (`subtract: true`): the Super Nintendo's colour math subtracts the sub screen from
+    # the main screen. +list_colors+ is how many places a list of colours holds. +painted_pages+ is
     # how many pictures a tear-free painted screen keeps: two where one is drawn while the other
     # is shown, one where the console only ever shows a picture whole. +clock_keeps_date+ marks
     # whether the clock chip its cartridges carry holds the date and time, or only counts the days
@@ -181,7 +183,7 @@ module VBlank
                               :sprite_table_filled_from, :turning_sprites, :sprite_sizes, :tile_planes, :backgrounds, :turning_backgrounds,
                               :backgrounds_beside_turning, :bar_is_a_background, :layer_for_held_rows, :bar_shares_display,
                               :changes_cells_while_drawing,
-                              :blends, :fades_by_brightness, :mixes_by_half, :list_colors, :color_bits, :painted_pages,
+                              :blends, :fades_by_brightness, :mixes_by_half, :subtracts_behind, :list_colors, :color_bits, :painted_pages,
                               :clock_keeps_date, :cycles_a_second, :cycles_a_frame, :samples_a_copy,
                               :sample_timer_step, :sample_timer_counts, :recordings_at_once, :mixes_recordings,
                               :recording_voice_hz, :lowest_square_hz,
@@ -397,7 +399,7 @@ module VBlank
                               # A status bar is one of those layers.
                               bar_is_a_background: true, bar_shares_display: true,
                               changes_cells_while_drawing: true,
-                              blends: true, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 5, painted_pages: 2, clock_keeps_date: true,
+                              blends: true, fades_by_brightness: false, mixes_by_half: false, subtracts_behind: false, list_colors: 16, color_bits: 5, painted_pages: 2, clock_keeps_date: true,
                               # 228 lines of 1232 cycles: 160 drawn, and 68 the gap after.
                               cycles_a_second: 16_777_216, cycles_a_frame: 280_896,
                               # The sound copy moves four 32-bit words at a time: sixteen 8-bit samples.
@@ -461,7 +463,7 @@ module VBlank
                             # A status bar is the window, a layer beside the one background.
                             bar_is_a_background: false, bar_shares_display: true,
                             changes_cells_while_drawing: true,
-                            blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 4, color_bits: 5, painted_pages: 1, clock_keeps_date: false,
+                            blends: false, fades_by_brightness: false, mixes_by_half: false, subtracts_behind: false, list_colors: 4, color_bits: 5, painted_pages: 1, clock_keeps_date: false,
                             # 154 lines of 456 cycles: the Advance's frame exactly, on a clock a
                             # quarter as fast. Double speed doubles the cycles, not the frames.
                             cycles_a_second: 4_194_304, cycles_a_frame: 70_224,
@@ -548,7 +550,7 @@ module VBlank
                                      # Its colour maths adds, subtracts or halves, never the
                                      # Advance's sixteen steps, so a fade is walked colour by colour.
                                      changes_cells_while_drawing: false,
-                                     blends: false, fades_by_brightness: true, mixes_by_half: true, list_colors: 16, color_bits: 5,
+                                     blends: false, fades_by_brightness: true, mixes_by_half: true, subtracts_behind: true, list_colors: 16, color_bits: 5,
                                      # A painted screen is copied whole to the console before it
                                      # is shown, as the Color's is.
                                      painted_pages: 1, clock_keeps_date: false,
@@ -639,7 +641,7 @@ module VBlank
                               changes_cells_while_drawing: false,
                               # Nothing mixes one layer into another by degrees, and the shadow and
                               # highlight modes halve and brighten the whole picture, not a layer.
-                              blends: false, fades_by_brightness: false, mixes_by_half: false, list_colors: 16, color_bits: 3,
+                              blends: false, fades_by_brightness: false, mixes_by_half: false, subtracts_behind: false, list_colors: 16, color_bits: 3,
                               # A painted screen is kept in work RAM and copied to the console
                               # whole before it is shown, so it holds one picture.
                               painted_pages: 1, clock_keeps_date: false,
@@ -711,7 +713,7 @@ module VBlank
                                   changes_cells_while_drawing: true,
                                   # The chip mixes by halves and sums, never by sixteen steps, so a fade is
                                   # walked colour by colour.
-                                  blends: false, fades_by_brightness: false, mixes_by_half: true, list_colors: 256,
+                                  blends: false, fades_by_brightness: false, mixes_by_half: true, subtracts_behind: false, list_colors: 256,
                                   color_bits: 5,
                                   # A tear-free painted screen is two pictures in video RAM, one drawn
                                   # while the other is shown.

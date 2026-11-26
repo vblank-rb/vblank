@@ -61,7 +61,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `pixelate_in` — works: see `pixelate`.
 - `pixelate_out` — works: see `pixelate`.
 - `pixelate_size` — works: the same as on the Advance.
-- `spotlight` — **refused**: a light darkens everything outside a circle by degrees, and a Super Nintendo's colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen.
+- `spotlight` — **refused**: a light darkens everything outside a circle by degrees, and a Super Nintendo's colour maths only adds, subtracts or halves. Use `fade` to darken the whole screen. For a light that the game draws itself, use a layer that takes what is behind it away: `layer :light, shows: 100, shows_behind: 100, subtract: true`.
 - `iris_in` — **refused**: the iris is the game's light closing (see `spotlight`). Use `fade_out` and `fade_in`.
 - `iris_out` — **refused**: see `iris_in`.
 - `iris_shut?` — **refused**: see `iris_in`.
@@ -91,7 +91,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `canvas` — works: the same as on the Advance.
 - `tile_pictures` — works: pictures of 8×8 or 16×16, each change one copy from the cartridge, however many cells show the tile. A group must fit one bank of the cartridge.
 - `sprite_tiles` — works: a Super Nintendo can draw poses from tiles the game loads, but this build does not make it yet. A game with a pose drawn from sprite tiles is refused, and the build says so (see Not made yet).
-- `layers` — works: a layer holds a background or sprites. A layer of backgrounds can be half see-through, over a background that covers the whole screen: `transparency:` from 50 to 56, or `shows: 50, shows_behind: 50`. It can also be added to what is behind it: `shows: 100, shows_behind: 100`, and there `shows_behind:` can be a number the game changes between 100 and 0, which turns the layer solid in one frame. A number between shows as 100. A Super Nintendo mixes one layer into another only by half or by adding, never by the Advance's sixteen steps, so other amounts are refused.
+- `layers` — works: a layer holds a background or sprites. A layer of backgrounds can be half see-through, over a background that covers the whole screen: `transparency:` from 50 to 56, or `shows: 50, shows_behind: 50`. It can also be added to what is behind it: `shows: 100, shows_behind: 100`, and there `shows_behind:` can be a number the game changes between 100 and 0, which turns the layer solid in one frame. A number between shows as 100. With `subtract: true`, the layer takes what is behind it away by the same amounts: half of each, or all of each. Each colour stops at black. A Super Nintendo mixes one layer into another only by half, by adding or by subtracting, never by the Advance's sixteen steps, so other amounts are refused.
 - `layer` — works: see `layers`.
 - `draw_text` — works: painted on a painted screen; on a tiled one each letter is a sprite, so they count towards the 128, 34 pieces to a row.
 - `draw_number` — works: see `draw_text`.

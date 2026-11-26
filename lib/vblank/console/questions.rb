@@ -91,11 +91,7 @@ module VBlank
         # written in the program is told to the console once and has no step of its own. A
         # console that mixes only by half is asked no more here: its build says which amounts
         # it can show.
-        when :layers
-          unless node.see_through.empty?
-            Question.new(:layers, "This game shows one layer through another (`transparency:`)",
-                         console.blends || console.mixes_by_half)
-          end
+        when :layers then layers_question(node, console)
         # ...and the step that tells the console again how see-through a layer is, before each
         # frame, for an amount the game works out. Only a console that blends by any amount can.
         when :see_through
@@ -206,6 +202,21 @@ module VBlank
         end
 
         Question.new(:held, "This line reads the #{node.button.inspect} button", has_button)
+      end
+
+      # The layers' declaration asks for a display that mixes one layer into another, and for a
+      # layer that takes what is behind it away (`subtract: true`), one that can subtract. A
+      # console that mixes none is refused for the first, which says all it needs to.
+      def layers_question(node, console)
+        return if node.see_through.empty?
+
+        mixes = console.blends || console.mixes_by_half
+        unless mixes && node.see_through.any?(&:subtract)
+          return Question.new(:layers, "This game shows one layer through another (`transparency:`)", mixes)
+        end
+
+        Question.new(:layers, "This game takes what is behind a layer away from it (`subtract: true`)",
+                     console.subtracts_behind)
       end
 
       # Whether +console+ has the button +button+ names; any button at all, every console has.

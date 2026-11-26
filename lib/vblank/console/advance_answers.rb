@@ -73,7 +73,10 @@ module VBlank
 
         # --- backgrounds and layers ---
         tiles: works, canvas: works, tile_pictures: works, sprite_tiles: works,
-        layers: works("a see-through layer cannot hold a background and a sprite on one screen. The display " \
+        layers: works("`subtract: true` is refused: an Advance's display can add a layer to what is behind it, " \
+                      "and can make the whole picture darker or brighter. It cannot take what is behind a layer " \
+                      "away from the layer. " \
+                      "A see-through layer cannot hold a background and a sprite on one screen. The display " \
                       "mixes a see-through sprite with one thing behind it, not two. Over the layer's own " \
                       "background, the sprite cannot also show what is behind the layer. The build refuses " \
                       "such a layer."),
