@@ -30,10 +30,14 @@ class TestGBCKindCoverage < Minitest::Test
   end
 
   # The kinds a Color cannot do at all, as its answers say of the conformance fixture, which touches
-  # every kind: the build refuses them by those words, so the lowering never meets one.
+  # every kind: the build refuses them by those words, so the lowering never meets one. A step that
+  # tells a see-through layer its fixed amounts again (`:see_through`) is passed over by the answers
+  # (Console::Answers#refusals) and refused with the layers that hold the layer, so it never comes
+  # without them.
   private def refused
-    VBlank::Console::ColorAnswers.refusals(ConformanceFixture.program.walk.to_a, VBlank::Console.described(:gbc))
-                                 .map { |refusal| refusal.node.kind }.uniq
+    kinds = VBlank::Console::ColorAnswers.refusals(ConformanceFixture.program.walk.to_a, VBlank::Console.described(:gbc))
+                                         .map { |refusal| refusal.node.kind }.uniq
+    kinds.include?(:layers) ? kinds | %i[see_through] : kinds
   end
 
   # Every kind that can run on a Color is made, listed as not made yet, or refused: none reaches the
