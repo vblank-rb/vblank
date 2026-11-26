@@ -61,23 +61,23 @@ class TestGenesisBentRows < Minitest::Test
 
   # What working out a row of a bend may cost, its block a table read at the row and a variable,
   # masked (Lowering::Bends#emit_bend_rows_held). No retail game is measured for this yet, so it is a
-  # budget from the M68000 User's Manual's instruction times: a 68000 line loop written by hand for
-  # this block (the row in a register, the variable added, masked, a byte entry read and widened to a
-  # word, written through (A1)+, DBRA) takes 48 cycles a row. The build keeps a game's numbers 32 bits
-  # wide, so its mask, its entry and its sum are long ones, which adds a few instructions' worth; 80
-  # is that loop and half again.
-  ROW_CYCLES_MOST = 80
+  # budget from the M68000 User's Manual's instruction times. A 68000 line loop written by hand for this
+  # block (the row in a register, the variable added, masked with the mask held in a register, a byte
+  # entry read and widened to a word, written through (A1)+, DBRA) takes 48 cycles a row. This one masks
+  # with an immediate, as no data register is free while the rows are worked out (the block's reads and
+  # the counters take them), which is 56; the bound is that and a little the profile adds.
+  ROW_CYCLES_MOST = 60
 
-  private def rippled(name, bent)
+  private def rippled(name, bent, phase_from: 0, phase_step: 1)
     VBlank.game(name, consoles: %i[genesis]) do
       screen :tiled
       image(:bar, "." => :transparent, "#" => :red) { (["##......"] * 8).join("\n") }
       tiles :stripes, "#" => :bar
       water = background :water, tiles: :stripes, map: Array.new(28) { "#" * 40 }
       ripple = table :ripple, (0...64).map { |i| (Math.sin(i * 2 * Math::PI / 64) * 3).round }
-      phase = var :phase, 0
+      phase = var :phase, phase_from
       water.scroll_each_row { |row| ripple[(row + phase) & 63] } if bent
-      game_loop { phase += 1 }
+      game_loop { phase += phase_step }
     end
   end
 
@@ -99,6 +99,12 @@ class TestGenesisBentRows < Minitest::Test
   # interpreter does, the variable changing every pass.
   def test_a_rippled_plane_shows_what_the_interpreter_shows
     game_player.run(rippled("RIPPLE SHOWN", true).program(console: :genesis), frames: 12)
+  end
+
+  # The sum of the row and the phase passes sixteen bits and goes on below them, so a ripple worked out in
+  # words must still be the interpreter's, whose numbers are 32 bits wide.
+  def test_a_ripple_whose_sum_passes_sixteen_bits_shows_what_the_interpreter_shows
+    game_player.run(rippled("RIPPLE WRAPS", true, phase_from: 65_500, phase_step: -7).program(console: :genesis), frames: 12)
   end
 
   # A block that writes a variable it reads, with a loop of its own, is held only in what it never

@@ -120,7 +120,7 @@ module VBlank
                 place_label(top)
                 with_index_below(bend.row, past) do
                   bend.body.each { |child| statement(child) }
-                  value(bend.offset)
+                  emit_bend_offset(bend.offset)
                 end
                 @asm.move(:w, @asm.d(0), @asm.post(1))
                 # The row runs from +first+ up to +past+, never above a word, and only this loop
@@ -134,6 +134,73 @@ module VBlank
                 @tables_held = nil
               end
               @asm.move(:l, register, var(bend.row))
+            end
+
+            # A table read whose index is a masked sum, which the rows can work out in words: the table, how its
+            # entries are kept, the two sides of the sum (each a number, a [:imm, number], or a data register, a
+            # [:reg, operand]), and the mask.
+            WordTableRead = Data.define(:table, :bytes, :signed, :sum, :mask)
+
+            # The row's answer in D0. The rows keep only the low word of it, so a table read whose index is a
+            # masked sum of held numbers is worked out at word width, as a 68000 line loop is written: the sum
+            # added as words, masked with an immediate (an AND.W of an immediate, not a MOVEQ and an AND.L), and
+            # the entry read as a word. With a mask of no more than 15 bits, only the low 16 bits of the sum
+            # matter, so the word sum gives the interpreter's index. Anything else is worked out as a value.
+            def emit_bend_offset(node)
+              read = word_table_read(node)
+              return value(node) unless read
+
+              first, second = read.sum.sort_by { |kind, _| kind == :reg ? 0 : 1 }.map(&:last)
+              @asm.move(:w, first.is_a?(Integer) ? @asm.imm(first & 0xFFFF) : first, @asm.d(0))
+              @asm.add(:w, second.is_a?(Integer) ? @asm.imm(second & 0xFFFF) : second, @asm.d(0)) if second
+              @asm.and(:w, @asm.imm(read.mask), @asm.d(0))
+              base = @tables_held&.fetch(node.name, nil)
+              @asm.lea(@asm.abs_l(table_label(read.table.name)), @asm.a(0)) unless base
+              if read.bytes == 2
+                @asm.add(:w, @asm.d(0), @asm.d(0))
+                @asm.move(:w, @asm.idx(base || 0, 0, 0, :w), @asm.d(0))
+              else
+                @asm.move(:b, @asm.idx(base || 0, 0, 0, :w), @asm.d(0))
+                @asm.ext(:w, @asm.d(0))
+              end
+            end
+
+            # The WordTableRead +node+ is, or nil: a table of words (or signed bytes) read at a masked sum, its
+            # index sure to be inside the table by its mask, where each side of the sum is a number or a variable
+            # held in a data register, and at least one is. A variable in work RAM is not taken: a word read
+            # from its address would be its high word, the 68000 being big-endian.
+            def word_table_read(node)
+              return unless node.is_a?(Node) && node.kind == :table_get
+
+              table = @tables[node.name] or return
+              count = table.values.length
+              bytes, signed = table_keeping(table)
+              return unless bytes == 2 || (bytes == 1 && signed)
+              return unless count * bytes <= 0x7FFF
+
+              index = node.index
+              return unless index.is_a?(Node) && index.kind == :binop && index.op == :&
+
+              mask = folded(index.rhs)
+              return unless mask.is_a?(Integer) && mask.between?(0, 0x7FFF) && mask < count
+
+              sum = index.lhs
+              return unless sum.is_a?(Node) && sum.kind == :binop && sum.op == :+
+
+              sides = [sum.lhs, sum.rhs].map { |side| word_sum_side(side) }
+              return if sides.any?(&:nil?) || sides.none? { |kind, _| kind == :reg }
+
+              WordTableRead.new(table: table, bytes: bytes, signed: signed, sum: sides, mask: mask)
+            end
+
+            # One side of a masked sum: [:imm, its number] for a number written in the program, [:reg, its
+            # register] for a variable held in a data register, nil for anything else.
+            def word_sum_side(side)
+              known = folded(side)
+              return [:imm, known] if known.is_a?(Integer)
+
+              held = operand_of(side)
+              [:reg, held] if held && held.mode == :dn
             end
 
             # The data registers a bend's rows hold the block's variables in, and the address
