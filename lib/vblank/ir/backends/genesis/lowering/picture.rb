@@ -141,10 +141,10 @@ module VBlank
               @plane_size = sizes.first
             end
 
+            # A sprite put in another layer (`put_in_layer`) in front of every background is at the depth it
+            # was at (only scenery opens a depth, IR::Stacking), so it is placed where it always was. One
+            # behind a background is not made yet, since that needs the console's priority bits.
             def refuse_unmade_sprites!
-              @objects.each_value do |obj|
-                refuse_unmade!("a sprite put in another layer") if obj.layers && !obj.layers.empty?
-              end
               return if @objects.empty? || @backgrounds.empty?
 
               IR::Stacking.screenfuls(@program).each do |screenful|
@@ -152,6 +152,12 @@ module VBlank
                 screenful.objects.each do |obj|
                   level = screenful.depths[obj.name]
                   refuse_unmade!("a sprite behind a background") if scenery.any? { |bg| screenful.depths.of_scenery(bg) > level }
+                  IR::Stacking.layer_choices(obj).each do |choice|
+                    chosen = screenful.depths.of[choice.name]
+                    next unless chosen && scenery.any? { |bg| screenful.depths.of_scenery(bg) > chosen }
+
+                    refuse_unmade!("a sprite put in a layer behind a background (`put_in_layer`)")
+                  end
                 end
               end
             end

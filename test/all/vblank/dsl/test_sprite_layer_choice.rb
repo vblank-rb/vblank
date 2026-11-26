@@ -82,4 +82,36 @@ class TestSpriteLayerChoice < Minitest::Test
 
     assert_match(/screen :tiled/, error.message)
   end
+
+  # Every layer in front of the front-most background is one level (only scenery opens a new one), so a
+  # sprite moved between them keeps its place among the sprites.
+  def test_a_sprite_moved_between_layers_in_front_of_the_backgrounds_keeps_its_place
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:field, "#" => :blue) { (["#" * 8] * 8).join("\n") }
+      image(:red, "#" => :red) { (["#" * 8] * 8).join("\n") }
+      image(:green, "#" => :green) { (["#" * 8] * 8).join("\n") }
+      tiles :set, "#" => :field
+      layers :ground, :back, :front
+      layer(:ground) { background :world, tiles: :set, map: "###\n###\n###" }
+      hero = layer(:back) { sprite :red, at: [4, 4] }
+      layer(:front) { sprite :green, at: [6, 6] }
+      which = var :which, 0
+      step = 0
+      game_loop do
+        step += 1
+        which = 1 if step == 10
+        hero.put_in_layer %i[back front], showing: which
+      end
+    end
+    b.finalize_program
+
+    [6, 16].each do |frames|
+      screen = game_player.run(b.program, frames: frames).screen
+
+      assert_equal 0x03E0, screen.pixel(8, 8), "green, in front, after #{frames} frames"
+      assert_equal 0x001F, screen.pixel(5, 5), "red, after #{frames} frames"
+    end
+  end
 end

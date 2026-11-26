@@ -166,7 +166,7 @@ Parts of the picture are refused the same way, naming the part:
 - a sprite's pose drawn from sprite tiles the game loads (`sprite_tiles`)
 - a game with both a painted (bitmap) screen and a tiled one
 - a background on a painted (bitmap) screen
-- a sprite put in another layer, or behind a background
+- a sprite behind a background, or put in a layer behind one (`put_in_layer`)
 - a scene's own background in a layer behind one every screen shows
 - a `screen ... backdrop:` of a scene's own on a painted screen, or anywhere but in a scene's own lines
 - background tiles that are not 8×8, or backgrounds of different sizes on one screen

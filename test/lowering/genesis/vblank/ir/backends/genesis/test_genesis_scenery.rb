@@ -99,6 +99,23 @@ class TestGenesisScenery < Minitest::Test
     assert_match(/anywhere but in a scene's own lines/, error.message)
   end
 
+  def test_a_sprite_put_in_a_layer_behind_a_background_names_put_in_layer
+    error = assert_raises(Genesis::Lowering::NotMadeYet) do
+      Genesis.new.build(program_of do
+        screen :tiled
+        image(:red, "#" => :red) { (["#" * 8] * 8).join("\n") }
+        tiles :set, "#" => :red
+        layers :back, :ground, :front
+        layer(:ground) { background :world, tiles: :set, map: "###\n###\n###" }
+        hero = layer(:front) { sprite :red, at: [4, 4] }
+        which = var :which, 0
+        game_loop { hero.put_in_layer %i[back front], showing: which }
+      end)
+    end
+
+    assert_match(/put_in_layer/, error.message)
+  end
+
   # Each scene's own tiles are counted with those every screen shows, and one scene with more than
   # video memory holds is refused naming it, though the other scene is small.
   def test_one_scene_with_more_tiles_than_video_memory_holds_is_refused_naming_it
