@@ -233,7 +233,7 @@ module RubyGenesisEmulator
       bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
     end
 
-    # EVERY WRITE TO THE SOUND CHIPS since this was last asked, oldest first: [dropped, writes], where writes is
+    # Every write to the sound chips since this was last asked, oldest first: [dropped, writes], where writes is
     # an Array of [chip, register, value], the chip :psg (its one byte, register 0) or :fm (register 0 to
     # 0x1FF, the second part from 0x100), and dropped is how many more than a million came and were counted, not
     # kept. The DAC's sample (0x2A) and the timers (0x24 to 0x27) are left out: the sound processor writes them
