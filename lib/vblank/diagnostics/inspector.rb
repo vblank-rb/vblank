@@ -187,8 +187,10 @@ module VBlank
           rm = inst & 0xF
           shift = (inst >> 7) & 0x1F
           shift_str = shift.positive? ? ", #{%w[LSL LSR ASR ROR][(inst >> 5) & 3]} ##{shift}" : ""
-          op = (inst >> 20) & 1 == 1 ? "LDR" : "STR"
-          return ["#{op}   #{reg(rd)}, [#{reg(rn)}, #{reg(rm)}#{shift_str}]", regs]
+          sign = (inst >> 23) & 1 == 1 ? "" : "-"
+          op = "#{(inst >> 20) & 1 == 1 ? 'LDR' : 'STR'}#{'B' if (inst >> 22) & 1 == 1}".ljust(6)
+          operand = transfer_operand(reg(rn), "#{sign}#{reg(rm)}#{shift_str}", pre: (inst >> 24) & 1 == 1, write_back: (inst >> 21) & 1 == 1)
+          return ["#{op}#{reg(rd)}, #{operand}", regs]
         end
 
         # LDR/STR (immediate offset)
@@ -198,12 +200,13 @@ module VBlank
           offset = inst & 0xFFF
           load = (inst >> 20) & 1 == 1
           up = (inst >> 23) & 1 == 1
-          off_str = offset > 0 ? (up ? ", #0x#{offset.to_s(16)}" : ", #-0x#{offset.to_s(16)}") : ""
-          op = load ? "LDR" : "STR"
-          return ["#{op}   #{reg(rd)}, [#{reg(rn)}#{off_str}]", regs]
+          off_str = offset > 0 ? (up ? "#0x#{offset.to_s(16)}" : "#-0x#{offset.to_s(16)}") : ""
+          op = "#{load ? 'LDR' : 'STR'}#{'B' if (inst >> 22) & 1 == 1}".ljust(6)
+          operand = transfer_operand(reg(rn), off_str, pre: (inst >> 24) & 1 == 1, write_back: (inst >> 21) & 1 == 1)
+          return ["#{op}#{reg(rd)}, #{operand}", regs]
         end
 
-        # LDRH rd, [rn] / STRH rd, [rn] (halfword transfer)
+        # LDRH rd, [rn, off] / STRH rd, [rn, off] (halfword and signed transfers)
         if (inst & 0x0E000090) == 0x00000090 && (inst & 0x60) != 0
           rd = (inst >> 12) & 0xF
           rn = (inst >> 16) & 0xF
@@ -211,10 +214,20 @@ module VBlank
           sh = (inst >> 5) & 0x3  # 01=H, 10=SB, 11=SH
           op = load ? "LDR" : "STR"
           suffix = { 1 => "H", 2 => "SB", 3 => "SH" }[sh] || "?"
+          up = (inst >> 23) & 1 == 1
+          pre = (inst >> 24) & 1 == 1
+          if (inst >> 22) & 1 == 1
+            offset = ((inst >> 4) & 0xF0) | (inst & 0xF)
+            off_str = offset.positive? ? "#{up ? '#' : '#-'}0x#{offset.to_s(16)}" : ""
+          else
+            offset = regs[inst & 0xF]
+            off_str = "#{'-' unless up}#{reg(inst & 0xF)}"
+          end
           val = regs[rd] & 0xFFFF
-          addr = regs[rn]
+          addr = pre ? (regs[rn] + (up ? offset : -offset)) & 0xFFFFFFFF : regs[rn]
           extra = load ? "" : "  ; store 0x#{val.to_s(16)} \u2192 [0x#{addr.to_s(16)}]"
-          return ["#{op}#{suffix}  #{reg(rd)}, [#{reg(rn)}]#{extra}", regs]
+          operand = transfer_operand(reg(rn), off_str, pre: pre, write_back: (inst >> 21) & 1 == 1)
+          return ["#{op}#{suffix}  #{reg(rd)}, #{operand}#{extra}", regs]
         end
 
         # Data processing with immediate
@@ -298,6 +311,17 @@ module VBlank
 
       def reg(n)
         REG_NAMES[n] || "r#{n}"
+      end
+
+      # The address part of a load or store: [rn, off] (with ! when written back) before the transfer,
+      # [rn], off after it. An empty +offset_text+ is an offset of nothing.
+      def transfer_operand(base, offset_text, pre:, write_back:)
+        if pre
+          inside = offset_text.empty? ? base : "#{base}, #{offset_text}"
+          return "[#{inside}]#{'!' if write_back}"
+        end
+
+        "[#{base}], #{offset_text.empty? ? '#0x0' : offset_text}"
       end
     end
   end

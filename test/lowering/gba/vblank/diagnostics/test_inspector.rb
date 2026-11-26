@@ -322,6 +322,55 @@ class TestInspector < Minitest::Test
   end
 
   # ========================================================================
+  # Byte, halfword and post-indexed transfers
+  # ========================================================================
+
+  def test_ldrb_with_a_shifted_register_offset
+    assert_equal "LDRB  r0, [r10, r8, LSR #16]", disasm(VBlank::IR::Backends::GBA::ASM.ldrb_reg_lsr(0, 10, 8, 16).unpack1("V"))
+  end
+
+  def test_ldrb_with_a_register_offset
+    assert_equal "LDRB  r0, [r1, r2]", disasm(VBlank::IR::Backends::GBA::ASM.ldrb_reg(0, 1, 2).unpack1("V"))
+  end
+
+  def test_ldrb_with_an_immediate_offset
+    assert_equal "LDRB  r0, [r1, #0x5]", disasm(VBlank::IR::Backends::GBA::ASM.ldrb_offset(0, 1, 5).unpack1("V"))
+  end
+
+  def test_strb_with_an_immediate_offset
+    assert_equal "STRB  r0, [r1, #0x3]", disasm(VBlank::IR::Backends::GBA::ASM.strb_offset(0, 1, 3).unpack1("V"))
+  end
+
+  def test_strb_post_indexed
+    assert_equal "STRB  r0, [r1], #0x1", disasm(VBlank::IR::Backends::GBA::ASM.strb_post(0, 1, 1).unpack1("V"))
+  end
+
+  def test_str_post_indexed
+    assert_equal "STR   r0, [r1], #0x4", disasm(VBlank::IR::Backends::GBA::ASM.str_post(0, 1, 4).unpack1("V"))
+  end
+
+  def test_strh_with_an_offset
+    assert_equal "STRH  r2, [r11, #0x2]  ; store 0x0 \u2192 [0x2]", disasm(VBlank::IR::Backends::GBA::ASM.store_halfword_offset(2, 11, 2).unpack1("V"))
+    assert_equal "STRH  r2, [r11, #0x22]  ; store 0x0 \u2192 [0x22]", disasm(VBlank::IR::Backends::GBA::ASM.store_halfword_offset(2, 11, 0x22).unpack1("V"))
+  end
+
+  def test_strh_post_indexed
+    assert_equal "STRH  r2, [r11], #0x2  ; store 0x0 \u2192 [0x0]", disasm(VBlank::IR::Backends::GBA::ASM.store_halfword_post(2, 11, 2).unpack1("V"))
+  end
+
+  def test_ldrh_with_an_offset
+    assert_equal "LDRH  r1, [r0, #0x6]", disasm(VBlank::IR::Backends::GBA::ASM.load_halfword_offset(1, 0, 6).unpack1("V"))
+  end
+
+  def test_ldrsh_with_an_offset
+    assert_equal "LDRSH  r1, [r0, #0x6]", disasm(VBlank::IR::Backends::GBA::ASM.ldrsh_offset(1, 0, 6).unpack1("V"))
+  end
+
+  def test_ldrsb_with_an_offset
+    assert_equal "LDRSB  r1, [r0, #0x6]", disasm(VBlank::IR::Backends::GBA::ASM.ldrsb_offset(1, 0, 6).unpack1("V"))
+  end
+
+  # ========================================================================
   # Multiply
   # ========================================================================
 
