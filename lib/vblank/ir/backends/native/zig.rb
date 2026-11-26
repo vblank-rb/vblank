@@ -4,6 +4,10 @@ require "digest"
 require "fileutils"
 require "open3"
 require "tmpdir"
+# Must load these two here, not lean on the library's front door: a game's Rakefile loads this
+# file alone to ask whether zig is installed (Testing::TestTask#refuse_native_run_without_zig!).
+require_relative "../../../root"    # VBlank.root, read as this file loads
+require_relative "../computer/error" # Computer::Error, what a missing or wrong zig raises
 
 module VBlank
   module IR

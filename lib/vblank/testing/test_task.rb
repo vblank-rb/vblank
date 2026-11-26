@@ -235,7 +235,6 @@ module VBlank
       end
 
       def refuse_native_run_without_zig!
-        require_relative "../root"
         require_relative "../ir/backends/native/zig"
         IR::Backends::Native::Zig.version
       rescue IR::Backends::Computer::Error => e

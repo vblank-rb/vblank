@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "open3"
 require "test_helper"
 require "vblank/testing/test_task"
 
@@ -142,6 +143,29 @@ class TestTestTask < Minitest::Test
 
   def test_a_run_given_no_heading_prints_what_its_lowering_does
     assert_match(/GBA lowering: the game on the interpreter$/, heading_of_run { nil })
+  end
+
+  # A game's Rakefile loads the test task alone, not the whole library, so the refusal is played
+  # in a Ruby of its own that loads only that, with a PATH that has no zig on it. A name the
+  # refusal reaches that nothing it loads defines shows there as a NameError.
+  def test_a_native_run_without_zig_stops_saying_it_needs_zig
+    out = Dir.mktmpdir do |dir|
+      rakefile = File.join(dir, "Rakefile.rb")
+      File.write(rakefile, <<~RUBY)
+        require "vblank/testing/test_task"
+        VBlank::Testing::TestTask.new(:walking) do |t|
+          t.lowering = :native
+          t.test_files = []
+        end
+        Rake::Task[:walking].invoke
+      RUBY
+      settings = { "PATH" => dir, "TEST" => nil, "TESTOPTS" => nil, "CONSOLE" => nil }
+      output, = Open3.capture2e(settings, FileUtils::RUBY, "-I", VBlank.root.join("lib").to_s, rakefile)
+      output
+    end
+
+    assert_match(/The native lowering's run needs zig, and zig was not found/, out)
+    refute_match(/NameError/, out)
   end
 
   # What a run over one empty file prints before its tests, the block setting up its task.
