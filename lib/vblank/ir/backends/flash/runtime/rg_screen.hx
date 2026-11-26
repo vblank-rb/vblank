@@ -190,6 +190,36 @@ static function rg_screen_digit(value:Int, x:Int, y:Int, color:Int, points:Vecto
   rg_screen_points(x, y, color, points, starts[value + 1] - starts[value], starts[value]);
 }
 
+/* --- pictures --- */
+
+static inline var RG_IMAGE_FIELDS:Int = 4;
+static inline var RG_NO_IMAGE_COLORS:Int = -1;
+static inline var RG_NOT_DRAWN:Int = -1;
+
+/* Reference#blit_image: the picture +image+ (rg_screen.h says how the lowering lays them out in
+ * rg_game_images and rg_game_image_pixels), each pixel it draws, from its top left. A pixel is the colour
+ * itself, or a place in the picture's own colours where it has some. */
+static function blit_image(image:Int, x:Int, y:Int):Void {
+  var info = RG_IMAGE_FIELDS * image;
+  var start = rg_game_images[info];
+  var width = rg_game_images[info + 1];
+  var height = rg_game_images[info + 2];
+  var colors = rg_game_images[info + 3];
+  for (row in 0...height) {
+    for (col in 0...width) {
+      var held = rg_game_image_pixels[start + row * width + col];
+      if (held == RG_NOT_DRAWN) continue;
+      set_pixel(x + col, y + row, colors == RG_NO_IMAGE_COLORS ? held : rg_game_image_pixels[colors + held]);
+    }
+  }
+}
+
+static function rg_screen_blit(image:Int, x:Int, y:Int):Void { blit_image(image, x, y); }
+
+static function rg_screen_blit_pose(poses:Vector<Int>, count:Int, pose:Int, x:Int, y:Int):Void {
+  if (pose >= 0 && pose < count) blit_image(poses[pose], x, y);
+}
+
 /* Reference#request_repaint (rg_hook_repaint_requested is where a feature hears of it) */
 static function request_repaint():Void {
   if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0) return;
