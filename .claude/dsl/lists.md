@@ -143,9 +143,10 @@ one for every field.
 `box.fill 0x77` sets every item the list holds now, and `box.fill 0xFF, from: f, count: n` a run of
 them (VBlank's keywords, where Ruby's `fill` takes a start and a length): clearing the area a
 dialogue box letters into, a row of a board. The value, `from:` and `count:` may each be worked out
-as the game runs. What it is for is speed: the loop it replaces, `box[i] = v` for each item, works
-out an address and stores one item at a time, where a fill hands the whole words of the run to the
-console's copying engine and sets only the bytes at its ends one at a time. Measured on a
+as the game runs. A run of no items reads none of them: its value is not worked out. What it is for
+is speed: the loop it replaces, `box[i] = v` for each item, works out an address and stores one item
+at a time, where a fill hands the whole words of the run to the console's copying engine and sets
+only the bytes at its ends one at a time. Measured on a
 3,328-byte clear a frame, that is about a fiftieth of the frame against more than two thirds.
 
 A run must stay inside the items the list holds now: the interpreter stops with an error past them,

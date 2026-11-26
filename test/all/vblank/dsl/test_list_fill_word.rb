@@ -122,4 +122,43 @@ class TestListFillWord < Minitest::Test
     assert_match(/queue/, error.message)
     assert_match(/shift/, error.message)
   end
+
+  # A game that fills a list from a value another list gives, as long as a count of items: each pass
+  # fills with what the last pass wrote there. The count starts at +count_start+ and the place read
+  # at +at_start+, which may be outside the list read.
+  private def filled_from_another_list(count_start, at_start)
+    builder = Builder.new
+    builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc do
+      screen :bitmap
+      board = Array.new(8, 0)
+      other = Array.new(2, 5)
+      count = var :count, count_start
+      at = var :at, at_start
+      done = var :done, 0
+      first = var :first, 0
+      game_loop do
+        board.fill other[at], from: 0, count: count
+        done += 1
+        other[1] = done
+        first = board[0]
+      end
+    end))
+    builder.finalize_program
+    builder.program
+  end
+
+  # A run of no items reads nothing, so a value read out of range in it stops no game, as it stops
+  # none in the interpreter.
+  def test_a_run_of_no_items_never_works_out_its_value
+    run = game_player.run(filled_from_another_list(0, 9), frames: 4)
+
+    assert_operator run[:done], :>=, 3
+  end
+
+  # A run of items still fills: each pass fills with what the last pass wrote.
+  def test_a_run_whose_value_reads_another_list_fills_it
+    run = game_player.run(filled_from_another_list(3, 1), frames: 4)
+
+    assert_equal run[:done] - 1, run[:first]
+  end
 end

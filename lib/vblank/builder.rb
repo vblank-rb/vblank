@@ -599,11 +599,26 @@ module VBlank
       end
       from, count = from.nil? ? [0, list.length] : [from, count]
       refuse_fill_outside_list!(what, declared_list_node(list.name), from, count)
-      record(Build.list_fill(list.name, from: DSL::Value.node_for(from), count: DSL::Value.node_for(count),
-                                        value: value_node))
+      fill = Build.list_fill(list.name, from: DSL::Value.node_for(from), count: DSL::Value.node_for(count),
+                                        value: value_node)
+      record(guard_fill_with_count(fill))
       ensure_var(from)
       ensure_var(count)
     end
+
+    # The interpreter works out a fill's count first and does nothing more when it is not above
+    # nought (Reference#exec_list_fill), while each lowering works out the value first, so a value
+    # that can stop the game, a list read out of range, would stop it on a console and not in the
+    # interpreter. A fill whose value can do something and whose count is not a written number above
+    # nought is recorded inside a test of its count. Returns +fill+ or the `if` around it.
+    def guard_fill_with_count(fill)
+      plain = ->(node) { !node.is_a?(IR::Node) || %i[int var_ref].include?(node.kind) }
+      known = fill.count.is_a?(IR::Node) && fill.count.kind == :int && fill.count.value.positive?
+      return fill if known || plain.call(fill.value)
+
+      Build.if_(Build.binop(:>, fill.count.copy, Build.int(0)), fill)
+    end
+    private :guard_fill_with_count
 
     # A list the game shifts cannot be filled. Dropping the front item makes the list a ring
     # that wraps round its own memory, so a run of its items is not a run of memory to set in
