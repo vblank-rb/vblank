@@ -3,9 +3,9 @@
 require "test_helper"
 require "stringio"
 
-# Four players on a Sega Genesis: the first pad, and three on Sega's Team Player in the second port
+# Five players on a Sega Genesis: the first pad, and four on Sega's Team Player in the second port
 # (Genesis::Runtime::Frame#emit_team_player_read). A game finds the tap as it reads it; with a plain
-# pad in the second port instead, that pad is the second player and the third and fourth hold
+# pad in the second port instead, that pad is the second player and the third to fifth hold
 # nothing.
 class TestGenesisTeamPlayer < Minitest::Test
   # A game for +players+: each player's steps counted while they hold right, and how many are
@@ -37,20 +37,35 @@ class TestGenesisTeamPlayer < Minitest::Test
   # port read as a pad once, for its ID, two reads of the handshake that starts it (%0011, then
   # %1111), and fourteen nibbles: six of the header and two for each plug. Each read of the
   # handshake and each nibble is priced at what one nibble costs here (the rt_tap_read_*_wait and
-  # _there labels, over the twelve the read here takes: it stops after the third plug, and takes
-  # the handshake's answers from the ID read), the ID read at what the two-player game's second pad
-  # read costs, and each of two more pads' keeping at what the two-player game spends a pad on all
-  # its buttons' keeping besides the reads.
+  # _there labels, over the fourteen the read here takes, and takes the handshake's answers from
+  # the ID read), the ID read at what the two-player game's second pad
+  # read costs, and each of the pads past the second's keeping at what the two-player game spends a pad on all
+  # its buttons' keeping besides the reads. A game that reads the tap reads and keeps all four of its
+  # plugs, whatever its players, so a game of four pays for three pads' keeping.
   def test_the_third_and_fourth_players_cost_less_than_plutiedevs_read_and_their_keeping
     two = button_lines(2)
     four = button_lines(4)
     nibble = four.select { |label, _| label.match?(/\Art_tap_read_.*_(wait|there)\z/) }.values.sum / 12
     pad_read = two.fetch("rt_second_buttons_now")
     keeping = (two.values.sum - two.fetch("rt_buttons_now") - pad_read) / 2
-    budget = ((2 + 14) * nibble) + pad_read + (2 * keeping)
+    budget = ((2 + 14) * nibble) + pad_read + (3 * keeping)
     extra = four.values.sum - two.values.sum
 
     assert_operator extra, :<, budget, "players 3 and 4 cost #{extra.round(2)} lines a frame, the budget #{budget.round(2)}"
+  end
+
+  # The same budget for a game of five: the read is the whole of plutiedev's, and three pads past the
+  # second are kept.
+  def test_the_third_to_fifth_players_cost_less_than_plutiedevs_read_and_their_keeping
+    two = button_lines(2)
+    five = button_lines(5)
+    nibble = five.select { |label, _| label.match?(/\Art_tap_read_.*_(wait|there)\z/) }.values.sum / 14
+    pad_read = two.fetch("rt_second_buttons_now")
+    keeping = (two.values.sum - two.fetch("rt_buttons_now") - pad_read) / 2
+    budget = ((2 + 14) * nibble) + pad_read + (3 * keeping)
+    extra = five.values.sum - two.values.sum
+
+    assert_operator extra, :<, budget, "players 3 to 5 cost #{extra.round(2)} lines a frame, the budget #{budget.round(2)}"
   end
 
   def test_a_game_of_two_reads_no_tap
@@ -65,6 +80,22 @@ class TestGenesisTeamPlayer < Minitest::Test
     assert_operator run[:steps3], :>, 0
     assert_equal 0, run[:steps2]
     assert_equal 3, run[:connected]
+  end
+
+  def test_the_fifth_player_alone_moves_and_counts_five_connected
+    run = game_player.hold(:p5_right).run(self.class.game(5).program(console: :genesis), frames: 6)
+
+    assert_operator run[:steps5], :>, 0
+    assert_equal 0, run[:steps4]
+    assert_equal 5, run[:connected]
+  end
+
+  def test_every_player_of_five_is_read_through_the_tap_on_the_same_frame
+    held = %i[right p2_right p3_right p4_right p5_right]
+    run = game_player.input_each_frame { |frame| frame.between?(2, 5) ? held : [] }.run(self.class.game(5).program(console: :genesis), frames: 8)
+
+    assert_equal [run[:steps1]] * 5, (1..5).map { |player| run[:"steps#{player}"] }
+    assert_equal 5, run[:connected]
   end
 
   def test_every_player_is_read_through_the_tap_on_the_same_frame

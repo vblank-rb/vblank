@@ -597,11 +597,11 @@ module VBlank
     # The Sega Genesis: a 320×224 screen, pads of seven buttons each (the D-pad, A, B, C and Start:
     # no Select and no shoulder buttons), 80 sprites and 20 of them on a row, two backgrounds of
     # tiles, nothing that turns, four lists of sixteen colours, and colours of 9 bits, three to a
-    # channel. Four pads: the first port's, and three on a Team Player in the second
+    # channel. Five pads: the first port's, and four on a Team Player in the second
     # (Genesis::Runtime::Frame#emit_team_player_read). What each verb does on it is
     # Console::GenesisAnswers's to say.
     GENESIS = Description.new(name: :genesis, title: "Sega Genesis", screen_width: 320, screen_height: 224,
-                              buttons: %i[a b c start right left up down].freeze, controllers: 4,
+                              buttons: %i[a b c start right left up down].freeze, controllers: 5,
                               holds_background_above_row: false, background_box: nil, cells_in_front: true, glides_recordings: true,
                               sets_main_volume: false, sprites: 80, sprite_places: 80,
                               # The area is kept in memory (Genesis::Lowering::Paint#emit_inside).

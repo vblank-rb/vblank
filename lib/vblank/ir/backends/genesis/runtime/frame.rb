@@ -82,7 +82,7 @@ module VBlank
             SECOND_PAD_HELD = "rt second pad held"
             SECOND_PAD_PRESSED = "rt second pad pressed"
             PLAYERS_PAST_FIRST = "rt players past first"
-            # The second, third and fourth players' buttons as the Team Player read last left them
+            # The second to fifth players' buttons as the Team Player read last left them
             # (#emit_team_player_read), a word each, in a game that reads one (#reads_team_player?).
             TAP_BUTTONS = "rt tap buttons"
             # 1 once the interrupt has come since the game began to wait.
@@ -119,14 +119,16 @@ module VBlank
             # +pad_pressed+).
             Controller = Data.define(:held, :seen, :pressed, :pad_held, :pad_pressed)
 
-            # The second pad's, then the third and fourth players' on a Team Player in the second port.
+            # The second pad's, then the third, fourth and fifth players' on a Team Player in the second port.
             OTHER_CONTROLLERS = Ractor.make_shareable([
                                                         Controller.new(SECOND_HELD, SECOND_SEEN, SECOND_PRESSED,
                                                                        SECOND_PAD_HELD, SECOND_PAD_PRESSED),
                                                         Controller.new("rt third held", "rt third seen", "rt third pressed",
                                                                        "rt third pad held", "rt third pad pressed"),
                                                         Controller.new("rt fourth held", "rt fourth seen", "rt fourth pressed",
-                                                                       "rt fourth pad held", "rt fourth pad pressed")
+                                                                       "rt fourth pad held", "rt fourth pad pressed"),
+                                                        Controller.new("rt fifth held", "rt fifth seen", "rt fifth pressed",
+                                                                       "rt fifth pad held", "rt fifth pad pressed")
                                                       ])
 
             # The Team Player's answer to the pad's two halves, read as a pad is (TH high, then TH
@@ -161,7 +163,7 @@ module VBlank
 
             module_function
 
-            # Whether +program+ reads the third or fourth player: a button of theirs by number, or,
+            # Whether +program+ reads the third, fourth or fifth player: a button of theirs by number, or,
             # in a game that takes more than two players (`players:`), any player's button or how
             # many are connected, which they can be part of.
             def reads_team_player?(program)
@@ -194,7 +196,7 @@ module VBlank
             # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
             # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
             # work RAM (#counting_block). +second_pad+ for a game that reads it (#reads_second_pad?), and
-            # +team_player+ for one that reads the third and fourth players (#reads_team_player?).
+            # +team_player+ for one that reads the third to fifth players (#reads_team_player?).
             def reserve(memory, counted: false, second_pad: false, team_player: false)
               if counted
                 memory.reserve(COUNTING, 2)
@@ -459,7 +461,7 @@ module VBlank
 
             # ### The Team Player
             #
-            # Two adapters let four people play: Sega's Team Player, which plugs into one port and has
+            # Two adapters let more than two people play: Sega's Team Player, which plugs into one port and has
             # four plugs of its own, and EA's 4 Way Play, which takes both ports. The Team Player is the
             # one read here: the first port's pad stays the first player, as on a console with no
             # adapter, the adapter in the second port gives the console's pads 2 to 5, and the Super
@@ -471,15 +473,15 @@ module VBlank
             # TR high, and each toggle of TR after hands over a nibble in the low four bits once TL
             # matches it: two noughts, the kind of pad in each of its four plugs, then each plug's
             # buttons in turn, two nibbles for a pad of three buttons (right, left, down, up; then
-            # start, A, C, B) and three for one of six, 0 where a button is down. The third and fourth
-            # players are its second and third plugs; its fourth, the console's fifth pad, is not read.
+            # start, A, C, B) and three for one of six, 0 where a button is down. The third, fourth and fifth
+            # players are its second, third and fourth plugs.
             # After it, the data port goes back to $60 and the control port to the pad's own $40, so
             # the next frame reads the port as a pad again.
             #
-            # A port with no Team Player is a pad, read as one, and the third and fourth players hold
+            # A port with no Team Player is a pad, read as one, and the third to fifth players hold
             # nothing. A tap that stops answering, or answers out of turn, holds nothing at all.
             #
-            # rt_tap_read: TAP_BUTTONS holds the second, third and fourth players' buttons, a bit each in
+            # rt_tap_read: TAP_BUTTONS holds the second to fifth players' buttons, a bit each in
             # IR::Buttons's order. D0 to D3 are used.
             def emit_team_player_read(asm, at)
               h = Console::GenesisHardware
@@ -487,6 +489,7 @@ module VBlank
               asm.jsr(asm.abs_l("rt_second_buttons_now"))
               asm.move(:w, asm.d(0), at.call(TAP_BUTTONS))
               asm.clr(:l, at.call(TAP_BUTTONS, 2))
+              asm.clr(:w, at.call(TAP_BUTTONS, 6))
               # rt_second_buttons_now leaves the port's two halves in D1 and D2, turned over.
               asm.move(:b, asm.d(1), asm.d(3))
               asm.and(:b, asm.imm(0x0F), asm.d(3))
@@ -518,7 +521,7 @@ module VBlank
                 asm.lsl(:w, 4, asm.d(4))
                 asm.or(:w, asm.d(0), asm.d(4))
               end
-              # The first three plugs' buttons, the second, third and fourth players'.
+              # The four plugs' buttons, the second to fifth players'.
               asm.moveq(OTHER_CONTROLLERS.size - 1, asm.d(5))
               asm.label("rt_tap_read_plug")
               asm.rol(:w, 4, asm.d(4))
@@ -551,8 +554,8 @@ module VBlank
               asm.dbra(asm.d(5), "rt_tap_read_plug")
               asm.bra("rt_tap_read_rest")
               asm.label("rt_tap_read_lost")
-              asm.clr(:w, at.call(TAP_BUTTONS))
-              asm.clr(:l, at.call(TAP_BUTTONS, 2))
+              asm.clr(:l, at.call(TAP_BUTTONS))
+              asm.clr(:l, at.call(TAP_BUTTONS, 4))
               asm.label("rt_tap_read_rest")
               asm.move(:b, asm.imm(TAP_REST), asm.ind(2))
               asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD2_CONTROL))
@@ -704,7 +707,7 @@ module VBlank
               asm.move(:w, at.call(SECOND_PAD_HELD), at.call(SECOND_HELD))
             end
 
-            # The second, third and fourth players' buttons for the pass about to start, as the first's
+            # The second to fifth players' buttons for the pass about to start, as the first's
             # are taken; and each connected from the first pass a button of theirs went down in the
             # frames the last one took (Reference#count_connected_players).
             def emit_tap_buttons_for_pass(asm, at)

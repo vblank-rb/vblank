@@ -34,12 +34,12 @@ class TestPlayerOption < Minitest::Test
     end
   end
 
-  # The Super Nintendo seats four, through a Super Multitap in its second port, the Genesis four
+  # The Super Nintendo seats four, through a Super Multitap in its second port, the Genesis five
   # through a Team Player in its second port, and the PlayStation four through a Multitap in its
   # second port.
   def test_a_console_refuses_a_player_past_its_controllers_in_plain_words
     { gba: [3, /one controller/], gbc: [3, /one controller/], snes: [5, /controller 5/],
-      genesis: [5, /controller 5/], ps1: [5, /controller 5/] }.each do |console, (player, words)|
+      genesis: [6, /controller 6/], ps1: [5, /controller 5/] }.each do |console, (player, words)|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         built_for(console, err: said) { game_loop { halt if pressed(:a, player: player) } }
@@ -59,7 +59,7 @@ class TestPlayerOption < Minitest::Test
   end
 
   def test_a_game_for_more_players_than_a_console_seats_is_refused_there
-    { gba: 2, gbc: 2, snes: 5, genesis: 5, ps1: 5 }.each do |console, players|
+    { gba: 2, gbc: 2, snes: 5, genesis: 6, ps1: 5 }.each do |console, players|
       said = StringIO.new
       assert_raises(VBlank::BuildError, console.to_s) do
         VBlank.build("PLAYERS", console: console, players: players, out: StringIO.new, err: said) { game_loop { halt } }
