@@ -82,7 +82,7 @@ module PackTilePictureGames
 
   # The title, then the lair with its belt, which shows its second picture from the lair's
   # LAIR_BELT_TURNS-th pass on.
-  private def lair_game_and_file(folder, options: VBlank::Cartridge::Options.new)
+  private def lair_game_and_file(folder, options: VBlank::Cartridge::Options.new, group_in_lair: false)
     from = lair_original(folder)
     b = VBlank::Builder.new(options: options)
     b.instance_eval do
@@ -105,12 +105,15 @@ module PackTilePictureGames
       state = var :state, 0
       pass = var :pass, 0
       tick = var :tick, 0
-      # Before both scenes: the title draws from the slot :video too, and is declared first.
-      conveyor = tile_pictures :conveyor, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) }
+      belt_of = -> { tile_pictures :conveyor, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: BELT.length) } }
+      # Before both scenes: the title draws from the slot :video too, and is declared first. With
+      # +group_in_lair+ it is declared at the top of the lair instead, before the lair's background.
+      conveyor = belt_of.call unless group_in_lair
       scene(:title) do
         background :sign, tiles: pack[:video], map: pack[:title_map], colors: pack[:title_colors], across: TITLE_WORDS.length
       end
       scene(:lair) do
+        conveyor = belt_of.call if group_in_lair
         background :machine, tiles: pack[:video], map: pack[:lair_map], colors: pack[:lair_colors], across: LAIR_WORDS.length
         tick += 1
         conveyor.show 1 if tick == LAIR_BELT_TURNS
@@ -451,8 +454,16 @@ class TestPackTilePictures < Minitest::Test
   # The belt takes turns in the lair, a scene of its own colours after the title's, its still cells
   # beside it showing their own banks: the belt's runs are drawn in the colours the lair already
   # has, and take none of the palettes the title and the lists keep.
-  def test_a_belt_in_a_scene_of_its_own_colours_takes_turns
-    program = Dir.mktmpdir { |folder| lair_game_and_file(folder).first }
+  def test_a_belt_in_a_scene_of_its_own_colours_takes_turns = assert_lair_belt_takes_turns(group_in_lair: false)
+
+  # The title's body is built first and draws from the slot too, and the group reaches the lair's
+  # background alone.
+  def test_a_group_declared_in_the_lair_after_the_titles_background_takes_turns
+    assert_lair_belt_takes_turns(group_in_lair: true)
+  end
+
+  private def assert_lair_belt_takes_turns(group_in_lair:)
+    program = Dir.mktmpdir { |folder| lair_game_and_file(folder, group_in_lair: group_in_lair).first }
     lair = ->(bank, place) { PackTilePictureGames.scene_color(:lair, bank, place) }
     title = ->(bank, place) { PackTilePictureGames.scene_color(:title, bank, place) }
 
@@ -563,6 +574,20 @@ class TestPackTilePictures < Minitest::Test
     error = refusal do |pack|
       background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4
       tile_pictures :belt, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: 3) }
+    end
+
+    assert_match(/before/, error.message)
+  end
+
+  # In a scene the same order is refused: the group comes after that scene's own background.
+  def test_a_group_declared_in_a_scene_after_that_scenes_background_is_refused
+    error = refusal do |pack|
+      scene(:play) do
+        background :world, tiles: pack[:video], map: pack[:map], colors: pack[:palette], across: 4
+        tile_pictures :belt, tiles: { pack[:video].tile(2) => pack[:belt].tiles(0, across: 3) }
+      end
+      var :state, 0
+      game_loop { call({ 0 => :play }, number: :state) }
     end
 
     assert_match(/before/, error.message)

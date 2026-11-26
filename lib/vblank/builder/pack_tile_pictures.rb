@@ -24,7 +24,8 @@ module VBlank
     # tile turned each way they name it (#declare_moving_pack_tiles), and the
     # group's `show` copies the picture into every run (#emit_pack_tile_picture_copies). Those
     # runs are made as a background is declared, so the group is declared before any background
-    # drawn from its tiles' slot.
+    # drawn from its tiles' slot: at the top of the game, where it reaches every scene's
+    # backgrounds, or in a scene, where it reaches only that scene's backgrounds declared after it.
     #
     # With the pack left out the map is not known as the game is built, nor which banks and turns
     # name the tile. So each background has a run for every bank of its colours, each holding the
@@ -40,8 +41,9 @@ module VBlank
 
       # A group as the builder keeps it: +keys+ the tiles (each [slot name, tile in the slot]),
       # +pictures+ each key's picture handles, +shown+ the number showing, and +parts+ every run
-      # made for it so far (TilePictures::TilePictureRun), which grows as backgrounds are declared.
-      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast)  # :nodoc:
+      # made for it so far (TilePictures::TilePictureRun), which grows as backgrounds are declared;
+      # +scene+ the scene that declared it, or nil outside every scene.
+      PackTileGroup = Data.define(:name, :keys, :pictures, :shown, :parts, :fast, :scene)  # :nodoc:
 
       private
 
@@ -67,7 +69,7 @@ module VBlank
         refuse_bad_pack_tile_pictures!(name, keys, pictures)
         shown = var(Messages::MadeNames.make(:tile_pictures_part, group: name, part: :picture), 0)
         group = PackTileGroup.new(name: name, keys: keys.map { |key| [key.layout.name, key.tile_index] }, pictures: pictures,
-                                  shown: shown, parts: [], fast: fast)
+                                  shown: shown, parts: [], fast: fast, scene: declaring_scene)
         (@pack_tile_groups ||= []) << group
         routine = Messages::MadeNames.make(:tile_pictures_part, group: name, part: :show)
         # Built last, once every background drawn from the tiles has made its runs.
@@ -89,7 +91,8 @@ module VBlank
                                "tile_pictures :#{taken.name} names it already. A tile takes turns in one group. To fix " \
                                "this, put the tile in one group only."
         end
-        return key unless @pack_background_slots&.include?(key.layout.name)
+        return key unless @pack_background_slots&.include?([declaring_scene, key.layout.name]) ||
+                          @pack_background_slots&.include?([nil, key.layout.name])
 
         raise ArgumentError, "tile_pictures :#{name} names a tile of slot :#{key.layout.name}, and a background drawn from " \
                              "that slot is declared already. To fix this, declare tile_pictures before the background."
@@ -139,14 +142,17 @@ module VBlank
       def moving_pack_tiles_of(tiles)
         first = tiles.tile_index || 0
         (@pack_tile_groups || []).each_with_object({}) do |group, found|
+          next unless group.scene.nil? || group.scene == declaring_scene
+
           group.keys.each_with_index do |(slot, tile), key|
             found[tile - first] = [group, key] if slot == tiles.layout.name && tile >= first
           end
         end
       end
 
-      # A background drawn from +tiles+' slot is noted, so a group declared after it is refused.
-      def record_pack_background_slot(tiles) = (@pack_background_slots ||= Set.new) << tiles.layout.name
+      # A background drawn from +tiles+' slot is noted with the scene it is in (nil outside every scene),
+      # so a group declared after it in that scene, or outside every scene, is refused.
+      def record_pack_background_slot(tiles) = (@pack_background_slots ||= Set.new) << [declaring_scene, tiles.layout.name]
 
       # The runs of a background built all-in-one: for each group and each bank +cells+ (the
       # Console::CellTile each cell names, that +moving+ says take turns) name, a run of each turn
