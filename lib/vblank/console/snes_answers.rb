@@ -184,7 +184,13 @@ module VBlank
                           "background on that layer can use `draw_with`. " \
                           "Without `alone:`, it must be in front of the other backgrounds. Its " \
                           "tiles must have no see-through pixel. Each cell of its map that can show must have " \
-                          "a tile. If not, or if a layer is see-through, the build refuses the game. `show_only_inside` " \
+                          "a tile. If not, the build refuses the game. A see-through layer can show below the row " \
+                          "of the held background. Above that row, the console shows the held background as it is " \
+                          "drawn, with no colour maths. If the held background has `alone: :without_sprites`, a " \
+                          "sprite can be behind the held background in the stack. If not, a sprite behind the held " \
+                          "background and a see-through layer of sprites are refused. The held background cannot " \
+                          "be in a see-through layer. " \
+                          "`show_only_inside` " \
                           "uses the console's windows, one for each of the two layers, and takes no processor time " \
                           "as the screen is drawn. `hide` and `show` use the same windows as a box with nothing in " \
                           "it. A background held to a box beside a see-through layer, or on the " \

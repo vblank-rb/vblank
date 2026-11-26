@@ -1442,8 +1442,13 @@ module VBlank
                         refuse_unmade!("a status bar beside a sprite behind a background")
                       end
                       # A background held above a row there is behind every sprite too, and the
-                      # interpreter draws it over one the stack puts behind it.
-                      refuse_unmade!("a sprite behind a background held above a row beside two other backgrounds") if front.include?(THIRD_LAYER)
+                      # interpreter draws it over one the stack puts behind it. One that keeps the
+                      # sprites out above its row (`alone: :without_sprites`) never shows beside a
+                      # sprite: above the row the line table shows it alone, and below it, it is not drawn.
+                      sprite_under_held = scenery.any? do |bg|
+                        on_third_layer?(bg) && !bg.hides_sprites && screenful.depths.of_scenery(bg) > level
+                      end
+                      refuse_unmade!("a sprite behind a background held above a row beside two other backgrounds") if sprite_under_held
                       found[name] = priority
                     end
                   end
@@ -1729,7 +1734,10 @@ module VBlank
               refuse_unmade!("#{words} showing tiles painted from a list") if @tile_runs.any? { |run| held.tiles.intersect?(Array(run.tiles)) }
               return unless held.above_row
 
-              refuse_unmade!("#{words} beside a see-through layer") unless SeeThrough.layers(@program).empty?
+              # The colour math would mix the held background with the sub screen above its row, where
+              # the interpreter mixes it with nothing.
+              refuse_unmade!("#{words} in a see-through layer") if SeeThrough.layer(@program, held.layer)
+              refuse_unmade!("#{words} beside a see-through layer of sprites") if mixed_sprites_above_row?(held)
               # One the game shows alone (`alone: true`) is drawn alone above its row by the
               # interpreter too, so where it is in the stack and what its see-through pixels show
               # are the same on both.
@@ -1737,6 +1745,18 @@ module VBlank
 
               refuse_unmade!("#{words} behind another background") if held_behind_scenery?(held)
               refuse_held_see_through!(held)
+            end
+
+            # Whether sprites in a see-through layer can show above +held+'s row. The line table shows
+            # the third layer alone there, with the sprites unless the game keeps them out
+            # (`alone: :without_sprites`), so a see-through layer of other backgrounds is never on the
+            # main screen above the row and the colour math has nothing to mix there: the bar shows as
+            # drawn, as the interpreter draws it. A see-through sprite would be mixed with the sub
+            # screen, the layers behind it below the row, where the interpreter mixes it with the bar.
+            def mixed_sprites_above_row?(held)
+              return false if held.hides_sprites
+
+              SeeThrough.layers(@program).any? { |layer| !Picture.see_through_parts(@program, layer, @cache.stacking).sprites.empty? }
             end
 
             # Whether a screen showing +held+ draws another background in front of it: one after it in
@@ -2233,6 +2253,9 @@ module VBlank
               refuse_unmade!("a see-through layer of both backgrounds and sprites") unless seen_through.empty? || sprites.empty?
 
               behind, scenes = see_through_behind_in_its_scenes(parts)
+              # The third layer shows only above its row, where no see-through layer is on the main
+              # screen (#mixed_sprites_above_row?), so it is never what is behind one.
+              behind = behind.reject { |bg| on_third_layer?(bg) }
               # Adding or subtracting whole, an empty sub screen adds or takes away the fixed colour,
               # nothing: the layer whole, as the interpreter shows it over the black backdrop. Only
               # halving needs something behind.

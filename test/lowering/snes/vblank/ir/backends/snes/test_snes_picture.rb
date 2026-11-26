@@ -440,6 +440,29 @@ class TestSNESPicture < Minitest::Test
     assert_equal 12, run[:t]
   end
 
+  # A background held above a row beside two others shows alone there, so the colour math would mix
+  # it with the sub screen, where the interpreter mixes it with nothing: one in a see-through layer is
+  # not made yet.
+  def test_a_held_background_in_a_see_through_layer_is_refused_in_plain_words
+    error = assert_raises(SNES::Lowering::NotMadeYet) do
+      SNES.new.build(program_of do
+        screen :tiled
+        image(:wall, "#" => :gray) { "########\n" * 8 }
+        tiles :set, "#" => :wall
+        full = Array.new(32) { "#" * 32 }
+        layers :back, :middle, :glass
+        layer(:back) { background :floor, tiles: :set, map: full }
+        layer(:middle) { background :rug, tiles: :set, map: full }
+        layer(:glass, transparency: 50) do
+          background :score, tiles: :set, map: ["#" * 32] * 4, above_row: 32, alone: :without_sprites
+        end
+        game_loop { wait_vblank }
+      end)
+    end
+
+    assert_match(/held above a row beside two other backgrounds in a see-through layer/, error.message)
+  end
+
   # A scene's own background goes on the front layer, so one the layers put behind a background
   # every screen shows is not made yet.
   def test_a_scenes_background_behind_one_every_screen_shows_is_refused_in_plain_words

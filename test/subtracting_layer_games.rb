@@ -92,6 +92,51 @@ module SubtractingLayerGames
     b.program
   end
 
+  # A bar's colour, and the row it is held above.
+  BAR = [5, 25, 15].freeze
+  BAR_ROW = 32
+
+  # Where to read the picture under the bar: over the light, and where there is none. The light's
+  # rows below the bar are LIT_BELOW_BAR, LIT_WALKER and DARK_ARENA.
+  BAR_OVER_LIGHT = [8, 8].freeze
+  BAR_OVER_DARK = [200, 8].freeze
+  LIT_BELOW_BAR = [8, 40].freeze
+
+  # The lit arena under a bar held alone above row BAR_ROW (`above_row:`, `alone: :without_sprites`),
+  # as a console's own status bar is: above the row only the bar shows, and below it the light
+  # takes away (+subtract+) or adds what is behind it.
+  private def lit_arena_under_a_bar(subtract:)
+    arena = ARENA
+    walker = WALKER
+    light = LIGHT
+    bar = BAR
+    row = BAR_ROW
+    tile = Minitest::Test::SOLID_TILE
+    b = VBlank::Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:sand, "#" => rgb(*arena)) { tile }
+      image(:walker, "#" => rgb(*walker)) { tile }
+      image(:glow, "#" => rgb(*light)) { tile }
+      image(:panel, "#" => rgb(*bar)) { tile }
+      tiles :sands, "#" => :sand
+      tiles :glows, "#" => :glow
+      tiles :panels, "#" => :panel
+      layers :arena, :walkers, :light, :bar
+      layer(:arena) { background :floor, tiles: :sands, map: Array.new(32) { "#" * 32 } }
+      layer(:walkers) { sprite :walker, at: [32, 64] }
+      layer(:light, shows: 100, shows_behind: 100, subtract: subtract) do
+        background :lamp, tiles: :glows, map: Array.new(32) { ("#" * 16) + (" " * 16) }
+      end
+      layer(:bar) do
+        background :score, tiles: :panels, map: Array.new(row / 8) { "#" * 32 }, above_row: row, alone: :without_sprites
+      end
+      game_loop { wait_vblank }
+    end
+    b.finalize_program
+    b.program
+  end
+
   # The answers +console+ gives +program+ before anything is built (Checks::ConsoleAnswers),
   # raised as the build raises them.
   private def refuse_on!(console, program)

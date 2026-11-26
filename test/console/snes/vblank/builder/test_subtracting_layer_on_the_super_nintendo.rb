@@ -60,4 +60,28 @@ class TestSubtractingLayerOnTheSuperNintendo < Minitest::Test
     assert_equal rgb5(19, 9, 17), title, "half the title's words over half the sand"
     assert_equal rgb5(18, 6, 27), lit, "the arena's light, the sand taken away"
   end
+
+  # A bar held alone above a row beside the arena and its light, as a console's own status bar is:
+  # above the row the bar shows as drawn, with no colour maths, and below it the light mixes with
+  # what is behind it.
+  private def screen_under_a_bar(subtract:) = screen_of(lit_arena_under_a_bar(subtract: subtract))
+
+  def test_a_bar_above_the_row_shows_unmixed_over_a_subtracting_light
+    screen = screen_under_a_bar(subtract: true)
+
+    assert_equal rgb5(*BAR), screen.pixel(*BAR_OVER_LIGHT), "the bar where the light is under it"
+    assert_equal rgb5(*BAR), screen.pixel(*BAR_OVER_DARK), "the bar where there is no light"
+    assert_equal rgb5(18, 6, 27), screen.pixel(*LIT_BELOW_BAR), "the light below the bar, the sand taken away"
+    assert_equal rgb5(24, 0, 29), screen.pixel(*LIT_WALKER), "the light over the walker"
+    assert_equal rgb5(*ARENA), screen.pixel(*DARK_ARENA), "the arena where there is no light"
+  end
+
+  def test_a_bar_above_the_row_shows_unmixed_over_an_adding_light
+    screen = screen_under_a_bar(subtract: false)
+
+    assert_equal rgb5(*BAR), screen.pixel(*BAR_OVER_LIGHT), "the bar where the light is under it"
+    assert_equal rgb5(*BAR), screen.pixel(*BAR_OVER_DARK), "the bar where there is no light"
+    assert_equal rgb5(31, 18, 31), screen.pixel(*LIT_BELOW_BAR), "the light added to the sand"
+    assert_equal rgb5(31, 31, 31), screen.pixel(*LIT_WALKER), "the light added to the walker"
+  end
 end
