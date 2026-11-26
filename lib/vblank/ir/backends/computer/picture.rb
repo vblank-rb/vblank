@@ -750,14 +750,15 @@ module VBlank
             starts
           end
 
-          # Each see-through layer as rg_screen.h's three flags (Reference#fixed_see_through?,
-          # SeeThroughLayer#split, and the half of Reference#layer_has_anything? that asks
-          # about sprites, in any layer it can be in). Which of them a sprite is in is handed over
-          # as it is drawn (#see_through_drawn_at).
+          # Each see-through layer as rg_screen.h's four flags (Reference#fixed_see_through?,
+          # SeeThroughLayer#split, the half of Reference#layer_has_anything? that asks about
+          # sprites, in any layer it can be in, and SeeThroughLayer#subtract). Which of them a
+          # sprite is in is handed over as it is drawn (#see_through_drawn_at).
           def see_through_array
             flags = @see_through.flat_map do |layer|
               [layer.shows.kind == :int && layer.behind.kind == :int, layer.split,
-               @objects.each_value.any? { |obj| layers_drawn_at(obj).include?(layer.name) }].map { |flag| flag ? 1 : 0 }
+               @objects.each_value.any? { |obj| layers_drawn_at(obj).include?(layer.name) },
+               layer.subtract].map { |flag| flag ? 1 : 0 }
             end
             runtime_array("see_through", "int32_t", flags)
           end

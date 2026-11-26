@@ -260,13 +260,14 @@ static int32_t widened(int32_t channel) { return (channel << 3) | (channel >> 2)
 /* Framebuffer#mix_see_through: a see-through layer's color over what is under it. Each channel
  * is widened to eight bits first, its share of each side added and only then the sixteenth
  * dropped, and the answer taken back to five bits. The two shares need not add to a whole; past
- * one, a channel stops at its brightest. */
+ * one, a channel stops at its brightest. A layer that subtracts has a share of what is under it
+ * below nought, and there a channel stops at nothing. */
 static uint16_t mixed_with_under(int32_t color, uint16_t under, shares by) {
   int32_t out = 0;
   for (int32_t channel = 0; channel < 3; channel++) {
     int32_t have = widened((color >> (5 * channel)) & 0x1F), below = widened((under >> (5 * channel)) & 0x1F);
-    int32_t mix = (have * by.painted + below * by.under) / 16;
-    out |= ((mix > 255 ? 255 : mix) >> 3) << (5 * channel);
+    int32_t mix = clamp32(floor_div(have * by.painted + below * by.under, 16), 0, 255);
+    out |= (mix >> 3) << (5 * channel);
   }
   return (uint16_t)out;
 }
@@ -523,16 +524,17 @@ static int32_t whole_sixteenths(int32_t amount) { return clamp32(floor_div((int6
 /* Reference#live_see_through_weights, through IR::SeeThrough.weights: a layer's two shares from
  * its amounts as the game works them out now. Given one amount, what is behind takes its share
  * rounded down and the layer whatever is left of a whole; given two, each is taken to the
- * nearest sixteenth. */
+ * nearest sixteenth. What is behind is taken away for a layer that subtracts. */
 static shares shares_now(int32_t layer) {
   asked_layer = layer;
   rg_game_see_through_amounts();
   asked_layer = NOBODY_ASKED;
+  int32_t sign = see_through_field(layer, RG_ST_SUBTRACTS) ? -1 : 1;
   if (see_through_field(layer, RG_ST_ONE_AMOUNT)) {
     int32_t under = whole_sixteenths(answered.behind);
-    return (shares){16 - under, under};
+    return (shares){16 - under, sign * under};
   }
-  return (shares){nearest_sixteenths(answered.shows), nearest_sixteenths(answered.behind)};
+  return (shares){nearest_sixteenths(answered.shows), sign * nearest_sixteenths(answered.behind)};
 }
 
 /* A layer's shares as they were at some moment, for the layers they were kept for: when the

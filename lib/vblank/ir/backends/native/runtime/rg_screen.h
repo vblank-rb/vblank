@@ -242,9 +242,9 @@ void rg_screen_read_image_pieces(int32_t image, const int32_t *pieces);
 
 /* Each layer the game can be seen through is RG_ST_FIELDS numbers in rg_game_see_through: 1 when
  * both its amounts are numbers written in the program, 1 when it was given one amount (how much
- * of what is behind shows, the layer taking the rest of a whole) rather than two, and 1 when any
- * sprite was declared in it. */
-enum { RG_ST_AMOUNTS_WRITTEN, RG_ST_ONE_AMOUNT, RG_ST_HOLDS_A_SPRITE, RG_ST_FIELDS };
+ * of what is behind shows, the layer taking the rest of a whole) rather than two, 1 when any
+ * sprite was declared in it, and 1 when it takes what is behind away rather than adding it. */
+enum { RG_ST_AMOUNTS_WRITTEN, RG_ST_ONE_AMOUNT, RG_ST_HOLDS_A_SPRITE, RG_ST_SUBTRACTS, RG_ST_FIELDS };
 extern const int32_t rg_game_see_through[];
 /* The most see-through layers a game may have; the build refuses more. */
 #define RG_MAX_SEE_THROUGH 16

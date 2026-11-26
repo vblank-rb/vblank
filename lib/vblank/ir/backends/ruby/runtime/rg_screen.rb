@@ -47,7 +47,8 @@ RG_NO_IMAGE_COLORS = -1
 RG_ST_AMOUNTS_WRITTEN = 0
 RG_ST_ONE_AMOUNT = 1
 RG_ST_HOLDS_A_SPRITE = 2
-RG_ST_FIELDS = 3
+RG_ST_SUBTRACTS = 3
+RG_ST_FIELDS = 4
 
 # Each run of tiles the game paints from a list is RG_RUN_FIELDS numbers in @rg_game_tile_runs.
 RG_RUN_TILES = 0
@@ -243,9 +244,12 @@ def rg_mixed_with_under(color, under, by)
   red | (green << 5) | (blue << 10)
 end
 
-# One channel of rg_mixed_with_under, five bits in and five out.
+# One channel of rg_mixed_with_under, five bits in and five out. A share +bottom+ below nought
+# takes what is under away, and the channel stops at nothing.
 def rg_mixed_channel_with_under(have, below, top, bottom)
   mix = ((((have << 3) | (have >> 2)) * top) + (((below << 3) | (below >> 2)) * bottom)) / 16
+  return 0 if mix.negative?
+
   (mix > 255 ? 255 : mix) >> 3
 end
 
@@ -541,17 +545,18 @@ def rg_whole_sixteenths(amount) = rg_clamp_wide((amount * 16) / 100, 0, 16)
 # Reference#live_see_through_weights, through IR::SeeThrough.weights: a layer's two shares from
 # its amounts as the game works them out now. Given one amount, what is behind takes its share
 # rounded down and the layer whatever is left of a whole; given two, each is taken to the nearest
-# sixteenth.
+# sixteenth. What is behind is taken away for a layer that subtracts.
 def rg_shares_now(layer)
   @rg_asked_layer = layer
   rg_game_see_through_amounts
   @rg_asked_layer = RG_NOBODY_ASKED
   shows, behind = @rg_answered
+  sign = rg_see_through_field(layer, RG_ST_SUBTRACTS) == 0 ? 1 : -1
   if rg_see_through_field(layer, RG_ST_ONE_AMOUNT) != 0
     under = rg_whole_sixteenths(behind)
-    return [16 - under, under]
+    return [16 - under, sign * under]
   end
-  [rg_nearest_sixteenths(shows), rg_nearest_sixteenths(behind)]
+  [rg_nearest_sixteenths(shows), sign * rg_nearest_sixteenths(behind)]
 end
 
 # Reference#layer_has_anything?: scenery showing now (rg_hook_layer_holds_scenery), or a sprite
