@@ -459,9 +459,20 @@ module VBlank
             end
 
             def reserve_shared_recolored_picture(pose, list, swapped, mixed)
-              copy = recolored_copy(pose, list, swapped, mixed.include?(pose))
-              @art.reserve_shared_sprite_picture(copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
-                                                             worn: copy.worn)
+              with_recolored_copy(pose, list, swapped, mixed.include?(pose)) do |copy|
+                @art.reserve_shared_sprite_picture(copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
+                                                               worn: copy.worn)
+              end
+            end
+
+            # The block given the copy of +pose+ drawn with +list+ (#recolored_copy), and given it again
+            # made pixel by pixel where it is its pose's tiles and its scenes have no set left for its
+            # colours (Art#worn_picture, #sharing_or_nil).
+            def with_recolored_copy(pose, list, swapped, mixed)
+              copy = recolored_copy(pose, list, swapped, mixed)
+              return yield(copy) unless copy.worn
+
+              sharing_or_nil { yield(copy) } || yield(plain_recolored_copy(pose, list, swapped, mixed))
             end
 
             # How the copy of +pose+ drawn with +list+ (colours +swapped+) is made (#recolored_copy): from
@@ -482,14 +493,23 @@ module VBlank
             def recolored_copy(pose, list, swapped, mixed)
               image = @cache.image(picture_named(pose))
               copy_scenes = colors_scenes_of_recolored(pose, list)
-              if worn_tried? && worn_by_place?(image)
-                held = changing_list?(list) ? recolored_list_palette(list, mixed) : palette_in_places(places_shown(image, swapped), mixed, copy_scenes)
-                return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil)
+              if worn_tried? && worn_by_place?(image) && picture_palette_in_places(pose, mixed)
+                held = if changing_list?(list) then recolored_list_palette(list, mixed)
+                       else sharing_or_nil { palette_in_places(places_shown(image, swapped), mixed, copy_scenes) }
+                       end
+                return held ? RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil) : plain_recolored_copy(pose, list, swapped, mixed)
               end
 
               worn = worn_of(pose, image, list, swapped) if worn_tried?
               return RecoloredCopy.new(image: image, held: nil, scenes: colors_scenes_of_picture(pose), worn: worn) if worn
 
+              plain_recolored_copy(pose, list, swapped, mixed)
+            end
+
+            # The copy of +pose+ drawn with +list+ as it is made without +shared_pose_tiles+.
+            def plain_recolored_copy(pose, list, swapped, mixed)
+              image = @cache.image(picture_named(pose))
+              copy_scenes = colors_scenes_of_recolored(pose, list)
               held = palette_of_worn_list(pose, list, swapped, mixed)
               return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil) if held
 
@@ -606,9 +626,10 @@ module VBlank
             # runs: a list told to hold others (`holds`) is not made yet.
             def make_recolored_art(mixed)
               each_recolored_picture do |pose, list, swapped|
-                copy = recolored_copy(pose, list, swapped, mixed.include?(pose))
-                @art.sprite_picture([pose, swapped], copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
-                                                                 worn: copy.worn, tile_scene: tiles_scene_of_recolored(pose, list))
+                with_recolored_copy(pose, list, swapped, mixed.include?(pose)) do |copy|
+                  @art.sprite_picture([pose, swapped], copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
+                                                                   worn: copy.worn, tile_scene: tiles_scene_of_recolored(pose, list))
+                end
               end
             end
 
@@ -681,7 +702,24 @@ module VBlank
               return palette_in_places(image.colors, mixed, colors_scenes_of_picture(name)) if @one_sprite_tile_set
               return nil unless worn_tried? && worn_by_place?(image)
 
-              @art.list_places_palette(palette_colors(image.colors), colors_scenes_of_picture(name), mixed: mixed)
+              (@list_places_of ||= {}).fetch(name) do
+                @list_places_of[name] = sharing_or_nil do
+                  @art.list_places_palette(palette_colors(image.colors), colors_scenes_of_picture(name), mixed: mixed)
+                end
+              end
+            end
+
+            # The block's set, or nil where its scenes have no set left for it, so that the picture or
+            # copy asking is made the way it is without +shared_pose_tiles+: a set for each list a pose is
+            # worn in saves its tiles, but a screen with more lists than sets keeps them for the copies
+            # it can. Sprite colours kept for the whole game are refused as ever, so the build tries each
+            # screen's own first (SNES#settings_after).
+            def sharing_or_nil
+              yield
+            rescue Art::TooManySpriteColors
+              raise
+            rescue Art::TooMuch
+              nil
             end
 
             # Whether +image+'s copies in other lists are drawn by place, as the interpreter draws a picture

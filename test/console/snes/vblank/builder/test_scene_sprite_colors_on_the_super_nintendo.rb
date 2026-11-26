@@ -343,6 +343,20 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   end
 
   TWIN_SPOT = [96, 136].freeze # Where the twin pose stands, and its copy 8 pixels to its right
+  SPARK_SPOT = [120, 136].freeze # Where the spark stands (#players_of_one_pose_set)
+
+  # Where the demo's eight sets are full with the players' and one more copy wants a ninth, that
+  # copy is made in tiles of its own from the sets there are, as the console's games do for a
+  # flash or a spark, and the players keep sharing the pose's tiles.
+  def test_a_copy_with_no_set_left_keeps_its_own_tiles_beside_shared_players
+    demo = shown_by(players_of_one_pose_set(repeated: true, spark: true), 18)
+
+    assert_equal SceneColorLists.full_list(0)[3], demo.pixel(*SPARK_SPOT), "the spark's first place, in list 0"
+    assert_equal SceneColorLists.full_list(0)[4], demo.pixel(SPARK_SPOT[0] + 1, SPARK_SPOT[1]), "the spark's second place"
+    PLAYER_LISTS.each_with_index do |n, at|
+      assert_equal first_color(n), demo.pixel(*player_spot(at + 1)), "player #{at + 2}'s first place"
+    end
+  end
 
   # The stage, up from the start, shows the walker in five poses of 64×64; the demo, from tick 8,
   # four players of them (#player_spot), the three after the first drawn with PLAYER_LISTS
@@ -353,8 +367,9 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   # With +changing+, the game changes each player's list as it runs: to #dusk_list at ticks 12 and
   # 20, and to #day_list at 16. With +repeated+, the walker's list holds its first colour at
   # REPEATED_PLACE too (#repeated_walker_list), and each player's list keeps the walker's colour
-  # there (#repeated_player_list).
-  private def players_of_one_pose_set(changing: false, repeated: false)
+  # there (#repeated_player_list). With +spark+, a spark of 2×1 in the walker's list stands at
+  # SPARK_SPOT drawn with list 0, a list of a ninth set.
+  private def players_of_one_pose_set(changing: false, repeated: false, spark: false)
     test = self.class
     walker_list = WALKER_LIST
     players = PLAYER_LISTS
@@ -383,6 +398,11 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
       copy_list[test::REPEATED_PLACE] = copy_list[2]
       colors :twin_copy_list, copy_list
       image(:twin, width: 2, height: 1, colors: :walker_list, places: [1, test::REPEATED_PLACE])
+      if spark
+        colors :spark_list, SceneColorLists.full_list(0)
+        image(:spark, width: 2, height: 1, colors: :walker_list, places: [3, 4])
+      end
+      spark_spot = SPARK_SPOT
       state = var :state, 0
       tick = var :tick, 0
       scene(:stage) { sprite :stage_walker, at: [0, 0], **shows }
@@ -397,6 +417,7 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         sprite :twin, image: :twin, at: twin_spot
         copy = sprite :twin_copy, image: :twin, at: [twin_spot[0] + 8, twin_spot[1]]
         copy.draw_with :twin_copy_list
+        sprite(:spark, image: :spark, at: spark_spot).draw_with :spark_list if spark
       end
       game_loop do
         tick += 1
