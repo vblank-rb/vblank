@@ -119,6 +119,9 @@ module VBlank
             @banked = banked || @effects_in_banks || @entries_in_banks
             @effect_clock_step = Tunes.effect_clock_step(program, program.described_console)
             @effect_tempo_step = @effect_clock_step && Tunes.effect_tempo_step(program)
+            @effect_count_at_song_start = @effect_tempo_step && Tunes.effect_count_at_song_start(program)
+            @tune_tempo_steps = @effect_tempo_step && Tunes.tune_tempo_steps(program)
+            @tempo_varies = !@effect_tempo_step.nil? && Tunes.effect_tempo_varies?(program)
           end
 
           # What the sound effects' timer adds a frame, or nil for effects that count frames
@@ -128,6 +131,17 @@ module VBlank
           # ...and what their tempo adds on each of a driver's interrupts, or nil where they name none
           # (IR::Tunes.effect_tempo_step).
           attr_reader :effect_tempo_step
+
+          # Where a song's start sets the effects' tick count, or nil (IR::Tunes.effect_count_at_song_start).
+          attr_reader :effect_count_at_song_start
+
+          # ...and what it adds while each song plays, by the song's place in the music table, or nil where
+          # the effects count at a tempo of their own (IR::Tunes.tune_tempo_steps).
+          attr_reader :tune_tempo_steps
+
+          # Whether the effects' tempo count adds something of its own until it next comes round: after a
+          # song's start sets it, or on the tune's tempo (Runtime::Music::TEMPO_NOW).
+          def counts_tempo_now? = @tempo_varies
 
           def banked? = @banked
           def effects_in_banks? = @effects_in_banks
@@ -210,6 +224,10 @@ module VBlank
             asm.label("music_waves")
             waveforms.each { |shape| asm.data_bytes(packed_waveform(shape)) }
             asm.data_bytes(0) # a label has to be somewhere
+            if @tune_tempo_steps # what the effects' tempo count adds while each song plays, nought for none
+              asm.label("music_tune_tempo_steps")
+              asm.data_words(0, *@tune_tempo_steps)
+            end
             emit_effects(asm) unless effects.empty?
             [asm.section, *parts.flatten, *effect_sections]
           end

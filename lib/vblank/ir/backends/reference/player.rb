@@ -64,12 +64,23 @@ module VBlank
             @effect_clock = 0        # ...and its count, from power-on
             @effect_tempo_step = nil # what the tempo adds on each interrupt of the driver's own, or nil (IR::Tunes.effect_tempo_step)
             @effect_tempo = 0        # ...and its count, from power-on
+            @effect_count_at_song_start = nil # where a song's start sets the tempo count, or nil (#set_effect_tempo_counting)
+            @tune_tempo_steps = nil  # what the tempo count adds while each song plays, by name, or nil for the effects' own
+            @effect_tempo_now = 0    # ...and what it adds until it next comes round after a song's start, nought for the tempo
             @tick_on_first_interrupt = false # whether this frame's first interrupt holds a tick
           end
 
           # The sound effects count their ticks on a timer that adds this a frame
           # (IR::Tunes.effect_clock_step), or on frames, for nil.
           attr_writer :effect_clock_step, :effect_tempo_step
+
+          # How the tempo count on a driver's interrupt is counted: where a song's start sets it, in 65536ths
+          # of a tick, or nil (IR::Tunes.effect_count_at_song_start), and what it adds while each song plays,
+          # by the song's name, or nil where the effects keep a tempo of their own (IR::Tunes.tune_tempo_steps).
+          def set_effect_tempo_counting(at_song_start:, tune_steps:)
+            @effect_count_at_song_start = at_song_start
+            @tune_tempo_steps = tune_steps
+          end
 
           # The name of the tune the player is on, or nil for none. It takes up what the program
           # named at the next frame, and drops a tune that played once on the frame after its end.
@@ -249,10 +260,19 @@ module VBlank
           # With the tempo counted on the driver's own interrupt (IR::Tunes.effect_tempo_step), the frame's
           # +interrupts+ each add the tempo's step, and those whose count comes round hold a tick: how
           # many do, and whether the first is one of them.
+          #
+          # Each interrupt adds the tempo's step: the effects' own, or the song playing's, with nothing added
+          # while none plays (+@tune_tempo_steps+); and after a song's start that set the count, the share it
+          # set until the count next comes round (+@effect_tempo_now+).
           def count_ticks_on_interrupts(interrupts)
+            tempo = @tune_tempo_steps ? @tune_tempo_steps.fetch(@playing, 0) : @effect_tempo_step
             ticked = Array.new(interrupts) do
-              @effect_tempo += @effect_tempo_step
-              (@effect_tempo / IR::Tunes::CLOCK_MODULUS).positive?.tap { @effect_tempo %= IR::Tunes::CLOCK_MODULUS }
+              step = @effect_tempo_now.nonzero? || tempo
+              @effect_tempo += step
+              carried = @effect_tempo >= IR::Tunes::CLOCK_MODULUS && step.positive?
+              @effect_tempo %= IR::Tunes::CLOCK_MODULUS
+              @effect_tempo_now = 0 if carried
+              carried
             end
             @tick_on_first_interrupt = ticked.first == true
             ticked.count(true)
@@ -540,6 +560,7 @@ module VBlank
             @held = false
             silence_song if @playing
             @playing = @wanted
+            @effect_tempo = @effect_tempo_now = @effect_count_at_song_start if @playing && @effect_count_at_song_start
             @frame = 0
             @events = @playing ? passes(@playing).map(&:first) : []
             @cursors = Array.new(@events.size, 0)

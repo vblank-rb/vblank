@@ -48,6 +48,9 @@ module VBlank
             EFFECT_TEMPO = "rt sfx tempo"
             STARTED_MOVE_ON = "rt sfx started move on"
             START_DUE = "rt sfx start due"
+            # ...and, where a song's start sets the count or the effects count at the tune's tempo, what it adds
+            # until it next comes round after a song's start, nought for the tempo (rt_sfx_tempo_step).
+            TEMPO_NOW = "rt sfx tempo now"
             NAMED = "rt music named" # The tune the game named last (PS1::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -146,9 +149,10 @@ module VBlank
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has;
             # +holds+ for one that holds its tune; and what its notes do as they play.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false, effect_clock_step: nil, effect_tempo_step: nil)
+                        slides: false, effect_clock_step: nil, effect_tempo_step: nil, tempo_now: false)
               [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 4) } if effect_clock_step
               [EFFECT_TEMPO, STARTED_MOVE_ON, START_DUE].each { |name| memory.reserve(name, 4) } if effect_clock_step && effect_tempo_step
+              memory.reserve(TEMPO_NOW, 4) if effect_clock_step && effect_tempo_step && tempo_now
               memory.reserve(TUNE_HELD, 4) if holds
               memory.reserve(SLIDE_CURSOR, 4) if slides
               memory.reserve(WOBBLES, CONSOLE_PARTS * VOICE_BYTES) if wobbles
@@ -176,14 +180,20 @@ module VBlank
 
             # +level_at+ is the address where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or
             # nil; +effects+ how many sound effects the game has.
-            def emit(asm, memory, level_at: nil, effects: 0, effect_clock_step: nil, effect_tempo_step: nil)
+            def emit(asm, memory, level_at: nil, effects: 0, effect_clock_step: nil, effect_tempo_step: nil, count_at_song_start: nil,
+                     tune_tempo_steps: nil)
               at = ->(name) { Runtime.at(memory, name) }
               sharing = effects.positive?
               holds = memory.reserved?(TUNE_HELD)
               emit_game_side(asm, at, holds)
-              emit_frame(asm, at, sharing, memory, sharing && effect_clock_step, effect_tempo_step)
+              emit_frame(asm, at, sharing, memory, sharing && effect_clock_step,
+                         memory.reserved?(TEMPO_NOW) ? :routine : effect_tempo_step)
               emit_voice_changes(asm, at, memory, holds, sharing)
-              emit_switch(asm, at, holds, level_at, sharing, memory)
+              emit_switch(asm, at, holds, level_at, sharing, memory, (count_at_song_start if sharing && effect_clock_step))
+              if memory.reserved?(TEMPO_NOW)
+                emit_tempo_step_routine(asm, at, tune_tempo_steps ? :tune : effect_tempo_step)
+                emit_tune_tempo_steps(asm, tune_tempo_steps) if tune_tempo_steps
+              end
               emit_song_frame(asm, at, holds, level_at, sharing, memory)
               emit_level(asm, at, level_at, memory) if level_at
               emit_effects(asm, at, effects, level_at, memory) if sharing
@@ -768,8 +778,11 @@ module VBlank
             end
 
             # The tempo's count moved on an interrupt (EFFECT_TEMPO), inline: T1 not nought where it comes
-            # round, a tick. Uses T0.
+            # round, a tick. Uses T0. Where it adds something of its own until it next comes round
+            # (TEMPO_NOW), +step+ is :routine, a call to the routine that does (#emit_tempo_step_routine).
             def emit_step_effect_tempo(asm, at, step)
+              return asm.jal("rt_sfx_tempo_step") if step == :routine
+
               asm.lw(:t0, at.call(EFFECT_TEMPO), :gp)
               asm.addiu(:t0, :t0, step) if step < 0x8000
               unless step < 0x8000
@@ -779,6 +792,41 @@ module VBlank
               asm.srl(:t1, :t0, 16)
               asm.andi(:t0, :t0, 0xFFFF)
               asm.sw(:t0, at.call(EFFECT_TEMPO), :gp)
+            end
+
+            # ...that routine: it adds TEMPO_NOW until the count comes round, then puts it back to nought;
+            # otherwise the effects' own step, or on the tune's tempo (+step+ :tune) the playing song's
+            # (rt_tune_tempo_steps, nought for none). T1 is not nought where it came round. Uses T0 to T2.
+            def emit_tempo_step_routine(asm, at, step)
+              asm.label("rt_sfx_tempo_step")
+              asm.lw(:t2, at.call(TEMPO_NOW), :gp)
+              asm.lw(:t0, at.call(EFFECT_TEMPO), :gp)
+              asm.bne(:t2, :zero, "rt_sfx_tempo_now")
+              if step == :tune
+                asm.lw(:t2, at.call(PLAYING), :gp)
+                asm.la(:t1, "rt_tune_tempo_steps")
+                asm.sll(:t2, :t2, 2)
+                asm.addu(:t2, :t1, :t2)
+                asm.lw(:t2, 0, :t2)
+              else
+                asm.li(:t2, step)
+              end
+              asm.label("rt_sfx_tempo_now")
+              asm.addu(:t0, :t0, :t2)
+              asm.srl(:t1, :t0, 16)
+              asm.andi(:t0, :t0, 0xFFFF)
+              asm.sw(:t0, at.call(EFFECT_TEMPO), :gp)
+              asm.beq(:t1, :zero, "rt_sfx_tempo_kept")
+              asm.sw(:zero, at.call(TEMPO_NOW), :gp)
+              asm.label("rt_sfx_tempo_kept")
+              asm.jr(:ra)
+            end
+
+            # ...and what the count adds while each song plays (IR::Tunes.tune_tempo_steps), a word for each
+            # number the player knows a tune by, nought for none.
+            def emit_tune_tempo_steps(asm, steps)
+              asm.label("rt_tune_tempo_steps")
+              asm.data_words(0, *steps)
             end
 
             # ...and each interrupt after the first tick's, inline after its pass below the tune: the tempo
@@ -853,7 +901,7 @@ module VBlank
 
             # rt_music_switch: caught up with the tune the game names (Reference::Player#switch_to_wanted_song).
             # v0 is 1 when that changed what is playing, nought when not.
-            def emit_switch(asm, at, holds, level_at, sharing, memory)
+            def emit_switch(asm, at, holds, level_at, sharing, memory, count_at_song_start = nil)
               m = PS1::Music
               asm.label("rt_music_switch")
               enter(asm)
@@ -904,6 +952,11 @@ module VBlank
               asm.sw(:t2, at.call(SONG), :gp)
               asm.sw(:zero, at.call(FRAME), :gp)
               asm.sw(:zero, at.call(AGAIN), :gp)
+              if count_at_song_start # where a song's start sets the effects' tick count (IR::Tunes.effect_count_at_song_start)
+                asm.li(:t0, count_at_song_start)
+                asm.sw(:t0, at.call(EFFECT_TEMPO), :gp)
+                asm.sw(:t0, at.call(TEMPO_NOW), :gp) # ...and counted at it until it comes round
+              end
               asm.jal("rt_music_from_the_top")
               asm.label("rt_music_switch_changed")
               asm.li(:v0, 1)

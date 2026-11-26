@@ -25,7 +25,8 @@
  * effect plays the wave voice, or a note names a waveform of its own (see wave_put_in) — what the
  * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — what the tempo
  * adds on each of a driver's own interrupts, 0 for none (see count_ticks_on_interrupts) — 1 where the
- * effects cut their own notes (rg_mix_start_music_note's +cuts+), else 0 — then five
+ * effects cut their own notes (rg_mix_start_music_note's +cuts+), else 0 — where a song's start sets the
+ * tempo count, -1 for nowhere, and 1 where the count is the tune's tempo (see count_ticks_on_interrupts) — then five
  * numbers each, in the order they were declared — the song it plays (by
  * which the log names it), which entry of rg_game_music holds its notes, its rank
  * (IR::Tunes.effect_rank), its group (-1 for none, else which of the game's groups), and its
@@ -123,7 +124,9 @@
 #define EFFECT_CLOCK_STEP (rg_game_effects[2]) /* what the effects' timer adds a frame, 0 for none */
 #define EFFECT_TEMPO_STEP (rg_game_effects[3]) /* what the tempo adds on each interrupt, 0 for none */
 #define EFFECTS_CUT_NOTES (rg_game_effects[4]) /* 1 where an effect's note takes its part's own voice */
-#define EFFECT_ROWS 5
+#define EFFECT_COUNT_AT_SONG_START (rg_game_effects[5]) /* where a song's start sets the tempo count, -1 for nowhere */
+#define EFFECTS_ON_TUNE_TEMPO (rg_game_effects[6])      /* 1 where the count is the tune's tempo (see tune_tempo) */
+#define EFFECT_ROWS 7
 #define NUMBERS_PER_EFFECT 6
 /* Each effect's numbers in rg_game_effects, by where they are in its row. */
 #define EFFECT_SONG 0
@@ -593,6 +596,8 @@ static void silence_song(void) {
   mixer_release_all_notes();
 }
 
+static void set_song_start_count(void);
+
 /* The tune the game asked for has changed, or it asked to stop: silence what was playing and start
  * the new one from its first frame — with its waveform in the wave voice if it has a part there,
  * unless the game's sound effects play that voice too, when each note puts its own in instead
@@ -620,6 +625,7 @@ static bool switch_to_wanted_song(void) {
   music_held = false;
   if (playing >= 0) silence_song();
   playing = wanted;
+  if (playing >= 0) set_song_start_count();
   song_frame = 0;
   part_count = 0;
   if (playing < 0) return true;
@@ -964,20 +970,38 @@ static int32_t effect_clock;
 static int32_t effect_tempo;
 static int32_t tick_on_first_interrupt;
 
+static int32_t effect_tempo_now; /* what the count adds until it next comes round after a song's start, 0 for the tempo */
+
+/* What the count adds an interrupt: the effects' own step, or on the tune's tempo the song playing's, after
+ * the effects' rows and the effects by rank, a number a song (IR::Tunes.tune_tempo_steps), 0 for none. */
+static int32_t tune_tempo(void) {
+  if (!EFFECTS_ON_TUNE_TEMPO) return EFFECT_TEMPO_STEP;
+  if (playing < 0) return 0;
+  return rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT) + EFFECT_COUNT + playing];
+}
+
 /* With the tempo counted on a driver's own interrupt (EFFECT_TEMPO_STEP), the frame's +interrupts+ each
  * add the tempo's step, and those whose count comes round hold a tick (Reference::Player#count_ticks_on_interrupts). */
 static int32_t count_ticks_on_interrupts(int32_t interrupts) {
   int32_t ticks = 0;
+  int32_t tempo = tune_tempo();
   tick_on_first_interrupt = 0;
   for (int32_t at = 0; at < interrupts; at++) {
-    effect_tempo += EFFECT_TEMPO_STEP;
+    effect_tempo += effect_tempo_now ? effect_tempo_now : tempo;
     if (effect_tempo >> 16) {
+      effect_tempo_now = 0;
       ticks++;
       if (at == 0) tick_on_first_interrupt = 1;
     }
     effect_tempo &= 0xFFFF;
   }
   return ticks;
+}
+
+/* A song's start sets the tempo count, and what it adds until it next comes round, where the effects name
+ * one (Reference::Player#switch_to_wanted_song). */
+static void set_song_start_count(void) {
+  if (EFFECT_COUNT && EFFECT_TEMPO_STEP && EFFECT_COUNT_AT_SONG_START >= 0) effect_tempo = effect_tempo_now = EFFECT_COUNT_AT_SONG_START;
 }
 
 static int32_t step_effect_clock(void) {
@@ -1129,14 +1153,15 @@ static void rg_music_moment_printed(void) { printf("music_playing %d\n", (int)pl
 /* --- the state image --- */
 
 /* The music in "music": the tune wanted and playing, a tune ended, the stops asked and seen,
- * whether it is held, how far into the tune, the volume its notes were set at, and how many notes
- * are held and voices have been held. Each part of the playing tune in "music.parts": whether it is
+ * whether it is held, how far into the tune, the volume its notes were set at, how many notes
+ * are held and voices have been held, and the sound effects' timer and tempo counts. Each part of the playing tune in "music.parts": whether it is
  * walking its notes after the first time through, and which comes next; the rest of a part is the
  * song's, worked out again from it. */
 /* Where each number sits among the "music" field's. */
 enum {
   MUSIC_AT_WANTED, MUSIC_AT_PLAYING, MUSIC_AT_ENDED, MUSIC_AT_STOPS, MUSIC_AT_STOPS_SEEN, MUSIC_AT_HELD,
-  MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_AT_EFFECT_CLOCK, MUSIC_STATE_NUMBERS,
+  MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_AT_EFFECT_CLOCK,
+  MUSIC_AT_EFFECT_TEMPO, MUSIC_AT_EFFECT_TEMPO_NOW, MUSIC_STATE_NUMBERS,
 };
 
 enum {
@@ -1152,7 +1177,7 @@ static void rg_music_visit_sound_state(void) {
   int reading = rg_state_reading();
   int64_t general[MUSIC_STATE_NUMBERS] = {wanted,     playing, ended, stops,         stops_seen,
                                           music_held, song_frame, level, holding_count, holder_count,
-                                          effect_clock};
+                                          effect_clock, effect_tempo, effect_tempo_now};
   rg_state_numbers("music", general, MUSIC_STATE_NUMBERS);
   if (general[MUSIC_AT_WANTED] < -1 || general[MUSIC_AT_WANTED] >= SONG_COUNT || general[MUSIC_AT_PLAYING] < -1 || general[MUSIC_AT_PLAYING] >= SONG_COUNT || general[MUSIC_AT_ENDED] < -1 ||
       general[MUSIC_AT_ENDED] >= SONG_COUNT || general[MUSIC_AT_HOLDING_COUNT] < 0 || general[MUSIC_AT_HOLDING_COUNT] > PARTS_MOST || general[MUSIC_AT_HOLDER_COUNT] < 0 || general[MUSIC_AT_HOLDER_COUNT] > RG_NOISE_VOICE)
@@ -1161,6 +1186,7 @@ static void rg_music_visit_sound_state(void) {
   stops_seen = (int32_t)general[MUSIC_AT_STOPS_SEEN], music_held = general[MUSIC_AT_HELD] != 0, song_frame = (int32_t)general[MUSIC_AT_SONG_FRAME], level = (int32_t)general[MUSIC_AT_LEVEL];
   holding_count = (int32_t)general[MUSIC_AT_HOLDING_COUNT], holder_count = (int32_t)general[MUSIC_AT_HOLDER_COUNT];
   effect_clock = (int32_t)general[MUSIC_AT_EFFECT_CLOCK];
+  effect_tempo = (int32_t)general[MUSIC_AT_EFFECT_TEMPO], effect_tempo_now = (int32_t)general[MUSIC_AT_EFFECT_TEMPO_NOW];
 
   /* The playing tune's parts, read again from the song, each from where the image says. */
   if (reading) {

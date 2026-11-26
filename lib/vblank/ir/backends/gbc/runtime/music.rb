@@ -156,10 +156,13 @@ module VBlank
             EFFECT_TEMPO = "rt sfx tempo"
             STARTED_MOVE_ON = "rt sfx started move on"
             START_PLACE = "rt sfx start place"
+            # ...and, where a song's start sets the count or the effects count at the tune's tempo, what it adds
+            # until it next comes round after a song's start, nought for the tempo (rt_sfx_tempo_step).
+            TEMPO_NOW = "rt sfx tempo now"
 
             def reserve(memory, effects: [], slides: false, pans: false, wobbles: false, shapes: false, waves: false, swells: false,
                         noise_swells: false, banked: false, holds: false, effect_table: false, entries_in_banks: false, tune_plays_once: false,
-                        effect_clock_step: nil, effect_tempo_step: nil)
+                        effect_clock_step: nil, effect_tempo_step: nil, tempo_now: false)
               if effect_clock_step
                 memory.reserve(EFFECT_CLOCK, 2)
                 memory.reserve(EFFECT_TICKED, 1)
@@ -169,6 +172,7 @@ module VBlank
                 memory.reserve(EFFECT_TEMPO, 2)
                 memory.reserve(STARTED_MOVE_ON, 1)
                 memory.reserve(START_PLACE, 2) unless effects.empty?
+                memory.reserve(TEMPO_NOW, 2) if tempo_now
               end
               memory.reserve(BANK_NOTED, 1) if banked || entries_in_banks
               memory.reserve(ENTRY_COPY, GBC::Music::ENTRY_MOST) if entries_in_banks
@@ -301,13 +305,14 @@ module VBlank
             # any slides its pitch (GBC::Music#slides?), and +pans+ whether any plays from one speaker
             # (GBC::Music#pans?). Whether any wobbles is whether its place was reserved (#wobbles?).
             def emit(asm, memory, level:, songs:, effects: [], by_rank: [], fades: false, slides: false, pans: false,
-                     carries: false, clock_step: nil, tempo_step: nil)
+                     carries: false, clock_step: nil, tempo_step: nil, count_at_song_start: nil, on_tune_tempo: false)
               sharing = !effects.empty?
               emit_game_side(asm, memory, sharing)
               return emit_no_songs(asm) unless songs
 
               bytes = GBC::Music.note_bytes(slides, pans, shapes?(memory), wobbles?(memory), carries, note_waves?(memory))
-              emit_tick(asm, memory, level, sharing, clock_step, clock_step && tempo_step)
+              tempo_step = :tune if tempo_step && on_tune_tempo
+              emit_tick(asm, memory, level, sharing, clock_step, clock_step && tempo_step, (count_at_song_start if sharing && clock_step))
               emit_notes(asm, memory, level, sharing, fades, slides, pans, bytes)
               emit_wobbles(asm, memory, carries) if wobbles?(memory)
               emit_set_speakers(asm, memory) if pans
@@ -892,13 +897,55 @@ module VBlank
             end
 
             # The tempo's count moved on an interrupt (EFFECT_TEMPO), the carry set where it comes round: a
-            # tick. Uses A, DE and HL.
+            # tick. Uses A, DE and HL. Where it adds something of its own until it next comes round
+            # (TEMPO_NOW), a call to the routine that does (#emit_tempo_step_routine).
             def emit_step_effect_tempo(asm, memory, step)
+              return asm.call("rt_sfx_tempo_step") if memory.reserved?(TEMPO_NOW)
+
+              emit_add_effect_tempo(asm, memory, step)
+            end
+
+            # ...that routine: it adds TEMPO_NOW until the count comes round, then puts it back to nought;
+            # otherwise the effects' own step, or on the tune's tempo (+step+ :tune) the playing song's
+            # (music_tune_tempo_steps, nought for none). The carry is set where it came round.
+            def emit_tempo_step_routine(asm, memory, step)
+              asm.label("rt_sfx_tempo_step")
+              asm.load(:a, [memory[TEMPO_NOW]])
+              asm.load(:e, :a)
+              asm.load(:a, [memory[TEMPO_NOW] + 1])
+              asm.load(:d, :a)
+              asm.or_a(:e)
+              asm.jump_relative(:nz, "rt_sfx_tempo_now")
+              if step == :tune
+                asm.load(:a, [memory[PLAYING]])
+                asm.add_a(:a)
+                asm.load(:l, :a)
+                asm.load(:h, 0)
+                asm.load(:de, "music_tune_tempo_steps")
+                asm.add_hl(:de)
+                asm.load(:a, [:hli])
+                asm.load(:e, :a)
+                asm.load(:d, [:hl])
+              else
+                asm.load(:de, step)
+              end
+              asm.label("rt_sfx_tempo_now")
+              emit_add_effect_tempo(asm, memory, nil)
+              asm.ret(:nc)
+              asm.xor_a(:a)
+              asm.load([memory[TEMPO_NOW]], :a)
+              asm.load([memory[TEMPO_NOW] + 1], :a)
+              asm.scf
+              asm.ret
+            end
+
+            # ...the add itself: +step+ into the count, or DE where +step+ is nil.
+            def emit_add_effect_tempo(asm, memory, step)
               asm.load(:a, [memory[EFFECT_TEMPO]])
               asm.load(:l, :a)
               asm.load(:a, [memory[EFFECT_TEMPO] + 1])
               asm.load(:h, :a)
-              asm.load(:de, step)
+              asm.load(:de, step) if step
               asm.add_hl(:de)
               asm.load(:a, :l)
               asm.load([memory[EFFECT_TEMPO]], :a)
@@ -923,7 +970,20 @@ module VBlank
               asm.jump("rt_sfx_later_interrupt")
             end
 
-            # The routine that plays one side of a tick's effects (Runtime::Effects#emit_sides) : with
+            # A tune starting sets the effects' tick count where a driver's song start does
+            # (IR::Tunes.effect_count_at_song_start): the tempo's count on a driver's interrupt, the timer's own
+            # otherwise. A is the tune's number again after.
+            def emit_tick_count_at_song_start(asm, memory, count)
+              [EFFECT_TEMPO, TEMPO_NOW].each do |name| # ...and counted at it until it comes round
+                asm.load(:a, count & 0xFF)
+                asm.load([memory[name]], :a)
+                asm.load(:a, count >> 8)
+                asm.load([memory[name] + 1], :a)
+              end
+              asm.load(:a, [memory[NAMED]])
+            end
+
+            # The routine that plays one side of a tick's effects (Runtime::Effects#emit_sides): with
             # their writes listed to be struck in a game that strikes them (Runtime::Strikes).
             def sfx_side(memory, side) = Strikes.any?(memory) ? "rt_sfx_#{side}_struck" : "rt_sfx_#{side}"
 
@@ -935,7 +995,7 @@ module VBlank
 
             # A game with sound effects plays a frame as the interpreter does (Reference::Player#advance):
             # the tune caught up with, the effects that outrank it, its parts, and the other effects.
-            def emit_tick(asm, memory, level, sharing, clock_step = nil, tempo_step = nil)
+            def emit_tick(asm, memory, level, sharing, clock_step = nil, tempo_step = nil, count_at_song_start = nil)
               h = Console::GBCHardware
               asm.label("rt_music_tick")
               # In a game that strikes its effects inside the frame, once the frame is played, what of
@@ -986,6 +1046,7 @@ module VBlank
                 else
                   asm.jump(sfx_side(memory, "below"))
                 end
+                emit_tempo_step_routine(asm, memory, tempo_step) if tempo_step && memory.reserved?(TEMPO_NOW)
                 asm.label("rt_music_switch")
               end
               asm.load(:a, [memory[START]])
@@ -1027,6 +1088,7 @@ module VBlank
               asm.load([memory[PLAYING]], :a)
               asm.and_a(:a)
               asm.ret(:z)
+              emit_tick_count_at_song_start(asm, memory, count_at_song_start) if count_at_song_start
               asm.dec(:a) # where the tune is: music_songs + 2 × its number
               asm.add_a(:a)
               asm.load(:l, :a)

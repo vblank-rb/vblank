@@ -63,7 +63,7 @@ module VBlank
           SPU_NUMBERS = 13 + (20 * SPU_VOICE_NUMBERS) # the sound chip's own thirteen, the game's four voices and sixteen for recordings
           MIX_NUMBERS = 5 # the mixer's own counts
           MIX_VOICE_NUMBERS = 22 # one voice of the mixer
-          MUSIC_NUMBERS = 11 # the music's own counts, and the sound effects' timer
+          MUSIC_NUMBERS = 13 # the music's own counts, and the sound effects' timer and tempo counts
           WOBBLE_VOICES = 3 # the voices that wobble: the squares and the wave
           WOBBLE_NUMBERS = 6 # one voice's wobble
           SWELL_VOICES = 4 # the voices that swell: every voice
@@ -172,7 +172,7 @@ module VBlank
             Field.new(name: "mix.slice", count: :slice_samples, feature: :mix),
             # The music: the tune wanted, playing and ended, stops asked and seen, held, how far into
             # the tune, the volume its notes were set at, how many notes are held and voices have
-            # been held, and the sound effects' timer; each part's walk (after its first time through,
+            # been held, and the sound effects' timer and tempo counts; each part's walk (after its first time through,
             # and its next note); each held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
             # and shapes and who holds it; and each sound effect's place.
             Field.new(name: "music", count: MUSIC_NUMBERS, feature: :music),

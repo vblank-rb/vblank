@@ -17,10 +17,11 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
   # Five strikes three and two ticks apart, each at a volume of its own so the voice says which it
   # is on: at 50 ticks a second by default, asked for on the pass counted +asked_on+.
-  private def program(tempo: 125, ticks_per_beat: 24, asked_on: 7, interrupts: nil)
+  private def program(tempo: 125, ticks_per_beat: 24, asked_on: 7, interrupts: nil, song_on: nil, song_now: false, **counts)
     notes = VOLUMES.zip([0, 3, 5, 8, 10]).map { |volume, at| Note.new(at: at, key: :A5, volume: volume) }
     effect = Score.new(tempo: tempo, ticks_per_beat: ticks_per_beat, length: 20, plays_once: true, on_timer: true,
-                       interrupts_per_second: interrupts, parts: [Part.new(notes: notes)])
+                       interrupts_per_second: interrupts, **counts, parts: [Part.new(notes: notes)])
+    tune = Score.new(tempo: 150, length: 96, parts: [Part.new(plays: :noise, notes: [Note.new(at: 0, key: :C4)])])
     b = Builder.new
     # Nothing to paint as it sets up, so its first pass takes one frame on the cartridge as on the
     # interpreter, and the timer, which counts from power-on, is at the same place on both.
@@ -28,8 +29,10 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
       screen :bitmap
       enable_sound
       list = sound_effects :sfx, { chime: effect }
+      tunes = songs(:music, [tune]) if song_on
       count = var(:count, 0)
       game_loop do
+        tunes.play 0, this_frame: song_now if song_on && count == song_on
         list.play :chime if count == asked_on
         count.store! count + 1
         wait_vblank
@@ -117,6 +120,35 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
       assert_equal 4, heard.size, "asked on #{asked_on}"
       assert_equal heard, changes(cartridge_volumes(game)), "asked on #{asked_on}"
+    end
+  end
+
+  # Where a tune's start sets the tempo count, or the tune's own tempo counting it, moves the beats;
+  # the cartridge's follow the interpreter's.
+  COUNTED_ASKS = [5, 6].freeze # Passes the effect is asked on, a frame apart
+
+  # A tune started where the game asks (`this_frame: true`) sets the count as one taken up at the
+  # next frame does.
+  def test_a_tune_started_this_frame_sets_the_tick_count_as_on_the_interpreter
+    COUNTED_ASKS.each do |asked_on|
+      game = program(asked_on: asked_on, interrupts: Rational(8000, 0x60), song_on: 3, song_now: true, tick_count_at_song_start: 1/2r)
+      unset = program(asked_on: asked_on, interrupts: Rational(8000, 0x60), song_on: 3, song_now: true)
+
+      refute_equal changes(interpreter_volumes(unset)), changes(interpreter_volumes(game)), "the start moves the beats, asked on #{asked_on}"
+      assert_equal changes(interpreter_volumes(game)), changes(cartridge_volumes(game)), "asked on #{asked_on}"
+    end
+  end
+
+  def test_the_tick_count_moves_the_beats_as_on_the_interpreter
+    { { tick_count_at_song_start: 255/256r } => 3, { on_tune_tempo: true } => 3,
+      { on_tune_tempo: true, tick_count_at_song_start: 255/256r } => 3 }.each do |counts, song_on|
+      COUNTED_ASKS.each do |asked_on|
+        game = program(asked_on: asked_on, interrupts: Rational(8000, 0x60), song_on: song_on, **counts)
+        heard = changes(interpreter_volumes(game))
+
+        assert_equal 4, heard.size, "#{counts} asked on #{asked_on}"
+        assert_equal heard, changes(cartridge_volumes(game)), "#{counts} asked on #{asked_on}"
+      end
     end
   end
 

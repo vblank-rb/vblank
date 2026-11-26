@@ -193,7 +193,7 @@ module VBlank
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas, :bigger_pixels_pixelate, :bigger_pixels_camera,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
                               :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
-                              :screen_of_its_own, :largest_list_bytes) do
+                              :screen_of_its_own, :largest_list_bytes, :sound_unit_hz) do
       # +largest_list_bytes+ is the most one list can take, where the console keeps each list whole
       # in one part of its work memory and the parts differ in size: the Color's banked half, the
       # largest of its two. Nil is no limit but the memory itself (Checks::IwramBudget).
@@ -279,7 +279,7 @@ module VBlank
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false, sprites_over_cells_in_front: false,
-                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, sound_unit_hz: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -351,6 +351,11 @@ module VBlank
 
       # Whether there is a roomier memory beside the work memory for lists and pools to move to.
       def roomier_memory? = roomier_memory_bytes.positive?
+
+      # How much faster the console's sound unit really runs than the rate its documentation names
+      # (+voice_output_hz+): +sound_unit_hz+ over that, or one where it names none. A driver's timer
+      # divides that clock, so its interrupts come this much more often (IR::Tunes.effect_clock_step).
+      def sound_clock_ratio = sound_unit_hz ? Rational(sound_unit_hz, voice_output_hz) : 1
 
       # How long one frame is, in seconds.
       def frame_seconds = Rational(cycles_a_frame, cycles_a_second)
@@ -565,6 +570,11 @@ module VBlank
                                      # The sound chip's voices are mixed 32000 times a second, and
                                      # each plays a recording of its own at that rate.
                                      recording_voice_hz: 32_000, lowest_square_hz: nil, voice_output_hz: 32_000,
+                                     # ...nominally. The sound unit's ceramic resonator runs fast, its voices
+                                     # mixed nearer 32040 times a second, and its timers with them (the
+                                     # SNESdev wiki, "S-SMP"; fullsnes, "SNES APU"): bsnes runs it at
+                                     # apuFrequency = 32040 x 768.
+                                     sound_unit_hz: 32_040,
                                      # Lists and pools go in the 120K of work RAM past the first 8K,
                                      # 64K of it to one.
                                      largest_memory_bytes: 64 * 1024,

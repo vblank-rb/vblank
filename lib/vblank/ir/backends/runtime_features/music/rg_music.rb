@@ -48,7 +48,7 @@ RG_WAVE_QUARTERS = 6 # Where the wave voice's loudness for each volume starts in
 RG_SONG_STARTS = 1
 RG_NUMBERS_PER_SONG = 5
 RG_NUMBERS_PER_PART = 6
-RG_EFFECT_ROWS = 5
+RG_EFFECT_ROWS = 7
 RG_NUMBERS_PER_EFFECT = 6
 RG_EFFECT_SONG = 0
 RG_EFFECT_NOTES = 1
@@ -102,6 +102,7 @@ def rg_music_setup
   @rg_effect_clock = 0 # the effects' timer, from power-on (rg_step_effect_clock)
   @rg_effect_tempo = 0 # the tempo counted on a driver's interrupt, from power-on (rg_count_ticks_on_interrupts)
   @rg_tick_on_first_interrupt = false
+  @rg_effect_tempo_now = 0 # what the count adds until it next comes round after a song's start, 0 for the tempo
 end
 
 # The game's own beep, wave or stop_wave took +voice+: a note held there wobbles no more and steps
@@ -127,6 +128,8 @@ def rg_notes_put_in_waveforms = @rg_game_effects[1]
 def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a frame, 0 for none
 def rg_effect_tempo_step = @rg_game_effects[3] # What the tempo adds on each of a driver's interrupts, 0 for none
 def rg_effects_cut_notes = @rg_game_effects[4] # 1 where an effect's note takes its part's own voice
+def rg_effect_count_at_song_start = @rg_game_effects[5] # Where a song's start sets the tempo count, -1 for nowhere
+def rg_effects_on_tune_tempo? = @rg_game_effects[6] == 1 # Whether the count is the tune's tempo
 
 # --- the player ---
 
@@ -431,6 +434,7 @@ def rg_switch_to_wanted_song
   @rg_music_held = false
   rg_silence_song if @rg_playing >= 0
   @rg_playing = @rg_wanted
+  rg_set_song_start_count if @rg_playing >= 0
   @rg_song_frame = 0
   @rg_part_count = 0
   return true if @rg_playing < 0
@@ -730,13 +734,30 @@ end
 
 def rg_effects_by_rank = RG_EFFECT_ROWS + (rg_effect_count * RG_NUMBERS_PER_EFFECT)
 
+# rg_music.c's set_song_start_count.
+def rg_set_song_start_count
+  return unless rg_effect_count.positive? && !rg_effect_tempo_step.zero? && rg_effect_count_at_song_start >= 0
+
+  @rg_effect_tempo = @rg_effect_tempo_now = rg_effect_count_at_song_start
+end
+
+# rg_music.c's tune_tempo.
+def rg_tune_tempo
+  return rg_effect_tempo_step unless rg_effects_on_tune_tempo?
+  return 0 if @rg_playing.negative?
+
+  @rg_game_effects[rg_effects_by_rank + rg_effect_count + @rg_playing]
+end
+
 # rg_music.c's count_ticks_on_interrupts.
 def rg_count_ticks_on_interrupts(interrupts)
   ticks = 0
+  tempo = rg_tune_tempo
   @rg_tick_on_first_interrupt = false
   interrupts.times do |at|
-    @rg_effect_tempo += rg_effect_tempo_step
+    @rg_effect_tempo += @rg_effect_tempo_now.zero? ? tempo : @rg_effect_tempo_now
     if @rg_effect_tempo >= 0x10000
+      @rg_effect_tempo_now = 0
       ticks += 1
       @rg_tick_on_first_interrupt = true if at.zero?
     end
@@ -885,9 +906,10 @@ RG_SHAPE_NUMBERS = 3
 RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
 
 # "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
-# far into the tune, the volume its notes were set at, and how many notes and voices are held.
+# far into the tune, the volume its notes were set at, how many notes and voices are held, and the
+# sound effects' timer and tempo counts.
 RgMusicFields = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
-                           :held_voices, :effect_clock)
+                           :held_voices, :effect_clock, :effect_tempo, :effect_tempo_now)
 
 # "music.parts", one a part of the playing tune: whether it walks its notes after the first time
 # through, and which comes next. The rest of a part is the song's, read again from it.
@@ -899,7 +921,8 @@ def rg_music_visit_sound_state
                                      wanted: @rg_wanted, playing: @rg_playing, ended: @rg_ended, stops: @rg_stops,
                                      stops_seen: @rg_stops_seen, held: rg_state_flag(@rg_music_held),
                                      song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
-                                     held_voices: @rg_holder_order.length, effect_clock: @rg_effect_clock
+                                     held_voices: @rg_holder_order.length, effect_clock: @rg_effect_clock,
+                                     effect_tempo: @rg_effect_tempo, effect_tempo_now: @rg_effect_tempo_now
                                    ))
   songs = (-1...rg_song_count)
   unless [fields.wanted, fields.playing, fields.ended].all? { |song| songs.cover?(song) } &&
@@ -915,6 +938,8 @@ def rg_music_visit_sound_state
   @rg_song_frame = fields.song_frame
   @rg_level = fields.level
   @rg_effect_clock = fields.effect_clock
+  @rg_effect_tempo = fields.effect_tempo
+  @rg_effect_tempo_now = fields.effect_tempo_now
   rg_visit_part_walks
   rg_visit_held_notes(fields.held_notes)
   rg_visit_music_voices(fields.held_voices)

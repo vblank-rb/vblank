@@ -202,6 +202,8 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           clock_step = (IR::Tunes.effect_clock_step(program, program.described_console) if effects.positive?)
           tempo_step = (IR::Tunes.effect_tempo_step(program) if clock_step)
+          count_at_song_start = (IR::Tunes.effect_count_at_song_start(program) if tempo_step)
+          tune_tempo_steps = (IR::Tunes.tune_tempo_steps(program) if tempo_step)
           samples = Lowering::Sound.samples?(program)
           over = picture == :painted && IR::SpritesOverPicture.any?(program)
           counted = IR::Frames.counts_from_power_on?(program)
@@ -215,7 +217,8 @@ module VBlank
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
                                   second_pad: Runtime::Frame.reads_second_pad?(program),
                                   tap_plugs: Runtime::Frame.tap_plugs(program), bends: bends,
-                                  effect_clock_step: clock_step, effect_tempo_step: tempo_step)
+                                  effect_clock_step: clock_step, effect_tempo_step: tempo_step,
+                                  effect_tempo_now: !tempo_step.nil? && IR::Tunes.effect_tempo_varies?(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,
                                                       streamed: try.settings.streamed,
@@ -228,6 +231,7 @@ module VBlank
                                              music: (lowering.music_section if songs),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level),
                                              effects: effects, effect_clock_step: clock_step, effect_tempo_step: tempo_step,
+                                             effect_count_at_song_start: count_at_song_start, tune_tempo_steps: tune_tempo_steps,
                                              plays: (lowering.recordings_sections if samples),
                                              recorded_parts: lowering.recorded_parts?,
                                              backdrop: lowering.backdrop_copied?, sprites_over_picture: over,

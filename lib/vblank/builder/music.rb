@@ -288,6 +288,7 @@ module VBlank
         if !defined?(@effect_timer_rate)
           @effect_timer_rate = rate
           @effect_interrupts = score.interrupts_per_second
+          @effect_tick_counts = effect_tick_counts(score)
           @first_effect = effect
           return
         end
@@ -299,12 +300,27 @@ module VBlank
       # ...and on one interrupt, or none: the driver's own, which counts every effect's tempo.
       private def refuse_other_interrupt!(effect, score)
         mine = score.interrupts_per_second
-        return if mine == @effect_interrupts || (mine && @effect_interrupts && Rational(mine) == Rational(@effect_interrupts))
+        same = mine == @effect_interrupts || (mine && @effect_interrupts && Rational(mine) == Rational(@effect_interrupts))
+        return refuse_other_tick_count!(effect, score) if same
 
         words = ->(rate) { rate ? "an interrupt #{IR::Tunes.timer_rate_words(Rational(rate))}" : "no interrupt" }
         raise ArgumentError, "#{effect} has #{words.call(mine)}, and #{@first_effect} has #{words.call(@effect_interrupts)}. " \
                              "The sound effects of a game are on one timer and its one interrupt. Give every sound " \
                              "effect the same `interrupts_per_second:`, or none."
+      end
+
+      # ...and with its one tick count, which starts and is set again by a song's start in one way, or none.
+      private def refuse_other_tick_count!(effect, score)
+        return if effect_tick_counts(score) == @effect_tick_counts
+
+        raise ArgumentError, "#{effect} and #{@first_effect} have different `tick_count_at_song_start:` or " \
+                             "`on_tune_tempo:`. The sound effects of a game are on one timer with one count. " \
+                             "Give every sound effect the same ones, or none."
+      end
+
+      # The tick count +score+ names: where a song's start sets it, and whether it is the tune's tempo.
+      private def effect_tick_counts(score)
+        [score.tick_count_at_song_start && Rational(score.tick_count_at_song_start), score.on_tune_tempo]
       end
 
       private def effect_off_timer_message(effect, rate)

@@ -681,6 +681,8 @@ module VBlank
           @timer_handlers = Nodes::OnTimer.of(node)
           @player.effect_clock_step = IR::Tunes.effect_clock_step(node, @console)
           @player.effect_tempo_step = IR::Tunes.effect_tempo_step(node)
+          @player.set_effect_tempo_counting(at_song_start: IR::Tunes.effect_count_at_song_start(node),
+                                            tune_steps: IR::Tunes.tune_tempo_steps_by_name(node))
           node.walk do |n|
             case n.kind
             when :func

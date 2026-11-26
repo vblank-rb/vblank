@@ -469,8 +469,14 @@ module VBlank
       # interrupt: a tick on the interrupt it started on is not its (Reference::Player#advance). The
       # tempo is counted on the interrupt, which comes more often than the ticks, so an interrupt holds one
       # tick at most and the step is under a whole tick.
+      #
+      # The interrupt is read against the console's own sound clock: a driver's timer is a divider of
+      # the sound unit's clock, and where that runs off the rate its documentation names
+      # (Console::Description#sound_clock_ratio), its interrupts come that much
+      # more or less often. What a tick is worth on each, the tempo's step, is the driver's own, unmoved.
       def effect_clock_step(program, console)
-        rate = effect_interrupt_rate(program) || effect_timer_rate(program) or return nil
+        interrupts = effect_interrupt_rate(program)
+        rate = interrupts ? interrupts * console.sound_clock_ratio : effect_timer_rate(program) or return nil
         (rate * console.frame_seconds * CLOCK_MODULUS).floor
       end
 
@@ -484,6 +490,44 @@ module VBlank
       # Do the game's sound effects cut their own notes (Audio::Score's +cuts_own_notes+): each recorded
       # note of a part on the voice of the part's note before it? All of them do, or none.
       def effects_cut_notes?(program) = program.walk.any? { |node| node.kind == :song && node.cuts_own_notes }
+
+      # Where a song's start sets the tempo count on a driver's interrupt, in 65536ths of a tick, or nil for
+      # nowhere (Audio::Score's +tick_count_at_song_start+). A song starts where the player takes up a tune,
+      # before it counts that frame's ticks (Reference::Player#switch_to_wanted_song). From there the count
+      # adds that same share each interrupt until it comes round, and then the tempo again.
+      def effect_count_at_song_start(program)
+        share = program.walk.find { |node| node.kind == :song && node.timer_rate && node.tick_count_at_song_start }
+        (share.tick_count_at_song_start * CLOCK_MODULUS).floor if share
+      end
+
+      # Do the effects count their tempo at the tempo of the song playing (Audio::Score's +on_tune_tempo+)?
+      def effects_on_tune_tempo?(program) = program.walk.any? { |node| node.kind == :song && node.on_tune_tempo }
+
+      # What a driver's tempo count adds on each interrupt while +song+ plays, with the effects on its tempo
+      # (#effects_on_tune_tempo?): the song's ticks a second over the interrupt's, in 65536ths, at most a
+      # whole tick less one; nought for a song with no one tempo (Audio::Score#tick_rate).
+      def tune_tempo_step(program, song)
+        return 0 unless song.tick_rate
+
+        [(song.tick_rate / effect_interrupt_rate(program) * CLOCK_MODULUS).floor, CLOCK_MODULUS - 1].min
+      end
+
+      # ...for every song the program declares, in the order declared (#declared_songs, whose place one up
+      # is the song's number on the consoles), or nil where the effects keep a tempo of their own.
+      def tune_tempo_steps(program)
+        effects_on_tune_tempo?(program) ? declared_songs(program).map { |song| tune_tempo_step(program, song) } : nil
+      end
+
+      # ...the same by each song's name, or nil, for a lowering that numbers its tunes its own way.
+      def tune_tempo_steps_by_name(program)
+        steps = tune_tempo_steps(program) or return nil
+        declared_songs(program).map(&:name).zip(steps).to_h
+      end
+
+      # Does the effects' tempo count ever add something other than one fixed step: the share a song's start
+      # sets until the count comes round (#effect_count_at_song_start), or the tempo of the song playing
+      # (#effects_on_tune_tempo?)? Every lowering then keeps the share as it counts.
+      def effect_tempo_varies?(program) = !effect_count_at_song_start(program).nil? || effects_on_tune_tempo?(program)
 
       # How many times a second the driver's interrupt comes, for effects that name one, or nil.
       def effect_interrupt_rate(program)

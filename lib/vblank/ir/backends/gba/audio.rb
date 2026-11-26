@@ -423,6 +423,14 @@ module VBlank
           EFFECT_TEMPO = :__effect_tempo
           STARTED_MOVE_ON = :__started_move_on
           START_LINE = :__effects_start_line
+          # ...and where a song's start sets the count, or the effects count at the tune's tempo, what it adds
+          # until it next comes round after a song's start, nought for the tempo (#emit_step_effect_tempo); and
+          # the table of what it adds while each song plays, a word a song by its number, nought for none.
+          TEMPO_NOW = :__effects_tempo_now
+          TUNE_TEMPO_STEPS = :__tune_tempo_steps
+          # ...and, on the tune's tempo, the number of the tune this frame plays, worked out before the tune's
+          # switch, since here the clock moves on before it (#emit_tick_count_at_song_start).
+          TUNE_NOW = :__effects_tune_now
 
           # Who holds the console voice numbered +channel+: a rank, or 0 for nobody.
           def self.voice_rank(channel) = :"__voice_rank_#{channel}"
@@ -437,12 +445,14 @@ module VBlank
             @effect_lists = {}
             @effect_waves = false
             @effects_keep_voices = @effects.any? { |name| @songs.fetch(name).keeps_voices }
-            @effect_tempo_step = nil
+            @effect_tempo_step = @effect_count_at_song_start = @tune_tempo_steps = nil
             return @effect_clock_step = nil unless plays_sound_effects?
 
             # Read off the program only in a game with effects: a walk of the whole program each.
             @effect_clock_step = IR::Tunes.effect_clock_step(program, program.described_console)
             @effect_tempo_step = @effect_clock_step && IR::Tunes.effect_tempo_step(program)
+            @effect_count_at_song_start = @effect_tempo_step && IR::Tunes.effect_count_at_song_start(program)
+            @tune_tempo_steps = @effect_tempo_step && IR::Tunes.tune_tempo_steps_by_name(program)
 
             slots = @effects.each_with_index.to_h
             program.walk.each do |node|
@@ -641,6 +651,7 @@ module VBlank
             @emitter.data_blobs[MUSIC_SCORE] = score_blob if needs_sound_player?
             @emitter.data_blobs[MUSIC_WAVE_LEVELS] = wave_levels_blob if needs_sound_player? && @scales && @waves
             @effect_lists.each { |name, slots| @emitter.data_blobs[effect_slots_blob(name)] = slots.pack("v*") }
+            @emitter.data_blobs[TUNE_TEMPO_STEPS] = tune_tempo_steps_blob if @tune_tempo_steps
             @emitter.data_blobs[SOUND_EFFECT_GROUPS] = groups_blob if grouped?
           end
 
@@ -1099,6 +1110,7 @@ module VBlank
             done = @emitter.gensym
             finished = @emitter.gensym
 
+            emit_tick_count_at_song_start if effects && (@effect_count_at_song_start || @tune_tempo_steps)
             @strikes.emit_frame_begun(EFFECT_CLOCK) if effects && striking?
             emit_step_effect_clock(value, frame) if effects && @effect_clock_step
             emit_find_first_tick if effects && @effect_tempo_step
@@ -1133,6 +1145,7 @@ module VBlank
             else
               emit_tune_start(no_tune: done)
             end
+            emit_tick_count_set unless in_interrupt # the interrupt's music frame set it before its clock moved on
 
             @emitter.place_label(play)
             if effects # ...the effects that outrank the tune
@@ -1285,6 +1298,65 @@ module VBlank
             @emitter.place_label(over)
           end
 
+          # TUNE_TEMPO_STEPS: what the tempo count adds while each song plays (IR::Tunes.tune_tempo_steps), a
+          # word for each number the player knows a tune by, nought for none.
+          def tune_tempo_steps_blob
+            by_number = @song_numbers.invert
+            Array.new((by_number.keys.max || 0) + 1) { |number| @tune_tempo_steps.fetch(by_number[number], 0) }.pack("V*")
+          end
+
+          # A tune that starts this frame sets the effects' tick count where a driver's song start does
+          # (IR::Tunes.effect_count_at_song_start), inline, before the clock moves on, as the
+          # interpreter takes up the tune first (Reference::Player#switch_to_wanted_song): the same
+          # question the tune's switch asks below, asked early, since here the clock moves on before it.
+          # A tune starts where one is named, and it is another than the one playing or a stop came since,
+          # and it is not the one that played once and ended, still named with no stop since. Uses r0 and r1.
+          def emit_tick_count_at_song_start
+            e = @emitter
+            starts = e.gensym
+            stays = e.gensym
+            live = e.gensym
+            # On the tune's tempo, TUNE_NOW is the tune this frame plays, as the switch leaves it: nought where
+            # the one that played once stays quiet, the one named otherwise.
+            if @tune_tempo_steps
+              e.emit(ASM.load_immediate(ACC, 0))
+              @primitives.store_var(ACC, TUNE_NOW)
+            end
+            if @any_plays_once
+              @primitives.load_var(TMP, MUSIC_ENDED)
+              e.emit(ASM.cmp_imm(TMP, 0))
+              e.emit_branch(:bcond, live, cond: :eq)
+              @primitives.load_var(ACC, MUSIC_WANTED)
+              e.emit(ASM.cmp_reg(ACC, TMP))
+              e.emit_branch(:bcond, live, cond: :ne)
+              emit_branch_on_unseen_stop(live)
+              e.emit_branch(:b, stays) # the tune that ended stays quiet
+              e.place_label(live)
+            end
+            @primitives.load_var(ACC, MUSIC_WANTED)
+            @primitives.store_var(ACC, TUNE_NOW) if @tune_tempo_steps # the tune this frame plays
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, stays, cond: :eq)
+            @primitives.load_var(TMP, MUSIC_PLAYING)
+            e.emit(ASM.cmp_reg(ACC, TMP))
+            e.emit_branch(:bcond, starts, cond: :ne)
+            emit_branch_on_unseen_stop(starts)
+            e.emit_branch(:b, stays)
+            e.place_label(starts)
+            emit_tick_count_set
+            e.place_label(stays)
+          end
+
+          # ...the store itself, in a game that names where a song's start sets the count: also where a
+          # tune is started where the game asks (`this_frame:`, Reference::Player#start_song_here). Uses r0.
+          def emit_tick_count_set
+            return unless @effect_count_at_song_start
+
+            @emitter.emit(ASM.load_immediate(ACC, @effect_count_at_song_start))
+            @primitives.store_var(ACC, EFFECT_TEMPO)
+            @primitives.store_var(ACC, TEMPO_NOW) # ...and counted at it until it comes round
+          end
+
           # With the tempo counted on a driver's own interrupt (IR::Tunes.effect_tempo_step), inline after
           # the clock has moved on: each of the frame's interrupts (EFFECT_TICKED) in turn adds the tempo's
           # step to its count until one comes round, the frame's first tick. EFFECT_TICKED is left the
@@ -1323,8 +1395,12 @@ module VBlank
           end
 
           # The tempo's count moved on an interrupt (EFFECT_TEMPO), inline: ACC not nought, and the flags
-          # not equal, where it came round, a tick.
+          # not equal, where it came round, a tick. It adds the effects' own step, or on the tune's tempo the
+          # song playing's (TUNE_TEMPO_STEPS); and where a song's start set what it adds until it comes round
+          # (TEMPO_NOW), that, put back to nought as it does. Uses r0, r1 and r2.
           def emit_step_effect_tempo
+            return emit_step_effect_tempo_varying if @effect_count_at_song_start || @tune_tempo_steps
+
             @primitives.load_var(ACC, EFFECT_TEMPO)
             @emitter.emit(ASM.load_immediate(TMP, @effect_tempo_step))
             @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
@@ -1333,6 +1409,36 @@ module VBlank
             @primitives.store_var(TMP, EFFECT_TEMPO)
             @emitter.emit(ASM.lsr_imm(ACC, ACC, 16))
             @emitter.emit(ASM.cmp_imm(ACC, 0))
+          end
+
+          # ...that step, in a game that keeps TEMPO_NOW. TUNE_NOW indexes TUNE_TEMPO_STEPS, a word a tune.
+          def emit_step_effect_tempo_varying
+            e = @emitter
+            stepped = e.gensym
+            kept = e.gensym
+            @primitives.load_var(TMP, TEMPO_NOW)
+            e.emit(ASM.cmp_imm(TMP, 0))
+            e.emit_branch(:bcond, stepped, cond: :ne)
+            if @tune_tempo_steps
+              @primitives.load_var(ACC, TUNE_NOW)
+              e.emit_load_data_address(2, TUNE_TEMPO_STEPS)
+              e.emit(ASM.ldr_reg_lsl(TMP, 2, ACC, 2))
+            else
+              e.emit(ASM.load_immediate(TMP, @effect_tempo_step))
+            end
+            e.place_label(stepped)
+            @primitives.load_var(ACC, EFFECT_TEMPO)
+            e.emit(ASM.add_reg(ACC, ACC, TMP))
+            e.emit(ASM.lsl_imm(TMP, ACC, 16))
+            e.emit(ASM.lsr_imm(TMP, TMP, 16))
+            @primitives.store_var(TMP, EFFECT_TEMPO)
+            e.emit(ASM.lsr_imm(ACC, ACC, 16))
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, kept, cond: :eq)
+            e.emit(ASM.load_immediate(TMP, 0))
+            @primitives.store_var(TMP, TEMPO_NOW)
+            e.emit(ASM.cmp_imm(ACC, 0)) # the flags again: not equal, a tick
+            e.place_label(kept)
           end
 
           # ...and each interrupt after the first tick's, after the tune: the tempo moved on, and where it

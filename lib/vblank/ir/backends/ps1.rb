@@ -121,6 +121,8 @@ module VBlank
           effects = songs ? IR::Tunes.effects(program).uniq.size : 0
           clock_step = (IR::Tunes.effect_clock_step(program, program.described_console) if effects.positive?)
           tempo_step = (IR::Tunes.effect_tempo_step(program) if clock_step)
+          count_at_song_start = (IR::Tunes.effect_count_at_song_start(program) if tempo_step)
+          tune_tempo_steps = (IR::Tunes.tune_tempo_steps(program) if tempo_step)
           samples = sound && Lowering::Sound.samples?(program)
           by_number = Lowering::Paint.by_number?(program)
           over_picture = Lowering::Picture.over_picture?(program)
@@ -128,7 +130,8 @@ module VBlank
           counted = IR::Frames.counts_from_power_on?(program)
           Runtime.reserve(memory, faces: program.walk.any? { |node| node.kind == :fill_face }, sound: sound, counted: counted,
                                   songs: songs, follows_level: follows_level, effects: effects, effect_clock_step: clock_step,
-                                  effect_tempo_step: tempo_step, holds_music: Lowering::Sound.holds_music?(program),
+                                  effect_tempo_step: tempo_step, effect_tempo_now: !tempo_step.nil? && IR::Tunes.effect_tempo_varies?(program),
+                                  holds_music: Lowering::Sound.holds_music?(program),
                                   notes: { wobbles: Music.wobbles?(program), steps_shapes: Music.steps_shapes?(program),
                                            swells: Music.swells_under_level?(program), slides: Music.slides?(program) },
                                   samples: samples, recorded_pans: samples && IR::Tunes.recorded_pans?(program),
@@ -145,6 +148,7 @@ module VBlank
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              effect_clock_step: clock_step, effect_tempo_step: tempo_step,
+                                             effect_count_at_song_start: count_at_song_start, tune_tempo_steps: tune_tempo_steps,
                                              effects_cut_notes: IR::Tunes.effects_cut_notes?(program),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,

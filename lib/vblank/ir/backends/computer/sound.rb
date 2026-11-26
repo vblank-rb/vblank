@@ -543,7 +543,9 @@ module VBlank
           # voice's waveform is put in; what their timer adds a frame, nought for none
           # (IR::Tunes.effect_clock_step); what the tempo adds on each of a driver's interrupts, nought for
           # none (IR::Tunes.effect_tempo_step); 1 where they cut their own notes, else nought
-          # (IR::Tunes.effects_cut_notes?); then each one's song, where its notes are, rank, group,
+          # (IR::Tunes.effects_cut_notes?); where a song's start sets the tempo count, -1 for nowhere
+          # (IR::Tunes.effect_count_at_song_start); 1 where the count is the tune's tempo (IR::Tunes.tune_tempo_steps),
+          # else nought; then each one's song, where its notes are, rank, group,
           # priority and whether it keeps its voices; and then the effects again, highest rank
           # first, which is the order a frame plays them in.
           def effects_table
@@ -562,7 +564,11 @@ module VBlank
             clock_step = Tunes.effect_clock_step(@program, @program.described_console) || 0
             tempo_step = Tunes.effect_tempo_step(@program) || 0
             cuts = Tunes.effects_cut_notes?(@program) ? 1 : 0
-            sound_table("effects", [rows.size, plays_wave ? 1 : 0, clock_step, tempo_step, cuts, *rows.flatten, *by_rank])
+            tune_steps = Tunes.tune_tempo_steps(@program) || []
+            counts = [Tunes.effect_count_at_song_start(@program) || -1, Tunes.effects_on_tune_tempo?(@program) ? 1 : 0]
+            # ...and what the count adds while each song plays, by the song's number (the order declared, as the log's).
+            sound_table("effects", [rows.size, plays_wave ? 1 : 0, clock_step, tempo_step, cuts, *counts, *rows.flatten, *by_rank,
+                                    *tune_steps])
           end
 
           # The player reads the music volume the game keeps, when it keeps one: a game that never

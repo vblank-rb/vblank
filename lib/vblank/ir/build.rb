@@ -340,7 +340,8 @@ module VBlank
       # +cuts_own_notes:+ means each recorded note of a part takes the voice of the part's note before it.
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
                group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil,
-               timer_rate: nil, interrupt_rate: nil, cuts_own_notes: false, note_fade_out: nil)
+               timer_rate: nil, interrupt_rate: nil, cuts_own_notes: false, note_fade_out: nil,
+               tick_count_at_song_start: nil, on_tune_tempo: false, tick_rate: nil)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -353,6 +354,9 @@ module VBlank
         said[:interrupt_rate] = interrupt_rate if interrupt_rate
         said[:cuts_own_notes] = true if cuts_own_notes
         said[:note_fade_out] = note_fade_out if note_fade_out
+        said[:tick_count_at_song_start] = tick_count_at_song_start if tick_count_at_song_start
+        said[:on_tune_tempo] = true if on_tune_tempo
+        said[:tick_rate] = tick_rate if tick_rate
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 

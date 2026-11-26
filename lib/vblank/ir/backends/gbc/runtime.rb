@@ -60,7 +60,7 @@ module VBlank
                       shapes: false, swells: false, noise_swells: false, banked_songs: false, clips: false, clip_laps: false, dark: false,
                       rumble: false, kept_sprites: false, holds_music: false, effect_table: false, cells_shown_now: false,
                       bar_covers: false, tile_loads: false, song_entries_in_banks: false, tune_plays_once: false, effect_clock_step: nil,
-                      effect_tempo_step: nil, walks_colors: false, grids_kept: false)
+                      effect_tempo_step: nil, effect_tempo_now: false, walks_colors: false, grids_kept: false)
             # Must be first: the walk's tables share a page, and the first place there is fits them whole.
             Picture.reserve_walk_tables(memory) if walks_colors
             SpriteTileLoads.reserve(memory) if tile_loads
@@ -78,7 +78,8 @@ module VBlank
             Music.reserve(memory, effects: effects, slides: slides, pans: pans, wobbles: wobbles, shapes: shapes, waves: waves, swells: swells, noise_swells: noise_swells,
                                   banked: banked_songs, holds: holds_music, effect_table: effect_table,
                                   entries_in_banks: song_entries_in_banks, tune_plays_once: tune_plays_once,
-                                  effect_clock_step: effect_clock_step, effect_tempo_step: effect_tempo_step)
+                                  effect_clock_step: effect_clock_step, effect_tempo_step: effect_tempo_step,
+                                  tempo_now: effect_tempo_now)
           end
 
           # The runtime's sections: the processor's entry points, and everything else in one.
@@ -144,7 +145,8 @@ module VBlank
                                     by_rank: music&.effects_by_rank || [], fades: music&.fades? || false,
                                     slides: music&.slides? || false, pans: music&.pans? || false,
                                     carries: music&.carries? || false, clock_step: music&.effect_clock_step,
-                                    tempo_step: music&.effect_tempo_step)
+                                    tempo_step: music&.effect_tempo_step, count_at_song_start: music&.effect_count_at_song_start,
+                                    on_tune_tempo: !music&.tune_tempo_steps.nil?)
             Strikes.emit(asm, memory, music.effect_clock_step) if Strikes.any?(memory)
             Saving.emit(asm, memory) if saves
             Clips.emit(asm, memory, counts: clips.timer_counts, entry_bytes: clips.entry_bytes, lines: clips.rows_bent?) if shown

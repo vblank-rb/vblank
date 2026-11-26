@@ -89,6 +89,17 @@ module VBlank
     # release, so give the shape on the part or the note. A Super Nintendo note shaped by the chip's own
     # bytes falls at the chip's nearest linear rate.
     #
+    # The tempo count on a driver's interrupt. A driver's tempo count, which a tick falls out of as it comes
+    # round (`interrupts_per_second:`), runs from power-on and no effect moves it, so which interrupt each
+    # tick lands on depends on where it stands. Many a driver sets it again when a song starts:
+    # `tick_count_at_song_start:` is the share of a tick it is set to, from 0 up to 1 (a byte of $FF is
+    # 255/256r), and it is counted at that same share each interrupt until it next comes round, the tempo
+    # such a driver sets beside it, so a song's first tick comes at once. From that tick on it counts at
+    # the tempo again. Many a driver also runs its effects off the music's own tempo count:
+    # `on_tune_tempo: true` counts them at the tempo of the song playing (its ticks a second over the
+    # interrupt's, Audio::Score's tempo and +ticks_per_beat+ for a song), and not at all while none plays.
+    # A port reads both from the driver it is made from (IR::Tunes.effect_count_at_song_start).
+    #
     # The interrupt a sound driver counts its tempo on. Many a cartridge's sound driver runs on an
     # interrupt of its own, a fixed number of times a second, and adds its tempo up on each one: a tick
     # falls on the interrupt where the sum comes round, so every note it strikes lands on that
@@ -108,7 +119,7 @@ module VBlank
     # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
                         :low_notes_intended, :keeps_voices, :longest, :on_timer, :interrupts_per_second,
-                        :cuts_own_notes, :note_fade_out)
+                        :cuts_own_notes, :note_fade_out, :tick_count_at_song_start, :on_tune_tempo)
 
     class Score
       # Frames a second, the rate the music is played at — the same round figure a song block's
@@ -126,7 +137,7 @@ module VBlank
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
                      priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil,
                      on_timer: false, interrupts_per_second: nil, cuts_own_notes: false,
-                     note_fade_out: nil)
+                     note_fade_out: nil, tick_count_at_song_start: nil, on_tune_tempo: false)
         super
       end
 
@@ -134,6 +145,10 @@ module VBlank
       # `on_timer:`, one tick a frame (FRAME_RATE ticks a second), since its ticks are counted on the
       # timer as it plays (IR::Tunes.effect_clock_step).
       def frame_timing = on_timer ? with(tempo: FRAME_RATE * 60, ticks_per_beat: 1) : self
+
+      # How many times a second the Score ticks at its tempo, or nil for one whose tempo changes: what a song
+      # counts a driver's effects at, `on_tune_tempo:` (IR::Tunes.tune_tempo_step).
+      def tick_rate = (Rational(tempo) * ticks_per_beat / 60 unless tempo.is_a?(Array))
 
       # How many times a second the timer of a Score `on_timer:` ticks, or nil for one that is not.
       def timer_rate
@@ -179,6 +194,9 @@ module VBlank
         song[:interrupt_rate] = Rational(interrupts_per_second) if interrupts_per_second
         song[:cuts_own_notes] = true if cuts_own_notes
         song[:note_fade_out] = Rational(note_fade_out) if note_fade_out
+        song[:tick_count_at_song_start] = Rational(tick_count_at_song_start) if tick_count_at_song_start
+        song[:on_tune_tempo] = true if on_tune_tempo
+        song[:tick_rate] = tick_rate if tick_rate
         return song unless loop_from
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
@@ -431,6 +449,7 @@ module VBlank
           interrupts!(score)
           true_or_false!(:cuts_own_notes, score.cuts_own_notes)
           note_fade_out!(score)
+          tick_counts!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
         end
 
@@ -441,6 +460,22 @@ module VBlank
 
           raise ArgumentError, "A Score has `on_timer: true` and a tempo that changes. A timer ticks at one " \
                                "rate. Give `tempo:` one number, or remove `on_timer:`."
+        end
+
+        # The tick count's settings are a share of a tick, from nought up to one, on a timer.
+        def tick_counts!(score)
+          true_or_false!(:on_tune_tempo, score.on_tune_tempo)
+          share = score.tick_count_at_song_start
+          { tick_count_at_song_start: share, on_tune_tempo: score.on_tune_tempo || nil }.each do |name, given|
+            next if given.nil? || score.interrupts_per_second
+
+            raise ArgumentError, "A Score has `#{name}:` and not `interrupts_per_second:`. It is the tempo count on a " \
+                                 "driver's interrupt. Add `interrupts_per_second:`, or remove `#{name}:`."
+          end
+          return if share.nil? || (share.is_a?(Numeric) && share >= 0 && share < 1)
+
+          raise ArgumentError, "A Score has `tick_count_at_song_start: #{share.inspect}`. It is how far the count is to " \
+                               "its next tick, a share of a tick from 0 up to 1 (255/256r is a count of $FF out of $100)."
         end
 
         # A note's fade at its end lasts at most a frame: the players move a note's level once a frame.
