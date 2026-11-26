@@ -136,6 +136,7 @@ fn main() {
     let mut render = false;
     let mut picture_out = None;
     let mut save_file: Option<String> = None;
+    let sound_file: bridge::SoundFile = Rc::new(std::cell::RefCell::new(None));
     let mut movie_options: Vec<String> = Vec::new();
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
@@ -155,6 +156,11 @@ fn main() {
                 if frames.is_none() {
                     fail("--headless needs the number of frames to play");
                 }
+            }
+            "--sound-out" if headless => {
+                let path = arguments.next().unwrap_or_else(|| fail("--sound-out needs a file"));
+                *sound_file.borrow_mut() = Some(std::fs::File::create(&path).unwrap_or_else(|error| fail(&format!("the sound could not be written to {path}: {error}"))));
+                movie_options.push("--sound-out".to_string());
             }
             "--save" if headless => {
                 save_file = Some(arguments.next().unwrap_or_else(|| fail("--save needs a file")));
@@ -181,7 +187,7 @@ fn main() {
     let mut builder = PlayerBuilder::new()
         .with_log(PrintingLog { asked_for_buttons: asked_for_buttons.clone() })
         .with_audio(audio::SilentAudioBackend::default())
-        .with_external_interface(Box::new(bridge::Provider))
+        .with_external_interface(Box::new(bridge::Provider { sound: sound_file.clone() }))
         .with_fs_commands(Box::new(bridge::ExitCommand { request: exit_request.clone() }));
     if render {
         builder = builder.with_renderer(drawing_renderer());

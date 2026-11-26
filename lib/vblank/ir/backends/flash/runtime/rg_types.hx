@@ -220,3 +220,32 @@ class RgLinePiece {
     this.from = from;
   }
 }
+
+/* A loudness that fades: now, the samples it holds a step, the samples left of this step, and whether it swells. */
+class RgLoudness {
+  public var volume:Int;
+  public var hold_samples:Int;
+  public var left:Int;
+  public var up:Bool;
+
+  public function new(volume:Int, hold_samples:Int, left:Int, up:Bool) {
+    this.volume = volume;
+    this.hold_samples = hold_samples;
+    this.left = left;
+    this.up = up;
+  }
+}
+
+/* A square voice of the console. */
+class RgSquare {
+  public var wave_ticks:Int = 0;
+  public var eighths_high:Int = 0;
+  public var loudness:RgLoudness = new RgLoudness(0, 0, 0, false);
+  public var eighth:Int = 0;
+  public var eighth_progress:Int = 0;
+  public var slide:Int = 0;
+  public var slide_left:Int = 0;
+  public var slid_ticks:Int = 0;
+
+  public function new() {}
+}

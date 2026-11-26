@@ -24,6 +24,10 @@ static var headless_frames_to_play:Int = 0;
 static var headless_frame:Int = 0;
 static var headless_every_picture:Bool = false;
 static var headless_started:Bool = false;
+static var headless_sound_out:Bool = false;
+static var headless_left:Vector<Int> = new Vector<Int>(RG_SOUND_FRAME_MOST);
+static var headless_right:Vector<Int> = new Vector<Int>(RG_SOUND_FRAME_MOST);
+static var headless_hex_bytes:Array<String> = null;
 static var headless_waiting_for_buttons:Bool = false;
 static var headless_over:Bool = false;
 static var headless_sound_held_up:Int = 0;
@@ -101,10 +105,30 @@ static function headless_finish():Void {
 
 /* A frame boundary, after the game has handed it back: the next frame begun and shown, and its buttons
  * asked for — or the run over, once it has played every frame it was asked for. */
+/* The frame's sound, written down as rg_headless.js writes it: a sample of the left speaker, then the right's at the same
+ * moment, and so on, handed to the harness a frame at a time. Worked out only for a run that records it. */
+static function headless_write_frame_sound():Void {
+  if (!headless_sound_out) return;
+  if (headless_hex_bytes == null) headless_hex_bytes = [for (b in 0...256) StringTools.hex(b, 2)];
+  var count = rg_sound_render_frame(headless_left, headless_right);
+  var parts:Array<String> = [];
+  for (i in 0...count) {
+    var l = headless_left[i];
+    var r = headless_right[i];
+    parts.push(headless_hex_bytes[l & 0xFF]);
+    parts.push(headless_hex_bytes[(l >> 8) & 0xFF]);
+    parts.push(headless_hex_bytes[r & 0xFF]);
+    parts.push(headless_hex_bytes[(r >> 8) & 0xFF]);
+  }
+  flash.external.ExternalInterface.call("rg_write_sound", parts.join(""));
+}
+
 static function headless_wait_vblank():Void {
   if (rg_frame_ends_late() != 0) {
+    headless_write_frame_sound();
     rg_frame_begins();
   } else {
+    if (headless_sound_held_up == 0) headless_write_frame_sound();
     if (headless_frame >= headless_frames_to_play) {
       headless_finish();
       return;
@@ -135,9 +159,8 @@ static function headless_players(line:String):Array<Int> {
 /* --- what the harness calls --- */
 
 /* What the C and JavaScript programs take that this one does not yet, each refused by name rather than played without. */
-static var HEADLESS_REFUSED:Array<String> = ["--start-file", "--sound-out", "--sound-voice", "--state-out", "--state-out-after", "--state-in"];
-static var HEADLESS_REFUSED_WORDS:Array<String> = ["a file handed to the game as it starts", "the sound the game makes", "one voice of the sound",
-  "a state image to write", "a state image to write", "a state image to read"];
+static var HEADLESS_REFUSED:Array<String> = ["--start-file", "--state-out", "--state-out-after", "--state-in"];
+static var HEADLESS_REFUSED_WORDS:Array<String> = ["a file handed to the game as it starts", "a state image to write", "a state image to write", "a state image to read"];
 
 static function headless_start(given:String):Void {
   var options = given.split("\n");
@@ -158,6 +181,11 @@ static function headless_start(given:String):Void {
       at++;
     } else if (option == "--save-cut-after" && at + 1 < options.length) {
       rg_save_cut_power_after(Std.parseInt(options[at + 1]));
+      at++;
+    } else if (option == "--sound-out") {
+      headless_sound_out = true;
+    } else if (option == "--sound-voice" && at + 1 < options.length) {
+      rg_sound_hear_only(Std.parseInt(options[at + 1]));
       at++;
     } else if (HEADLESS_REFUSED.indexOf(option) >= 0) {
       headless_exit(RG_GAME_WENT_WRONG, "the Flash build does not take " + option + " yet: " + HEADLESS_REFUSED_WORDS[HEADLESS_REFUSED.indexOf(option)]);
@@ -201,6 +229,9 @@ static function headless_on_frame(_:flash.events.Event):Void {
     headless_exit(RG_GAME_WENT_WRONG, said);
   }
 }
+
+/* A line of the sound log, as it happens. */
+static function rg_sound_logged(line:String):Void { headless_print("sound " + line); }
 
 /* The driver's part of what the game asks of its runtime. */
 static function rg_dump_variable(name:String, value:Int):Void { headless_print("var " + name + " " + value); }

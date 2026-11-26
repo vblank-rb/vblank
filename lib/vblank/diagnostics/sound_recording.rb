@@ -57,7 +57,7 @@ module VBlank
       end
 
       # +program+ played for +frames+ frames on +on+ — :cartridge, the cartridge of the console it is
-      # built for, or one of the runtimes written again from the native one (:native, :js, :ruby) —
+      # built for, or one of the runtimes written again from the native one (:native, :js, :ruby, :flash) —
       # with +buttons+ (a frame number, from 1, to the buttons held through it), heard from the
       # speaker on +side+, :left or :right.
       def self.of(program, on:, frames:, buttons: {}, only: nil, side: :left)
@@ -86,7 +86,7 @@ module VBlank
       # The lowering whose run with no window plays each runtime, by the name +of+ takes. Named,
       # and looked up when asked, since the lowerings load after the readers (and a test in a
       # Ractor can read a table of names, where it cannot call a block a constant holds).
-      RUNTIMES = Ractor.make_shareable({ native: :Native, js: :JS, ruby: :Ruby })
+      RUNTIMES = Ractor.make_shareable({ native: :Native, js: :JS, ruby: :Ruby, flash: :Flash })
 
       # A .wav file of plain samples (PCM): sixteen bits or eight, one speaker or two. Two speakers are
       # heard as one, each moment the two added and halved, as a recording here is one speaker's; eight

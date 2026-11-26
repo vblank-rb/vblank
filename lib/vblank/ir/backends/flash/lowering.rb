@@ -21,7 +21,7 @@ module VBlank
             items = top_level
             printer = Printer.new
             text = printer.print_file(items)
-            [text, printer.called.to_a - printer.own.to_a - defined + features_not_made]
+            [text, printer.called.to_a - printer.own.to_a - defined + features_not_made + sound_chip_not_made(printer.called)]
           end
 
           # The console the game is played as, in the numbers the runtime needs from it, as constants ahead
@@ -34,6 +34,15 @@ module VBlank
           end
 
           private
+
+          # A console whose voices read sound memory (the PlayStation's, the Super Nintendo's) has a sound chip the Flash
+          # runtime does not work out yet: a game that makes sound there is refused by name.
+          def sound_chip_not_made(called)
+            return [] unless @program.described_console.voices_read_sound_memory
+            return [] unless called.any? { |name| name.start_with?("rg_sound_", "rg_music_", "rg_mix_") }
+
+            ["the sound chip that reads sound memory"]
+          end
 
           def build_name = "the Flash build"
 

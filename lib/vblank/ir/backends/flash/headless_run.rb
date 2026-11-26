@@ -21,8 +21,6 @@ module VBlank
           # since both are asked the same questions.
           CannotAnswer = Computer::HeadlessRun::CannotAnswer
 
-          def recording_sound(**) = refuse_unmade!("recording the sound it makes")
-          def sounding_as_played = refuse_unmade!("sounding as it plays")
           def hand_file(*) = refuse_unmade!("a file handed to the game as it starts")
           def writing_state_after(*) = refuse_unmade!("writing the state image")
           def starting_from_state(*) = refuse_unmade!("reading a state image")

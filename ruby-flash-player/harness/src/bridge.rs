@@ -47,11 +47,25 @@ impl FsCommandProvider for ExitCommand {
     }
 }
 
-/// Makes ExternalInterface available to the movie. It calls nothing out of the movie.
-pub struct Provider;
+/// Where the sound a movie makes goes, when a test asked for it (--sound-out FILE).
+pub type SoundFile = Rc<RefCell<Option<std::fs::File>>>;
+
+/// Makes ExternalInterface available to the movie. The one thing the movie calls out is rg_write_sound: a frame's
+/// sound as hex digits (each sample two bytes, low byte first, the left speaker's then the right's), written to the
+/// sound file at once, so whoever plays the game can read it as it is made.
+pub struct Provider {
+    pub sound: SoundFile,
+}
 
 impl ExternalInterfaceProvider for Provider {
-    fn call_method(&self, _context: &mut UpdateContext<'_>, _name: &str, _args: &[Value]) -> Value {
+    fn call_method(&self, _context: &mut UpdateContext<'_>, name: &str, args: &[Value]) -> Value {
+        if name == "rg_write_sound" {
+            if let (Some(file), Some(Value::String(digits))) = (self.sound.borrow_mut().as_mut(), args.first()) {
+                let bytes: Vec<u8> = (0..digits.len() / 2).filter_map(|at| u8::from_str_radix(&digits[at * 2..at * 2 + 2], 16).ok()).collect();
+                let _ = file.write_all(&bytes);
+                let _ = file.flush();
+            }
+        }
         Value::Null
     }
 

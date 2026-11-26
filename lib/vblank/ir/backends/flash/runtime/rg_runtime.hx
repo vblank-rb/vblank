@@ -274,6 +274,7 @@ static function rg_game_pass():Int {
 /* The end of the middle of Reference#advance_frame: the frame is counted, which moves a clock started at a
  * test's moment. */
 static function rg_frame_ends():Void {
+  rg_sound_frame();
   rg_motor_frame();
   rg_clock_frame();
 }
