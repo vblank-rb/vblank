@@ -47,6 +47,36 @@ class TestCore < Minitest::Test
     assert_in_delta 262 * 1364 * 2, spent, 262 * 1364 * 2 * 0.1
   end
 
+  # Native mode, then round for ever writing $5A to the second port to the sound unit ($2141).
+  ASKS_THE_SOUND_UNIT = [
+    0x78,             # SEI
+    0x18,             # CLC
+    0xFB,             # XCE          native mode
+    0xA9, 0x5A,       # LDA #$5A
+    0x8D, 0x41, 0x21, # STA $2141    APUIO1
+    0x80, 0xF9        # BRA -7       back to the LDA
+  ].freeze
+
+  # The writes to the ports are listed, each with the 65816's master clocks and the S-DSP's clocks it
+  # landed on, both running forward.
+  def test_the_writes_to_the_sound_unit_are_listed_with_when
+    Dir.mktmpdir do |dir|
+      core = RubySNESEmulator::Core.new(HandMadeCartridge.write(dir, ASKS_THE_SOUND_UNIT))
+      assert_equal [0, []], core.take_sound_writes, "the first ask starts the log"
+
+      core.run_frame
+      dropped, writes = core.take_sound_writes
+
+      assert_equal 0, dropped
+      refute_empty writes
+      assert(writes.all? { |write| write.to == :port && write.address == 1 && write.value == 0x5A })
+      assert_equal writes.map(&:master_clocks).sort, writes.map(&:master_clocks)
+      assert_equal writes.map(&:dsp_clocks).sort, writes.map(&:dsp_clocks)
+    ensure
+      core&.destroy
+    end
+  end
+
   def setup
     @dir = Dir.mktmpdir
     @core = RubySNESEmulator::Core.new(HandMadeCartridge.write(@dir, RED_BACKDROP))

@@ -14,6 +14,37 @@ module VBlank
 
       private def list_layout = IR::Backends::SNES::Runtime::Lists
 
+      # Every write to the sound unit from now on, a test's way to see each note a game strikes and when
+      # (Verifier#watch_sound): after each #step, #sound_writes lists what that step wrote, the S-DSP's
+      # registers and the game's ports to the sound unit, a value written twice included, each with the
+      # sample and the master clock it landed on. Gives back what the S-DSP's registers hold now, by number.
+      #
+      # @return [Hash{Integer => Integer}]
+      def watch_sound
+        ensure_rendered!
+        @probe.take_sound_writes # starts the log; what it answers is nothing
+        @sound_writes_seen = 0
+        @sound_writes = []
+        sound_registers.bytes.each_with_index.to_h { |value, register| [register, value] }
+      end
+
+      # The ports to the sound unit, by number: the game writes them at $2140 to $2143.
+      SOUND_PORTS_AT = 0x2140
+
+      # The writes the last step made, as SoundWrites (Verifier#watch_sound).
+      private def take_sound_writes
+        dropped, writes = @probe.take_sound_writes
+        if dropped.positive?
+          raise ArgumentError, "More than a million writes to the sound unit came in one step, so some are not " \
+                               "listed. To fix this, step fewer frames at a time."
+        end
+
+        @sound_writes = writes.map do |write|
+          Verifier::SoundWrite.new(address: write.to == :port ? SOUND_PORTS_AT + write.address : write.address, value: write.value,
+                                   chip: write.to, sample: Rational(write.dsp_clocks, 32), clock: write.master_clocks)
+        end
+      end
+
       # A variable kept in two bytes (IR::Backends::SNES::HalfVariables), with the next variable
       # straight after it, so only its own bytes are read, and its sign is put back from the top one.
       private def variable_kept_at(name, address)

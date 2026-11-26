@@ -41,6 +41,7 @@ module RubySNESEmulator
     PROCESSOR_TIME = 0x8007
     OBSEL = 0x8008
     VOICES_SILENT = 0x8009
+    SOUND_WRITES = 0x800A
 
     # The S-DSP's eight voices, numbered as its registers are ($x0 to $xF for voice x).
     VOICES = (0..7)
@@ -190,6 +191,29 @@ module RubySNESEmulator
     def take_processor_time
       bytes = memory(PROCESSOR_TIME)
       bytes.unpack("L<Q<" * (bytes.bytesize / 12)).each_slice(2).to_h
+    end
+
+    # One write to the sound unit (#take_sound_writes): +to+ is :port, the 65816 writing one of the four
+    # APU ports ($2140 to $2143, +address+ 0 to 3), or :dsp, the sound unit's program writing an S-DSP
+    # register (+address+ 0 to 0x7F; KON is 0x4C, KOFF 0x5C). +dsp_clocks+ is the S-DSP's clocks since the
+    # core was switched on, 32 a sample at 32000 samples a second, and +master_clocks+ the 65816's master
+    # clocks (a scanline is 1364). A port write's S-DSP clocks are exact, the sound unit being brought up
+    # to the 65816 before it; an S-DSP write's master clocks are as far as the 65816 had run, which the
+    # sound unit runs ahead of by up to its slice.
+    SoundWrite = Data.define(:to, :address, :value, :dsp_clocks, :master_clocks)
+
+    # EVERY WRITE TO THE SOUND UNIT since this was last asked, oldest first: [dropped, writes], writes an
+    # Array of SoundWrites and dropped how many more than a million came in one take, counted and not
+    # kept. The first ask starts the log and answers nothing.
+    def take_sound_writes
+      bytes = memory(SOUND_WRITES)
+      return [0, []] if bytes.empty?
+
+      dropped = bytes.unpack1("L<")
+      writes = bytes.byteslice(4..).unpack("CCCxL<Q<" * ((bytes.bytesize - 4) / 16)).each_slice(5).map do |to, address, value, dsp, master|
+        SoundWrite.new(to: to.zero? ? :port : :dsp, address: address, value: value, dsp_clocks: dsp, master_clocks: master)
+      end
+      [dropped, writes]
     end
 
     # THE CONSOLE'S WHOLE STATE, as bsnes saves it: every chip's memory and registers, in bsnes's

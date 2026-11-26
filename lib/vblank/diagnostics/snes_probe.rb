@@ -151,6 +151,7 @@ module VBlank
       def color_ram = @core.cgram
       def sound_registers = @core.dsp_registers
       def sound_ram = @core.apu_ram
+      def take_sound_writes = @core.take_sound_writes
 
       # bsnes here draws every layer into one picture and takes no word to leave one out.
       def showing(**)

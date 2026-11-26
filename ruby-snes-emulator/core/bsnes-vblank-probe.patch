@@ -61,6 +61,22 @@ index b6fec16..b98f19e 100644
    }
  }
  
+diff --git a/bsnes/sfc/cpu/io.cpp b/bsnes/sfc/cpu/io.cpp
+index a4d9a5e..5ee4fe1 100644
+--- a/bsnes/sfc/cpu/io.cpp
++++ b/bsnes/sfc/cpu/io.cpp
+@@ -102,8 +102,11 @@ auto CPU::writeRAM(uint addr, uint8 data) -> void {
+   wram[addr] = data;
+ }
+ 
++auto vblankSoundWrite(uint8 kind, uint8 address, uint8 value) -> void;  //VBLANK PROBE: sfc/dsp/dsp.cpp
++
+ auto CPU::writeAPU(uint addr, uint8 data) -> void {
+   synchronizeSMP();
++  vblankSoundWrite(0, addr & 3, data);
+   return smp.portWrite(addr & 3, data);
+ }
+ 
 diff --git a/bsnes/sfc/cpu/timing.cpp b/bsnes/sfc/cpu/timing.cpp
 index dfc8b7a..198e30c 100644
 --- a/bsnes/sfc/cpu/timing.cpp
@@ -91,10 +107,10 @@ index a89d491..1dd650f 100644
  	m.t_main_out [ch] += amp;
  	CLAMP16( m.t_main_out [ch] );
 diff --git a/bsnes/sfc/dsp/dsp.cpp b/bsnes/sfc/dsp/dsp.cpp
-index eb6f78b..6737187 100644
+index eb6f78b..8ff236f 100644
 --- a/bsnes/sfc/dsp/dsp.cpp
 +++ b/bsnes/sfc/dsp/dsp.cpp
-@@ -4,6 +4,14 @@ namespace SuperFamicom {
+@@ -4,6 +4,59 @@ namespace SuperFamicom {
  
  DSP dsp;
  
@@ -106,10 +122,75 @@ index eb6f78b..6737187 100644
 +//never been left out. Not part of the console's state: a save state neither keeps nor changes it.
 +uint8 vblankVoicesSilent = 0;
 +
++//VBLANK PROBE: every write to the sound unit, for a test harness that asks when each note was struck
++//and when the game asked for it: the 65816's writes to the four APU ports ($2140-$2143) and the S-DSP's
++//register writes, oldest first. Kept from the first time the log is taken (vblankSoundWritesTake), so a
++//run that never watches pays nothing. An entry is sixteen bytes: what was written to (0 a port, 1 an
++//S-DSP register), the port or register, the value, a byte unused, then the S-DSP's clocks since
++//power-on as a little-endian word of 32 bits (32 a sample, 32000 samples a second), then the 65816's
++//master clocks since power-on as one of 64. A port write's S-DSP clocks are those of the sound unit,
++//which bsnes brings up to the 65816 before the write; an S-DSP write's master clocks are as far as
++//the 65816 had run, which the sound unit runs ahead of by up to its slice. The take is the count of
++//writes not kept (past a million in one take) as a word of 32 bits, then the entries.
++extern uint64 vblankClocks;
++uint32 vblankDspClocks = 0;
++static const uint vblankSoundEntries = 1 << 20;
++static uint8* vblankSoundLog = nullptr;
++static uint vblankSoundCount = 0;
++static uint32 vblankSoundDropped = 0;
++static uint8* vblankSoundTaken = nullptr;
++
++auto vblankSoundWrite(uint8 kind, uint8 address, uint8 value) -> void {
++  if(!vblankSoundLog) return;
++  if(vblankSoundCount >= vblankSoundEntries) { vblankSoundDropped++; return; }
++  uint8* entry = vblankSoundLog + vblankSoundCount++ * 16;
++  entry[0] = kind;
++  entry[1] = address;
++  entry[2] = value;
++  entry[3] = 0;
++  for(uint byte : range(4)) entry[4 + byte] = vblankDspClocks >> (byte * 8);
++  for(uint byte : range(8)) entry[8 + byte] = vblankClocks >> (byte * 8);
++}
++
++auto vblankSoundWritesTake(uint& size) -> uint8* {
++  size = 0;
++  if(!vblankSoundLog) {
++    vblankSoundLog = (uint8*)malloc(vblankSoundEntries * 16);
++    return nullptr;
++  }
++  size = 4 + vblankSoundCount * 16;
++  vblankSoundTaken = (uint8*)realloc(vblankSoundTaken, size);
++  for(uint byte : range(4)) vblankSoundTaken[byte] = vblankSoundDropped >> (byte * 8);
++  memcpy(vblankSoundTaken + 4, vblankSoundLog, vblankSoundCount * 16);
++  vblankSoundCount = 0;
++  vblankSoundDropped = 0;
++  return vblankSoundTaken;
++}
++
  #include "serialization.cpp"
  #include "SPC_DSP.cpp"
  
-@@ -49,6 +57,8 @@ auto DSP::load() -> bool {
+@@ -11,9 +64,11 @@ auto DSP::main() -> void {
+   if(!configuration.hacks.dsp.fast) {
+     spc_dsp.run(1);
+     clock += 2;
++    vblankDspClocks += 1;
+   } else {
+     spc_dsp.run(32);
+     clock += 2 * 32;
++    vblankDspClocks += 32;
+   }
+ 
+   int count = spc_dsp.sample_count();
+@@ -39,6 +94,7 @@ auto DSP::write(uint8 address, uint8 data) -> void {
+     }
+   }
+ 
++  vblankSoundWrite(1, address, data);
+   spc_dsp.write(address, data);
+ }
+ 
+@@ -49,6 +105,8 @@ auto DSP::load() -> bool {
  auto DSP::power(bool reset) -> void {
    clock = 0;
    stream = Emulator::audio.createStream(2, system.apuFrequency() / 768.0);
@@ -206,7 +287,7 @@ index 353acf2..b1e0025 100644
    //ppu.cpp
    alwaysinline auto step() -> void;
 diff --git a/bsnes/target-libretro/libretro.cpp b/bsnes/target-libretro/libretro.cpp
-index fc7f321..33982df 100644
+index fc7f321..1874f78 100644
 --- a/bsnes/target-libretro/libretro.cpp
 +++ b/bsnes/target-libretro/libretro.cpp
 @@ -9,24 +9,32 @@ static retro_input_poll_t input_poll;
@@ -268,7 +349,7 @@ index fc7f321..33982df 100644
  }
  
  RETRO_API size_t retro_serialize_size()
-@@ -769,14 +781,69 @@ RETRO_API unsigned retro_get_region()
+@@ -769,14 +781,75 @@ RETRO_API unsigned retro_get_region()
  	return program->superFamicom.region == "NTSC" ? RETRO_REGION_NTSC : RETRO_REGION_PAL;
  }
  
@@ -292,15 +373,19 @@ index fc7f321..33982df 100644
 +// One byte, live and written by the harness: the S-DSP voices left out of what is heard, a bit each
 +// (SuperFamicom::vblankVoicesSilent in sfc/dsp/dsp.cpp).
 +#define RETRO_MEMORY_VBLANK_VOICES_SILENT 0x8009
++// The writes to the sound unit since this was last asked (SuperFamicom::vblankSoundWritesTake in sfc/dsp/dsp.cpp).
++#define RETRO_MEMORY_VBLANK_SOUND_WRITES 0x800A
 +
 +namespace SuperFamicom {
 +auto vblankProbe(uint id, uint8* out, uint& size) -> uint8*;
 +auto vblankProfileTake(uint& size) -> uint8*;
++auto vblankSoundWritesTake(uint& size) -> uint8*;
 +extern uint8 vblankVoicesSilent;
 +}
 +
 +static uint8 vblank_copy[64 * 1024];
 +static uint8 *vblank_profile = nullptr;
++static uint8 *vblank_sound_writes = nullptr;
 +
 +static uint8 *vblank_memory(unsigned id, uint &size)
 +{
@@ -331,6 +416,7 @@ index fc7f321..33982df 100644
 -	return nullptr;
 +	uint size;
 +	if (id == RETRO_MEMORY_VBLANK_PROFILE) return vblank_profile;
++	if (id == RETRO_MEMORY_VBLANK_SOUND_WRITES) return vblank_sound_writes;
 +	return vblank_memory(id, size);
  }
  
@@ -339,6 +425,7 @@ index fc7f321..33982df 100644
 -	return 0;
 +	uint size;
 +	if (id == RETRO_MEMORY_VBLANK_PROFILE) { vblank_profile = SuperFamicom::vblankProfileTake(size); return size; }
++	if (id == RETRO_MEMORY_VBLANK_SOUND_WRITES) { vblank_sound_writes = SuperFamicom::vblankSoundWritesTake(size); return size; }
 +	vblank_memory(id, size);
 +	return size;
  }

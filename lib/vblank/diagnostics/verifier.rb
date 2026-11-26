@@ -740,9 +740,18 @@ module VBlank
 
       # One write a cartridge made to its sound chip: the register's address, and the value written, as
       # wide as the console writes it (a byte on the Color, sixteen bits on the Advance).
-      # +chip+ is :fm or :psg on the Genesis, which has two, and nil elsewhere.
-      SoundWrite = Data.define(:address, :value, :chip) do
-        def initialize(address:, value:, chip: nil) = super
+      # +chip+ is :fm or :psg on the Genesis, which has two, and nil elsewhere. On the Super Nintendo it is
+      # :dsp, the sound unit's program writing an S-DSP register (+address+ 0 to 0x7F: KON is 0x4C, KOFF
+      # 0x5C), or :port, the game writing one of the four ports to the sound unit (+address+ 0x2140 to
+      # 0x2143), which is how a game asks its sound driver for something.
+      #
+      # When it landed, where the console says (the Super Nintendo; nil elsewhere): +sample+, the sound
+      # unit's sample it landed in, from when the emulator was switched on, 32000 a second, as a Rational
+      # whose fraction is how far through that sample; and +clock+, the game processor's master clocks
+      # from then, 1364 a scanline. A port write's +sample+ is exact; a sound register write's +clock+ is
+      # as far as the game processor had got, which the sound unit runs a little ahead of.
+      SoundWrite = Data.define(:address, :value, :chip, :sample, :clock) do
+        def initialize(address:, value:, chip: nil, sample: nil, clock: nil) = super
       end
 
       # Every write a cartridge makes to its sound chip, from now on, so a test can see each note it
@@ -755,8 +764,8 @@ module VBlank
       # A write that leaves a register holding what it held is not listed: the emulator's watch sees
       # only a change. A start bit is listed even so, as it reads back as 1.
       #
-      # The Advance and the Color, which play in mGBA, and the Genesis, list them; another console's reader cannot
-      # yet, and says so. Watching costs the emulator some speed (RubyGBAEmulator::Probe#watch). The Genesis lists
+      # The Advance and the Color, which play in mGBA, the Genesis and the Super Nintendo list them; another
+      # console's reader cannot yet, and says so. Watching costs the emulator some speed (RubyGBAEmulator::Probe#watch). The Genesis lists
       # every write, a value written twice included, except the DAC's samples and the timers.
       #
       # @return [Hash{Integer => Integer}]
