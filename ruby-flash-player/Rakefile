@@ -20,7 +20,8 @@ task :unpack_ruffle do
 
   FileUtils.mkdir_p(RUFFLE_DIR)
   sh "unzip", "-q", "-o", zip, "-d", RUFFLE_DIR
-  FileUtils.cp(File.join(RUFFLE_DIR, "Cargo.lock"), File.join(HARNESS_DIR, "Cargo.lock"))
+  lock = File.join(HARNESS_DIR, "Cargo.lock")
+  FileUtils.cp(File.join(RUFFLE_DIR, "Cargo.lock"), lock) unless File.exist?(lock) # the one kept beside the harness is Ruffle's, plus what the harness adds
 end
 
 file HARNESS_BINARY => [:unpack_ruffle, *HARNESS_SOURCES] do
