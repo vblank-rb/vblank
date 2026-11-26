@@ -203,7 +203,24 @@ module VBlank
           # console voices' (rg_sound_visit_state).
           Hook.new(name: :visit_sound_state, way: :each, joins: :sound,
                    c_signature: "static void rg_hook_visit_sound_state(void)",
-                   hx_signature: "rg_hook_visit_sound_state():Void")
+                   hx_signature: "rg_hook_visit_sound_state():Void"),
+
+          # A tune's recorded notes on the mixer: struck, glided to, released (one, or all of them) and
+          # turned to the music volume. Only the Haxe runtime asks, a typed language that cannot ask
+          # whether a function exists: the others find the mixer's by name. Each answers whether a note
+          # is sounding, 0 for a game with no mixer.
+          Hook.new(name: :start_music_note, way: :one, params: %i[effect lane rank sound loudness cuts], default: 0,
+                   languages: %i[hx], joins: :sound,
+                   hx_signature: "rg_hook_start_music_note(effect:Int, lane:Int, rank:Int, sound:Int, loudness:Int, cuts:Int):Int"),
+          Hook.new(name: :glide_music_note, way: :one, params: %i[effect lane sound loudness], default: 0,
+                   languages: %i[hx], joins: :sound,
+                   hx_signature: "rg_hook_glide_music_note(effect:Int, lane:Int, sound:Int, loudness:Int):Int"),
+          Hook.new(name: :release_music, way: :one, params: %i[effect lane], default: 0, languages: %i[hx], joins: :sound,
+                   hx_signature: "rg_hook_release_music(effect:Int, lane:Int):Int"),
+          Hook.new(name: :release_all_music, way: :each, languages: %i[hx], joins: :sound,
+                   hx_signature: "rg_hook_release_all_music():Void"),
+          Hook.new(name: :rescale_music, way: :one, params: %i[lane loudness], default: 0, languages: %i[hx], joins: :sound,
+                   hx_signature: "rg_hook_rescale_music(lane:Int, loudness:Int):Int")
         ])
 
         # +needed_by+ is the kinds of step that need the feature; +after+ the features whose hooks
