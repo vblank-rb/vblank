@@ -93,16 +93,22 @@ module VBlank
             # same, as the interpreter works it out.
             def emit_save_erase(node) = runtime_call("rt_save_erase", [node.at])
 
-            # A whole list moved to or from save memory (Reference#exec_save_load_list, #exec_save_store_list):
-            # the loops the step stands for (SaveListMoves.loops_for), an item at a time. A load whose most is
-            # more than the list holds is refused here, as the interpreter stops it as it runs.
+            # A whole list moved to or from save memory (Reference#exec_save_load_list, #exec_save_store_list) as a
+            # block, by a routine of the runtime's (Runtime::Saving#emit_list_moves), handed a count it can copy
+            # without looking (SaveListMoves.load_count). A load whose most is more than the list holds is refused
+            # here, as the interpreter stops it as it runs. The step's counter is left at nought, as every backend
+            # leaves it.
             def emit_save_list_move(node)
               if node.kind == :save_load_list
                 capacity = @lists.fetch(node.name) { raise LoweringError, "the list #{node.name.inspect} is used and never declared" }[1]
                 refusal = SaveListMoves.past_capacity_message(node, capacity)
                 raise LoweringError, refusal if refusal
+
+                list_call("rt_save_load_list", node, node.at, SaveListMoves.load_count(node))
+              else
+                list_call("rt_save_store_list", node, node.at)
               end
-              SaveListMoves.loops_for(node).each { |step| statement(step) }
+              emit_statement(Build.set(node.index, 0))
             end
 
             def value_of_save_read(node) = runtime_call("rt_save_read", [node.at, save_width(node)])

@@ -24,12 +24,14 @@ module VBlank
 
             module_function
 
-            def emit(asm, memory)
+            # +list_moves+ for a game that moves a whole list to or from save memory (#emit_list_moves).
+            def emit(asm, memory, list_moves: false)
               emit_read(asm)
               emit_write(asm)
               emit_sum(asm)
               asm.label("rt_save_erase")
               asm.rts
+              emit_list_moves(asm) if list_moves
               emit_point_or_stop(asm, memory)
             end
 
@@ -112,6 +114,122 @@ module VBlank
               asm.label("rt_save_sum_outside")
               asm.moveq(Frame::SAVE_READ_OUTSIDE, asm.d(4))
               asm.bra("rt_save_outside")
+            end
+
+            # A whole list moved between save memory and work RAM as a block (IR save_load_list, save_store_list;
+            # Reference#exec_save_load_list, #exec_save_store_list). The place is checked once, not for each item.
+            #
+            # A slot keeps a number highest byte first, as the 68000 does, and save memory keeps it lowest byte
+            # first, so each item goes over its bytes in reverse: save byte k of an item of w bytes is slot byte
+            # w - 1 - k. A slot is walked from its end towards its start while the save's places rise, one byte at
+            # every second address, so a power cut leaves what it left when the items were moved one at a time.
+            #
+            # rt_save_load_list(list, at, count): the list made to hold +count+ items (D2, held by the lowering to
+            # nought and what the list can hold), the first at its first slot, read from +at+ on.
+            #
+            # rt_save_store_list(list, at): every item written from +at+ on, oldest first. The list is a ring, so
+            # its oldest item can be in any slot: the copy starts there and comes round to the first slot where the
+            # slots end, in at most two runs.
+            def emit_list_moves(asm)
+              emit_load_list(asm)
+              emit_store_list(asm)
+              emit_move_items(asm, "rt_save_load_list_items", load: true)
+              emit_move_items(asm, "rt_save_store_list_items", load: false)
+            end
+
+            def emit_load_list(asm)
+              asm.label("rt_save_load_list")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.clr(:w, asm.disp(0, Lists::FRONT))
+              asm.move(:w, asm.d(2), asm.disp(0, Lists::LENGTH))
+              asm.move(:l, asm.d(1), asm.d(7))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.disp(0, Lists::SHIFT), asm.d(6))
+              asm.move(:l, asm.d(2), asm.d(3))
+              asm.lsl(:l, asm.d(6), asm.d(3)) # how many bytes
+              asm.move(:l, asm.d(7), asm.d(0))
+              asm.moveq(Frame::SAVE_READ_OUTSIDE, asm.d(4))
+              asm.jsr(asm.abs_l("rt_save_point_or_stop"))
+              asm.tst(:l, asm.d(2))
+              asm.branch(:eq, "rt_save_load_list_done")
+              asm.lea(asm.abs_l(Console::GenesisHardware::SAVE_RAM_FIRST), asm.a(1))
+              asm.add(:l, asm.d(7), asm.d(7))
+              asm.add(:l, asm.d(7), asm.a(1))
+              asm.lea(asm.disp(0, Lists::HEADER), asm.a(2))
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.jsr(asm.abs_l("rt_save_load_list_items"))
+              asm.label("rt_save_load_list_done")
+              asm.rts
+            end
+
+            def emit_store_list(asm)
+              asm.label("rt_save_store_list")
+              asm.movea(:l, asm.d(0), asm.a(0))
+              asm.move(:l, asm.d(1), asm.d(7))
+              asm.moveq(0, asm.d(2))
+              asm.move(:w, asm.disp(0, Lists::LENGTH), asm.d(2))
+              asm.moveq(0, asm.d(6))
+              asm.move(:w, asm.disp(0, Lists::SHIFT), asm.d(6))
+              asm.move(:l, asm.d(2), asm.d(3))
+              asm.lsl(:l, asm.d(6), asm.d(3)) # how many bytes
+              asm.move(:l, asm.d(7), asm.d(0))
+              asm.moveq(Frame::SAVE_WRITE_OUTSIDE, asm.d(4))
+              asm.jsr(asm.abs_l("rt_save_point_or_stop"))
+              asm.tst(:l, asm.d(2))
+              asm.branch(:eq, "rt_save_store_list_done")
+              asm.lea(asm.abs_l(Console::GenesisHardware::SAVE_RAM_FIRST), asm.a(1))
+              asm.add(:l, asm.d(7), asm.d(7))
+              asm.add(:l, asm.d(7), asm.a(1))
+              # The first run: from the oldest item to the last slot, or the last item if that comes first.
+              asm.moveq(0, asm.d(4))
+              asm.move(:w, asm.disp(0, Lists::FRONT), asm.d(4))
+              asm.moveq(0, asm.d(5))
+              asm.move(:w, asm.disp(0, Lists::CAPACITY), asm.d(5))
+              asm.sub(:l, asm.d(4), asm.d(5)) # the slots from the oldest to the end
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.cmp(:l, asm.d(5), asm.d(1))
+              asm.branch(:ls, "rt_save_store_list_first")
+              asm.move(:l, asm.d(5), asm.d(1))
+              asm.label("rt_save_store_list_first")
+              asm.sub(:l, asm.d(1), asm.d(2)) # what is left for the second run
+              asm.lsl(:l, asm.d(6), asm.d(4))
+              asm.lea(asm.disp(0, Lists::HEADER), asm.a(2))
+              asm.add(:l, asm.d(4), asm.a(2))
+              asm.jsr(asm.abs_l("rt_save_store_list_items"))
+              # The second run: what is left, from the first slot.
+              asm.move(:l, asm.d(2), asm.d(1))
+              asm.branch(:eq, "rt_save_store_list_done")
+              asm.lea(asm.disp(0, Lists::HEADER), asm.a(2))
+              asm.jsr(asm.abs_l("rt_save_store_list_items"))
+              asm.label("rt_save_store_list_done")
+              asm.rts
+            end
+
+            # rt_save_load_list_items, rt_save_store_list_items: D1 items (not nought) between A2, the first slot of the
+            # run, and A1, the save's place of the first, both moved on past what is copied. D6 is the list's shift.
+            # D3 to D5 are used; D2 and D6 are kept.
+            def emit_move_items(asm, label, load:)
+              asm.label(label)
+              asm.moveq(1, asm.d(3))
+              asm.lsl(:l, asm.d(6), asm.d(3)) # the bytes of an item
+              asm.move(:l, asm.d(3), asm.d(5))
+              asm.add(:l, asm.d(5), asm.d(5)) # and two items' bytes: from the end of one to the end of the next
+              asm.add(:l, asm.d(3), asm.a(2)) # the end of the first item
+              asm.subq(:w, 1, asm.d(3))
+              asm.subq(:w, 1, asm.d(1))
+              asm.label("#{label}_item")
+              asm.move(:w, asm.d(3), asm.d(4))
+              asm.label("#{label}_byte")
+              if load
+                asm.move(:b, asm.ind(1), asm.pre(2))
+              else
+                asm.move(:b, asm.pre(2), asm.ind(1))
+              end
+              asm.addq(:l, 2, asm.a(1))
+              asm.dbra(asm.d(4), "#{label}_byte")
+              asm.add(:l, asm.d(5), asm.a(2))
+              asm.dbra(asm.d(1), "#{label}_item")
+              asm.rts
             end
 
             # rt_save_point_or_stop: D0 = a place, D3 = how many bytes from it, D4 = the fault's number. The
