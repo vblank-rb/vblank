@@ -415,8 +415,10 @@ module VBlank
               each_recolored_picture do |pose, list, swapped|
                 next if scene_of_recolored(pose, list)
 
-                # A list the game changes holds its set where it is drawn, whoever shows the copy.
-                if changing_list?(list) && several_scenes?(colors_scenes_of_list(list))
+                # A list the game changes holds its set where it is drawn, whoever shows the copy. One
+                # that can show its pose's tiles (#recolored_copy) places the pose's colours first, which
+                # takes the copies of the pose's scenes, so it waits for what every screen keeps.
+                if changing_list?(list) && (several_scenes?(colors_scenes_of_list(list)) || worn_tried?)
                   lists_of_some_scenes << [pose, list, swapped]
                 elsif !changing_list?(list) && colors_scenes_of_recolored(pose, list)
                   copies_of_some_scenes << [pose, list, swapped]
@@ -458,22 +460,38 @@ module VBlank
             # copy drawn from the pose's own tiles.
             RecoloredCopy = Data.define(:image, :held, :scenes, :worn)
 
-            # The copy of +pose+ drawn with +list+: kept in places where the list is (#palette_of_worn_list);
-            # in a game of +shared_pose_tiles+, the pose's own picture in a set of the copy's colours where
-            # each colour the pose draws comes to one colour of the list (Art#worn_for), placed as the pose
-            # places its own; otherwise a copy made pixel by pixel (Assets::RecoloredImage), with tiles of
-            # its own wherever its colours land in other places of its set.
+            # The copy of +pose+ drawn with +list+. In a game of +shared_pose_tiles+ (and not of
+            # +one_sprite_tile_set+), the pose's own picture in a set of the copy's colours, where each
+            # colour the pose draws comes to one colour of the list in every set of colours it can hold
+            # (Art#worn_for), placed as the pose places its own. Otherwise kept in places where the list
+            # is (#palette_of_worn_list), or a copy made pixel by pixel (Assets::RecoloredImage), with
+            # tiles of its own wherever its colours land in other places of its set.
             def recolored_copy(pose, list, swapped, mixed)
               image = @cache.image(picture_named(pose))
+              worn = worn_of(pose, image, list, swapped) if worn_tried?
+              return RecoloredCopy.new(image: image, held: nil, scenes: colors_scenes_of_picture(pose), worn: worn) if worn
+
               copy_scenes = colors_scenes_of_recolored(pose, list)
               held = palette_of_worn_list(pose, list, swapped, mixed)
               return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil) if held
 
               recolor = Assets::Recolor.of(image, swapped)
-              worn = @shared_pose_tiles && @art.worn_for(image, recolor, copy_scenes)
-              return RecoloredCopy.new(image: image, held: nil, scenes: colors_scenes_of_picture(pose), worn: worn) if worn
-
               RecoloredCopy.new(image: Assets::RecoloredImage.new(image: image, recolor: recolor), held: nil, scenes: copy_scenes, worn: nil)
+            end
+
+            # Whether a copy is tried as its pose's own tiles (#recolored_copy).
+            def worn_tried? = @shared_pose_tiles && !@one_sprite_tile_set
+
+            # The Art::Worn of +image+, the picture +pose+, drawn with +list+ (colours +swapped+), or nil where it
+            # cannot show the pose's tiles. A list the game changes is worn in each set it can hold,
+            # kept in the scenes that draw with it, as its own set is (#recolored_list_palette), since a
+            # change of it writes that set's number whichever of them is up.
+            def worn_of(pose, image, list, swapped)
+              return @art.worn_for(image, [Assets::Recolor.of(image, swapped)], colors_scenes_of_recolored(pose, list)) unless changing_list?(list)
+
+              named = color_list_named(list)
+              recolors = [named.colors, *named.recolors].map { |colors| Assets::Recolor.of(image, colors) }
+              @art.worn_for(image, recolors, colors_scenes_of_list(list), list: list)
             end
 
             # The one scene whose sprites alone show the picture +name+ (LoweringPlan#scene_showing_picture);
@@ -636,19 +654,16 @@ module VBlank
             # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).
             public def sprites_draw_with_lists? = @objects.each_value.any? { |obj| !obj.recolors.empty? }
 
-            # Whether a sprite wears a list the game never changes, whose copies can show their pose's
-            # own tiles (+shared_pose_tiles+, SNES#build).
-            public def sprites_draw_with_fixed_lists? = @objects.each_value.any? { |obj| obj.recolors.any? { |list| !changing_list?(list) } }
-
-            # Reference#exec_color_list_holds: the sets the list can hold, written over its palette. A
-            # list nothing is drawn with has no palette, and nothing to show.
+            # Reference#exec_color_list_holds: the sets the list can hold, written over its palette and
+            # over each set showing a copy of a pose in it (Art#worn_list_palettes). A list nothing is
+            # drawn with has no palette, and nothing to show.
             #
             # A list some scenes keep to themselves has a palette only while one of those scenes is
             # up, and another scene's colours in it otherwise: the number is kept, and set again as
             # one of them arrives (#emit_scene_colors), so it writes only with one of them up.
             def emit_color_list_holds(node)
               emit_backdrop_follows(node)
-              return unless @art.held_palette_of([:sprites, node.name])
+              return unless @art.held_palette_of([:sprites, node.name]) || @art.worn_list_palettes(node.name).any?
 
               choice = @sprite_color_choices[node.name]
               return emit_sprite_list_write(node.name, node.which) unless choice
@@ -666,10 +681,16 @@ module VBlank
                     .reduce { |either, test| Build.binop(:or, either, test) }
             end
 
+            # The write of set +which+ of the list +name+: into its own palette, where a copy is drawn from
+            # it place for place, and into each palette showing a pose's tiles in it, in that pose's places.
             def emit_sprite_list_write(name, which)
               palette = @art.held_palette_of([:sprites, name])
               list = color_list_named(name)
-              sets = [list.colors, *list.recolors].map { |colors| [[@art.sprite_palette_at(palette), colors.drop(1)]] }
+              worn = @art.worn_list_palettes(name)
+              sets = [list.colors, *list.recolors].each_with_index.map do |colors, set|
+                own = palette ? [[@art.sprite_palette_at(palette), colors.drop(1)]] : []
+                own + worn.map { |shown, worn_sets| [@art.sprite_palette_at(shown), worn_sets.fetch(set)] }
+              end
               runtime_call("rt_colors_hold", [LongAddress.new(held_colors_label([:sprites, name]) { sets }), which])
             end
 

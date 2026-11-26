@@ -348,7 +348,10 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   # (#player_list, a place on), a bomb in three of the walker's colours, four pictures of lists 0 to
   # 3, and a twin: a picture of 2×1 whose two places hold the walker's first colour, and a copy of
   # it drawn with the first two colours of list 0.
-  private def players_of_one_pose_set
+  #
+  # With +changing+, the game changes each player's list as it runs: to #dusk_list at ticks 12 and
+  # 20, and to #day_list at 16.
+  private def players_of_one_pose_set(changing: false)
     test = self.class
     walker_list = WALKER_LIST
     players = PLAYER_LISTS
@@ -363,6 +366,12 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
       end
       shows = { frames: walk, rate: 60 }
       players.each_with_index { |n, at| colors :"list#{n}", test.player_list(n, at + 1) }
+      if changing
+        players.each_with_index do |n, at|
+          colors :"dusk#{n}", test.dusk_list(n, at)
+          colors :"day#{n}", test.day_list(n, at)
+        end
+      end
       image(:bomb, width: 8, height: 8, colors: :walker_list, places: Array.new(64) { |i| 1 + (i % 3) })
       fillers = (0..3).map { |n| test.declare_picture(self, n) }
       first = SceneColorLists.full_list(walker_list)[1]
@@ -387,7 +396,30 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
       game_loop do
         tick += 1
         state = 1 if tick == 8
+        if changing
+          players.each { |n| recolor :"list#{n}", :"dusk#{n}" } if tick == 12 || tick == 20
+          players.each { |n| recolor :"list#{n}", :"day#{n}" } if tick == 16
+        end
         call({ 0 => :stage, 1 => :demo }, number: :state)
+      end
+    end
+  end
+
+  # The lists player +at+ + 2, drawn with list +n+, is changed to (#players_of_one_pose_set), laid out
+  # as that list is (#player_list).
+  def self.dusk_list(n, at) = player_list(n - 10, at + 1)
+  def self.day_list(n, at) = player_list(n - 5, at + 1)
+
+  # The same four players, each list changing as the game runs: one set of the poses' tiles still,
+  # and each change rewrites the player's set in the places of the pose's own.
+  def test_four_players_of_one_pose_set_in_changing_lists_keep_its_tiles_once
+    prog = players_of_one_pose_set(changing: true)
+
+    { 10 => :list, 14 => :dusk, 19 => :day, 23 => :dusk }.each do |frames, shown|
+      demo = shown_by(prog, frames)
+      PLAYER_LISTS.each_with_index do |n, at|
+        expected = { list: self.class.player_list(n, at + 1), dusk: self.class.dusk_list(n, at), day: self.class.day_list(n, at) }
+        assert_equal expected.fetch(shown)[1], demo.pixel(*player_spot(at + 1)), "player #{at + 2} in its #{shown} list at #{frames}"
       end
     end
   end

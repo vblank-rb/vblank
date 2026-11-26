@@ -270,7 +270,7 @@ module VBlank
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art). +one_sprite_tile_set+ makes one set of a sprite's pictures for
           # all the lists of colours it wears (Picture#palette_in_places), and +shared_pose_tiles+ draws a
-          # copy in a list the game never changes from its picture's own tiles where it can (Art::Worn).
+          # copy in another list from its picture's own tiles where it can (Art::Worn).
           # +chip+ is a cartridge with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
           # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings

@@ -298,6 +298,7 @@ module VBlank
             @sprite_palettes_for = { false => (0...PALETTES), true => (0...PALETTES) }
             @unmixed_scenes = []
             @held_palettes = {} # whose list => its palette (#held_palette)
+            @worn_list_palettes = {} # a list the game changes => its copies' sets (#worn_list_palettes)
             @held = { backgrounds: [], sprites: [] }
             @scene_held = {} # a scene -> the same, for its own copy of the background palettes
             @sprite_pictures = {}
@@ -572,23 +573,37 @@ module VBlank
           # drawn from (fullsnes, "OAM", the palette bits of a sprite's attributes), so a set holding
           # the copy's colours where the picture's own set holds the picture's draws the copy from
           # the very same tiles, and four players of one set of poses take its tiles once, as the
-          # console's own games keep them. +colors+ gives each colour the picture draws the one the
-          # copy shows there; +scenes+ are the scenes whose sprites alone show the copy, as
-          # #sprite_picture's.
-          Worn = Data.define(:colors, :scenes)
+          # console's own games keep them.
+          #
+          # +colors+ has, for each set of colours the list can hold, the colour the copy shows for
+          # each colour the picture draws: one for a list the game never changes, and one for each
+          # list a list the game changes can be told to hold, its own first (Runtime::Tint's
+          # rt_colors_hold). +list+ names such a list, whose changes write every set of it
+          # (#worn_list_palettes), and is nil for one that never changes. +scenes+ are the scenes the
+          # set is kept in, as #sprite_picture's.
+          Worn = Data.define(:colors, :scenes, :list)
 
-          # The Worn for +image+ drawn with +recolor+ (an Assets::Recolor), shown by +scenes+, or nil
-          # where the list gives two places of one colour of the picture two colours: a tile names a
-          # place in its set, and those two pixels name the same one, so the copy needs tiles of its own.
+          # The Worn for +image+ drawn with each of +recolors+ (Assets::Recolor, one for each set of
+          # colours the list can hold), kept in +scenes+, or nil where a list gives two places of one
+          # colour of the picture two colours: a tile names a place in its set, and those two pixels
+          # name the same one, so the copy needs tiles of its own.
           #
           # A colour of the picture's list that this picture does not draw takes the colour at its
           # place in the list worn, so every pose of a set drawn with one list comes to the same set.
-          def worn_for(image, recolor, scenes)
-            shown = worn_color_pairs(image, recolor).group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq }
-            return nil unless shown.each_value.all?(&:one?)
+          def worn_for(image, recolors, scenes, list: nil)
+            colors = recolors.map do |recolor|
+              shown = worn_color_pairs(image, recolor).group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq }
+              return nil unless shown.each_value.all?(&:one?)
 
-            Worn.new(colors: list_swaps(image, recolor).merge(shown.transform_values(&:first)), scenes: scenes)
+              list_swaps(image, recolor).merge(shown.transform_values(&:first))
+            end
+            Worn.new(colors: colors, scenes: scenes, list: list)
           end
+
+          # The sets that show copies drawn with the list the game changes named +list+ (Worn), each
+          # by its number, with its colours for each set the list can hold: what a change of the list
+          # writes, beside the list's own set where it has one (#held_palette_of).
+          def worn_list_palettes(list) = @worn_list_palettes.fetch(list, {})
 
           # What +scene+ brings into video memory as it takes over, as [the first tile, its tiles'
           # bytes], or nil for a scene with none of its own.
@@ -1080,15 +1095,17 @@ module VBlank
           # piece naming the set that holds the copy's colours in the places of the set the picture was
           # drawn from. That set is kept for the copy alone, since its places must not move, and a
           # list's colours can hold one colour twice, which a set shared with other pictures would
-          # fold into one place; copies of one list in the same places share it.
+          # fold into one place; copies of one list in the same places share it. Two lists the game
+          # changes never do, even alike, since a change of one must leave the other as it was.
           def worn_picture(picture, worn, mixed, scenes)
             return picture if picture.pieces.empty?
 
             own = sprite_palette_copies(scenes).first.fetch(picture.pieces.first.palette)
-            colors = own.map { |color| worn.colors.fetch(color, color) }
+            sets = worn.colors.map { |swaps| own.map { |color| swaps.fetch(color, color) } }
             shown = allocate_sprite_palette(mixed, worn.scenes || [nil]) do |within|
-              held_palette(sprite_palette_copies(worn.scenes), [:worn, colors, mixed, worn.scenes], colors, "sprites", within)
+              held_palette(sprite_palette_copies(worn.scenes), [:worn, worn.list, sets, mixed, worn.scenes], sets.first, "sprites", within)
             end
+            (@worn_list_palettes[worn.list] ||= {})[shown] = sets if worn.list
             picture.with(pieces: picture.pieces.map { |piece| piece.with(palette: shown) })
           end
 

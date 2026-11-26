@@ -176,8 +176,8 @@ module VBlank
         # (+small_sprite_scenes+); each says what it gave up (Picture#crowded_scene_findings). A try
         # finds every crowded screen before it stops (Art::ScreenSpritesFull), so a game of many takes
         # a try for each of those steps, not one for each screen. Before any of those, a game of sprites
-        # drawn with lists the game never changes is built with each copy whose list gives each colour
-        # of its picture one colour shown, as the picture's own tiles in a set of its own
+        # drawn with lists of colours is built with each copy whose list gives each colour
+        # of its picture one colour shown in each set the list can hold, as the picture's own tiles in a set of its own
         # (+shared_pose_tiles+, Art::Worn): a set for each such list, so it is tried only where the
         # sprites do not fit otherwise. It goes first because it costs fewer sets than the next: the
         # picture's own set stays open to other pictures. Then a game of sprites in several lists of
@@ -357,13 +357,13 @@ module VBlank
           shared_pose_tiles_attempt(settings, lowering) || one_sprite_tile_set_attempt(error, settings, lowering)
         end
 
-        # The game tried with each copy of a picture drawn with a list it never changes showing the
+        # The game tried with each copy of a picture drawn with another list showing the
         # picture's own tiles where it can (+shared_pose_tiles+), an Attempt, or nil where no sprite draws
-        # with such a list or it was tried already. If it does not fit, the build carries on from
+        # with another list or it was tried already. If it does not fit, the build carries on from
         # +settings+ as though it had not been tried: that try is made again, and the error it stops
         # with leads on as before.
         def shared_pose_tiles_attempt(settings, lowering)
-          return nil if settings.shared_pose_tiles || !lowering.sprites_draw_with_fixed_lists?
+          return nil if settings.shared_pose_tiles || !lowering.sprites_draw_with_lists?
 
           BuildTries::Attempt.new(settings: settings.with(shared_pose_tiles: true), otherwise: settings.with(shared_pose_tiles: :failed),
                                   given_up_on: [Art::TooMuch, Lowering::NotMadeYet], except: [Art::BackgroundColorsFull])
