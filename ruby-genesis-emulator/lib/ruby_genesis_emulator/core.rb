@@ -263,11 +263,23 @@ module RubyGenesisEmulator
     def wram_write8(address, value) = @frontend.memory_write(SYSTEM_RAM, (address & 0xFFFF) ^ 1, [value & 0xFF].pack("C"))
     def wram_write32(address, value) = [value & 0xFFFFFFFF].pack("N").bytes.each_with_index { |byte, i| wram_write8(address + i, byte) }
 
-    # The cartridge's save memory, a byte for each odd address from $200000, as far as the last byte
-    # written that is not $FF (what the chip holds where nothing was saved): empty for a cartridge that
-    # saved nothing. The core keeps it only in memory and writes no file of it: this class does, as
-    # #destroy shuts the core, as RetroArch does for the core, and reads it back as the core starts.
+    # The cartridge's save memory, a byte for each address from $200000 (a cartridge whose RAM is on the
+    # odd addresses has its save on the odd bytes), as far as the last byte that is not $FF (what the chip
+    # holds where nothing was saved): empty for a cartridge that saved nothing. The core keeps it only in
+    # memory and writes no file of it: this class does, as #destroy shuts the core, as RetroArch does for
+    # the core, and reads it back as the core starts.
     def save_ram = memory(SAVE_RAM)
+
+    # How big the save file is: the 64K of the cartridge's address space the save memory is in.
+    SAVE_FILE_BYTES = 0x10000
+
+    # The bytes of the save file as #destroy would write it now, the bytes past what the core hands over
+    # $FF as an erased chip holds them, or nil for a cartridge that holds nothing saved. A reader asks this
+    # while the core runs, since the file is written only as it shuts.
+    def save_file
+      kept = save_ram
+      kept.ljust(SAVE_FILE_BYTES, "\xFF".b) unless kept.empty?
+    end
 
     # Unloads the cartridge, shuts the core and lets go of its library.
     def destroy
@@ -320,13 +332,14 @@ module RubyGenesisEmulator
       @frontend.memory_write(SAVE_RAM, 0, File.binread(@save_path).byteslice(0, room))
     end
 
-    # The save memory the run left, written as a file of the 64K the cartridge's RAM is, the bytes past what
-    # the core hands over $FF as an erased chip holds them. A cartridge that saved nothing writes none.
+    # The save memory the run left, written as the file #save_file gives. A cartridge that saved nothing
+    # writes none. One started from a file and written back to all $FF is handed over by the core as one
+    # with nothing saved, so its file is written all $FF, or the next start would find the save before.
     def write_save_file
-      kept = save_ram
-      return unless @save_path && !kept.empty?
+      return unless @save_path
 
-      File.binwrite(@save_path, kept.ljust(0x10000, "\xFF".b))
+      bytes = save_file || ("\xFF".b * SAVE_FILE_BYTES if File.file?(@save_path))
+      File.binwrite(@save_path, bytes) if bytes
     end
 
     # Opens a copy of the core of this Core's own and starts it, keeping the picture to the format

@@ -129,6 +129,25 @@ class TestGenesisSaves < Minitest::Test
     end
   end
 
+  # The reader asks the running cartridge, as a test does between frames, before the core is shut.
+  def test_the_reader_sees_the_save_memory_while_the_cartridge_runs
+    reader = VBlank::Diagnostics::Verifier.new(Genesis.new.build(counting_up), frames: 6)
+
+    assert_equal 11, reader.save_image.word(VBlank::IR::SaveLayout.save_var_at(0))
+  end
+
+  # A save whose last byte not $FF is written back to $FF is handed to the core as one with nothing in it,
+  # which must still reach the file, or the run after would start from the save before.
+  def test_a_save_written_back_to_all_ff_comes_back_all_ff
+    build = VBlank::IR::Build
+    program = build.program(build.save_write(build.int(0), build.int(0xFF), width: :byte), build.halt)
+    store = SaveImage.new(bytes: { 0 => 7 })
+
+    Genesis::HeadlessRun.new(save: store).run(program, frames: 3)
+
+    assert_equal 0xFF, store.read(0, 1)
+  end
+
   def test_a_game_that_saves_and_is_bigger_than_2mb_is_refused
     build = VBlank::IR::Build
     big = build.table(:big, Array.new(0x200000, 1), width: :byte, signed: false)

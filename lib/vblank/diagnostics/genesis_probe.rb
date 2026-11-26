@@ -85,6 +85,11 @@ module VBlank
         self
       end
 
+      # The bytes of the .srm file as it would be written now, or nil for a cartridge that holds nothing
+      # saved. The emulator's gem writes that file only when the core is shut, so a reader asking while the
+      # cartridge runs reads the RAM the file is made from (RubyGenesisEmulator::Core#save_file).
+      def save_memory_file = @core.save_file
+
       def width = @core.width
       def height = @core.height
 

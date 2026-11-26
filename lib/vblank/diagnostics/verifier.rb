@@ -508,7 +508,8 @@ module VBlank
       # for a cartridge with no save chip. This is every chip there is, whatever its size;
       # {#save_image} is the same bytes as a chip the framework has a model of.
       #
-      # An emulator that writes its file only when the cartridge is taken out (bsnes) hands over
+      # An emulator that writes its file only when the cartridge is taken out (bsnes, and Genesis Plus GX
+      # through its gem) hands over
       # those bytes itself (SNESProbe#save_memory_file); libmgba keeps its file written as it goes.
       def save_bytes
         ensure_rendered!
