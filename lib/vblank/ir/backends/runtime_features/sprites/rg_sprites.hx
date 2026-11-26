@@ -24,7 +24,10 @@ static var over_picture:Vector<Int> = new Vector<Int>(RG_SCREEN_WIDTH * RG_SCREE
 static var over_picture_up:Bool = false;
 
 /* Reference#set_see_through_for, for a sprite: the see-through layer it was in as it was put on screen. */
-static function mix_as_sprite(placed:RgPlaced):Void { mix_as_layer(placed.see_through); }
+static function mix_as_sprite(placed:RgPlaced):Void {
+  mix_as_layer(placed.see_through);
+  painting_sprite = 1;
+}
 
 /* Which rows of the screen the box of a turned sprite is shown on (Reference::TurnedBox). */
 static inline var TURNED_BOX_LINES:Int = 256;
@@ -253,7 +256,13 @@ static function fault_unless_sprite(sprite:Int):Void {
 
 /* Framebuffer#put_back_cell */
 static function put_back_cell(x:Int, y:Int):Void {
-  set_pixel(x, y, scenery[y * RG_SCREEN_WIDTH + x]);
+  var at = y * RG_SCREEN_WIDTH + x;
+  set_pixel(x, y, scenery[at]);
+  var kept = mixes_of(target);
+  if (kept == null || !paintable(x, y) || scenery_mixes.is_mixed[at] == 0) return;
+  kept.is_mixed[at] = 1;
+  kept.tops[at] = scenery_mixes.tops[at];
+  kept.unders[at] = scenery_mixes.unders[at];
 }
 
 /* Reference#restore_patch */

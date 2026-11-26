@@ -380,3 +380,36 @@ class RgSpuVoice {
 
   public function new() {}
 }
+
+/* How much of a see-through layer's colour and of the colour under it a mixed cell is made of, in sixteenths (the under
+ * one negative where the layer subtracts). */
+class RgShares {
+  public var painted:Int;
+  public var under:Int;
+
+  public function new(painted:Int, under:Int) {
+    this.painted = painted;
+    this.under = under;
+  }
+}
+
+/* The shares a see-through layer was told or is owed, kept while they are. */
+class RgKeptShares {
+  public var kept:Int = 0;
+  public var at:RgShares = new RgShares(0, 0);
+
+  public function new() {}
+}
+
+/* The two colours each cell was mixed from, and whether it was mixed at all (Framebuffer @mixed_tops). */
+class RgMixedSides {
+  public var is_mixed:Vector<Int>;
+  public var tops:Vector<Int>;
+  public var unders:Vector<Int>;
+
+  public function new(cells:Int) {
+    is_mixed = new Vector<Int>(cells);
+    tops = new Vector<Int>(cells);
+    unders = new Vector<Int>(cells);
+  }
+}

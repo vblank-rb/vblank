@@ -6,9 +6,7 @@
  *
  * A color is the console's: fifteen bits, five each of red, green and blue, red lowest.
  *
- * What it does not draw yet: see-through layers, fades and tints, tiled backgrounds, sprites, poses,
- * pixelation and light — the features, which a game that needs one is refused for by name — and
- * pictures blitted whole.
+ * What it does not draw yet: the features that are not ported (a game that needs one is refused for by name).
  */
 
 static inline var RG_CELLS:Int = RG_SCREEN_WIDTH * RG_SCREEN_HEIGHT;
@@ -19,7 +17,14 @@ static inline var RG_ROTOZOOM:Int = 2;
 
 static inline var RG_NO_LAYER:Int = -1;
 static inline var RG_SIZE_DEPTHS:Int = 1;
+static inline var RG_SIZE_SEE_THROUGH:Int = 4;
 static inline var RG_SIZE_SCREEN_KINDS_CHANGE:Int = 5;
+static inline var RG_ST_AMOUNTS_WRITTEN:Int = 0;
+static inline var RG_ST_ONE_AMOUNT:Int = 1;
+static inline var RG_ST_HOLDS_A_SPRITE:Int = 2;
+static inline var RG_ST_SUBTRACTS:Int = 3;
+static inline var RG_ST_FIELDS:Int = 4;
+static inline var RG_MAX_SEE_THROUGH:Int = 16;
 
 /* Where choice number +which+ is in a row that holds a sprite's own first and then +others+ more. */
 static function rg_place_of_choice(which:Int, others:Int):Int { return which >= 0 && which < others ? which + 1 : 0; }
@@ -65,6 +70,19 @@ static var picture_touched:Int = 0;
 static var backdrop:Int = 0; /* the colour shown wherever nothing is drawn (Reference @backdrop) */
 static var current_scene:Int = -1;
 
+/* What is painted from here on is mixed with what is already in the cell (Framebuffer @through). */
+static var mixing:Int = 0;
+static var mixed_by:RgShares = new RgShares(0, 0);
+
+/* The two colors each mixed cell was mixed from (Framebuffer @mixed_tops). */
+static var picture_mixes:RgMixedSides = new RgMixedSides(RG_CELLS);
+static var scenery_mixes:RgMixedSides = new RgMixedSides(RG_CELLS);
+static var mixed_cells_by:RgShares = new RgShares(0, 0);
+
+/* The picture with no sprites on it (Framebuffer @scenery). */
+static var picture_without_sprites:Vector<Int> = new Vector<Int>(RG_CELLS);
+static var painting_sprite:Int = 0;
+
 /* --- the picture itself (Framebuffer) --- */
 
 static inline function on_screen(x:Int, y:Int):Bool { return x >= 0 && x < RG_SCREEN_WIDTH && y >= 0 && y < RG_SCREEN_HEIGHT; }
@@ -85,6 +103,66 @@ static var plain_layer:Vector<Int> = null;
 
 static function paint_onto_plain_layer(layer:Vector<Int>):Void { plain_layer = layer; }
 
+static inline function widened(channel:Int):Int { return (channel << 3) | (channel >> 2); }
+
+/* Framebuffer#mix_see_through */
+static function mixed_with_under(color:Int, under:Int, by:RgShares):Int {
+  var out = 0;
+  for (channel in 0...3) {
+    var have = widened((color >> (5 * channel)) & 0x1F);
+    var below = widened((under >> (5 * channel)) & 0x1F);
+    var mix = clamp_number(rg_floor_div(have * by.painted + below * by.under, 16), 0, 255);
+    out |= (mix >> 3) << (5 * channel);
+  }
+  return out;
+}
+
+/* Framebuffer#darkened_by_display: done in the channel's own byte as the interpreter does it. */
+static function darkened_by_display(color:Int, steps:Int):Int {
+  if (steps == 0) return color;
+  var packed = 0;
+  for (channel in 0...3) {
+    var shift = channel * 5;
+    var places = 1 << (channel * 8);
+    var placed = widened((color >> shift) & 0x1F) * places;
+    var kept = rg_floor_div(placed - Std.int((placed * steps) / 16), places);
+    packed |= (kept >> 3) << shift;
+  }
+  return packed;
+}
+
+static function mixes_of(page:Vector<Int>):RgMixedSides {
+  if (page == pixels) return picture_mixes;
+  return page == scenery ? scenery_mixes : null;
+}
+
+/* Framebuffer#blend_into_cell */
+static function into_cell(color:Int, under:Int, page:Vector<Int>, at:Int):Int {
+  var painted = faded_as_painted(color);
+  var kept = mixes_of(page);
+  if (kept != null) {
+    kept.is_mixed[at] = mixing;
+    if (mixing != 0) {
+      kept.tops[at] = painted;
+      kept.unders[at] = under;
+    }
+  }
+  return mixing != 0 ? mixed_with_under(painted, under, mixed_by) : painted;
+}
+
+/* Reference#see_through_sprites?, worked out once. */
+static var sprites_seen_through_answer:Int = -1;
+static function sprites_seen_through():Int {
+  if (sprites_seen_through_answer >= 0) return sprites_seen_through_answer;
+  sprites_seen_through_answer = 0;
+  for (layer in 0...rg_game_picture_sizes[RG_SIZE_SEE_THROUGH]) {
+    if (rg_game_see_through[layer * RG_ST_FIELDS + RG_ST_HOLDS_A_SPRITE] != 0) sprites_seen_through_answer = 1;
+  }
+  return sprites_seen_through_answer;
+}
+
+static function keeps_picture_without_sprites():Bool { return target != scenery && sprites_seen_through() != 0; }
+
 /* Framebuffer#set_pixel: a cell drawing may not land on is dropped. */
 static function set_pixel(x:Int, y:Int, color:Int):Void {
   if (plain_layer != null) {
@@ -93,7 +171,12 @@ static function set_pixel(x:Int, y:Int, color:Int):Void {
   }
   if (!paintable(x, y)) return;
   picture_touched = 1;
-  target[y * RG_SCREEN_WIDTH + x] = faded_as_painted(color);
+  var at = y * RG_SCREEN_WIDTH + x;
+  var kept = keeps_picture_without_sprites();
+  var under = kept && painting_sprite != 0 ? picture_without_sprites : target;
+  var painted = into_cell(color, under[at], target, at);
+  target[at] = painted;
+  if (kept && painting_sprite == 0) picture_without_sprites[at] = painted;
 }
 
 /* Framebuffer#fill_rect */
@@ -119,6 +202,10 @@ static function clear_to(color:Int):Void {
   picture_touched = 1;
   var painted = faded_as_painted(color);
   for (at in 0...RG_CELLS) target[at] = painted;
+  var kept = mixes_of(target);
+  if (kept != null) for (at in 0...RG_CELLS) kept.is_mixed[at] = 0;
+  if (!keeps_picture_without_sprites()) return;
+  for (at in 0...RG_CELLS) picture_without_sprites[at] = painted;
 }
 
 static function rg_screen_clear(color:Int):Void { clear_to(color); }
@@ -380,14 +467,91 @@ static function faded_as_painted(color:Int):Int {
   return faded < 0 ? paint_fade.fill(masked) : faded;
 }
 
-/* What mixing a layer into the cells under it asks of the screen: nothing yet, since a game with a see-through
- * layer calls rg_see_through_*, which are refused by name before the game is played. */
-static function mix_as_layer(layer:Int):Void {}
-static function mix_nothing():Void {}
+/* --- see-through layers --- */
+
+static function see_through_layers():Int { return rg_game_picture_sizes[RG_SIZE_SEE_THROUGH]; }
+static function see_through_field(layer:Int, field:Int):Int { return rg_game_see_through[layer * RG_ST_FIELDS + field]; }
+
+static var asked_layer:Int = NOBODY_ASKED;
+static var answered_shows:Int = 0;
+static var answered_behind:Int = 0;
+
+static function rg_see_through_asked(layer:Int):Int { return layer == asked_layer ? 1 : 0; }
+
+static function rg_see_through_answer(shows:Int, behind:Int):Void {
+  answered_shows = shows;
+  answered_behind = behind;
+}
+
+/* IR::SeeThrough.nearest_steps and .floor_steps: an amount is a game's number, so it is worked out as a float. */
+static function held_to_sixteenths(sixteenths:Float):Int { return sixteenths < 0 ? 0 : (sixteenths > 16 ? 16 : Std.int(sixteenths)); }
+static function nearest_sixteenths(amount:Int):Int { var whole:Float = amount; return held_to_sixteenths(rg_floor((whole * 16 + 50) / 100)); }
+static function whole_sixteenths(amount:Int):Int { var whole:Float = amount; return held_to_sixteenths(rg_floor(whole * 16 / 100)); }
+
+/* Reference#live_see_through_weights */
+static function shares_now(layer:Int):RgShares {
+  asked_layer = layer;
+  rg_game_see_through_amounts();
+  asked_layer = NOBODY_ASKED;
+  var sign = see_through_field(layer, RG_ST_SUBTRACTS) != 0 ? -1 : 1;
+  if (see_through_field(layer, RG_ST_ONE_AMOUNT) != 0) {
+    var under = whole_sixteenths(answered_behind);
+    return new RgShares(16 - under, sign * under);
+  }
+  return new RgShares(nearest_sixteenths(answered_shows), sign * nearest_sixteenths(answered_behind));
+}
+
+static var owed_shares:Array<RgKeptShares> = [for (i in 0...RG_MAX_SEE_THROUGH) new RgKeptShares()];
+static var told_shares:Array<RgKeptShares> = [for (i in 0...RG_MAX_SEE_THROUGH) new RgKeptShares()];
+
+/* Reference#layer_has_anything?: scenery showing now (rg_hook_layer_holds_scenery), or a sprite drawn in that layer. */
+static function layer_holds_anything(layer:Int):Bool {
+  return see_through_field(layer, RG_ST_HOLDS_A_SPRITE) != 0 || rg_hook_layer_holds_scenery(layer);
+}
+
+/* Reference#capture_see_through_weights */
+static function keep_shares_for_owed_rebuild():Void {
+  for (layer in 0...see_through_layers()) {
+    owed_shares[layer].kept = see_through_field(layer, RG_ST_AMOUNTS_WRITTEN) == 0 && layer_holds_anything(layer) ? 1 : 0;
+    if (owed_shares[layer].kept != 0) owed_shares[layer].at = shares_now(layer);
+  }
+}
+
+static function forget_kept_shares():Void {
+  for (layer in 0...see_through_layers()) owed_shares[layer].kept = 0;
+}
+
+/* Reference#set_see_through_for, for scenery. A fade that holds the display's blend (rg_hook_blend_held_by_fade,
+ * Reference#fading?) leaves the layer solid. */
+static function mix_as_layer(layer:Int):Void {
+  painting_sprite = 0;
+  mixing = layer != RG_SOLID && !rg_hook_blend_held_by_fade() ? 1 : 0;
+  if (mixing != 0) {
+    mixed_by = owed_shares[layer].kept != 0 ? owed_shares[layer].at : shares_now(layer);
+    mixed_cells_by = mixed_by;
+  }
+}
+
+static function mix_nothing():Void {
+  mixing = 0;
+  painting_sprite = 0;
+}
+
+/* Reference#exec_see_through */
+static function rg_see_through_told(layer:Int):Void {
+  var now = shares_now(layer);
+  var told = told_shares[layer];
+  if (told.kept != 0 && told.at.painted == now.painted && told.at.under == now.under) return;
+  told.kept = 1;
+  told.at = now;
+  request_repaint();
+}
 
 /* Framebuffer#paint_row, a cell at a time */
 static function lay_scenery(px:Int, py:Int, color:Int):Void {
-  pixels[py * RG_SCREEN_WIDTH + px] = faded_as_painted(color);
+  var at = py * RG_SCREEN_WIDTH + px;
+  pixels[at] = into_cell(color, pixels[at], pixels, at);
+  if (sprites_seen_through() != 0) picture_without_sprites[at] = pixels[at];
 }
 
 /* A rebuild that request_repaint would have owed, left out because nothing moved. */
@@ -446,6 +610,7 @@ static function request_repaint():Void {
   if (kind == RG_BITMAP && rg_game_picture_sizes[RG_SIZE_SCREEN_KINDS_CHANGE] != 0) return;
   rg_hook_repaint_requested();
   owed = 1;
+  keep_shares_for_owed_rebuild();
 }
 
 static function rg_screen_request_rebuild():Void { request_repaint(); }
@@ -459,11 +624,15 @@ static function painted_screen():Bool { return kind < 0 || kind == RG_BITMAP; }
  * with what a feature paints first and last (rg_hook_repaint_began, rg_hook_repaint_ending). */
 static function repaint_view():Void {
   repaints_painted++;
+  mix_nothing();
+  fade_unless_left_as_drawn(RG_NO_LAYER);
   clear_to(backdrop);
   rg_hook_repaint_began();
   var levels = rg_game_picture_sizes[RG_SIZE_DEPTHS];
   for (level in 0...levels) rg_hook_paint_level(level);
   rg_hook_repaint_ending();
+  mix_nothing();
+  fade_nothing();
   picture_touched = 0;
 }
 
@@ -474,6 +643,7 @@ static function rg_screen_paint_owed_rebuild():Void {
   if (owed != 0 || skipped_and_touched) {
     owed = 0;
     repaint_view();
+    forget_kept_shares();
   }
   rg_hook_rebuild_checked();
 }
@@ -629,10 +799,19 @@ static function rg_screen_shown():Vector<Int> {
         var from_x = (columns != null ? columns[x] : x) + camera_x;
         var at = from_y * RG_SCREEN_WIDTH + from_x;
         var stored = on_screen(from_x, from_y) ? viewed[at] : 0;
-        color = stored;
-        if (fade_here) {
-          color = fade.table[stored];
-          if (color < 0) color = fade.fill(stored);
+        if (fade != null && fade.remix && on_screen(from_x, from_y) && picture_mixes.is_mixed[at] != 0) {
+          // Framebuffer#shown_color: a mixed cell is mixed again from its two sides, each through the table
+          var top = fade.table[picture_mixes.tops[at]];
+          if (top < 0) top = fade.fill(picture_mixes.tops[at]);
+          var under = fade.table[picture_mixes.unders[at]];
+          if (under < 0) under = fade.fill(picture_mixes.unders[at]);
+          color = mixed_with_under(top, under, mixed_cells_by);
+        } else {
+          color = stored;
+          if (fade_here) {
+            color = fade.table[stored];
+            if (color < 0) color = fade.fill(stored);
+          }
         }
       }
       if (dim != null && (!dim_covers || filter_row_covers(dim.rows, y * 3, x))) {

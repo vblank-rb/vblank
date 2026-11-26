@@ -572,6 +572,8 @@ static function paint_map_row(background:Int, my:Int, off_x:Int, wrap_w:Int, py:
   var tiles = background_field(background, RG_BG_TILES);
   var painted = background_field(background, RG_BG_PAINTED);
   var set_start = background_field(background, RG_BG_TILES_START) + tile_set_now(background) * tiles * tile_w * tile_h + ty * tile_w;
+  var plain = paint_fade == null && mixing == 0;
+  var keeps_without_sprites = sprites_seen_through() != 0;
   var row_at = py * RG_SCREEN_WIDTH;
   var px = 0;
   while (px < RG_SCREEN_WIDTH) {
@@ -592,8 +594,15 @@ static function paint_map_row(background:Int, my:Int, off_x:Int, wrap_w:Int, py:
         var color = slow ? tile_pixel(background, cell, tx + i, ty) : rg_game_tile_pixels[from + i];
         if (color == RG_SEE_THROUGH) continue;
         var at = row_at + px + i;
-        if (onto_sheet != 0) sheet[at] = color;
-        else pixels[at] = faded_as_painted(color);
+        if (onto_sheet != 0) {
+          sheet[at] = color;
+        } else if (plain) {
+          pixels[at] = color & 0xFFFF;
+          picture_mixes.is_mixed[at] = 0;
+          if (keeps_without_sprites) picture_without_sprites[at] = pixels[at];
+        } else {
+          lay_scenery(px + i, py, color);
+        }
       }
     }
     px += run;
