@@ -15,8 +15,7 @@ module VBlank
     # from 1.
     module FlashPlayer
       # Where the harness is built in a checkout, and the setting that points at one built elsewhere.
-      HARNESS_PATH = File.join(File.expand_path("../../..", __dir__), "ruby-flash-player", "harness", "target", "release",
-                               "flash_player_harness").freeze
+      HARNESS_PATH = VBlank.root.join("ruby-flash-player", "harness", "target", "release", "flash_player_harness").to_s.freeze
       HARNESS_SETTING = "VBLANK_FLASH_HARNESS"
 
       # Raised when the harness is not built, or the movie could not be played.

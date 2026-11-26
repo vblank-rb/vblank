@@ -1,6 +1,6 @@
 /*
  * The classes the runtime keeps things in. Unlike every other runtime file, which is a part of the
- * class Rg, this one stands at the top of the module, after the class (see Flash#class_text).
+ * class Main, this one stands at the top of the module, after the class (see Flash#class_text).
  */
 
 /* A game's list, as rg_list.hx keeps one: the items in an array as long as the capacity, used as a ring. */
