@@ -331,41 +331,46 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   # The place of the walker's list pixel +at+ of its pose +pose+ is drawn at.
   def self.walker_place(at, pose) = 1 + (((at * at / 3) + (at * 7) + (pose * 11)) % 15)
 
-  # A copy whose list gives two places of the pose's one colour two colours of its own cannot be the
-  # pose's tiles in another set: it keeps tiles of its own, beside the players that share theirs.
-  def test_a_copy_not_laid_out_like_its_pose_keeps_its_own_tiles
-    demo = shown_by(players_of_one_pose_set, 18)
+  # A copy whose list gives two places of the pose's one colour two colours of its own shows each,
+  # as the interpreter recolours a picture that keeps its places: by place.
+  def test_a_copy_shows_two_colours_for_two_places_of_one
+    demo = shown_by(players_of_one_pose_set(repeated: true), 18)
 
     assert_equal first_color(WALKER_LIST), demo.pixel(TWIN_SPOT[0], TWIN_SPOT[1]), "the twin's first place, as its pose"
+    assert_equal first_color(WALKER_LIST), demo.pixel(TWIN_SPOT[0] + 1, TWIN_SPOT[1]), "the twin's other place, as its pose"
     assert_equal SceneColorLists.full_list(0)[1], demo.pixel(TWIN_SPOT[0] + 8, TWIN_SPOT[1]), "the copy's first place"
-    assert_equal SceneColorLists.full_list(0)[2], demo.pixel(TWIN_SPOT[0] + 9, TWIN_SPOT[1]), "the copy's second place"
+    assert_equal SceneColorLists.full_list(0)[2], demo.pixel(TWIN_SPOT[0] + 9, TWIN_SPOT[1]), "the copy's other place"
   end
 
   TWIN_SPOT = [96, 136].freeze # Where the twin pose stands, and its copy 8 pixels to its right
 
   # The stage, up from the start, shows the walker in five poses of 64×64; the demo, from tick 8,
   # four players of them (#player_spot), the three after the first drawn with PLAYER_LISTS
-  # (#player_list, a place on), a bomb in three of the walker's colours, four pictures of lists 0 to
-  # 3, and a twin: a picture of 2×1 whose two places hold the walker's first colour, and a copy of
-  # it drawn with the first two colours of list 0.
+  # (#player_list, a place on), a bomb in three of the walker's colours, three pictures of lists 0
+  # to 2, and a twin: a picture of 2×1 in the walker's list at its first place and REPEATED_PLACE,
+  # and a copy of it drawn with list 0, which holds its second colour at REPEATED_PLACE.
   #
   # With +changing+, the game changes each player's list as it runs: to #dusk_list at ticks 12 and
-  # 20, and to #day_list at 16.
-  private def players_of_one_pose_set(changing: false)
+  # 20, and to #day_list at 16. With +repeated+, the walker's list holds its first colour at
+  # REPEATED_PLACE too (#repeated_walker_list), and each player's list keeps the walker's colour
+  # there (#repeated_player_list).
+  private def players_of_one_pose_set(changing: false, repeated: false)
     test = self.class
     walker_list = WALKER_LIST
     players = PLAYER_LISTS
     twin_spot = TWIN_SPOT
     program do
       screen :tiled
-      colors :walker_list, SceneColorLists.full_list(walker_list)
+      colors :walker_list, repeated ? test.repeated_walker_list : SceneColorLists.full_list(walker_list)
       walk = (0...5).map do |pose|
         image(:"walker#{pose}", width: 64, height: 64, colors: :walker_list,
                                 places: Array.new(64 * 64) { |i| test.walker_place(i, pose) })
         :"walker#{pose}"
       end
       shows = { frames: walk, rate: 60 }
-      players.each_with_index { |n, at| colors :"list#{n}", test.player_list(n, at + 1) }
+      players.each_with_index do |n, at|
+        colors :"list#{n}", repeated ? test.repeated_player_list(n, at) : test.player_list(n, at + 1)
+      end
       if changing
         players.each_with_index do |n, at|
           colors :"dusk#{n}", test.dusk_list(n, at)
@@ -373,11 +378,11 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         end
       end
       image(:bomb, width: 8, height: 8, colors: :walker_list, places: Array.new(64) { |i| 1 + (i % 3) })
-      fillers = (0..3).map { |n| test.declare_picture(self, n) }
-      first = SceneColorLists.full_list(walker_list)[1]
-      colors :twin_list, [:transparent, first, first]
-      colors :twin_copy_list, SceneColorLists.full_list(0).take(3)
-      image(:twin, width: 2, height: 1, colors: :twin_list, places: [1, 2])
+      fillers = (0..2).map { |n| test.declare_picture(self, n) }
+      copy_list = SceneColorLists.full_list(0).dup
+      copy_list[test::REPEATED_PLACE] = copy_list[2]
+      colors :twin_copy_list, copy_list
+      image(:twin, width: 2, height: 1, colors: :walker_list, places: [1, test::REPEATED_PLACE])
       state = var :state, 0
       tick = var :tick, 0
       scene(:stage) { sprite :stage_walker, at: [0, 0], **shows }
@@ -402,6 +407,40 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         end
         call({ 0 => :stage, 1 => :demo }, number: :state)
       end
+    end
+  end
+
+  REPEATED_PLACE = 14 # A place the walker's first pose draws, holding its first colour again
+
+  # The walker's list with its first colour at REPEATED_PLACE too, as a character's list holds its
+  # outline's colour at two places.
+  def self.repeated_walker_list
+    list = SceneColorLists.full_list(WALKER_LIST).dup
+    list[REPEATED_PLACE] = list[1]
+    list
+  end
+
+  # Player +at+ + 2's list, drawn with list +n+: its own colour at place 1, and the walker's at
+  # REPEATED_PLACE, so the walker's one colour shows as two.
+  def self.repeated_player_list(n, at)
+    list = player_list(n, at + 1).dup
+    list[REPEATED_PLACE] = SceneColorLists.first_color(WALKER_LIST)
+    list
+  end
+
+  # Four players of one pose set whose list holds one colour at two places, each player's list
+  # keeping it at one and showing its own at the other. Drawn by place, as the console's sprite
+  # draws its tile's places in whichever set the sprite names, every player is the pose's tiles.
+  def test_four_players_of_a_pose_list_repeating_a_colour_keep_its_tiles_once
+    demo = shown_by(players_of_one_pose_set(repeated: true), 18)
+    repeated = (0...(64 * 64)).find { |at| self.class.walker_place(at, 0) == REPEATED_PLACE }
+
+    assert_equal first_color(WALKER_LIST), demo.pixel(*player_spot(0)), "the first player's first place"
+    assert_equal first_color(WALKER_LIST), demo.pixel(repeated % 64, repeated / 64), "the first player's other place"
+    PLAYER_LISTS.each_with_index do |n, at|
+      x, y = player_spot(at + 1)
+      assert_equal first_color(n), demo.pixel(x, y), "player #{at + 2}'s first place"
+      assert_equal first_color(WALKER_LIST), demo.pixel(x + (repeated % 64), y + (repeated / 64)), "player #{at + 2}'s other place"
     end
   end
 

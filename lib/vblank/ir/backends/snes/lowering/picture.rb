@@ -376,6 +376,7 @@ module VBlank
 
               painted = @tile_runs.filter_map(&:picture)
               reserve_shared_sprite_art(mixed, painted)
+              reserve_list_places_palettes(mixed, painted)
               @sprite_pictures.each_with_index do |name, number|
                 run = @tile_runs.index { |tile_run| tile_run.picture == name }
                 if painted.include?(name)
@@ -442,6 +443,15 @@ module VBlank
               pictures_of_some_scenes.each { |name| reserve_shared_plain_picture(name, mixed) }
             end
 
+            # The sets laid out as their lists' places that poses drawn with other lists take
+            # (#picture_palette_in_places), before any picture is made: a picture made first would
+            # start a set of its own colours, where it can find them in the pose's.
+            def reserve_list_places_palettes(mixed, painted)
+              return unless worn_tried?
+
+              @sprite_pictures.each { |name| picture_palette_in_places(name, mixed.include?(name)) unless painted.include?(name) }
+            end
+
             def reserve_shared_plain_picture(name, mixed)
               @art.reserve_shared_sprite_picture(@cache.image(picture_named(name)), mixed: mixed.include?(name),
                                                                                        held: picture_palette_in_places(name, mixed.include?(name)),
@@ -461,22 +471,37 @@ module VBlank
             RecoloredCopy = Data.define(:image, :held, :scenes, :worn)
 
             # The copy of +pose+ drawn with +list+. In a game of +shared_pose_tiles+ (and not of
-            # +one_sprite_tile_set+), the pose's own picture in a set of the copy's colours, where each
+            # +one_sprite_tile_set+), a pose that keeps its places is drawn in its list's places
+            # (#picture_palette_in_places), so its copy is the same tiles in a set of the list's colours
+            # in their places, whatever colours repeat, as the interpreter recolours it by place. A pose
+            # of colours alone is its own picture in a set of the copy's colours, where each
             # colour the pose draws comes to one colour of the list in every set of colours it can hold
             # (Art#worn_for), placed as the pose places its own. Otherwise kept in places where the list
             # is (#palette_of_worn_list), or a copy made pixel by pixel (Assets::RecoloredImage), with
             # tiles of its own wherever its colours land in other places of its set.
             def recolored_copy(pose, list, swapped, mixed)
               image = @cache.image(picture_named(pose))
+              copy_scenes = colors_scenes_of_recolored(pose, list)
+              if worn_tried? && worn_by_place?(image)
+                held = changing_list?(list) ? recolored_list_palette(list, mixed) : palette_in_places(places_shown(image, swapped), mixed, copy_scenes)
+                return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil)
+              end
+
               worn = worn_of(pose, image, list, swapped) if worn_tried?
               return RecoloredCopy.new(image: image, held: nil, scenes: colors_scenes_of_picture(pose), worn: worn) if worn
 
-              copy_scenes = colors_scenes_of_recolored(pose, list)
               held = palette_of_worn_list(pose, list, swapped, mixed)
               return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil) if held
 
               recolor = Assets::Recolor.of(image, swapped)
               RecoloredCopy.new(image: Assets::RecoloredImage.new(image: image, recolor: recolor), held: nil, scenes: copy_scenes, worn: nil)
+            end
+
+            # The colours a copy of +image+ in the list +swapped+ shows at each place, place 0 first: the
+            # list's, and the picture's own past the list's end, as Assets::Recolor#color_at_place gives.
+            def places_shown(image, swapped)
+              recolor = Assets::Recolor.of(image, swapped)
+              [swapped.first, *(1...[swapped.length, image.colors.length].max).map { |place| recolor.color_at_place(place, image.colors[place]) }]
             end
 
             # Whether a copy is tried as its pose's own tiles (#recolored_copy).
@@ -645,11 +670,23 @@ module VBlank
 
             # The palette the picture +name+ takes in such a game, or nil for a picture no sprite draws
             # with another list, which is made as ever.
+            #
+            # In a game of +shared_pose_tiles+, a picture that keeps its places takes a set laid out as its
+            # list, which other pictures can still draw from (Art#list_places_palette), so its copies are
+            # its own tiles (#recolored_copy).
             def picture_palette_in_places(name, mixed)
-              return nil unless @one_sprite_tile_set && @objects.each_value.any? { |obj| !obj.recolors.empty? && obj.poses.include?(name) }
+              return nil unless @objects.each_value.any? { |obj| !obj.recolors.empty? && obj.poses.include?(name) }
 
-              palette_in_places(@cache.image(picture_named(name)).colors, mixed, colors_scenes_of_picture(name))
+              image = @cache.image(picture_named(name))
+              return palette_in_places(image.colors, mixed, colors_scenes_of_picture(name)) if @one_sprite_tile_set
+              return nil unless worn_tried? && worn_by_place?(image)
+
+              @art.list_places_palette(palette_colors(image.colors), colors_scenes_of_picture(name), mixed: mixed)
             end
+
+            # Whether +image+'s copies in other lists are drawn by place, as the interpreter draws a picture
+            # that keeps its places (Assets::Recolor#color_at_place).
+            def worn_by_place?(image) = !image.places.nil?
 
             # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).
             public def sprites_draw_with_lists? = @objects.each_value.any? { |obj| !obj.recolors.empty? }

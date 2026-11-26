@@ -299,6 +299,7 @@ module VBlank
             @unmixed_scenes = []
             @held_palettes = {} # whose list => its palette (#held_palette)
             @worn_list_palettes = {} # a list the game changes => its copies' sets (#worn_list_palettes)
+            @list_places_kept = false # whether a set is laid out as a list's places (#joined_colors)
             @held = { backgrounds: [], sprites: [] }
             @scene_held = {} # a scene -> the same, for its own copy of the background palettes
             @sprite_pictures = {}
@@ -555,6 +556,32 @@ module VBlank
           def held_scene_sprite_palette(key, colors, scenes, mixed: false)
             allocate_sprite_palette(mixed, scenes) do |within|
               held_palette(scenes.map { |scene| sprite_palettes(scene) }, key, colors, "sprites", within)
+            end
+          end
+
+          # The set a sprite's own picture drawn with other lists takes, in a game of +shared_pose_tiles+,
+          # where it keeps the places of its list: +colors+, the list past place 0, from the set's first
+          # place, so each tile names a place of the list as it is drawn (#sprite_picture's +held+),
+          # and a copy in another list is the same tiles drawn from a set of that list's colours in
+          # its places. The console's sprite names its set and draws its tile's places in it (fullsnes,
+          # "OAM"), and its own games draw players of one set of tiles in a set each that way. Unlike
+          # a list the game changes, the set is not the picture's alone: other pictures find their
+          # colours in it and add theirs after it (#joined_colors). The same in each of +scenes+'
+          # copies (#sprite_palette_copies), the first set whose first places are +colors+ or that
+          # none of them uses yet.
+          def list_places_palette(colors, scenes, mixed: false)
+            copies = sprite_palette_copies(scenes)
+            allocate_sprite_palette(mixed, scenes || [nil]) do |within|
+              unheld = within.reject { |p| copies.any? { |palettes| held_in(palettes).include?(p) } }
+              found = unheld.find { |p| copies.all? { |palettes| palettes[p]&.take(colors.length) == colors } }
+              next found if found
+
+              free = unheld.find { |p| copies.all? { |palettes| palettes[p].nil? } }
+              raise too_much_error_for(copies.first), picture_colors_message("sprites") unless free
+
+              @list_places_kept = true
+              copies.each { |palettes| palettes[free] = colors.dup }
+              free
             end
           end
 
@@ -1166,11 +1193,11 @@ module VBlank
               copies.all? { |palettes| palettes[p] == first[p] && !held_in(palettes).include?(p) }
             end
             used = alike.select { |p| first[p] }
-            free = used.select { |p| (first[p] | colors).length <= OWN_COLORS }.max_by { |p| (first[p] & colors).length } ||
+            free = used.select { |p| joined_colors(first[p], colors).length <= OWN_COLORS }.max_by { |p| (first[p] & colors).length } ||
                    alike.find { |p| first[p].nil? }
             raise too_much_error_for(first), picture_colors_message(what) unless free
 
-            joined = (first[free] || []) | colors
+            joined = joined_colors(first[free] || [], colors)
             copies.each { |palettes| palettes[free] = joined.dup }
             free
           end
@@ -1325,10 +1352,10 @@ module VBlank
             found = used.find { |p| (colors - palettes[p]).empty? }
             return found if found
 
-            roomy = used.select { |p| (palettes[p] | colors).length <= OWN_COLORS }
+            roomy = used.select { |p| joined_colors(palettes[p], colors).length <= OWN_COLORS }
                         .max_by { |p| (palettes[p] & colors).length }
             if roomy
-              palettes[roomy] |= colors
+              palettes[roomy] = joined_colors(palettes[roomy], colors)
               return roomy
             end
             unused = within.find { |p| palettes[p].nil? }
@@ -1336,6 +1363,16 @@ module VBlank
 
             palettes[unused] = colors.dup
             unused
+          end
+
+          # +palette+ with those of +colors+ it does not hold added at its end. A set laid out as a
+          # list's places (#list_places_palette) can hold one colour twice, and its places must not
+          # move, so in a game that has such a set the two are kept, where `|` would fold them into
+          # one. Every other game joins as it always has, and builds the same bytes.
+          def joined_colors(palette, colors)
+            return palette | colors unless @list_places_kept
+
+            palette + (colors.uniq - palette)
           end
 
           # Refuses a sprite or background picture of more colours than a tile shows.
