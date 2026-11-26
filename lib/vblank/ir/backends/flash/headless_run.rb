@@ -14,7 +14,7 @@ module VBlank
         # it is asked for (the harness is asked, between a frame's end and its buttons), since a movie
         # writing every frame's picture costs more than playing the frame.
         #
-        # What the movie does not do yet (sound, saves, the clock, the state image and the start file) is
+        # What the movie does not do yet (sound, saves, the state image and the start file) is
         # refused before the run starts, as a question the lowering cannot answer.
         class HeadlessRun < Computer::HeadlessRun
           # Raised for something a test asks that the Flash lowering cannot answer yet. The shared one's,
@@ -23,7 +23,6 @@ module VBlank
 
           def recording_sound(**) = refuse_unmade!("recording the sound it makes")
           def sounding_as_played = refuse_unmade!("sounding as it plays")
-          def clock_at(*, **) = refuse_unmade!("the cartridge's clock")
           def hand_file(*) = refuse_unmade!("a file handed to the game as it starts")
           def writing_state_after(*) = refuse_unmade!("writing the state image")
           def starting_from_state(*) = refuse_unmade!("reading a state image")

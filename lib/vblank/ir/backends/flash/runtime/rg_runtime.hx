@@ -8,7 +8,7 @@
  * defines rg_dump_variable and rg_dump_list, plays the game by calling rg_game_pass for one frame after
  * another (see Printer), and says what halting and going wrong mean.
  *
- * What is not here yet: the cartridge's clock, the start file, and the state image. A game that needs
+ * What is not here yet: the start file and the state image. A game that needs
  * one is refused by name before it is built (Flash#runtime_gaps).
  */
 
@@ -271,9 +271,11 @@ static function rg_game_pass():Int {
   return 1;
 }
 
-/* The end of the middle of Reference#advance_frame: the frame is counted. */
+/* The end of the middle of Reference#advance_frame: the frame is counted, which moves a clock started at a
+ * test's moment. */
 static function rg_frame_ends():Void {
   rg_motor_frame();
+  rg_clock_frame();
 }
 
 /* The middle of Reference#advance_frame, in its order: the picture switched on, the timers tick, then the
@@ -295,3 +297,136 @@ static function rg_frame_begins():Int {
   rg_frame_ends();
   return 0;
 }
+
+/* --- the cartridge's clock (Reference#value_of_clock) --- */
+
+/* The readings in IR::Clock::READINGS's order, which is the number the game asks by. */
+static inline var RG_CLOCK_HOUR:Int = 0;
+static inline var RG_CLOCK_MINUTE:Int = 1;
+static inline var RG_CLOCK_SECOND:Int = 2;
+static inline var RG_CLOCK_YEAR:Int = 3;
+static inline var RG_CLOCK_MONTH:Int = 4;
+static inline var RG_CLOCK_DAY:Int = 5;
+static inline var RG_CLOCK_WEEKDAY:Int = 6;
+static inline var RG_CLOCK_PRESENT:Int = 7;
+static inline var RG_CLOCK_SET:Int = 8;
+
+static inline var RG_SECONDS_A_DAY:Int = 86400;
+
+/* Whether there is a clock and it was set; whether it moves on a frame at each boundary rather than being
+ * told the time; and the time now, as seconds from the start of 1970 (a float: past 2038 they no longer fit a
+ * 32-bit number) and the console's ticks into the next second. */
+static var rg_clock_present:Int = 0;
+static var rg_clock_set:Int = 0;
+static var rg_clock_counts_frames:Int = 0;
+static var rg_clock_seconds:Float = 0;
+static var rg_clock_ticks:Int = 0;
+
+/* 1 January 2000, in days from the start of 1970: the day a clock that keeps no date reads as starting on. */
+static inline var RG_UNDATED_FIRST_DAY:Int = 10957;
+
+/* The windowless driver starts the clock at a test's moment, and it moves on from there. A chip that keeps no
+ * date (RG_CLOCK_KEEPS_DATE 0, the Color's; IR::Clock.undated) counts only the days and the time of day since
+ * it started, taken as that many days on from 1 January 2000. */
+static function rg_clock_starts_at(seconds:Float, ticks:Int, set:Int):Void {
+  rg_clock_present = 1;
+  rg_clock_set = set != 0 ? 1 : 0;
+  rg_clock_counts_frames = 1;
+  rg_clock_seconds = RG_CLOCK_KEEPS_DATE != 0
+    ? seconds
+    : RG_UNDATED_FIRST_DAY * RG_SECONDS_A_DAY * 1.0 + (seconds - rg_floor(seconds / RG_SECONDS_A_DAY) * RG_SECONDS_A_DAY);
+  rg_clock_ticks = ticks;
+}
+
+/* The days from the start of 1970 to a date, and back: the calendar of plain arithmetic, every fourth year a
+ * leap year, but not every hundredth, but every four hundredth. Every division rounds down. */
+static function rg_floor_div(a:Int, b:Int):Int { return Std.int(rg_floor(a / b)); }
+
+static function rg_days_from_date(year:Int, month:Int, day:Int):Int {
+  year -= month <= 2 ? 1 : 0;
+  var era = rg_floor_div(year, 400);
+  var year_of_era = year - era * 400;
+  var day_of_year = rg_floor_div(153 * (month > 2 ? month - 3 : month + 9) + 2, 5) + day - 1;
+  var day_of_era = year_of_era * 365 + rg_floor_div(year_of_era, 4) - rg_floor_div(year_of_era, 100) + day_of_year;
+  return era * 146097 + day_of_era - 719468;
+}
+
+/* The date +days+ from the start of 1970 is, as [year, month, day]. */
+static function rg_date_from_days(days:Int):Array<Int> {
+  days += 719468;
+  var era = rg_floor_div(days, 146097);
+  var day_of_era = days - era * 146097;
+  var year_of_era = rg_floor_div(day_of_era - rg_floor_div(day_of_era, 1460) + rg_floor_div(day_of_era, 36524) - rg_floor_div(day_of_era, 146096), 365);
+  var day_of_year = day_of_era - (365 * year_of_era + rg_floor_div(year_of_era, 4) - rg_floor_div(year_of_era, 100));
+  var from_march = rg_floor_div(5 * day_of_year + 2, 153);
+  var month = from_march < 10 ? from_march + 3 : from_march - 9;
+  return [year_of_era + era * 400 + (month <= 2 ? 1 : 0), month, day_of_year - rg_floor_div(153 * from_march + 2, 5) + 1];
+}
+
+/* The page gives what the player's own clock reads instead, its local time, as each frame of the game starts. */
+static function rg_clock_reads(year:Int, month:Int, day:Int, hour:Int, minute:Int, second:Int):Void {
+  rg_clock_present = 1;
+  rg_clock_set = 1;
+  rg_clock_counts_frames = 0;
+  rg_clock_seconds = rg_days_from_date(year, month, day) * RG_SECONDS_A_DAY * 1.0 + hour * 3600 + minute * 60 + second;
+  rg_clock_ticks = 0;
+}
+
+/* A frame of the console's later: as many of its clock's ticks as it takes to draw one, close to a sixtieth of
+ * a second (the console's RG_CONSOLE_TICKS_A_FRAME and RG_CONSOLE_TICKS_A_SECOND, written ahead of the runtime). */
+static function rg_clock_frame():Void {
+  if (rg_clock_counts_frames == 0) return;
+  rg_clock_ticks += RG_CONSOLE_TICKS_A_FRAME;
+  rg_clock_seconds += rg_floor_div(rg_clock_ticks, RG_CONSOLE_TICKS_A_SECOND);
+  rg_clock_ticks = rg_clock_ticks % RG_CONSOLE_TICKS_A_SECOND;
+}
+
+/* A time the game set is added on: how far it is from the clock's own, in whole days and the seconds left over
+ * (IR::Clock::OFFSET_DAYS), 0 and 0 in a game that never sets one. */
+static function rg_clock_reading(reading:Int, offset_days:Int, offset_seconds:Int):Int {
+  if (rg_clock_present == 0) return 0;
+  if (reading == RG_CLOCK_PRESENT) return 1;
+  if (rg_clock_set == 0) return 0;
+  /* A chip that keeps no date reads as never set until the game sets a time on it. */
+  if (RG_CLOCK_KEEPS_DATE == 0 && offset_days == 0 && offset_seconds == 0) return 0;
+  if (reading == RG_CLOCK_SET) return 1;
+
+  var now:Float = rg_clock_seconds + offset_days * RG_SECONDS_A_DAY * 1.0 + offset_seconds;
+  var days = Std.int(rg_floor(now / RG_SECONDS_A_DAY));
+  var into_day = Std.int(now - days * RG_SECONDS_A_DAY * 1.0);
+  var date = rg_date_from_days(days);
+  switch (reading) {
+    case RG_CLOCK_HOUR: return rg_floor_div(into_day, 3600);
+    case RG_CLOCK_MINUTE: return rg_floor_div(into_day, 60) % 60;
+    case RG_CLOCK_SECOND: return into_day % 60;
+    case RG_CLOCK_YEAR: return date[0];
+    case RG_CLOCK_MONTH: return date[1];
+    case RG_CLOCK_DAY: return date[2];
+    case RG_CLOCK_WEEKDAY: return days + 4 - rg_floor_div(days + 4, 7) * 7; /* 1 January 1970 was a Thursday */
+    default:
+      rg_fault("the clock has no reading numbered " + reading);
+      return 0;
+  }
+}
+
+/* Setting the clock (rg_clock_set_to in the native runtime): how far the time set is from the clock's own,
+ * kept here until the game takes the two parts into its saved numbers. */
+static var rg_clock_days_kept:Int = 0;
+static var rg_clock_seconds_kept:Int = 0;
+
+static function rg_clock_set_to(year:Int, month:Int, day:Int, hour:Int, minute:Int, second:Int):Void {
+  if (rg_clock_present == 0) return;
+  var today = Std.int(rg_floor(rg_clock_seconds / RG_SECONDS_A_DAY));
+  var days = rg_days_from_date(year, month, day) - today;
+  var seconds = hour * 3600 + minute * 60 + second - Std.int(rg_clock_seconds - today * RG_SECONDS_A_DAY * 1.0);
+  if (seconds < 0) {
+    seconds += RG_SECONDS_A_DAY;
+    days -= 1;
+  }
+  rg_clock_days_kept = days;
+  rg_clock_seconds_kept = seconds;
+  rg_clock_set = 1;
+}
+
+static function rg_clock_kept_days(current:Int):Int { return rg_clock_present != 0 ? rg_clock_days_kept : current; }
+static function rg_clock_kept_seconds(current:Int):Int { return rg_clock_present != 0 ? rg_clock_seconds_kept : current; }

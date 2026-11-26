@@ -78,6 +78,8 @@ static function page_key(event:flash.events.KeyboardEvent, down:Bool):Void {
 
 /* One frame of the game, from where it stopped to its next frame boundary, painted. */
 static function page_play_pass():Void {
+  var now = Date.now();
+  rg_clock_reads(now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
   rg_players_read(page_masks());
   while (true) {
     if (rg_game_pass() == 0) {
