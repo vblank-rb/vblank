@@ -21,27 +21,27 @@ module VBlank
             items = top_level
             printer = Printer.new
             text = printer.print_file(items)
-            [text, printer.called.to_a - printer.own.to_a - defined + features_not_made + sound_chip_not_made(printer.called)]
+            [text, printer.called.to_a - printer.own.to_a - defined + features_not_made]
           end
 
           # The console the game is played as, in the numbers the runtime needs from it, as constants ahead
           # of the runtime: the size of its screen, the cycles its clock counts a second, and the rest
-          # (Computer::ConsoleNumbers), and the state file's (Computer::StateFile).
+          # (Computer::ConsoleNumbers), the state file's (Computer::StateFile), and the sound chip's tables where the
+          # console has none.
           def console_text
             Computer::ConsoleNumbers.values(@program.described_console).map do |name, value|
               "static inline var #{name}:Int = #{Computer::ConsoleNumbers.as_number(value)};\n"
-            end.join + Computer::StateFile.hx_text(@program)
+            end.join + Computer::StateFile.hx_text(@program) + no_sound_chip_text
           end
 
           private
 
-          # A console whose voices read sound memory (the PlayStation's, the Super Nintendo's) has a sound chip the Flash
-          # runtime does not work out yet: a game that makes sound there is refused by name.
-          def sound_chip_not_made(called)
-            return [] unless @program.described_console.voices_read_sound_memory
-            return [] unless called.any? { |name| name.start_with?("rg_sound_", "rg_music_", "rg_mix_") }
+          # The sound chip that plays loops out of sound memory (runtime/rg_spu.hx) is in every movie, and a console whose
+          # voices are worked out in the runtime never asks it: the tables it reads are empty there, so it compiles.
+          def no_sound_chip_text
+            return "" if @program.described_console.voices_read_sound_memory
 
-            ["the sound chip that reads sound memory"]
+            %w[rules loops memory recordings].map { |name| "static var rg_game_spu_#{name}:Vector<Int> = new Vector<Int>(1);\n" }.join
           end
 
           def build_name = "the Flash build"

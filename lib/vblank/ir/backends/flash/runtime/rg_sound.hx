@@ -11,8 +11,9 @@
  * The voices are worked out here sample by sample, whatever the driver does with them: the headless one hands them to
  * the harness for a test, and a page plays them through a Sound.
  *
- * Left out: a console whose voices read sound memory (RG_VOICES_READ_SOUND_MEMORY, rg_spu.js): a game that makes sound
- * there is refused by name before it is built (Flash::Lowering#text_and_gaps), and the state image.
+ * A console whose voices read sound memory (RG_VOICES_READ_SOUND_MEMORY) has them played by its sound chip, rg_spu.hx.
+ *
+ * Left out: the state image.
  */
 
 static inline var RG_SOUND_RATE:Int = 48000;
@@ -78,15 +79,10 @@ static function at_main_volume(sum:Int):Int {
 static inline var STEP_SIZE:Int = 1092;
 static inline var MIX_STEP:Int = 128;
 
-/* The sound chip's voices keep track of which a game struck; a console whose voices are worked out here has none. */
-static function voice_struck(voice:Int):Void {}
-static function game_voice_struck(voice:Int):Void {}
-static function spu_slide_started(voice:Int):Void {}
-static function spu_waveform_put_in(which:Int):Void {}
-
 /* --- a loudness that fades --- */
 
 static function volume_from(volume:Int, fade:Int):RgLoudness {
+  if (RG_VOICES_READ_SOUND_MEMORY != 0) return new RgLoudness(volume, (fade & FADE_STEP_BITS) * 256, 0, (fade & FADE_UP) != 0);
   var hold = Std.int(((fade & FADE_STEP_BITS) * RG_SOUND_RATE) / 64);
   return new RgLoudness(volume, hold, hold, (fade & FADE_UP) != 0);
 }
@@ -295,6 +291,7 @@ static function held_in_range(sum:Int):Int { return sum < -32768 ? -32768 : (sum
 /* The sound of the frame that has just been played, the left speaker's written into +left+ and the right's into
  * +right+ (vectors with room for RG_SOUND_FRAME_MOST); gives back how many each. */
 static function rg_sound_render_frame(left:Vector<Int>, right:Vector<Int>):Int {
+  if (RG_VOICES_READ_SOUND_MEMORY != 0) return spu_render_frame(left, right); // rg_spu.hx
   sample_carry += RG_SOUND_RATE * 1.0 * RG_CONSOLE_TICKS_A_FRAME;
   var count = Std.int(rg_floor(sample_carry / RG_CONSOLE_TICKS_A_SECOND));
   sample_carry = sample_carry % RG_CONSOLE_TICKS_A_SECOND;

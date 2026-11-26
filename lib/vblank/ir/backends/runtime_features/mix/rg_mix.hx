@@ -46,11 +46,6 @@ static var drops:Int = 0;
 static var drops_music:Int = 0;
 static var tickets:Int = 0;
 
-/* The sound chip that plays recordings on voices of its own is told which struck and stopped; a console whose voices
- * are worked out here has none. */
-static function spu_recording_struck(place:Int, by_game:Int):Void {}
-static function spu_recording_stopped_by_game(place:Int):Void {}
-
 /* Where recording number +recording+'s numbers start in rg_game_recordings. */
 static function recording_numbers(recording:Int):Int {
   if (recording < 0 || recording >= rg_game_recordings[0]) rg_fault("there is no recording number " + recording);
@@ -253,9 +248,20 @@ static function rg_mix_stop(recording:Int):Void {
   rg_sound_log("stop_sample");
 }
 
-/* Each voice told to the sound chip that plays recordings on voices of its own: only a console whose voices read
- * sound memory asks, and the Flash build refuses a game that makes sound on one. */
-static function rg_mix_recordings_told():Void {}
+/* Each voice told to the sound chip that plays recordings on voices of its own (rg_mix.c says when). */
+static function rg_mix_recordings_told():Void {
+  for (i in 0...VOICES()) {
+    var voice = mix_voices[i];
+    spu_tell_recording(i, voice.sounding != 0, mix_ran_out(voice), voice.recording, voice.back, voice.step, voice.loudness, voice.level,
+                       voice.shaped != 0);
+  }
+}
+
+/* rg_mix.c's ran_out: the voice stopped because its recording, played once through, ran out. */
+static function mix_ran_out(voice:RgMixVoice):Bool {
+  if (voice.sounding != 0 || voice.back != 0 || voice.recording < 0 || voice.recording >= rg_game_recordings[0]) return false;
+  return voice.position >= rg_game_recordings[recording_numbers(voice.recording) + 1];
+}
 
 /* One voice's frame into the totals. Nought when its recording ran out partway and it stopped. */
 static function mix_voice_into(voice:RgMixVoice, totals:Vector<Int>):Int {

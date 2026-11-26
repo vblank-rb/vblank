@@ -351,3 +351,32 @@ class RgSwell {
 
   public function new() {}
 }
+
+/* One voice of the sound chip that plays loops out of sound memory (rg_spu.hx). */
+class RgSpuVoice {
+  public var start:Int = 0;
+  public var loop:Int = 0;
+  public var loop_held:Int = 0;
+  public var pitch:Int = 0;
+  public var volume:Vector<Int> = new Vector<Int>(2);
+  public var heard:Vector<Int> = new Vector<Int>(2);
+  public var address:Int = 0;
+  public var flags:Int = 0;
+  public var shift:Int = 0;
+  public var filter:Int = 0;
+  public var older:Int = 0;
+  public var newer:Int = 0;
+  public var ring:Vector<Int> = new Vector<Int>(32);
+  public var write_at:Int = 0;
+  public var read_at:Int = 0;
+  public var decoded:Int = 0;
+  public var delay:Int = 0;
+  public var phase:Int = 0;
+  public var level:Int = 0;
+  public var divider:Int = 0;
+  public var stage:Int = 0;
+  public var keyed:Int = 0;
+  public var loop_start:Int = 0;
+
+  public function new() {}
+}

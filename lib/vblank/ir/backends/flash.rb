@@ -45,7 +45,7 @@ module VBlank
         RUNTIME_DIR = Ractor.make_shareable(File.expand_path("flash/runtime", __dir__))
 
         # The runtime every program carries, in the order it is put together, and the drivers that follow it.
-        RUNTIME = Ractor.make_shareable(%w[rg_int32.hx rg_runtime.hx rg_list.hx rg_screen.hx rg_sound.hx rg_save.hx rg_state.hx])
+        RUNTIME = Ractor.make_shareable(%w[rg_int32.hx rg_runtime.hx rg_list.hx rg_screen.hx rg_sound.hx rg_spu.hx rg_save.hx rg_state.hx])
         TYPES = "rg_types.hx"
         # The Haxe files of its own the runtime compiles beside the game (see #compile), read once: what they say is part of what a movie is.
         OVERRIDES_TEXT = Ractor.make_shareable(Dir.glob(File.join(RUNTIME_DIR, "overrides", "**", "*.hx")).sort.map { |path| File.read(path) }.join("\n"))

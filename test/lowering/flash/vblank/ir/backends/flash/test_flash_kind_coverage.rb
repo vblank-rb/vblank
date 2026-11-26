@@ -73,9 +73,9 @@ class TestFlashKindCoverage < Minitest::Test
     assert_includes gaps, "rg_sound_beep"
   end
 
-  # The sound chip of a console whose voices read sound memory is not worked out, so a game that makes sound there is
-  # refused by name; a game of that console that makes none is not.
-  def test_a_game_that_makes_sound_on_a_sound_memory_console_is_refused_by_the_chip
+  # The console whose voices read sound memory plays them through the sound chip (runtime/rg_spu.hx), so a game that makes
+  # sound there is no more refused than on a console whose voices the runtime works out itself.
+  def test_a_game_that_makes_sound_on_a_sound_memory_console_has_no_gap
     game = VBlank.game("beeper", consoles: %i[ps1]) do
       enable_sound
       game_loop do
@@ -83,8 +83,8 @@ class TestFlashKindCoverage < Minitest::Test
       end
     end
     program = VBlank::IR::Backends::Computer::CheckedProgram.build(game, console: :ps1, err: StringIO.new)
-    error = assert_raises(Flash::RuntimeGap) { Flash.new.build_headless(program) }
+    _text, gaps = Flash::Lowering.new(program).text_and_gaps(Flash::HEADLESS_FUNCTIONS)
 
-    assert_equal "the sound chip that reads sound memory", error.part
+    assert_empty gaps
   end
 end
