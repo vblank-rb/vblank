@@ -208,17 +208,110 @@ static inline var RG_NOT_DRAWN:Int = -1;
  * itself, or a place in the picture's own colours where it has some. */
 static function blit_image(image:Int, x:Int, y:Int):Void {
   var info = RG_IMAGE_FIELDS * image;
-  var start = rg_game_images[info];
   var width = rg_game_images[info + 1];
   var height = rg_game_images[info + 2];
-  var colors = rg_game_images[info + 3];
+  var painted = image < painted_images.length ? painted_images[image] : null;
+  var pixels_of:Vector<Int> = painted != null ? painted : rg_game_image_pixels;
+  var start = painted != null ? 0 : rg_game_images[info];
+  var colors = painted != null ? RG_NO_IMAGE_COLORS : rg_game_images[info + 3];
   for (row in 0...height) {
     for (col in 0...width) {
-      var held = rg_game_image_pixels[start + row * width + col];
+      var held = pixels_of[start + row * width + col];
       if (held == RG_NOT_DRAWN) continue;
-      set_pixel(x + col, y + row, colors == RG_NO_IMAGE_COLORS ? held : rg_game_image_pixels[colors + held]);
+      set_pixel(x + col, y + row, colors == RG_NO_IMAGE_COLORS ? held : pixels_of[colors + held]);
     }
   }
+}
+
+/* The images the game has painted, by image number (Reference#store_run_picture): each made again from the places
+ * of its run, in its own colours. */
+static var painted_images:Array<Vector<Int>> = [];
+
+/* Reference#run_tile_places */
+static function read_tile_places(list:RgList, which:Int, planes:Int, places:Vector<Int>, into:Int):Void {
+  if (planes > 0) {
+    var first = which * planes * 8;
+    for (pixel in 0...RUN_TILE_PIXELS) {
+      var place = 0;
+      for (plane in 0...planes) {
+        var index = first + (plane >> 1) * 16 + (pixel >> 3) * 2 + (plane & 1);
+        var byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0;
+        place |= ((byte >> (7 - (pixel & 7))) & 1) << plane;
+      }
+      places[into + pixel] = place;
+    }
+    return;
+  }
+  for (at in 0...Std.int(RUN_TILE_PIXELS / 2)) {
+    var index = which * Std.int(RUN_TILE_PIXELS / 2) + at;
+    var byte = index < rg_list_length(list) ? rg_list_get(list, index) & 0xFF : 0;
+    places[into + 2 * at] = byte & 0x0F;
+    places[into + 2 * at + 1] = byte >> 4;
+  }
+}
+
+/* Which runs' images have been painted from their places, by run. */
+static var runs_painted:Vector<Int> = null;
+
+/* Every image that is a painted picture's run made again from its places, each in its own colours. */
+static function paint_run_images(run:Int):Void {
+  if (runs_painted == null) runs_painted = new Vector<Int>(rg_game_picture_sizes[RG_SIZE_RUNS] + 1);
+  runs_painted[run] = 1;
+  var start = places_of(run);
+  var area = run_field(run, RG_RUN_WIDTH) * run_field(run, RG_RUN_HEIGHT);
+  for (i in 0...run_field(run, RG_RUN_IMAGES)) {
+    var shown_as = (run_field(run, RG_RUN_FIRST_IMAGE) + i) * RG_RUN_IMAGE_FIELDS;
+    var image = rg_game_run_images[shown_as];
+    while (painted_images.length <= image) painted_images.push(null);
+    if (painted_images[image] == null) painted_images[image] = new Vector<Int>(area > 0 ? area : 1);
+    var into = painted_images[image];
+    for (at in 0...area) into[at] = rg_game_run_images[shown_as + 1 + painted_places[start + at]];
+  }
+}
+
+/* Reference#copy_run_tiles */
+static function rg_tiles_copy(run:Int, list:RgList):Void {
+  var start = places_of(run);
+  var width = run_field(run, RG_RUN_WIDTH);
+  var height = run_field(run, RG_RUN_HEIGHT);
+  if (width == 0) {
+    for (which in 0...run_field(run, RG_RUN_TILES)) {
+      read_tile_places(list, which, run_field(run, RG_RUN_PLANES), painted_places, start + which * RUN_TILE_PIXELS);
+    }
+    return;
+  }
+  var across = Std.int(width / RUN_TILE_SIDE);
+  var tile = new Vector<Int>(RUN_TILE_PIXELS);
+  for (which in 0...across * Std.int(height / RUN_TILE_SIDE)) {
+    read_tile_places(list, which, run_field(run, RG_RUN_PLANES), tile, 0);
+    var left = (which % across) * RUN_TILE_SIDE;
+    var top = Std.int(which / across) * RUN_TILE_SIDE;
+    for (i in 0...RUN_TILE_PIXELS) {
+      painted_places[start + (top + Std.int(i / RUN_TILE_SIDE)) * width + left + (i % RUN_TILE_SIDE)] = tile[i];
+    }
+  }
+  paint_run_images(run);
+}
+
+/* rg_tile_pose_load in the native runtime (Reference#exec_load_sprite_tiles, for one pose). */
+static function rg_tile_pose_load(run:Int, pieces:Vector<Int>, piece_count:Int, table:Vector<Int>, kept:Int, at:Int, to:Int, count:Int):Void {
+  var start = places_of(run);
+  var width = run_field(run, RG_RUN_WIDTH);
+  for (piece in 0...piece_count) {
+    var dx = pieces[3 * piece];
+    var dy = pieces[3 * piece + 1];
+    var tile = pieces[3 * piece + 2];
+    if (tile < to || tile >= to + count) continue;
+    var first = (at + tile - to) * Std.int(RUN_TILE_PIXELS / 2);
+    for (byte_at in 0...Std.int(RUN_TILE_PIXELS / 2)) {
+      var byte = table[first + byte_at] & 0xFF;
+      var row = Std.int(byte_at / Std.int(RUN_TILE_SIDE / 2));
+      var col = (byte_at % Std.int(RUN_TILE_SIDE / 2)) * 2;
+      painted_places[start + (dy + row) * width + dx + col] = byte & 0x0F;
+      painted_places[start + (dy + row) * width + dx + col + 1] = byte >> 4;
+    }
+  }
+  paint_run_images(run);
 }
 
 static function rg_screen_blit(image:Int, x:Int, y:Int):Void { blit_image(image, x, y); }
