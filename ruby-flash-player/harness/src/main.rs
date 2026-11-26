@@ -37,9 +37,9 @@ impl LogBackend for PrintingLog {
             self.asked_for_buttons.set(true);
         }
         let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{message}");
-        if message == "buttons?" {
-            let _ = out.flush();
+        let written = writeln!(out, "{message}").and_then(|_| if message == "buttons?" { out.flush() } else { Ok(()) });
+        if written.is_err() {
+            exit(5); // nobody is reading: a broken pipe is the end of the run
         }
     }
 

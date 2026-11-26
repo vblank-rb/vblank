@@ -164,15 +164,19 @@ pub fn play_headless(
         loop {
             let mut line = String::new();
             if input.read_line(&mut line).unwrap_or(0) == 0 {
-                line.clear();
+                // Whoever played the game is gone: there are no buttons to wait for, and nobody to say anything to.
+                eprintln!("standard input ended before the game did");
+                exit(5);
             }
             let line = line.trim_end_matches(['\n', '\r']);
             if line == "picture" {
                 if let Some(path) = picture_out {
                     write_picture(path, player);
                 }
-                println!("picture-written");
-                let _ = std::io::stdout().flush();
+                let mut out = std::io::stdout().lock();
+                if writeln!(out, "picture-written").and_then(|_| out.flush()).is_err() {
+                    exit(5); // a broken pipe is the end of the run
+                }
                 continue;
             }
             player.lock().unwrap().call_internal_interface("rg_buttons", [Value::String(line.to_string())]);
