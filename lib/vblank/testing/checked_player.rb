@@ -213,8 +213,6 @@ module VBlank
         super
       rescue IR::Backends::Flash::RuntimeGap => e
         raise MissingFeature, "Flash's runtime does not have yet: #{e.part}"
-      rescue IR::Backends::RunComparison::CannotAnswer => e
-        raise MissingFeature, e.message
       end
 
       private
