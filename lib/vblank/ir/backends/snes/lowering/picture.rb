@@ -383,7 +383,7 @@ module VBlank
                 else
                   @art.sprite_picture(name, @cache.image(picture_named(name)), mixed: mixed.include?(name), number: number,
                                                                                   held: picture_palette_in_places(name, mixed.include?(name)),
-                                                                                  scene: colors_scene_of_picture(name),
+                                                                                  scenes: colors_scenes_of_picture(name),
                                                                                   tile_scene: tiles_scene_of_picture(name))
                 end
               end
@@ -399,38 +399,59 @@ module VBlank
             # a set each, and pictures painted from a list, which keep their tiles for good.
             #
             # A copy drawn with a list only some scenes keep a set for (#colors_scenes_of_list) is
-            # placed last, since its set is taken in those scenes' copies.
+            # placed last, since its set is taken in those scenes' copies. After it, each copy and then
+            # each picture that only some scenes show (#colors_scenes_of_picture), whose colours take
+            # a set in those scenes' copies alone (Art#sprite_palette_copies): the copies first, since
+            # in a game of one set of pictures each wants a set to itself where a picture can share.
+            # They go before any scene's own, so a set alike in all their scenes is still free.
             #
             # Must place everything else every screen keeps first: a scene's copy is taken the first
             # time it is asked for (Art#sprite_palettes).
             def reserve_shared_sprite_art(mixed, painted)
               return unless @sprite_colors || @sprite_tiles
 
-              in_some_scenes = []
+              lists_of_some_scenes = []
+              copies_of_some_scenes = []
               each_recolored_picture do |pose, list, swapped|
                 next if scene_of_recolored(pose, list)
 
+                # A list the game changes holds its set where it is drawn, whoever shows the copy.
                 if changing_list?(list) && several_scenes?(colors_scenes_of_list(list))
-                  in_some_scenes << [pose, list, swapped]
+                  lists_of_some_scenes << [pose, list, swapped]
+                elsif !changing_list?(list) && colors_scenes_of_recolored(pose, list)
+                  copies_of_some_scenes << [pose, list, swapped]
                 else
                   reserve_shared_recolored_picture(pose, list, swapped, mixed)
                 end
               end
               @tile_runs.each_with_index { |run, number| make_run_art(number) if @sprite_pictures.include?(run.picture) }
+              pictures_of_some_scenes = []
               @sprite_pictures.each do |name|
                 next if painted.include?(name) || scene_of_picture(name)
 
-                @art.reserve_shared_sprite_picture(@cache.image(picture_named(name)), mixed: mixed.include?(name),
-                                                                                         held: picture_palette_in_places(name, mixed.include?(name)))
+                if colors_scenes_of_picture(name)
+                  pictures_of_some_scenes << name
+                else
+                  reserve_shared_plain_picture(name, mixed)
+                end
               end
-              in_some_scenes.each { |pose, list, swapped| reserve_shared_recolored_picture(pose, list, swapped, mixed) }
+              lists_of_some_scenes.each { |pose, list, swapped| reserve_shared_recolored_picture(pose, list, swapped, mixed) }
+              copies_of_some_scenes.each { |pose, list, swapped| reserve_shared_recolored_picture(pose, list, swapped, mixed) }
+              pictures_of_some_scenes.each { |name| reserve_shared_plain_picture(name, mixed) }
+            end
+
+            def reserve_shared_plain_picture(name, mixed)
+              @art.reserve_shared_sprite_picture(@cache.image(picture_named(name)), mixed: mixed.include?(name),
+                                                                                       held: picture_palette_in_places(name, mixed.include?(name)),
+                                                                                       scenes: colors_scenes_of_picture(name))
             end
 
             def reserve_shared_recolored_picture(pose, list, swapped, mixed)
               image = @cache.image(picture_named(pose))
               held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
               image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
-              @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held)
+              @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held,
+                                                        scenes: colors_scenes_of_recolored(pose, list))
             end
 
             # The one scene whose sprites alone show the picture +name+ (LoweringPlan#scene_showing_picture);
@@ -442,16 +463,33 @@ module VBlank
               @plan.scene_showing_picture(name)
             end
 
-            def colors_scene_of_picture(name) = @sprite_colors ? scene_of_picture(name) : nil
             def tiles_scene_of_picture(name) = @sprite_tiles ? scene_of_picture(name) : nil
 
-            # The same for the copy of the picture +pose+ drawn with +list+.
-            def scene_of_recolored(pose, list)
-              one_scene_of(@objects.values.select { |obj| obj.poses.include?(pose) && obj.recolors.include?(list) })
+            # The scenes whose sprites alone show the picture +name+, in a game of +sprite_colors+, in
+            # the order the game numbers them, so that its colours hold a set in those scenes alone
+            # (Art#sprite_palette_copies); nil where every screen keeps it, and in any other game.
+            def colors_scenes_of_picture(name)
+              return nil unless @sprite_colors && @tile_runs.none? { |run| run.picture == name }
+
+              scenes_of(@objects.values.select { |obj| obj.poses.include?(name) })
             end
 
-            def colors_scene_of_recolored(pose, list) = @sprite_colors ? scene_of_recolored(pose, list) : nil
+            # The same for the copy of the picture +pose+ drawn with +list+.
+            def scene_of_recolored(pose, list) = one_scene_of(objects_wearing(pose, list))
+
+            def colors_scenes_of_recolored(pose, list) = @sprite_colors ? scenes_of(objects_wearing(pose, list)) : nil
             def tiles_scene_of_recolored(pose, list) = @sprite_tiles ? scene_of_recolored(pose, list) : nil
+
+            def objects_wearing(pose, list) = @objects.values.select { |obj| obj.poses.include?(pose) && obj.recolors.include?(list) }
+
+            # The scenes of +objects+, in the order the game numbers them; nil where one of them is
+            # every screen's, or there are none.
+            def scenes_of(objects)
+              scenes = objects.map(&:scene).uniq
+              return nil if scenes.empty? || scenes.include?(nil)
+
+              scenes.sort_by { |scene| @scenes.fetch(scene) }
+            end
 
             # Whether some picture is shown only by the sprites of one scene, so that bringing each
             # scene's tiles in as it takes over can leave room (SNES#build).
@@ -470,12 +508,7 @@ module VBlank
 
             # The scenes of the sprites drawn with +list+, in the order the game numbers them; nil
             # where one of them is every screen's.
-            def scenes_drawing_with(list)
-              scenes = @objects.values.select { |obj| obj.recolors.include?(list) }.map(&:scene).uniq
-              return nil if scenes.empty? || scenes.include?(nil)
-
-              scenes.one? ? scenes : scenes.sort_by { |scene| @scenes.fetch(scene) }
-            end
+            def scenes_drawing_with(list) = scenes_of(@objects.values.select { |obj| obj.recolors.include?(list) })
 
             # Whether a list of sprite colours the game changes is drawn with by the sprites of
             # several scenes and none every screen shows, so that a build keeping its set in those
@@ -511,7 +544,7 @@ module VBlank
                 held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
                 image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
                 @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held,
-                                                            scene: colors_scene_of_recolored(pose, list),
+                                                            scenes: colors_scenes_of_recolored(pose, list),
                                                             tile_scene: tiles_scene_of_recolored(pose, list))
               end
             end
@@ -538,7 +571,7 @@ module VBlank
             def palette_of_worn_list(pose, list, swapped, mixed)
               return recolored_list_palette(list, mixed) if changing_list?(list)
 
-              palette_in_places(swapped, mixed, colors_scene_of_recolored(pose, list)) if @one_sprite_tile_set
+              palette_in_places(swapped, mixed, colors_scenes_of_recolored(pose, list)) if @one_sprite_tile_set
             end
 
             # A sprite drawn with a list the game changes is one picture whatever the list holds.
@@ -561,9 +594,13 @@ module VBlank
             # picture and every list it is drawn with each take a set whose colours stay in their own
             # places, and every copy comes to the same tiles. A set is then a whole list, and shared
             # only with a list of the same colours, which is why it is not how every game is built.
-            def palette_in_places(list, mixed, scene)
+            # Where +scenes+ alone show it, the set is taken in theirs (Art#held_scene_sprite_palette).
+            def palette_in_places(list, mixed, scenes)
               colors = palette_colors(list)
-              @art.held_sprite_palette([:places, colors, mixed, scene], colors, mixed: mixed, scene: scene)
+              key = [:places, colors, mixed, scenes]
+              return @art.held_scene_sprite_palette(key, colors, scenes, mixed: mixed) if several_scenes?(scenes)
+
+              @art.held_sprite_palette(key, colors, mixed: mixed, scene: scenes&.first)
             end
 
             def palette_colors(list) = list.drop(1).map { |color| color & 0x7FFF }
@@ -573,7 +610,7 @@ module VBlank
             def picture_palette_in_places(name, mixed)
               return nil unless @one_sprite_tile_set && @objects.each_value.any? { |obj| !obj.recolors.empty? && obj.poses.include?(name) }
 
-              palette_in_places(@cache.image(picture_named(name)).colors, mixed, colors_scene_of_picture(name))
+              palette_in_places(@cache.image(picture_named(name)).colors, mixed, colors_scenes_of_picture(name))
             end
 
             # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).

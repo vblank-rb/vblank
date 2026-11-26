@@ -127,7 +127,8 @@ module VBlank
                       "build keeps one set of pictures for all those lists."),
         recolor: works("a list told to hold other colours keeps a palette to itself, so a game can change " \
                        "eight lists of backgrounds on each screen and eight of sprites. A list of sprites counts " \
-                       "only on the screens whose sprites draw with it. A background that draws " \
+                       "only on the screens whose sprites draw with it, and the colours of a sprite's own " \
+                       "picture count only on the screens that show it. A background that draws " \
                        "with more than one list the game changes is not made yet: the build refuses it and says so."),
         color_walk: works,
         colors_in_use: works,

@@ -212,10 +212,11 @@ module VBlank
           # add to one of theirs, and what it brings in as it takes over is whatever differs from
           # those (#scene_colors). The sprites' eight sets go the same way (+sprite_colors+), the
           # pictures only one scene's sprites show drawn from that scene's (#sprite_palettes), so a
-          # list of one screen pushes out no list of another screen, which never share a frame.
-          # Built with +sprite_colors+ of :lists, a list the game changes that the sprites of several
-          # scenes draw with, but not every screen's, keeps its set in those scenes alone
-          # (#held_scene_sprite_palette).
+          # list of one screen pushes out no list of another screen, which never share a frame. A
+          # picture the sprites of several scenes show, but not every screen's, takes one set in each
+          # of their copies, the same in all (#palette_alike_for). Built with +sprite_colors+ of
+          # :lists, a list the game changes that the sprites of several scenes draw with, but not
+          # every screen's, keeps its set in those scenes alone (#held_scene_sprite_palette).
           #
           # Each screen's sprite tiles (+scene_tiles+). Video memory holds 512 sprite tiles at once, and
           # nothing says they stay the same ones. Those of what every screen keeps go in at power-on
@@ -558,9 +559,11 @@ module VBlank
 
           # The colours and tiles of +image+, a picture of what every screen keeps, placed before any
           # scene takes its copies, whichever order pictures are made in. Making the picture itself
-          # later finds both where they were put.
-          def reserve_shared_sprite_picture(image, mixed: false, held: nil)
-            sprite_picture(:reserved, image, mixed: mixed, held: held)
+          # later finds both where they were put. A picture only +scenes+ show has its colours placed
+          # in their copies alone (#sprite_palette_copies), before any picture of one scene, so a set
+          # alike in all of them is still free; its tiles are every screen's.
+          def reserve_shared_sprite_picture(image, mixed: false, held: nil, scenes: nil)
+            sprite_picture(:reserved, image, mixed: mixed, held: held, scenes: scenes)
             @sprite_pictures.delete(:reserved)
           end
 
@@ -671,9 +674,10 @@ module VBlank
           # height is not a multiple of 8 has its last pieces' extra pixels left undrawn.
           # +mixed+ draws it from a see-through sprite's palettes (#split_sprite_palettes!).
           # +held+ is the palette of a list the game changes (#held_sprite_palette), whose pictures
-          # are drawn from it place for place. +scene+ is the one scene whose sprites show it, in a game
-          # of +sprite_colors+, and nil for what every screen keeps; +tile_scene+ the same for its
-          # tiles, in a game of +scene_tiles+. +number+ is its place in the table of pictures, where
+          # are drawn from it place for place. +scenes+ are the scenes whose sprites alone show it, in a
+          # game of +sprite_colors+, and nil for what every screen keeps (#sprite_palette_copies);
+          # +tile_scene+ the one scene that shows it, for its tiles, in a game of +scene_tiles+.
+          # +number+ is its place in the table of pictures, where
           # it is not made in that order.
           #
           # A screen whose sprites do not fit (ScreenSpritesFull) fails the try, but it is one screen of
@@ -681,12 +685,12 @@ module VBlank
           # try would only find the next. So the screen is noted, its pictures from then on stand in
           # with no pieces, and the try goes on to find every screen that does not fit before it
           # stops (#refuse_crowded_scenes!).
-          def sprite_picture(name, image, mixed: false, held: nil, scene: nil, tile_scene: nil, number: @sprite_pictures.length)
+          def sprite_picture(name, image, mixed: false, held: nil, scenes: nil, tile_scene: nil, number: @sprite_pictures.length)
             @sprite_pictures[name] ||= begin
               raise ScreenSpritesFull.new(@crowded_scenes[tile_scene], scenes: [tile_scene]) if @crowded_scenes.key?(tile_scene)
 
               with_sprite_tiles_of(tile_scene) do
-                recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scene, number) }
+                recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scenes, number) }
               end
             rescue ScreenSpritesFull => e
               @crowded_scenes[tile_scene] ||= e.message
@@ -1034,14 +1038,62 @@ module VBlank
             end
           end
 
-          # #sprite_picture's picture, made in the tiles in use.
-          def make_sprite_picture(name, image, mixed, held, scene, number)
-            return pieced_sprite_picture(name, image, mixed, held, scene, number) if image.pieces
-
-            palettes = sprite_palettes(scene)
-            palette = held || allocate_sprite_palette(mixed, [scene]) do |within|
-              palette_for(palettes, sprite_image_colors(image), "sprites", within)
+          # The sets of colours a picture of +scenes+ is drawn from (one copy's, every copy holding it
+          # alike), and the one it takes: +held+, or one found for its colours (#palette_alike_for).
+          def sprite_picture_palette(image, mixed, held, scenes)
+            copies = sprite_palette_copies(scenes)
+            palette = held || allocate_sprite_palette(mixed, scenes || [nil]) do |within|
+              palette_alike_for(copies, sprite_image_colors(image), "sprites", within)
             end
+            [copies.first, palette]
+          end
+
+          # The sets of colours a sprite picture of +scenes+ takes its set in: each of those scenes'
+          # copies (#sprite_palettes), or the game's where +scenes+ is nil. The console's colour memory
+          # is written freely during the blank (fullsnes, "CGRAM"), so a screen's sets are loaded as
+          # the screen loads, and a picture only some screens show holds its set on those screens
+          # alone: every other screen has that set for its own.
+          def sprite_palette_copies(scenes) = scenes ? scenes.map { |scene| sprite_palettes(scene) } : [sprite_palettes(nil)]
+
+          # #palette_for, the same set in each of +copies+: a picture's tiles name a colour by its place
+          # in the set, so the set must hold the same colours in the same places in every copy. One
+          # copy is #palette_for itself. With more, a set kept for no list the game changes is taken:
+          # one holding the colours in the same places in every copy already, else one alike in all
+          # of them with room, sharing the most of them, else one none of them uses yet. A set only
+          # grows at its end, so the colours placed first stay where they are as one copy's own
+          # pictures join it.
+          def palette_alike_for(copies, colors, what, within)
+            return palette_for(copies.first, colors, what, within) if copies.one?
+
+            refuse_too_many_picture_colors!(colors, what)
+            first = copies.first
+            unheld = within.select { |p| copies.all? { |palettes| palettes[p] && !held_in(palettes).include?(p) } }
+            found = unheld.find do |p|
+              colors.all? do |color|
+                place = first[p].index(color)
+                place && copies.all? { |palettes| palettes[p].index(color) == place }
+              end
+            end
+            return found if found
+
+            alike = within.select do |p|
+              copies.all? { |palettes| palettes[p] == first[p] && !held_in(palettes).include?(p) }
+            end
+            used = alike.select { |p| first[p] }
+            free = used.select { |p| (first[p] | colors).length <= OWN_COLORS }.max_by { |p| (first[p] & colors).length } ||
+                   alike.find { |p| first[p].nil? }
+            raise too_much_error_for(first), picture_colors_message(what) unless free
+
+            joined = (first[free] || []) | colors
+            copies.each { |palettes| palettes[free] = joined.dup }
+            free
+          end
+
+          # #sprite_picture's picture, made in the tiles in use.
+          def make_sprite_picture(name, image, mixed, held, scenes, number)
+            return pieced_sprite_picture(name, image, mixed, held, scenes, number) if image.pieces
+
+            palettes, palette = sprite_picture_palette(image, mixed, held, scenes)
             cut = SpritePieces.cut(image.width, image.height) do |x, y|
               i = (y * image.width) + x
               if !image.drawn_at?(i) then 0
@@ -1096,12 +1148,9 @@ module VBlank
           #
           # Its colours are read from the pieces rather than the composed pixels: all of a piece can
           # lie under another, and its tile still needs them.
-          def pieced_sprite_picture(name, image, mixed, held, scene, number)
+          def pieced_sprite_picture(name, image, mixed, held, scenes, number)
             given = (squares_here? ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
-            palettes = sprite_palettes(scene)
-            palette = held || allocate_sprite_palette(mixed, [scene]) do |within|
-              palette_for(palettes, sprite_image_colors(image), "sprites", within)
-            end
+            palettes, palette = sprite_picture_palette(image, mixed, held, scenes)
             # Last given first: sprites go into the table back-most first (Lowering::Picture
             # #emit_present_objects), so the piece placed last is the one in front.
             pieces = given.flat_map { |dx, dy, own| sprite_pieces_from_places(dx, dy, own, image, palette, held, palettes) }.reverse
@@ -1183,10 +1232,7 @@ module VBlank
           # room where none does, or starting another — of the palettes +within+. +what+ names
           # whose palettes they are.
           def palette_for(palettes, colors, what, within = (0...PALETTES))
-            if colors.length > OWN_COLORS
-              raise TooMuch, "A picture of the #{what} uses #{colors.length} colours, and on a tiled screen a " \
-                             "Super Nintendo tile shows #{OWN_COLORS} and see-through. To fix this, draw it in #{OWN_COLORS} colours or fewer."
-            end
+            refuse_too_many_picture_colors!(colors, what)
 
             held = held_in(palettes)
             used = within.select { |p| palettes[p] && !held.include?(p) }
@@ -1200,14 +1246,23 @@ module VBlank
               return roomy
             end
             unused = within.find { |p| palettes[p].nil? }
-            unless unused
-              raise too_much_error_for(palettes), "The pictures of the #{what} use more colours than a Super Nintendo can " \
-                                            "show for them. It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix " \
-                                            "this, use fewer colours in those pictures."
-            end
+            raise too_much_error_for(palettes), picture_colors_message(what) unless unused
 
             palettes[unused] = colors.dup
             unused
+          end
+
+          # Refuses a sprite or background picture of more colours than a tile shows.
+          def refuse_too_many_picture_colors!(colors, what)
+            return if colors.length <= OWN_COLORS
+
+            raise TooMuch, "A picture of the #{what} uses #{colors.length} colours, and on a tiled screen a " \
+                           "Super Nintendo tile shows #{OWN_COLORS} and see-through. To fix this, draw it in #{OWN_COLORS} colours or fewer."
+          end
+
+          def picture_colors_message(what)
+            "The pictures of the #{what} use more colours than a Super Nintendo can show for them. It holds " \
+              "#{PALETTES} sets of #{OWN_COLORS} colours. To fix this, use fewer colours in those pictures."
           end
 
           # The palette of +palettes+ whose first places are a run's +colors+ (past place 0) in their

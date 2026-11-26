@@ -11,6 +11,10 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
 
   SWITCH_AT = 4
   LEADER = 7 # The list the stage and the demo share
+  WALKER_LIST = 20 # The walker's own colours
+  PLAYER_LISTS = [21, 22, 23].freeze # The lists the demo's other players are drawn with
+  MANY_PLAYER_LISTS = (21..27).to_a.freeze # The same, players enough to fill the sprites' tiles
+  LEADER_LIST = 28 # A list the stage's walker and the demo's first player share
 
   private def program(&block)
     b = Builder.new
@@ -185,6 +189,118 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         [*title, leader].each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 4
         stage.drop(1).each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 12
         demo.drop(1).each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 20
+        call({ 0 => :title, 1 => :stage, 2 => :demo }, number: :state)
+      end
+    end
+  end
+
+  # A pose two of three screens show keeps its own colours on those two alone. The title fills its
+  # eight sets: five pictures of a list each, a craft picture's own list, and the two lists the
+  # game changes that its two craft are drawn with. The stage shows the pose :walker in its own
+  # colours, and the demo four players of it: one in its own colours and three drawn with lists of
+  # their own. Kept for every screen, the pose's colours would make the title nine.
+  def test_a_pose_two_of_three_scenes_show_keeps_its_colors_on_those_two
+    prog = pose_on_two_of_three_scenes(PLAYER_LISTS)
+
+    assert_title_and_players(prog, PLAYER_LISTS)
+  end
+
+  # The same with seven players walking in five poses of 32×32, each list drawing them in tiles of
+  # its own, so that a copy of the poses for each list does not fit the sprites' tiles and the
+  # build keeps one set of them for every list (+one_sprite_tile_set+).
+  def test_a_pose_two_of_three_scenes_show_in_one_tile_set_keeps_its_colors_on_those_two
+    prog = pose_on_two_of_three_scenes(MANY_PLAYER_LISTS, poses: 5, size: 32)
+
+    assert_title_and_players(prog, MANY_PLAYER_LISTS)
+  end
+
+  # Where the demo's player +n+ stands, the first being 0: three to a row, 80 pixels apart, rows
+  # 64 apart, so that no two overlap.
+  def self.player_spot(n) = [(n % 3) * 80, (n / 3) * 64]
+
+  # The list of colours the +at+th player drawn with another list wears, from list +n+: its first
+  # 15 - +at+ colours, round again, so that each player's poses are tiles of its own.
+  def self.player_list(n, at)
+    own = SceneColorLists.full_list(n).drop(1).take(15 - at)
+    [:transparent, *(0...15).map { |place| own[place % own.length] }]
+  end
+
+  private def player_spot(n) = self.class.player_spot(n)
+
+  # The same with the stage's walker and the demo's first player both drawn with a list that does
+  # not change: that copy of the pose takes its set on those two screens alone too.
+  def test_a_copy_two_of_three_scenes_draw_with_keeps_its_colors_on_those_two
+    prog = pose_on_two_of_three_scenes(PLAYER_LISTS, leader: LEADER_LIST)
+
+    assert_title_and_players(prog, PLAYER_LISTS, first: LEADER_LIST)
+  end
+
+  private def assert_title_and_players(prog, players, first: WALKER_LIST)
+    assert_equal first_color(0), shown_by(prog, 2).pixel(0, 0), "the title's first picture"
+    assert_equal first_color(4), shown_by(prog, 2).pixel(32, 0), "the title's last picture"
+    assert_equal first_color(10), shown_by(prog, 2).pixel(48, 0), "the title's first craft"
+    assert_equal first_color(11), shown_by(prog, 2).pixel(56, 0), "the title's second craft"
+    assert_equal first_color(12), shown_by(prog, 6).pixel(48, 0), "the first craft changed"
+    assert_equal first_color(13), shown_by(prog, 6).pixel(56, 0), "the second craft changed"
+    assert_equal first_color(first), shown_by(prog, 10).pixel(0, 0), "the walker on the stage"
+    demo = shown_by(prog, 18)
+    assert_equal first_color(first), demo.pixel(*player_spot(0)), "the first player on the demo"
+    players.each_with_index do |n, at|
+      assert_equal first_color(n), demo.pixel(*player_spot(at + 1)), "player #{at + 2} on the demo"
+    end
+  end
+
+  # The title, up from the start: pictures of lists 0 to 4, and two craft drawn with lists 10 and
+  # 11, changed to 12 and 13 at tick 4. The stage, from tick 8: the walker. The demo, from 16: the
+  # walker, and one drawn with each of +players+ (#player_list). The walker walks in +poses+ poses
+  # of +size+ pixels square, slowly enough to show the first throughout. With +leader+, the walker
+  # of the stage and the first of the demo are drawn with that list rather than their own colours.
+  private def pose_on_two_of_three_scenes(players, poses: 1, size: 8, leader: nil)
+    test = self.class
+    walker_list = WALKER_LIST
+    program do
+      screen :tiled
+      title_pictures = (0..4).map { |n| test.declare_picture(self, n) }
+      craft = test.declare_picture(self, 9)
+      colors :walker_list, SceneColorLists.full_list(walker_list)
+      walk = (0...poses).map do |pose|
+        image(:"walker#{pose}", width: size, height: size, colors: :walker_list,
+                                places: Array.new(size * size) { |i| 1 + (((i * i / 3) + (i * 7) + (pose * 11)) % 15) })
+        :"walker#{pose}"
+      end
+      shows = poses > 1 ? { frames: walk, rate: 60 } : { image: walk.first }
+      [10, 11, 12, 13].each { |n| colors :"list#{n}", SceneColorLists.full_list(n) }
+      players.each_with_index { |n, at| colors :"list#{n}", test.player_list(n, at) }
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:title) do
+        title_pictures.each_with_index { |name, at| sprite name, at: [at * 8, 0] }
+        [10, 11].each_with_index do |n, at|
+          ship = sprite :"craft#{at}", image: craft, at: [48 + (at * 8), 0]
+          ship.draw_with :"list#{n}"
+        end
+      end
+      colors :"list#{leader}", SceneColorLists.full_list(leader) if leader
+      scene(:stage) do
+        walker = sprite :stage_walker, at: [0, 0], **shows
+        walker.draw_with :"list#{leader}" if leader
+      end
+      scene(:demo) do
+        walker = sprite :demo_walker, at: test.player_spot(0), **shows
+        walker.draw_with :"list#{leader}" if leader
+        players.each_with_index do |n, at|
+          player = sprite :"player#{at}", at: test.player_spot(at + 1), **shows
+          player.draw_with :"list#{n}"
+        end
+      end
+      game_loop do
+        tick += 1
+        state = 1 if tick == 8
+        state = 2 if tick == 16
+        if tick == 4
+          recolor :list10, :list12
+          recolor :list11, :list13
+        end
         call({ 0 => :title, 1 => :stage, 2 => :demo }, number: :state)
       end
     end
