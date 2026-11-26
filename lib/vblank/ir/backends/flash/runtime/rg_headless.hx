@@ -45,20 +45,23 @@ static function headless_print_pixels(word:String, pixels:Vector<Int>):Void {
   headless_print(word + " " + hexes.toString());
 }
 
-/* The picture as the harness writes it to its file: every pixel as shown, then every pixel as stored (and
- * the whole screen where the game is shown in a border or has a screen of its own), each as a character of
- * the string whose number is the pixel, so the harness can write it two bytes a pixel, low byte first. */
+/* The picture as the harness writes it to its file: every pixel as shown, then every pixel as stored (and the
+ * whole screen where the game is shown in a border or has a screen of its own), each as a character of the
+ * string whose number is the pixel, so the harness can write it two bytes a pixel, low byte first. The
+ * characters are joined once at the end: adding them to a string one at a time copies the string each time. */
+static function headless_add_pixels(parts:Array<String>, pixels:Vector<Int>, count:Int):Void {
+  for (i in 0...count) parts.push(String.fromCharCode(pixels[i]));
+}
+
 static function headless_picture_string():String {
-  var parts = new StringBuf();
-  var shown_pixels = rg_screen_shown();
-  for (i in 0...RG_CELLS) parts.addChar(shown_pixels[i]);
-  var stored_pixels = rg_screen_stored();
-  for (i in 0...RG_CELLS) parts.addChar(stored_pixels[i]);
+  var parts:Array<String> = [];
+  headless_add_pixels(parts, rg_screen_shown(), RG_CELLS);
+  headless_add_pixels(parts, rg_screen_stored(), RG_CELLS);
   if (rg_screen_bordered || RG_SCREEN_OF_ITS_OWN != 0) {
     var whole = rg_screen_framed();
-    for (i in 0...whole.length) parts.addChar(whole[i]);
+    headless_add_pixels(parts, whole, whole.length);
   }
-  return parts.toString();
+  return parts.join("");
 }
 
 static function headless_print_sprites():Void {
