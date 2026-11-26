@@ -58,9 +58,29 @@ module VBlank
       def self.run_tape(rom, tape:, frames:, routines: TapeProfile::ROUTINES_KEPT)
         places = rom.built or raise ArgumentError, "this cartridge carries no record of its build to play it from"
         Emulator.load_snes!
-        TapeProfile.run(rom, tape: tape, frames: frames, time: time_by_routine(places), file_name: FILE_NAME,
-                             shown_at: places.runtime.fetch(IR::Backends::SNES::Runtime::Frame::SHOWN),
-                             passes_at: places.waits_counted_at, routines: routines)
+        meter = Meter.new(time: time_by_routine(places), file_name: FILE_NAME,
+                          shown_at: places.runtime.fetch(IR::Backends::SNES::Runtime::Frame::SHOWN),
+                          passes_at: places.waits_counted_at, routines: routines,
+                          multitap: IR::Backends::SNES::Runtime::Frame.reads_multitap?(places.source_program))
+        TapeProfile.play(rom, tape: tape, frames: frames, meter: meter)
+      end
+
+      # A tape's frames on the Super Nintendo's core: a game for more than two is played with a Super
+      # Multitap in, as it is played, and each player's buttons go to that player's plug.
+      class Meter < TapeProfile::ProcessorTimeMeter
+        def initialize(multitap: false, **options)
+          super(**options)
+          @multitap = multitap
+        end
+
+        def plug_in_controllers(core)
+          core.plug_in_multitap if @multitap
+        end
+
+        def hold(core, buttons)
+          IR::Buttons.by_controller(buttons, controllers: Console::SUPER_NINTENDO.controllers)
+                     .each_with_index { |held, port| core.set_buttons(held, port: port) }
+        end
       end
 
       FILE_NAME = "game.sfc"
