@@ -215,9 +215,10 @@ module VBlank
     # Other names people reach for, for what a build makes, and the option that asks for it.
     NATIVE = ["--format=native", "a program for this computer"].freeze
     WEB = ["--format=web", "a web page"].freeze
+    FLASH = ["--format=flash", "a Flash movie"].freeze
     CARTRIDGE = [nil, "a cartridge for each console the game names"].freeze
     FORMAT_FLAGS = {
-      "--native" => NATIVE, "--desktop" => NATIVE, "--web" => WEB, "--html" => WEB,
+      "--native" => NATIVE, "--desktop" => NATIVE, "--web" => WEB, "--html" => WEB, "--flash" => FLASH, "--swf" => FLASH,
       "--cartridge" => CARTRIDGE, "--rom" => CARTRIDGE,
       # --gba, --gbc and one for every other console: its cartridge alone.
       **VBlank::Console.kits.to_h { |kit| ["--#{kit.name}", ["--console=#{kit.name}", "the #{kit.title}'s cartridge alone"]] }
@@ -341,9 +342,9 @@ module VBlank
       --tape PATH              Play this tape, in place of a script.
     TEXT
 
-    desc "build GAME_FILE", "Build a cartridge for each console, a program for this computer, or a web page"
+    desc "build GAME_FILE", "Build a cartridge for each console, a program for this computer, a web page or a Flash movie"
     help_page "build", <<~TEXT
-      Usage: vblank build GAME_FILE [--format game|native|web] [options]
+      Usage: vblank build GAME_FILE [--format game|native|web|flash] [options]
 
       Build the game in GAME_FILE, a Ruby file with this in it:
 
@@ -370,6 +371,7 @@ module VBlank
         vblank build game.rb --format=native    a program for this computer
         vblank build game.rb --format=web       a web page that plays the game
         vblank build game.rb --format=ruby      one Ruby file that plays the game
+        vblank build game.rb --format=flash     a .swf movie for a Flash player
         vblank build game.rb -o roms/pong.gba   a cartridge, written to roms/
         vblank build game.rb --set floors=3     with `setting :floors` as 3
 
@@ -378,7 +380,7 @@ module VBlank
       Options:
         -o, --output PATH        Where to write what is built. PATH is one file,
                                  so a game for two consoles needs --console too.
-        --format FORMAT          game, ir, native, ruby or web. Default: game.
+        --format FORMAT          game, ir, native, ruby, web or flash. Default: game.
         --console NAME           #{CONSOLE_CHOICES}: build that console's
                                  cartridge alone. Default: one for each console
                                  the game names. With --format native, web or
@@ -451,6 +453,13 @@ module VBlank
                                  separate: the game's big tables go in a .data
                                  file beside the page, which must be served.
 
+      --format flash, a Flash movie: one .swf file that shows the game at 3 times its
+        size and plays it with the keyboard, the keys the web page uses. It is
+        played in Ruffle, the open-source Flash player (ruffle.rs), or any Flash
+        Player. A game that needs a part of VBlank the Flash build does not have
+        yet is refused, and the build says which. Needs Haxe 4.3: put it on the
+        PATH, or set HAXE_PATH to the compiler or its folder.
+
       --format ruby, one Ruby file: the game as Ruby, with the window that vblank
         run plays it in. To play it, run `ruby` with the file's name. It needs
         Ruby, the gem `fiddle` and SDL3. It does not need VBlank, the game's
@@ -496,6 +505,7 @@ module VBlank
       when "native" then build_native(game_file)
       when "web" then build_web(game_file)
       when "ruby" then build_ruby(game_file)
+      when "flash" then build_flash(game_file)
       else refuse_build_format!(options[:format])
       end
     rescue ArgumentError, VBlank::BuildError => e
@@ -2117,6 +2127,22 @@ module VBlank
                          "that does not work in Ruby yet: #{e.part}."
     end
 
+    # The "flash" format: the game as one Flash movie that plays in Ruffle or any Flash Player
+    # (IR::Backends::Flash#build_swf), written beside the game file and named like its cartridge with
+    # ".swf" in place of the cartridge's ending. It is made as the console --console names, or the first the
+    # game names.
+    def build_flash(game_file)
+      game = load_game(game_file)
+      console = console_to_play(game)
+      path = options[:output] || file_beside(game, game_file, console, ".swf")
+      VBlank::IR::Backends::Flash.new.build_swf(game, path, console: console, settings: given_settings, progress: build_progress)
+      say "Built #{path}"
+    rescue VBlank::IR::Backends::Flash::Haxe::Error => e
+      raise Thor::Error, e.message
+    rescue VBlank::BuildError => e
+      raise build_stopped(e)
+    end
+
     # An option given where it does nothing — --strip on anything but a program for a computer, an
     # option for the web build on another format or beside an output it is not for — is refused,
     # so nobody thinks it did something.
@@ -2240,7 +2266,7 @@ module VBlank
                            "use --console #{kit.name}."
       end
 
-      raise Thor::Error, "#{format.inspect} is not a build format. The formats are: game, ir, native, ruby, web. " \
+      raise Thor::Error, "#{format.inspect} is not a build format. The formats are: game, ir, native, ruby, web, flash. " \
                          "To build a cartridge, leave out --format."
     end
 

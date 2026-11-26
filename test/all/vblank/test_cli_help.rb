@@ -65,7 +65,7 @@ class TestCLIHelp < Minitest::Test
     assert_match(/^  vblank build game.rb +a .gba cartridge/, out)
     assert_includes out, "vblank build game.rb --format=web"
     assert_includes out, "vblank build game.rb -o "
-    assert_match(/\AUsage: vblank build GAME_FILE \[--format game\|native\|web\]/, out, "the usage line names the formats")
+    assert_match(/\AUsage: vblank build GAME_FILE \[--format game\|native\|web\|flash\]/, out, "the usage line names the formats")
   end
 
   def test_a_command_that_is_not_there_names_the_ones_that_are
