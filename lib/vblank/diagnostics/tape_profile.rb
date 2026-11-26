@@ -156,16 +156,6 @@ module VBlank
                              "To fix this, remove routines:, or give tape: and a range of frames."
       end
 
-      # Plays +tape+ on +rom+ from power-on and reads each of +frames+, a range counted from 1.
-      # +time+ is the console's TimeByRoutine, +file_name+ what the cartridge is written as for its
-      # emulator, +shown_at+ and +passes_at+ where its runtime keeps Frame::SHOWN and
-      # Frame::PASSES, and +routines+ how many of a frame's routines each reading keeps.
-      def self.run(rom, tape:, frames:, time:, file_name:, shown_at:, passes_at:, routines: ROUTINES_KEPT)
-        meter = ProcessorTimeMeter.new(time: time, file_name: file_name, shown_at: shown_at, passes_at: passes_at,
-                                       routines: routines)
-        play(rom, tape: tape, frames: frames, meter: meter)
-      end
-
       # The frames a pass of the game loop ran over, counted from 1 at power-on as a tape counts
       # them, so a slow pass a profile names can be read frame by frame with a tape. +took+ is the
       # frames each measured pass took, by pass, in order, and +settled_on+ the frame the first of

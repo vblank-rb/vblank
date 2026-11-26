@@ -64,9 +64,32 @@ module VBlank
       def self.run_tape(rom, tape:, frames:, routines: TapeProfile::ROUTINES_KEPT)
         places = rom.built or raise ArgumentError, "this cartridge carries no record of its build to play it from"
         Emulator.load_genesis!
-        TapeProfile.run(rom, tape: tape, frames: frames, time: time_by_routine(places), file_name: FILE_NAME,
-                             shown_at: places.runtime.fetch(IR::Backends::Genesis::Runtime::Frame::SHOWN),
-                             passes_at: places.waits_counted_at, routines: routines)
+        frame = IR::Backends::Genesis::Runtime::Frame
+        meter = Meter.new(time: time_by_routine(places), file_name: FILE_NAME,
+                          shown_at: places.runtime.fetch(frame::SHOWN), passes_at: places.waits_counted_at,
+                          routines: routines, team_player: frame.reads_team_player?(places.source_program),
+                          six_buttons: frame.reads_six_buttons?(places.source_program))
+        TapeProfile.play(rom, tape: tape, frames: frames, meter: meter)
+      end
+
+      # A tape's frames on the Genesis's core: a game for more than two is played with a Team Player in,
+      # as it is played, and each player's buttons go to that player's plug.
+      class Meter < TapeProfile::ProcessorTimeMeter
+        def initialize(team_player: false, six_buttons: false, **options)
+          super(**options)
+          @team_player = team_player
+          @six_buttons = six_buttons
+        end
+
+        def plug_in_controllers(core)
+          core.plug_in_team_player(six_buttons: @six_buttons) if @team_player
+        end
+
+        def hold(core, buttons)
+          pad = IR::Backends::Genesis::HeadlessRun::PAD_BUTTONS
+          IR::Buttons.by_controller(buttons, controllers: Console::GENESIS.controllers)
+                     .each_with_index { |held, port| core.set_buttons(held & pad, port: port) }
+        end
       end
 
       # The time of the +frames+ after +settle+ passes, which frames those were, and the frame the
