@@ -2825,10 +2825,13 @@ module VBlank
               if objects.any?(&:layer_pick)
                 emit_layer_changing_sprites(node, objects)
               else
-                Stacking.items_in_draw_order(node).each do |item|
-                  next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
-
-                  emit_sprite_placing(object_named(item), item)
+                items = Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object_named(item) }
+                ShownWhen.scene_runs(items) { |obj| ShownWhen.of(obj.active.copy) { |part| folded(part) } }.each do |item|
+                  case item
+                  when Build::DrawOrder then emit_ordered_run(item)
+                  when SceneRun then emit_scene_run(item)
+                  else emit_sprite_placing(item)
+                  end
                 end
               end
               @asm.label(done)
@@ -2836,13 +2839,31 @@ module VBlank
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
+            # Sprites one scene owns, placed one after another (ShownWhen.scene_runs): the tests they
+            # share, "is this scene up", asked once for all of them, so a scene that is not up costs
+            # the frame one test however many sprites it owns. Each sprite then asks only its own.
+            def emit_scene_run(run)
+              past = fresh("scene_sprites_off")
+              run.tests.each { |test| jump_unless(test, past) }
+              run.members.each { |obj, shown| emit_sprite_placing(obj, shown: shown) }
+              @asm.label(past)
+            end
+
             # One sprite placed, if it is showing, as deep as the name +at+ — its own, or one of the other
             # layers it can be put in (Stacking.choice_name) — has it among the backgrounds.
             # +shown_known+ for one its draw order's sort already found showing on this pass
             # (ShownSort#found_showing_by_sort), which is not asked again.
-            def emit_sprite_placing(obj, at = obj.name, shown_known: false)
+            #
+            # +shown+, a ShownWhen, for one whose scene's test its run has asked already (#emit_scene_run):
+            # its own tests are asked, and not the product.
+            def emit_sprite_placing(obj, at = obj.name, shown_known: false, shown: nil)
               skip = fresh("sprite_off")
-              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip) unless shown_known
+              if shown
+                jump_unless(Build.binop(:==, shown.flag, Build.int(1)), skip) if shown.flag
+                shown.tests.each { |test| jump_unless(test, skip) }
+              elsif !shown_known
+                jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+              end
               behind = sprite_depths.empty? ? [] : [Build.int((3 - sprite_depths.fetch(at, 3)) << SPRITE_PRIORITY_SHIFT)]
               emit_sprite_place(obj, obj.name, behind)
               @asm.label(skip)

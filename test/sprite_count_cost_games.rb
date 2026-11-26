@@ -59,6 +59,32 @@ module SpriteCountCostGames
     end
   end
 
+  # Two scenes for +console+, the first up throughout with four sprites of its own moving, and the
+  # second never up, owning +owned+ sprites. A game keeps each scene's actors declared in the scene
+  # (a demo's players, a title's cursor), and one scene's must cost nothing while another is up.
+  def self.scene_game(console, owned)
+    block = BLOCK
+    VBlank.game("SCENE SPRITES", consoles: [console]) do
+      screen :tiled
+      image(:block, "#" => :red) { block }
+      where = var :where, 0
+      t = var :t, 0
+      scene(:play) do
+        actors = Array.new(SHOWING) { |i| sprite :"actor_#{i}", at: [i * 40, 20], facing: { down: :block } }
+        actors.each_with_index { |actor, i| actor.y = (t + (i * 23)) & 127 }
+      end
+      scene(:demo) do
+        Array.new(owned) { |i| sprite :"extra_#{i}", at: [(i * 29) % 200, (i * 17) % 120], facing: { down: :block } }
+        t += 2
+      end
+      game_loop do
+        t += 1
+        call({ 0 => :play, 1 => :demo }, number: :where)
+        where = 1 if t < 0 # never, but the scene number is a variable the game sets
+      end
+    end
+  end
+
   # The profile of +game+ on +console+ over twenty passes.
   def self.profile(console, game)
     game.build_rom(console: console, out: StringIO.new, err: StringIO.new, profile: false)
@@ -68,6 +94,13 @@ module SpriteCountCostGames
   # The share of a frame +big+ costs beyond +small+, the same game with only the four declared.
   def self.share_beyond(console, big, small)
     profile(console, small).idle_share - profile(console, big).idle_share
+  end
+
+  # The share of a frame the game loop of +big+ costs beyond that of +small+: the processor's own work
+  # alone, on a console whose processor also waits for a graphics chip whose time moves with the code.
+  def self.game_loop_share_beyond(console, big, small)
+    loop_share = ->(game) { profile(console, game).to_h.fetch(:game).find { |row| row[:routine] == "the game loop" }.fetch(:share) }
+    loop_share.call(big) - loop_share.call(small)
   end
 
   # How many bytes of code the routine that sorts +game+'s draw order came to, built for +console+.
