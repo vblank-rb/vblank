@@ -1,12 +1,12 @@
 //! Plays a .swf in Ruffle with no window and no sound device, one frame at a time.
 //!
-//! flash_player_harness GAME.swf --frames N [--tape TAPE] [--real-time]
+//! flash_player_harness GAME.swf --frames N [--tape TAPE] [--real-time] [--render]
 //!
 //! Every trace() the movie makes is printed to standard output, one line each, as it happens. A tape has one
 //! line per key press: "FRAME KEY down" or "FRAME KEY up". A key on frame F is pressed just before frame F
 //! runs. Frames are numbered from 1; the movie's first, which builds it, is not counted. The movie's own
 //! clock (getTimer) is the machine's, so a movie that plays by it is given --real-time, which waits out each
-//! frame's time before the next.
+//! frame's time before the next. A movie that draws into bitmaps (BitmapData.draw) is given --render. A movie that asks to stop (fscommand "rg_exit", "CODE:MESSAGE") ends the run early.
 //!
 //! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [OPTIONS...]
 //!
@@ -116,6 +116,15 @@ fn read_tape(path: &str) -> Vec<KeyPress> {
     presses
 }
 
+/// A renderer that draws into a picture nobody sees, for a movie that draws into a BitmapData (BitmapData.draw,
+/// which the null renderer does not do). It is software Vulkan (Mesa's lavapipe), so it needs no graphics card;
+/// a machine without one stops here and says so.
+fn drawing_renderer() -> ruffle_render_wgpu::backend::WgpuRenderBackend<ruffle_render_wgpu::target::TextureTarget> {
+    use ruffle_render_wgpu::wgpu;
+    ruffle_render_wgpu::backend::WgpuRenderBackend::for_offscreen((64, 64), wgpu::Backends::VULKAN, wgpu::PowerPreference::LowPower)
+        .unwrap_or_else(|error| fail(&format!("--render needs a Vulkan driver (on Debian or Ubuntu, mesa-vulkan-drivers): {error}")))
+}
+
 fn main() {
     tracing_subscriber::fmt().with_writer(std::io::stderr).with_max_level(tracing::Level::WARN).init();
 
@@ -124,6 +133,7 @@ fn main() {
     let mut tape_path = None;
     let mut headless = false;
     let mut real_time = false;
+    let mut render = false;
     let mut picture_out = None;
     let mut movie_options: Vec<String> = Vec::new();
     let mut arguments = std::env::args().skip(1);
@@ -137,6 +147,7 @@ fn main() {
             }
             "--tape" => tape_path = arguments.next(),
             "--real-time" => real_time = true,
+            "--render" => render = true,
             "--headless" => {
                 headless = true;
                 frames = arguments.next().and_then(|value| value.parse().ok());
@@ -163,14 +174,15 @@ fn main() {
 
     let asked_for_buttons = Rc::new(Cell::new(false));
     let exit_request = Rc::new(bridge::ExitRequest::default());
-    let player = PlayerBuilder::new()
+    let mut builder = PlayerBuilder::new()
         .with_log(PrintingLog { asked_for_buttons: asked_for_buttons.clone() })
         .with_audio(audio::SilentAudioBackend::default())
         .with_external_interface(Box::new(bridge::Provider))
-        .with_fs_commands(Box::new(bridge::ExitCommand { request: exit_request.clone() }))
-        .with_movie(movie)
-        .with_autoplay(true)
-        .build();
+        .with_fs_commands(Box::new(bridge::ExitCommand { request: exit_request.clone() }));
+    if render {
+        builder = builder.with_renderer(drawing_renderer());
+    }
+    let player = builder.with_movie(movie).with_autoplay(true).build();
 
     let mut stalled = 0u32;
     while !player.lock().unwrap().preload(&mut ExecutionLimit::exhausted()) {
@@ -208,6 +220,10 @@ fn main() {
             player.run_frame();
             player.update_timers(frame_time);
             player.audio_mut().tick();
+        }
+        if exit_request.requested.get() {
+            let _ = std::io::stdout().flush();
+            exit(exit_request.code.get());
         }
         if real_time {
             std::thread::sleep(std::time::Duration::from_secs_f64(frame_time.as_millis() / 1000.0));
