@@ -164,16 +164,21 @@ module VBlank
         # `&&`. Two tests that only compare numbers join into one, both worked out as the game
         # plays, which nobody can tell from Ruby's skipping of the right side. A right side that
         # does something, or reads a list, is really skipped (see #side_under). +used+ is false
-        # for a join standing alone as a statement, whose answer nothing reads.
+        # for a join standing alone as a statement, whose answer nothing reads. A join whose answer is
+        # kept in a variable keeps the `if` that sets it as what the answer needs
+        # (Builder#register_statements_for_value), so a loop's test made of it is worked out again on
+        # every round.
         def join_both(left, used: true, into: nil)
           return left && yield unless game_test?(left)
 
-          condition = as_condition(left)
-          right, if_node = side_under(condition) { yield }
-          return keep_side_answer(condition, if_node, right, otherwise: 0, used: used, into: into) if if_node
-          return condition & as_condition(right) if game_test?(right)
+          VBlank::Builder::Session.builder.register_statements_for_value do
+            condition = as_condition(left)
+            right, if_node = side_under(condition) { yield }
+            next keep_side_answer(condition, if_node, right, otherwise: 0, used: used, into: into) if if_node
+            next condition & as_condition(right) if game_test?(right)
 
-          right ? condition : condition.discard!
+            right ? condition : condition.discard!
+          end
         end
 
         # `||`, the same way round.
@@ -181,14 +186,16 @@ module VBlank
           return left || yield unless game_test?(left)
           return number_or_other_side(left) { yield } if left.is_a?(Value) && left.truth
 
-          condition = as_condition(left)
-          unless_left = !condition
-          right, if_node = side_under(unless_left) { yield }
-          return keep_side_answer(unless_left, if_node, right, otherwise: 1, used: used, into: into) if if_node
-          return condition | as_condition(right) if game_test?(right)
+          VBlank::Builder::Session.builder.register_statements_for_value do
+            condition = as_condition(left)
+            unless_left = !condition
+            right, if_node = side_under(unless_left) { yield }
+            next keep_side_answer(unless_left, if_node, right, otherwise: 1, used: used, into: into) if if_node
+            next condition | as_condition(right) if game_test?(right)
 
-          refuse_number_question_as_number!(left) if right
-          right ? condition.discard! || right : condition
+            refuse_number_question_as_number!(left) if right
+            right ? condition.discard! || right : condition
+          end
         end
 
         # `lives.nonzero? || 1` or `shown = lives.nonzero?`: Ruby's `nonzero?` hands back the

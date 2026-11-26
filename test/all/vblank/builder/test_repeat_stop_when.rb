@@ -67,4 +67,58 @@ class TestRepeatStopWhen < Minitest::Test
 
     assert_equal 0, run[:n]
   end
+  private def rewritten(&block)
+    b = VBlank::Builder.new
+    b.instance_eval(&VBlank::DSL::PlainRuby.rewrite(block))
+    b.finalize_program
+    b.program
+  end
+
+  # A list read at a place the game works out makes the join keep its answer in a variable, which the
+  # loop must work out again each round.
+  def test_a_test_joined_by_or_stops_on_its_second_side
+    program = rewritten do
+      screen :bitmap
+      xs = [3, 2, 0, 9, 9, 9, 9, 9]
+      n = 0
+      k = 0
+      done = 0
+      game_loop do
+        xs[7] = 9 if pressed(:a) # game code changes it, so it is a list
+        if done == 0
+          n = 0
+          k = 0
+          repeat(8, stop_when: n > 100 || xs[k] == 0) do
+            n += 1
+            k += 1
+          end
+          done = 1
+        end
+      end
+    end
+    assert_equal 2, game_player.run(program, frames: 3)[:n]
+  end
+
+  def test_a_test_joined_by_and_stops_on_its_second_side
+    program = rewritten do
+      screen :bitmap
+      xs = [3, 2, 0, 9, 9, 9, 9, 9]
+      n = 0
+      k = 0
+      done = 0
+      game_loop do
+        xs[7] = 9 if pressed(:a) # game code changes it, so it is a list
+        if done == 0
+          n = 0
+          k = 0
+          repeat(8, stop_when: n < 100 && xs[k] == 0) do
+            n += 1
+            k += 1
+          end
+          done = 1
+        end
+      end
+    end
+    assert_equal 2, game_player.run(program, frames: 3)[:n]
+  end
 end
