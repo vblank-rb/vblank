@@ -254,6 +254,9 @@ module VBlank
           @color_lists = {}        # a list of colours that can hold other colours -> its declaration
           @picture_groups = {}     # sprite pictures in groups -> the declaration (see #refuse_pictures_not_up!)
           @groups_up = {}          # ...and the group each of its slots holds, PictureGroups::NONE for none
+          @table_groups = {}       # tables in groups -> the declaration (see #refuse_table_not_loaded!)
+          @table_set_of = {}       # ...each grouped table -> the set of groups it is in
+          @table_group_loaded = {} # ...and the group each set has loaded, nil for none
           @held_colors = {}        # ...and which of its other sets it holds now
           @obj_layer = []          # sprites to composite over a scrolling scene, in draw order (later = in front)
           @fade_placed = nil       # [layer, toward, amount] while a fade sits under a layer rather than over everything
@@ -728,6 +731,10 @@ module VBlank
             when :picture_groups
               @picture_groups[n.name] = n
               @groups_up[n.name] = Array.new(n.slots, Nodes::PictureGroups::NONE)
+            when :table_groups
+              @table_groups[n.name] = n
+              @table_group_loaded[n.name] = nil
+              n.tables.each { |table| @table_set_of[table] = n.name }
             when :object
               # Register the object, so present_objects can find its picture and the
               # variables holding where it is and whether it's shown.
@@ -835,7 +842,7 @@ module VBlank
           list_sort blit blit_pose save_region restore_region call call_one_of case halt stop_full wait_vblank
           hide_sprites rumble screen clear_screen pixel fill_rect draw_rect_at draw_column_at
           draw_place fill_face draw_text draw_digit background scroll_background place_bar box_background
-          affine_background background_colors color_list_holds show_picture_group scroll_rows shade_outside
+          affine_background background_colors color_list_holds show_picture_group load_table_group scroll_rows shade_outside
           show_light_now camera fade tint pixelate see_through present_objects set_tile set_tile_block show_held_tiles
           show_map copy_tiles copy_owed_tiles load_sprite_tiles enable_sound beep noise wave stop_wave
           play_song play_from_list play_sound_effect stop_music hold_music play_sample stop_sample
@@ -907,6 +914,7 @@ module VBlank
           when :background_colors then exec_background_colors(node)
           when :color_list_holds then exec_color_list_holds(node)
           when :show_picture_group then exec_show_picture_group(node)
+          when :load_table_group then exec_load_table_group(node)
           when :scroll_rows then exec_scroll_rows(node)
           when :shade_outside then exec_shade_outside(node)
           when :show_light_now then exec_show_light_now(node)
@@ -3481,6 +3489,38 @@ module VBlank
           show_backdrop(colors_held_by(node.name).fetch(place) & 0x7FFF) if place
         end
 
+        # A set of table groups has the group numbered +which+ loaded from now on, or none where the
+        # number names no group. Nothing is read here: which is loaded is only asked about as a
+        # table is read (#refuse_table_not_loaded!).
+        def exec_load_table_group(node)
+          which = eval_value(node.which)
+          @table_group_loaded[node.name] = @table_groups.fetch(node.name).names_group?(which) ? which : nil
+        end
+
+        # A table in a group can be read only while its group is loaded. This backend has every table
+        # in reach whatever is loaded, so it would read the numbers the game meant, and a console that
+        # holds one group at a time in one place would read another group's numbers there. Stopped
+        # here, in plain words, it is a failed test on every build rather than wrong numbers on one.
+        def refuse_table_not_loaded!(table)
+          set = @table_set_of[table] or return
+          groups = @table_groups.fetch(set)
+          loaded = @table_group_loaded.fetch(set)
+          return if loaded && groups.groups[loaded].include?(table)
+
+          holding = groups.groups_holding(table)
+          raise ProgramError, "The game read the table :#{table}, and its group is not loaded. :#{table} is in " \
+                              "#{group_words(holding)} of :#{set}, and #{loaded ? "group #{loaded}" : 'no group'} " \
+                              "is loaded. To fix this, load a group that holds it before the game reads it, like " \
+                              "`#{set}.load #{holding.first}`."
+        end
+
+        # "group 1", "groups 0 and 2".
+        def group_words(numbers)
+          return "group #{numbers.first}" if numbers.one?
+
+          "groups #{numbers[0...-1].join(', ')} and #{numbers.last}"
+        end
+
         # One slot of a set of picture groups holds the group numbered +which+ from now on.
         # Nothing is drawn here: the groups up are only asked about as the sprites are drawn.
         def exec_show_picture_group(node)
@@ -4331,6 +4371,7 @@ module VBlank
         # copied on the console do.
         def exec_list_copy(node)
           values = @tables.fetch(node.table).values
+          refuse_table_not_loaded!(node.table) unless @table_set_of.empty?
           start = eval_value(node.at).clamp(0, values.length - node.count)
           list_for(node.name).replace(values[start, node.count])
         end
@@ -4376,6 +4417,7 @@ module VBlank
           table = @tables.fetch(node.name) do
             raise ProgramError, "reference to undefined table #{node.name.inspect}"
           end
+          refuse_table_not_loaded!(node.name) unless @table_set_of.empty?
           values = table.values
           Int32.wrap(values[safe_table_index(eval_value(node.index), values.length)])
         end

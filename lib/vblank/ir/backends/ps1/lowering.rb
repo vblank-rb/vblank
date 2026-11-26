@@ -50,7 +50,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
-            timer_start timer_stop on_timer show_light_now rumble
+            timer_start timer_stop on_timer show_light_now rumble load_table_group
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Faces::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
 
@@ -88,6 +88,7 @@ module VBlank
             when :show_light_now then emit_nothing(node)
             # the build reads a digital pad, which has no motor: nothing is felt
             when :rumble then emit_nothing(node)
+            when :load_table_group then emit_load_table_group(node)
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)
             when *Picture::STATEMENT_KINDS then emit_picture_statement(node)
             when *Faces::STATEMENT_KINDS then emit_faces_statement(node)
@@ -209,9 +210,11 @@ module VBlank
           include Sound
           include ShownSort
 
-          def initialize(program, memory:, cache: BuildCache.for(PS1, program))
+          # +rooms+ is where the game's tables in groups go (TableRooms), placed in +memory+ already.
+          def initialize(program, memory:, cache: BuildCache.for(PS1, program), rooms: TableRooms.new(program, cache.plan))
             @program = program
             @memory = memory
+            @rooms = rooms
             @cache = cache
             @plan = cache.plan
             @funcs = @plan.funcs
@@ -391,13 +394,30 @@ module VBlank
               asm.label(label)
               asm.data_words(targets.map { |name| self.class.routine_label(name) })
             end
+            @rooms.rooms.each do |room|
+              asm.label(room_entries_label(room.name))
+              asm.data_words(@rooms.entries(room))
+            end
             asm.section
+          end
+
+          def room_entries_label(name) = "table groups #{name}"
+
+          # Reference#exec_load_table_group: the group read from the disc into its set's room (Runtime::Disc),
+          # unless it is the one in it already. A set none of whose tables the game reads has nothing to read.
+          def emit_load_table_group(node)
+            room = @rooms.room_named(node.name)
+            return if room.nil? || room.bytes.zero?
+
+            loaded = @memory.reserve("the group of table_groups :#{node.name} loaded", 4)
+            runtime_call("rt_disc_load", [node.which, LabelAddress.new(room_entries_label(room.name)), Build.int(room.groups.length),
+                                          Build.int(loaded), Build.int(room.address)])
           end
 
           # Each table a run reads, in a section of its own: its entries as the program keeps them
           # (LoweringPlan#table_keeping), the low byte first.
           def table_sections
-            @plan.tables_read.map do |table|
+            @plan.tables_read.reject { |table| @rooms.room_of(table.name) }.map do |table|
               bytes = Runtime::Lists::EntryKeeping.of(@plan.table_keeping(table)).bytes
               asm = R3000.new(table_label(table.name), holds: TABLES_HOLDING)
               asm.label(table_label(table.name))
@@ -407,6 +427,10 @@ module VBlank
           end
 
           def table_label(name) = "table #{name}"
+
+          # Where the table +name+ is, as emit_value takes it: its label in the program, or for a table in a
+          # group, its address in its set's room (TableRooms).
+          def table_place(name) = @rooms.room_of(name) ? Build.int(@rooms.address_of(name)) : LabelAddress.new(table_label(name))
 
           # --- routines ---
 
@@ -1229,7 +1253,7 @@ module VBlank
           def emit_list_copy(node)
             table = @tables.fetch(node.table) { raise LoweringError, "the table #{node.table.inspect} is copied and never declared" }
             kept = Runtime::Lists::EntryKeeping.of(@plan.table_keeping(table)).number
-            list_call("rt_list_copy", node, LabelAddress.new(table_label(table.name)), Build.int(kept),
+            list_call("rt_list_copy", node, table_place(table.name), Build.int(kept),
                       Build.int(table.values.length), node.at, Build.int(node.count))
           end
 
@@ -1333,7 +1357,11 @@ module VBlank
             keeping = Runtime::Lists::EntryKeeping.of(@plan.table_keeping(table))
             emit_value(safe)
             @asm.sll(:v0, :v0, keeping.bytes.bit_length - 1) if keeping.bytes > 1
-            @asm.la(:t0, table_label(table.name))
+            if @rooms.room_of(table.name)
+              @asm.li(:t0, @rooms.address_of(table.name))
+            else
+              @asm.la(:t0, table_label(table.name))
+            end
             @asm.addu(:t0, :t0, :v0)
             @asm.load(keeping.load, :v0, 0, :t0)
           end

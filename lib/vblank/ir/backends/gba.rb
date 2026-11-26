@@ -526,7 +526,8 @@ module VBlank
           # Every kind's writer, registered once in one place — see {Lowering}. A declaration is
           # collected during the definitions pass, earlier in #lower, and emits nothing where it is
           # written: every kind that is one (see Nodes.of_role) emits nothing here. So do a row bend and
-          # a timer handler, armed from the definitions pass, and a light's shade worked out there.
+          # a timer handler, armed from the definitions pass, and a light's shade worked out there. So
+          # does loading a group of tables: the cartridge holds every table in reach the whole time.
           @lowering.values_written_by(@expressions, Expressions::VALUE_KINDS)
           @lowering.values_written_by(@collision, Collision::VALUE_KINDS)
           @lowering.values_written_by(@lists, Lists::VALUE_KINDS)
@@ -534,7 +535,7 @@ module VBlank
           @lowering.values_written_by(@timers, Timers::VALUE_KINDS)
           @lowering.values_written_by(@clock_chip, ClockChip::VALUE_KINDS)
           @lowering.statements_written_by(Lowering::NothingEmitted,
-                                          IR::Nodes.of_role(:declaration) + %i[scroll_rows shade_outside on_timer])
+                                          IR::Nodes.of_role(:declaration) + %i[scroll_rows shade_outside on_timer load_table_group])
           @lowering.statements_written_by(@rumble, Rumble::STATEMENT_KINDS)
           @lowering.statements_written_by(self, STATEMENT_KINDS)
           @lowering.statements_written_by(@statements, Statements::STATEMENT_KINDS)

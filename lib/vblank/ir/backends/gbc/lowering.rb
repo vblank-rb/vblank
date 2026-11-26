@@ -50,7 +50,7 @@ module VBlank
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
             save_init save_store save_write save_erase save_load_list save_store_list timer_start timer_stop
-            on_timer show_light_now show_held_tiles
+            on_timer show_light_now show_held_tiles load_table_group
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS + Clock::STATEMENT_KINDS +
             TileRuns::STATEMENT_KINDS + SpriteTiles::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
@@ -91,6 +91,8 @@ module VBlank
             when :on_timer then emit_nothing(node)
             # the light is not made yet (shade_outside), and a game without one works nothing out again
             when :show_light_now then emit_nothing(node)
+            # the cartridge holds every table in reach the whole time, in its banks or in view
+            when :load_table_group then emit_nothing(node)
             # a pass's cell changes already wait for the gap between frames here, so a held
             # background's need nothing more (Console::ColorAnswers, `background`)
             when :show_held_tiles then emit_nothing(node)

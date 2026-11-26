@@ -168,6 +168,41 @@ module VBlank
       # word, how many words follow in its top byte and where the next node is below, then those words.
       DMA2_FROM_RAM_BY_LIST = 0x0100_0401
       DMA_BUSY = 1 << 24
+      # Channel 3, the CD-ROM drive's: where in RAM, how many words, and how and go. A sector's 2048
+      # bytes are one block of 200h words, to RAM, started at once (bit 28) and running (bit 24)
+      # (psx-spx, "DMA Channels").
+      DMA3_MADR = 0x1F80_10B0
+      DMA3_BCR = 0x1F80_10B4
+      DMA3_CHCR = 0x1F80_10B8
+      DPCR_CDROM_ON = 1 << 15
+      DMA3_ONE_SECTOR = 0x0001_0200
+      DMA3_TO_RAM_NOW = 0x1100_0000
+
+      # --- the CD-ROM drive (psx-spx, "CDROM Controller I/O Ports") ---
+      # Four ports. Which register the last three are is chosen by the index written to the first.
+      CD_INDEX = 0x1F80_1800 # Written, the index; read, the status (CD_BUSY, CD_RESPONSE_WAITING)
+      CD_COMMAND = 0x1F80_1801 # Index 0: a command; read, the next byte of its response
+      CD_PARAMETER = 0x1F80_1802 # Index 0: a command's parameter
+      CD_REQUEST = 0x1F80_1803 # Index 0: CD_WANT_DATA asks for the sector read; index 1: the interrupt flags
+      CD_BUSY = 0x80 # The status: a command is still being sent
+      CD_RESPONSE_WAITING = 0x20 # The status: the response has another byte
+      CD_DATA_WAITING = 0x40 # The status: the sector asked for is in the data FIFO, ready for the DMA
+      CD_WANT_DATA = 0x80
+      CD_ACKNOWLEDGE_ALL = 0x1F # Index 1, written to the flags: every interrupt seen
+      CD_CLEAR_PARAMETERS = 0x40 # ...and the parameters not yet used thrown away
+      # The interrupt the drive answers with, the flags' low three bits: a sector ready, a command
+      # finished in the end, a command taken, and an error.
+      CD_SECTOR_READY = 1
+      CD_COMPLETE = 2
+      CD_ACKNOWLEDGED = 3
+      CD_ERROR = 5
+      # The commands: where to read, read, stop reading, and how to read. Setmode's 80h reads at
+      # double speed, 150 sectors a second, and 2048 bytes of each sector, its data alone.
+      CD_SETLOC = 0x02
+      CD_READN = 0x06
+      CD_PAUSE = 0x09
+      CD_SETMODE = 0x0E
+      CD_DOUBLE_SPEED_DATA = 0x80
       # 320 pixels across, 240 lines, NTSC, 15-bit colour, not interlaced.
       DISPLAY_MODE_320_BY_240 = 0x01
       # The lines an NTSC frame has, the blank's among them (psx-spx, "GPU Video Timings"). Every build

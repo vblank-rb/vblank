@@ -27,6 +27,7 @@ and a test fails when the two differ.
 - `font` — works: a font of the game's own pictures (`pictures:` or `strip:`) draws each character as its picture: a `blit` on a painted screen, a sprite on a tiled one.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
+- `table_groups` — works: the cartridge holds every table in reach the whole time, so `load` reads nothing and costs nothing.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — works: it lists the ARM a routine was made into.
 - `entry` — works: the game can write raw ARM instructions, the machine code of the Advance's processor.

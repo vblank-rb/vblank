@@ -88,6 +88,8 @@ module ConformanceFixture
       B.sample(:clip, [0, 60, 120, 60, 0, -60, -120, -60].pack("c*"), 8000), # a tiny PCM clip
       B.backing_buffer(:under, width: 4, height: 4), # a save-under patch for a moving object
       B.table(:lut, [10, 20, 30, 40], width: :byte, signed: false), # a ROM lookup table (read by table_get below)
+      B.table(:fixture_level, [5, 6, 7, 8], width: :half, signed: false), # ...and one in a group, loaded before it is read
+      B.table_groups(:fixture_levels, groups: [nil, [:fixture_level]]),
       # The stack of depths, backmost first (the background and the object below sit in
       # it), with the front one see-through — so every backend has to blend the object
       # with the scenery behind it rather than draw it solid.
@@ -177,6 +179,9 @@ module ConformanceFixture
       B.set(:acc, B.shift_right(B.var_ref(:x), 0)), # shifting by none changes nothing
       B.set(:acc, B.data_byte(:blob, 0)),     # data_byte reads embedded data
       B.set(:acc, B.table_get(:lut, B.var_ref(:x))), # table_get reads a ROM table at a run-time index
+      # group 1 loaded, from a number the program works out, then a table in it read
+      B.load_table_group(:fixture_levels, which: B.binop(:+, B.binop(:-, B.var_ref(:x), B.var_ref(:x)), B.int(1))),
+      B.add(:acc, B.table_get(:fixture_level, B.var_ref(:x))),
       B.set(:acc, B.held(:a)),                # held (button read)
       B.set(:acc, B.pressed(:b)),             # pressed (edge read)
       B.set(:acc, B.pulled(:a)),              # pulled (how far: 0 or 100 for a button)

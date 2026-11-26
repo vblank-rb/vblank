@@ -13,7 +13,8 @@ module VBlank
         #
         #   80010000h-...        the runtime's own state, then the game's variables and lists, upward
         #   ...-...              the program: code, tables (Linker), from the next 2K after those
-        #   ...-801F7FFFh        free
+        #   ...-...              free
+        #   ...-801F7FFFh        the rooms filled as the game runs, counted down (#reserve_top)
         #   801F8000h-801FFFEFh  the stack, 32K, growing down from the top
         #   1F800000h-1F8003FFh  the scratchpad: the numbers read most (see below)
         #
@@ -65,6 +66,7 @@ module VBlank
 
           def initialize
             @next = FIRST
+            @last = LAST
             @next_scratchpad = SCRATCHPAD_FIRST
             @places = {}
           end
@@ -74,9 +76,22 @@ module VBlank
           def reserve(name, bytes)
             @places.fetch(name) do
               size = (bytes + 3) & ~3
-              raise Full, full_message(name, size, LAST - @next) if @next + size > LAST
+              raise Full, full_message(name, size, @last - @next) if @next + size > @last
 
               @places[name] = @next.tap { @next += size }
+            end
+          end
+
+          # +bytes+ for +name+ at the top of the program's room, just under the stack, and its address,
+          # counted down. What goes here is not cleared at power-on and is not in the program: a room
+          # the runtime fills as the game runs (a group of tables read from the disc, TableRooms), so it
+          # needs no bytes in the PS-X EXE and no time clearing it. The program's room ends below it.
+          def reserve_top(name, bytes)
+            @places.fetch(name) do
+              size = (bytes + 3) & ~3
+              raise Full, full_message(name, size, @last - @next) if @last - size < @next
+
+              @places[name] = (@last -= size)
             end
           end
 
@@ -116,7 +131,7 @@ module VBlank
           def program_at = (@next + PROGRAM_BLOCK - 1) & ~(PROGRAM_BLOCK - 1)
 
           # How many bytes the program may take from there, up to the stack.
-          def program_room = LAST - program_at
+          def program_room = @last - program_at
 
           # The distance of +address+ from where fp points (the scratchpad's start), or nil when it is not
           # in the scratchpad.

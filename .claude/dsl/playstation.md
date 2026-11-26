@@ -111,6 +111,7 @@ a test fails when the two differ. The Advance's answers are in `.claude/dsl/game
 - `scene` — works: see `func` for `fast:`.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the program holds what each slot holds, as if the game had written it.
+- `table_groups` — works: the build makes a disc with each group on it: an image of its sectors (.bin) and the cue sheet an emulator opens (.cue). Each set of groups has a room in memory as big as its biggest group. `load` reads the group from the disc into the room at the drive's double speed, about 300K a second. The game waits until the group is in, and the music plays on. If the group is in the room already, `load` reads nothing.
 - `shell_screen` — works: the program holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a PlayStation has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a PlayStation does not have.

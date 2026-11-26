@@ -63,7 +63,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
-            timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group screen
+            timer_start timer_stop on_timer show_light_now rumble show_held_tiles show_picture_group load_table_group screen
           ] + ControlFlow::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Sound::STATEMENT_KINDS +
             Saving::STATEMENT_KINDS + TileRuns::STATEMENT_KINDS +
             Nodes.of_role(:declaration)).freeze
@@ -109,6 +109,8 @@ module VBlank
             # every picture is in video memory whichever group is up (the interpreter's own check
             # is all that groups are for here)
             when :show_picture_group then emit_nothing(node)
+            # the cartridge holds every table in reach the whole time
+            when :load_table_group then emit_nothing(node)
             # a tiled screen is the one the console is set up for at power-on
             when :screen then emit_nothing(node)
             when *Paint::STATEMENT_KINDS then emit_paint_statement(node)

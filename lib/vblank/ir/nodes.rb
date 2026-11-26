@@ -862,6 +862,37 @@ module VBlank
         operands name: :name, slot: :int, which: :value
       end
 
+      # Tables in groups, one group of which is loaded at a time — a level's data, where a game's data
+      # is more than the console holds at once. +groups+ is each group's table names, by its number
+      # (nil for a number naming none). A table in no group is there the whole time. A table may be
+      # in more than one group of a set, and in one set only. A target that keeps every table in
+      # reach whatever is loaded needs none of this to read them.
+      class TableGroups
+        include Node
+        kind :table_groups
+        declaration!
+        category :data
+        operands name: :name, groups: :list
+
+        # The numbers of the groups holding +table+.
+        def groups_holding(table) = groups.each_index.select { |number| groups[number]&.include?(table) }
+
+        # Does +number+ name a group?
+        def names_group?(number) = number.between?(0, groups.length - 1) && !groups[number].nil?
+
+        # Every table some group holds.
+        def tables = groups.compact.flatten.uniq
+      end
+
+      # Group +which+ of the TableGroups +name+ is loaded from now on, in place of the one that was,
+      # a number worked out as the program runs; a number naming no group leaves none loaded.
+      class LoadTableGroup
+        include Node
+        kind :load_table_group
+        category :data
+        operands name: :name, which: :value
+      end
+
       class Copy
         include Node
         kind :copy

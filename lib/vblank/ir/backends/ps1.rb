@@ -24,6 +24,7 @@ require_relative "ps1/music" # the song table, before the player that reads it
 require_relative "ps1/runtime"
 require_relative "ps1/spu_tables" # the sound chip's numbers and loops a computer's build made as the PlayStation plays
 require_relative "ps1/texture_memory"
+require_relative "ps1/table_rooms" # where tables in groups go, on the disc and in RAM
 require_relative "ps1/painted_art"
 require_relative "ps1/painted_numbers" # a painted screen drawn in colour numbers, for a game that fades it
 require_relative "ps1/plane_colors" # the colour table each background is drawn through
@@ -136,7 +137,9 @@ module VBlank
                                   pads: Runtime::Pads.pads_read(program))
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           Runtime::Tiles.reserve_plane_mixes(memory) if Lowering::Picture.mixes_see_through?(program)
-          lowering = Lowering.new(program, memory: memory, cache: cache)
+          rooms = TableRooms.new(program, cache.plan)
+          rooms.place(memory)
+          lowering = Lowering.new(program, memory: memory, cache: cache, rooms: rooms)
           game = lowering.sections
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
@@ -144,7 +147,7 @@ module VBlank
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
                                              collides: lowering.collides?, by_number: by_number, over_picture: over_picture,
-                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted))
+                                             count_at: (lowering.variables.fetch(IR::Frames::COUNT) if counted), disc: rooms.any?)
           # Everything has its place by now, so the program goes where the places end (Memory#program_at).
           late = Runtime.late_sections(memory, faces: lowering.fills_faces?)
           linked = Linker.new(runtime + game + late, origin: memory.program_at, room: memory.program_room, kept: memory.used).link
@@ -155,7 +158,7 @@ module VBlank
                              sound_voicing: (lowering.sound_voicing if lowering.sound?), recording_names: lowering.recording_names,
                              slot_places: lowering.slot_places)
           Cartridge::PS1EXE.new(linked.image, title: title, entry: linked.address_of("rt_boot"), load_at: memory.program_at,
-                                              built: built)
+                                              built: built, disc_data: (rooms.disc_data if rooms.any?))
         end
 
         private

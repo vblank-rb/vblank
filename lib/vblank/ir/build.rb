@@ -824,6 +824,16 @@ module VBlank
         Nodes.build(:show_picture_group, name: name, slot: slot, which: to_value_node(which))
       end
 
+      # Tables in groups, one loaded at a time (Nodes::TableGroups).
+      def table_groups(name, groups:)
+        Nodes.build(:table_groups, name: name, groups: groups)
+      end
+
+      # Group +which+ of the table groups +name+ loaded from now on (Nodes::LoadTableGroup).
+      def load_table_group(name, which:)
+        Nodes.build(:load_table_group, name: name, which: to_value_node(which))
+      end
+
       # The named list of colours holds the set numbered +which+ from now on, and everything
       # drawn with the list shows it. +which+ counts from 0 through the list's other sets and
       # is a value operand; a number naming none of them is the colours it was declared with.

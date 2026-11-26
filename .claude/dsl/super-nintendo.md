@@ -112,6 +112,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `scene` — works: see `func` for `fast:`.
 - `uses` — works: a pack's verbs are verbs of the game's own, and each one has its answer here.
 - `data_pack` — works: the cartridge holds what each slot holds, as if the game had written it.
+- `table_groups` — works: the cartridge holds every table in reach the whole time, so `load` reads nothing and costs nothing.
 - `shell_screen` — works: the cartridge holds nothing of it. Only a build as a shell shows a first screen.
 - `dump_func` — **refused**: it lists the ARM a routine was made into, and a Super Nintendo has no ARM processor to list it for.
 - `entry` — **refused**: `entry` is raw ARM for the Advance's processor, which a Super Nintendo does not have.

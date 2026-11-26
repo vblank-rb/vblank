@@ -51,7 +51,7 @@ module VBlank
           STATEMENT_KINDS = (%i[
             program set add sub copy negate abs negate_abs clamp call call_one_of
             halt stop_full wait_vblank list_new list_push list_drop list_set list_fill list_copy list_sort list_pack
-            timer_start timer_stop on_timer show_light_now rumble show_held_tiles
+            timer_start timer_stop on_timer show_light_now rumble show_held_tiles load_table_group
           ] + ControlFlow::STATEMENT_KINDS + Picture::STATEMENT_KINDS + Paint::STATEMENT_KINDS + Saving::STATEMENT_KINDS +
             Sound::STATEMENT_KINDS + Nodes.of_role(:declaration)).freeze
 
@@ -92,6 +92,8 @@ module VBlank
             # a Super Nintendo cartridge has no rumble motor, so nothing is felt
             # (Console::Description#rumbles)
             when :rumble then emit_nothing(node)
+            # the cartridge holds every table in reach the whole time
+            when :load_table_group then emit_nothing(node)
             # video memory is written only between frames here, so a held background's changes
             # already show together
             when :show_held_tiles then emit_nothing(node)

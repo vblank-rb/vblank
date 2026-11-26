@@ -46,6 +46,7 @@ require_relative "dsl/grid"
 VBlank.require_game_file "dsl/sprite"
 VBlank.require_game_file "dsl/recolors"    # The other colours a sprite or pool can be drawn with
 require_relative "dsl/picture_groups"      # A scene's sprite pictures in groups, some up at a time
+require_relative "dsl/table_groups"        # Tables in groups, one loaded at a time
 VBlank.require_game_file "dsl/hardware_sprite"
 require_relative "dsl/mark"                # A picture over a sprite, with no place of its own
 require_relative "dsl/place"               # A place made of flat faces, seen from a viewer

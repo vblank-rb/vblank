@@ -20,6 +20,7 @@ require_relative "builder/picture_fonts"
 require_relative "builder/images"
 VBlank.require_game_file "builder/color_lists"
 require_relative "builder/picture_groups"
+require_relative "builder/table_groups"
 VBlank.require_game_file "builder/sprites"
 require_relative "builder/sprite_import"
 require_relative "builder/input"
@@ -96,6 +97,7 @@ module VBlank
     include Images     # image, blit, rgb, rgb8, color
     include ColorLists # recolor (a list of sprite colours that holds other colours as the game runs)
     include PictureGroups # picture_groups (a scene's sprite pictures by room, only some of them up at a time)
+    include TableGroups # table_groups (a level's tables, one group of them loaded at a time)
     include Sprites    # sprite (software + hardware, facing/frames/clip animation, hitboxes)
     include SpriteImport # sprite art adapters (sheets, Aseprite) feeding the sprite builder
     include Input      # held, pressed, players_connected, rumble
@@ -227,6 +229,7 @@ module VBlank
       @changing_color_lists = {} # `colors` name → what the build keeps about a list told to hold other colours (see ColorLists)
       @backdrop_list = nil     # the list the game's backdrop follows, or nil (see ColorLists#followed_backdrop_list)
       @picture_groups = {}     # `picture_groups` name → its declaration (see PictureGroups)
+      @table_groups = {}       # `table_groups` name → its declaration (see TableGroups)
       @sprite_recolors = []    # every sprite's and pool's other colours, to find who draws with a changing list
       @lists_in_use = []       # each set of lists `colors_in_use` named, in the order the game counts them
       @lists_backgrounds_draw_with = {} # `colors` name → the backgrounds drawn with it, which follow it if it changes
@@ -772,6 +775,7 @@ module VBlank
       finalize_backdrop_list # before the lists: a list only the backdrop shows is not one nobody draws with
       finalize_changing_color_lists
       finalize_picture_groups
+      finalize_table_groups
       finalize_background_affine
       finalize_layer_blend
       finalize_light_switch

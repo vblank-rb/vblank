@@ -15,6 +15,7 @@ require_relative "runtime/sound"
 require_relative "runtime/strikes"
 require_relative "runtime/music"
 require_relative "runtime/recordings"
+require_relative "runtime/disc"
 
 module VBlank
   module IR
@@ -83,10 +84,11 @@ module VBlank
           # +over_picture+ whether it shows sprites over its painted screen, so is copied onto the screen as each
           # pass ends and has the pass's sprites drawn over the copy. +count_at+ is where a game that reads how
           # many frames it has shown since power-on keeps that count, which then counts setting up too
-          # (Boot#emit), and nil for any other.
+          # (Boot#emit), and nil for any other. +disc+ is whether it keeps tables in groups on a disc, so
+          # carries Disc.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
                        samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false,
-                       count_at: nil, effect_clock_step: nil)
+                       count_at: nil, effect_clock_step: nil, disc: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
@@ -112,6 +114,7 @@ module VBlank
             Strikes.emit(asm, memory) if Strikes.strikes?(memory)
             Recordings.emit(asm, memory) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, effect_clock_step: effect_clock_step) if songs
+            Disc.emit(asm) if disc
             emit_start(asm, sound: sound, tiles: !tiled.nil?)
             emit_frame_begins(asm, frame_begins)
             [asm.section, *(faces ? [Faces.reciprocals_section(Lowering::TABLES_HOLDING), Faces.section(memory)] : [])]
