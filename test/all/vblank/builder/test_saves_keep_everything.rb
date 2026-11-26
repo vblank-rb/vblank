@@ -236,6 +236,16 @@ class TestSavesKeepEverything < Minitest::Test
     assert_match(/names no/, error.message)
   end
 
+  def test_a_line_naming_no_variable_is_refused
+    builder = Builder.new
+    error = assert_raises(VBlank::DSL::PlainRuby::Refused) do
+      builder.instance_eval(&VBlank::DSL::PlainRuby.rewrite(proc { game_variables }))
+    end
+
+    assert_match(/names no instance variable/, error.message)
+    assert_match(/delete the line/, error.message)
+  end
+
   def test_saying_it_twice_is_a_friendly_error
     message = refused do
       hearts = var :hearts, 3

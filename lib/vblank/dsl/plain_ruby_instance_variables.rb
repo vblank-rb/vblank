@@ -64,7 +64,7 @@ module VBlank
           refuse_saved_not_true_or_false!(saved)
           names += [chosen_by_keyword] unless chosen_by_keyword.empty?
           labels, chosen = labels_and_chosen_names(names)
-          refuse_unsaved_naming_nothing! if !saved && labels.empty?
+          refuse_naming_nothing!(saved) if labels.empty?
           uses = owner.is_a?(Builder) ? owner.instance_variable_uses : Builder::Session.builder&.instance_variable_uses
           uses&.refuse_late_unsaved_mark!(owner, labels) unless saved
           case owner
@@ -214,7 +214,13 @@ module VBlank
           nil
         end
 
-        def refuse_unsaved_naming_nothing!
+        def refuse_naming_nothing!(saved)
+          if saved
+            raise Refused, "`game_variables` names no instance variable, so it does nothing. To fix this, name " \
+                           "the variables on the same line, like `game_variables :busy`, or delete the line." \
+                           "#{Messages::AuthorSource.at_author_line}"
+          end
+
           raise Refused, "`game_variables saved: false` names no instance variable, so it marks nothing. To fix " \
                          "this, name the variables on the same line, like `game_variables :busy, saved: false`." \
                          "#{Messages::AuthorSource.at_author_line}"
