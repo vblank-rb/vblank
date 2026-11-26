@@ -450,6 +450,10 @@ module VBlank
               if timed
                 asm.tst(:w, at.call(Music::EFFECTS_STARTING))
                 asm.branch(:ne, "rt_sfx_frame_starting")
+                if memory.reserved?(Music::STARTED_MOVE_ON) # a tick on a later interrupt moves it on
+                  asm.tst(:w, at.call(Music::STARTED_MOVE_ON))
+                  asm.branch(:ne, "rt_sfx_frame_not_asked")
+                end
                 asm.rts
                 asm.label("rt_sfx_frame_starting")
               end

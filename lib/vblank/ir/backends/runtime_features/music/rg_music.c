@@ -23,7 +23,8 @@
  *
  * rg_game_effects: how many sound effects there are, 1 if each wave note puts its waveform in — any
  * effect plays the wave voice, or a note names a waveform of its own (see wave_put_in) — what the
- * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — then five
+ * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — what the tempo
+ * adds on each of a driver's own interrupts, 0 for none (see count_ticks_on_interrupts) — then five
  * numbers each, in the order they were declared — the song it plays (by
  * which the log names it), which entry of rg_game_music holds its notes, its rank
  * (IR::Tunes.effect_rank), its group (-1 for none, else which of the game's groups), and its
@@ -119,7 +120,8 @@
 #define EFFECT_COUNT (rg_game_effects[0])
 #define NOTES_PUT_IN_WAVEFORMS (rg_game_effects[1])
 #define EFFECT_CLOCK_STEP (rg_game_effects[2]) /* what the effects' timer adds a frame, 0 for none */
-#define EFFECT_ROWS 3
+#define EFFECT_TEMPO_STEP (rg_game_effects[3]) /* what the tempo adds on each interrupt, 0 for none */
+#define EFFECT_ROWS 4
 #define NUMBERS_PER_EFFECT 6
 /* Each effect's numbers in rg_game_effects, by where they are in its row. */
 #define EFFECT_SONG 0
@@ -956,13 +958,35 @@ static void play_song_frame(void);
  * on with each tick from there (Reference::Player#advance). */
 static int32_t effect_clock;
 
+static int32_t effect_tempo;
+static int32_t tick_on_first_interrupt;
+
+/* With the tempo counted on a driver's own interrupt (EFFECT_TEMPO_STEP), the frame's +interrupts+ each
+ * add the tempo's step, and those whose count comes round hold a tick (Reference::Player#count_ticks_on_interrupts). */
+static int32_t count_ticks_on_interrupts(int32_t interrupts) {
+  int32_t ticks = 0;
+  tick_on_first_interrupt = 0;
+  for (int32_t at = 0; at < interrupts; at++) {
+    effect_tempo += EFFECT_TEMPO_STEP;
+    if (effect_tempo >> 16) {
+      ticks++;
+      if (at == 0) tick_on_first_interrupt = 1;
+    }
+    effect_tempo &= 0xFFFF;
+  }
+  return ticks;
+}
+
 static int32_t step_effect_clock(void) {
   if (EFFECT_CLOCK_STEP == 0) return 1;
   effect_clock += EFFECT_CLOCK_STEP;
   int32_t ticks = effect_clock >> 16;
   effect_clock &= 0xFFFF;
-  return ticks;
+  return EFFECT_TEMPO_STEP ? count_ticks_on_interrupts(ticks) : ticks;
 }
+
+/* Whether the frame's first tick is too soon for an effect started on it (Reference::Player#skips_started_effects_first_tick?). */
+static int32_t skips_started_effects_first_tick(void) { return !EFFECT_TEMPO_STEP || tick_on_first_interrupt; }
 
 /* Each effect asked for since the last tick, taken up for the tick playing now. */
 static void move_asked_effects_to_tick(void) {
@@ -988,7 +1012,7 @@ static void play_effects_first_pass(const int32_t *by_rank, int32_t from, int32_
     effect_asked_now[effect] = 0;
   }
   for (int32_t at = from; ticks > 0 && at < to; at++) {
-    if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+    if (!effect_started_now[by_rank[at]] || !skips_started_effects_first_tick()) play_effect_frame(by_rank[at]);
   }
 }
 
@@ -1013,7 +1037,7 @@ static void rg_music_sound_frame(void) {
   for (int32_t tick = 1; tick < ticks; tick++) {
     move_asked_effects_to_tick();
     for (at = 0; at < EFFECT_COUNT; at++) {
-      if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+      if (!effect_started_now[by_rank[at]] || EFFECT_TEMPO_STEP) play_effect_frame(by_rank[at]);
     }
   }
   step_swells();

@@ -62,11 +62,14 @@ module VBlank
             @swells = {}        # a square voice -> the song's swelling note it holds under the music volume (IR::Tunes::Swell)
             @effect_clock_step = nil # what the sound effects' timer adds a frame, nil for no timer (IR::Tunes.effect_clock_step)
             @effect_clock = 0        # ...and its count, from power-on
+            @effect_tempo_step = nil # what the tempo adds on each interrupt of the driver's own, or nil (IR::Tunes.effect_tempo_step)
+            @effect_tempo = 0        # ...and its count, from power-on
+            @tick_on_first_interrupt = false # whether this frame's first interrupt holds a tick
           end
 
           # The sound effects count their ticks on a timer that adds this a frame
           # (IR::Tunes.effect_clock_step), or on frames, for nil.
-          attr_writer :effect_clock_step
+          attr_writer :effect_clock_step, :effect_tempo_step
 
           # The name of the tune the player is on, or nil for none. It takes up what the program
           # named at the next frame, and drops a tune that played once on the frame after its end.
@@ -202,7 +205,7 @@ module VBlank
             play_effects_first_pass(above, asked, ticks)
             play_song_frame(level) if @playing
             play_effects_first_pass(below, asked, ticks)
-            later = (above + below).reject { |name, _| @effect_clock_step && asked.include?(name) }
+            later = (above + below).reject { |name, _| @effect_clock_step && !@effect_tempo_step && asked.include?(name) }
             (ticks - 1).times { later.each { |name, rank| play_effect_frame(name, rank, []) } }
             step_swells
             step_wobbles
@@ -212,18 +215,24 @@ module VBlank
 
           private
 
+          # Whether the frame's first tick is too soon for an effect started on it: always, on the
+          # effects' own timer; on the driver's interrupt (IR::Tunes.effect_tempo_step), where that tick
+          # is on the first interrupt, the one it started on. Its later ticks are on later interrupts.
+          def skips_started_effects_first_tick? = !@effect_tempo_step || @tick_on_first_interrupt
+
           # One side of the tune in the frame's first pass over the effects. Counted in frames, each
           # effect plays its frame, what was asked for starting. On a timer, what was asked for starts
           # at once, with what it cuts off of its group, and then, on a frame with a tick, every other
-          # effect moves on that tick. One that has just started does not: a tick in the frame it starts
-          # on falls too soon after its start, and a sound driver striking its notes on its own
-          # interrupt never moves an effect on in the moment it starts it, so the first note always
-          # lasts past the frame. It moves on from the next frame's ticks.
+          # effect moves on that tick. One that has just started does not where the tick is too soon
+          # after its start (#skips_started_effects_first_tick?): a sound driver never moves an effect
+          # on in the moment it starts it. On its own timer that is every tick of the frame, so it moves
+          # on from the next frame's ticks; on a driver's interrupt, only a tick on the interrupt it
+          # started on.
           def play_effects_first_pass(side, asked, ticks)
             return side.each { |name, rank| play_effect_frame(name, rank, asked) } unless @effect_clock_step
 
             side.each { |name, rank| play_effect_frame(name, rank, asked) if asked.include?(name) || @stopping.include?(name) }
-            side.each { |name, rank| play_effect_frame(name, rank, []) unless asked.include?(name) } if ticks.positive?
+            side.each { |name, rank| play_effect_frame(name, rank, []) unless asked.include?(name) && skips_started_effects_first_tick? } if ticks.positive?
           end
 
           # The sound effects' timer moved on a frame: how many ticks the frame has, one on every frame
@@ -234,7 +243,19 @@ module VBlank
             @effect_clock += @effect_clock_step
             ticks = @effect_clock / IR::Tunes::CLOCK_MODULUS
             @effect_clock %= IR::Tunes::CLOCK_MODULUS
-            ticks
+            @effect_tempo_step ? count_ticks_on_interrupts(ticks) : ticks
+          end
+
+          # With the tempo counted on the driver's own interrupt (IR::Tunes.effect_tempo_step), the frame's
+          # +interrupts+ each add the tempo's step, and those whose count comes round hold a tick: how
+          # many do, and whether the first is one of them.
+          def count_ticks_on_interrupts(interrupts)
+            ticked = Array.new(interrupts) do
+              @effect_tempo += @effect_tempo_step
+              (@effect_tempo / IR::Tunes::CLOCK_MODULUS).positive?.tap { @effect_tempo %= IR::Tunes::CLOCK_MODULUS }
+            end
+            @tick_on_first_interrupt = ticked.first == true
+            ticked.count(true)
           end
 
           def play_song_frame(level)

@@ -55,11 +55,11 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
   end
 
   private def game_code(rate:, apart:, lasting:, notes: 5, keys: [:E5], work: 0, song: false, played_on: PLAYED_ON,
-                          slow_once_on: nil, filled: 0, on_timer: true)
+                          slow_once_on: nil, filled: 0, on_timer: true, interrupts: nil)
     slow_once_turns = slow_work if slow_once_on
     struck = (0...notes).map { |n| Note.new(at: n * apart, key: keys[n % keys.size], length: lasting) }
     effect = Score.new(tempo: rate, ticks_per_beat: 60, length: notes * apart, plays_once: true, on_timer: on_timer,
-                       parts: [Part.new(notes: struck)])
+                       interrupts_per_second: interrupts, parts: [Part.new(notes: struck)])
     proc do
       enable_sound
       if song
@@ -130,6 +130,34 @@ class TestSNESEffectStrikesInFrame < Minitest::Test
     # the notes after it are struck on their ticks.
     sound.onsets.drop(1).each_cons(2) do |was, now|
       assert_in_delta expected, now - was, NEAR, "notes #{apart} ticks apart at #{rate} a second: #{sound.onsets.inspect}"
+    end
+  end
+
+  # A driver's own interrupt (`interrupts_per_second:`): 8000 / 0x60, a timer's divider worked out, is
+  # 83 and a third a second, 384 of the sound unit's samples apart. A tempo of 51 ticks a second is
+  # counted on it, so notes two ticks apart are three or four interrupts apart, and each key-on falls
+  # on the interrupts' grid.
+  INTERRUPTS = Rational(8000, 0x60)
+  INTERRUPT_SAMPLES = 384
+  KEY_ON = 0x4C
+  GRID_NEAR = 24 # samples, under a millisecond: the frame's mark is sent a little after the frame begins
+
+  def test_notes_on_a_drivers_interrupt_are_struck_on_its_grid
+    rom = game(rate: 51, apart: 2, lasting: 1, notes: 8, interrupts: INTERRUPTS)
+    key_ons = VBlank::Playthroughs::Probe.open(rom) do |probe|
+      probe.watch_sound
+      Array.new(FRAMES) { probe.step.sound_writes }.flatten.select do |write|
+        write.chip == :dsp && write.address == KEY_ON && write.value.positive?
+      end
+    end
+    gaps = key_ons.map(&:sample).each_cons(2).map { |was, now| now - was }
+
+    assert_equal 7, gaps.size, "a key-on for every note"
+    gaps.each do |gap|
+      interrupts = (gap / INTERRUPT_SAMPLES).round
+
+      assert_includes [3, 4], interrupts, "notes two ticks apart: #{gaps.map(&:to_f).inspect}"
+      assert_in_delta interrupts * INTERRUPT_SAMPLES, gap, GRID_NEAR, "on the interrupts' grid: #{gaps.map(&:to_f).inspect}"
     end
   end
 

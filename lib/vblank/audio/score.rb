@@ -72,6 +72,16 @@ module VBlank
     # The timer runs at one rate, and a game's effects are all on it or none is
     # (Builder#sound_effects), since a cartridge's engine has the one timer.
     #
+    # The interrupt a sound driver counts its tempo on. Many a cartridge's sound driver runs on an
+    # interrupt of its own, a fixed number of times a second, and adds its tempo up on each one: a tick
+    # falls on the interrupt where the sum comes round, so every note it strikes lands on that
+    # interrupt's grid. `interrupts_per_second:` beside `on_timer: true` says how often the original's
+    # comes, a number a port reads from its driver (a timer's rate, or its divider worked out): the
+    # effect's ticks then fall only on that grid, its first note on the first interrupt of the frame it
+    # starts on, and its next note on a tick at a later interrupt, never the one it started on. It is
+    # above the tick rate, since the tempo is counted on it, and every effect of a game names the same
+    # one or none (IR::Tunes.effect_tempo_step).
+    #
     # A song whose length is in the player's data pack. A port reading its original's songs as the
     # game starts gives `length:` and `loop_from:` as numbers of the pack (`pack[:song].number(0)`,
     # Builder::PackScores), which no build can read until the player's copy is unpacked. +longest+
@@ -80,7 +90,7 @@ module VBlank
     # `loop_from:` of the pack with every bit set is no loop (IR::StartFile.no_loop?): the song
     # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
-                        :low_notes_intended, :keeps_voices, :longest, :on_timer)
+                        :low_notes_intended, :keeps_voices, :longest, :on_timer, :interrupts_per_second)
 
     class Score
       # Frames a second, the rate the music is played at — the same round figure a song block's
@@ -97,7 +107,7 @@ module VBlank
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
                      priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil,
-                     on_timer: false)
+                     on_timer: false, interrupts_per_second: nil)
         super
       end
 
@@ -127,6 +137,7 @@ module VBlank
                  priority: priority, group: group, low_notes_intended: low_notes_intended,
                  plays_once: plays_once, keeps_voices: keeps_voices }
         song[:timer_rate] = timer_rate if on_timer
+        song[:interrupt_rate] = Rational(interrupts_per_second) if interrupts_per_second
         return song unless loop_from
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
@@ -376,6 +387,7 @@ module VBlank
           end
           plays_once!(score)
           on_timer!(score)
+          interrupts!(score)
           score.parts.each_with_index { |part, number| part!(part, number) }
         end
 
@@ -386,6 +398,27 @@ module VBlank
 
           raise ArgumentError, "A Score has `on_timer: true` and a tempo that changes. A timer ticks at one " \
                                "rate. Give `tempo:` one number, or remove `on_timer:`."
+        end
+
+        # A driver counts its tempo on its interrupt, so the interrupt is on a timer and comes more often than
+        # the ticks. One that ticks on every interrupt is the timer with no interrupt named.
+        def interrupts!(score)
+          rate = score.interrupts_per_second
+          return if rate.nil?
+
+          unless score.on_timer
+            raise ArgumentError, "A Score has `interrupts_per_second:` and not `on_timer: true`. The interrupt is " \
+                                 "the timer's. Add `on_timer: true`, or remove `interrupts_per_second:`."
+          end
+          unless rate.is_a?(Numeric) && rate.positive?
+            raise ArgumentError, "A Score has `interrupts_per_second: #{rate.inspect}`. It must be a number above nought."
+          end
+          return if Rational(rate) > score.timer_rate
+
+          raise ArgumentError, "A Score ticks #{IR::Tunes.timer_rate_words(score.timer_rate)} on an interrupt that comes " \
+                               "#{IR::Tunes.timer_rate_words(Rational(rate))}. The tempo is counted on the interrupt, so it " \
+                               "cannot tick as often. Give `interrupts_per_second:` a rate above the tick rate, or " \
+                               "remove it for a timer that ticks on every interrupt."
         end
 
         # A song either comes round or ends, so one that plays once has no place to come round to.

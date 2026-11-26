@@ -262,12 +262,24 @@ module VBlank
         rate = score.timer_rate
         if !defined?(@effect_timer_rate)
           @effect_timer_rate = rate
+          @effect_interrupts = score.interrupts_per_second
           @first_effect = effect
           return
         end
-        return if rate == @effect_timer_rate
+        return refuse_other_interrupt!(effect, score) if rate == @effect_timer_rate
 
         raise ArgumentError, effect_off_timer_message(effect, rate)
+      end
+
+      # ...and on one interrupt, or none: the driver's own, which counts every effect's tempo.
+      private def refuse_other_interrupt!(effect, score)
+        mine = score.interrupts_per_second
+        return if mine == @effect_interrupts || (mine && @effect_interrupts && Rational(mine) == Rational(@effect_interrupts))
+
+        words = ->(rate) { rate ? "an interrupt #{IR::Tunes.timer_rate_words(Rational(rate))}" : "no interrupt" }
+        raise ArgumentError, "#{effect} has #{words.call(mine)}, and #{@first_effect} has #{words.call(@effect_interrupts)}. " \
+                             "The sound effects of a game are on one timer and its one interrupt. Give every sound " \
+                             "effect the same `interrupts_per_second:`, or none."
       end
 
       private def effect_off_timer_message(effect, rate)

@@ -184,7 +184,16 @@ module VBlank
               asm.label(ticking)
               asm.load(:a, [:hl])
               asm.cp_a(STARTED_THIS_FRAME)
+              return asm.ret(:z) unless memory.reserved?(Music::STARTED_MOVE_ON)
+
+              # On a driver's interrupt, a tick on a later interrupt than the first moves it on.
+              asm.jump_relative(:nz, "#{ticking}_on")
+              asm.load(:a, [memory[Music::STARTED_MOVE_ON]])
+              asm.and_a(:a)
               asm.ret(:z)
+              asm.load(:a, 1)
+              asm.load([:hl], :a)
+              asm.label("#{ticking}_on")
             end
 
             def emit_frame(asm, memory, effect, bytes)

@@ -48,7 +48,7 @@ RG_WAVE_QUARTERS = 6 # Where the wave voice's loudness for each volume starts in
 RG_SONG_STARTS = 1
 RG_NUMBERS_PER_SONG = 5
 RG_NUMBERS_PER_PART = 6
-RG_EFFECT_ROWS = 3
+RG_EFFECT_ROWS = 4
 RG_NUMBERS_PER_EFFECT = 6
 RG_EFFECT_SONG = 0
 RG_EFFECT_NOTES = 1
@@ -100,6 +100,8 @@ def rg_music_setup
   @rg_effect_frame = Array.new(RG_EFFECTS_MOST, 0)
   @rg_effect_cursors = Array.new(RG_EFFECTS_MOST)
   @rg_effect_clock = 0 # the effects' timer, from power-on (rg_step_effect_clock)
+  @rg_effect_tempo = 0 # the tempo counted on a driver's interrupt, from power-on (rg_count_ticks_on_interrupts)
+  @rg_tick_on_first_interrupt = false
 end
 
 # The game's own beep, wave or stop_wave took +voice+: a note held there wobbles no more and steps
@@ -123,6 +125,7 @@ def rg_song_count = @rg_game_music[0]
 def rg_effect_count = @rg_game_effects[0]
 def rg_notes_put_in_waveforms = @rg_game_effects[1]
 def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a frame, 0 for none
+def rg_effect_tempo_step = @rg_game_effects[3] # What the tempo adds on each of a driver's interrupts, 0 for none
 
 # --- the player ---
 
@@ -726,6 +729,24 @@ end
 
 def rg_effects_by_rank = RG_EFFECT_ROWS + (rg_effect_count * RG_NUMBERS_PER_EFFECT)
 
+# rg_music.c's count_ticks_on_interrupts.
+def rg_count_ticks_on_interrupts(interrupts)
+  ticks = 0
+  @rg_tick_on_first_interrupt = false
+  interrupts.times do |at|
+    @rg_effect_tempo += rg_effect_tempo_step
+    if @rg_effect_tempo >= 0x10000
+      ticks += 1
+      @rg_tick_on_first_interrupt = true if at.zero?
+    end
+    @rg_effect_tempo &= 0xFFFF
+  end
+  ticks
+end
+
+# rg_music.c's skips_started_effects_first_tick.
+def rg_skips_started_effects_first_tick? = rg_effect_tempo_step.zero? || @rg_tick_on_first_interrupt
+
 # The sound effects' timer (rg_music.c's step_effect_clock): how many ticks the frame has.
 def rg_step_effect_clock
   return 1 if rg_effect_clock_step.zero?
@@ -733,7 +754,7 @@ def rg_step_effect_clock
   @rg_effect_clock += rg_effect_clock_step
   ticks = @rg_effect_clock >> 16
   @rg_effect_clock &= 0xFFFF
-  ticks
+  rg_effect_tempo_step.zero? ? ticks : rg_count_ticks_on_interrupts(ticks)
 end
 
 # Each effect asked for since the last tick, taken up for the tick playing now.
@@ -761,7 +782,7 @@ def rg_play_effects_first_pass(by_rank, from, to, ticks)
   at = from
   while at < to
     effect = @rg_game_effects[by_rank + at]
-    rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
+    rg_play_effect_frame(effect) unless @rg_effect_started_now[effect] && rg_skips_started_effects_first_tick?
     at += 1
   end
 end
@@ -787,7 +808,7 @@ def rg_music_sound_frame
     rg_move_asked_effects_to_tick
     rg_effect_count.times do |place|
       effect = @rg_game_effects[by_rank + place]
-      rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
+      rg_play_effect_frame(effect) unless @rg_effect_started_now[effect] && rg_effect_tempo_step.zero?
     end
   end
   rg_step_swells

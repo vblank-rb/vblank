@@ -457,9 +457,33 @@ module VBlank
       # A key-off and a key-on of one voice in one frame (an effect letting a voice go and a tune
       # taking it back) stay two writes in that order, never merged into one: merged, the voice is
       # never let go and the tune's note starts without its attack.
+      #
+      # ### On the driver's own interrupt
+      #
+      # An effect whose Score names `interrupts_per_second:` counts on two clocks, as a driver that adds
+      # its tempo up on an interrupt of its own does. The clock above is then the interrupt's: a frame
+      # adds this step for it, and holds an interrupt each time the count comes round. On each interrupt
+      # the tempo's count adds #effect_tempo_step, and the interrupt holds a tick where that comes round,
+      # so a tick only ever falls on an interrupt. An effect asked for starts on the frame's first
+      # interrupt (at the frame's start where the frame holds none), and moves on from a tick on a later
+      # interrupt: a tick on the interrupt it started on is not its (Reference::Player#advance). The
+      # tempo is counted on the interrupt, which comes more often than the ticks, so an interrupt holds one
+      # tick at most and the step is under a whole tick.
       def effect_clock_step(program, console)
-        rate = effect_timer_rate(program) or return nil
+        rate = effect_interrupt_rate(program) || effect_timer_rate(program) or return nil
         (rate * console.frame_seconds * CLOCK_MODULUS).floor
+      end
+
+      # What the tempo's count adds on each interrupt of the driver's own (#effect_clock_step), in 65536ths
+      # of a tick, rounded down; nil for effects with no interrupt named, whose clock is the tick's own.
+      def effect_tempo_step(program)
+        interrupts = effect_interrupt_rate(program) or return nil
+        (effect_timer_rate(program) / interrupts * CLOCK_MODULUS).floor
+      end
+
+      # How many times a second the driver's interrupt comes, for effects that name one, or nil.
+      def effect_interrupt_rate(program)
+        program.walk.find { |node| node.kind == :song && node.interrupt_rate }&.interrupt_rate
       end
 
       # A rate of the sound effects' timer as the messages about it give it: "50 times a second", or

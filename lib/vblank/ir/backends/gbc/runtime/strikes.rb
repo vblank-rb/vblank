@@ -760,7 +760,8 @@ module VBlank
             # the first tick's line, as the count's 65536ths still to go to it (its complement) times
             # a tick's lines. rt_strikes_next_tick: the next tick's, a tick's lines on. Both set DUE.
             # rt_strikes_frame_start: DUE the frame's start, for a pass that starts the effects asked for
-            # (Music#emit_starting_side); rt_strikes_this_tick: DUE the tick playing's line again.
+            # (Music#emit_starting_side), or rt_strikes_start_interrupt: DUE the first interrupt's line, where
+            # the effects' tempo is counted on a driver's own; rt_strikes_this_tick: DUE the tick playing's line again.
             def emit_frame(asm, memory, step)
               clock = memory[Music::EFFECT_CLOCK]
               lines, fraction_bits = tick_lines(step)
@@ -817,6 +818,15 @@ module VBlank
               asm.load([memory[DUE] + 1], :a)
               asm.ret
 
+              if memory.reserved?(Music::START_PLACE) # the first interrupt's place (Music#emit_find_first_tick)
+                asm.label("rt_strikes_start_interrupt")
+                asm.load(:a, [memory[Music::START_PLACE]])
+                asm.load(:l, :a)
+                asm.load(:a, [memory[Music::START_PLACE] + 1])
+                asm.load(:h, :a)
+                asm.jump_relative("rt_strikes_due_at")
+              end
+
               asm.label("rt_strikes_this_tick")
               asm.load(:a, [accum])
               asm.load(:l, :a)
@@ -836,6 +846,7 @@ module VBlank
               asm.load([accum], :a)
               asm.load(:a, :h)
               asm.load([accum + 1], :a)
+              asm.label("rt_strikes_due_at")
               if fraction_bits == 8
                 asm.load(:l, :h)
                 asm.load(:h, 0)

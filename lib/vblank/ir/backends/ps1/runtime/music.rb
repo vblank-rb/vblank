@@ -39,6 +39,15 @@ module VBlank
             EFFECT_CLOCK = "rt sfx clock"
             EFFECT_TICKED = "rt sfx ticked"
             EFFECTS_STARTING = "rt sfx starting"
+            # ...and where the effects' tempo is counted on a driver's own interrupt
+            # (IR::Tunes.effect_tempo_step), the clock above is the interrupt's and EFFECT_TICKED the
+            # frame's interrupts. These are the tempo's count, from power-on; whether an effect started
+            # this frame moves on with the tick playing now, one not on the frame's first interrupt; and,
+            # struck inside the frame, the first interrupt's line, where the starting passes are struck
+            # (#emit_find_first_tick).
+            EFFECT_TEMPO = "rt sfx tempo"
+            STARTED_MOVE_ON = "rt sfx started move on"
+            START_DUE = "rt sfx start due"
             NAMED = "rt music named" # The tune the game named last (PS1::Music#number), nought for none
             PLAYING = "rt music playing" # The tune playing
             STOPS = "rt music stops" # How many times the game asked stop_music
@@ -137,8 +146,9 @@ module VBlank
             # +follows_level+ for a game that sets the music volume; +effects+ how many sound effects it has;
             # +holds+ for one that holds its tune; and what its notes do as they play.
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false, effect_clock_step: nil)
+                        slides: false, effect_clock_step: nil, effect_tempo_step: nil)
               [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 4) } if effect_clock_step
+              [EFFECT_TEMPO, STARTED_MOVE_ON, START_DUE].each { |name| memory.reserve(name, 4) } if effect_clock_step && effect_tempo_step
               memory.reserve(TUNE_HELD, 4) if holds
               memory.reserve(SLIDE_CURSOR, 4) if slides
               memory.reserve(WOBBLES, CONSOLE_PARTS * VOICE_BYTES) if wobbles
@@ -166,12 +176,12 @@ module VBlank
 
             # +level_at+ is the address where a game that sets its music volume keeps it (IR::Tunes::LEVEL), or
             # nil; +effects+ how many sound effects the game has.
-            def emit(asm, memory, level_at: nil, effects: 0, effect_clock_step: nil)
+            def emit(asm, memory, level_at: nil, effects: 0, effect_clock_step: nil, effect_tempo_step: nil)
               at = ->(name) { Runtime.at(memory, name) }
               sharing = effects.positive?
               holds = memory.reserved?(TUNE_HELD)
               emit_game_side(asm, at, holds)
-              emit_frame(asm, at, sharing, memory, sharing && effect_clock_step)
+              emit_frame(asm, at, sharing, memory, sharing && effect_clock_step, effect_tempo_step)
               emit_voice_changes(asm, at, memory, holds, sharing)
               emit_switch(asm, at, holds, level_at, sharing, memory)
               emit_song_frame(asm, at, holds, level_at, sharing, memory)
@@ -676,20 +686,24 @@ module VBlank
             # step): the step added to its count, whose 17th bit is then the frame's tick, and the count
             # kept to 16 bits. Each side of the tune is two passes over the effects (#emit_effect_pass): what
             # was asked for starts, and then, on a frame with a tick, every effect moves on that tick.
-            def emit_frame(asm, at, sharing, memory, clock_step = nil)
+            def emit_frame(asm, at, sharing, memory, clock_step = nil, tempo_step = nil)
+              tempo_step = nil unless clock_step
               asm.label("rt_music_frame")
               enter(asm)
               asm.jal("rt_music_switch")
               strikes = clock_step && Strikes.strikes?(memory)
               Strikes.emit_set_frame_base(asm, at, EFFECT_CLOCK) if strikes
               emit_step_effect_clock(asm, at, clock_step) if clock_step
-              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes) if sharing
+              emit_find_first_tick(asm, at, clock_step, tempo_step, strikes) if tempo_step
+              emit_effect_pass(asm, at, "rt_sfx_above", clock_step, strikes: strikes, interrupts: !tempo_step.nil?) if sharing
               asm.lw(:t0, at.call(PLAYING), :gp)
               asm.beq(:t0, :zero, "rt_music_frame_played")
               asm.jal("rt_music_song_frame")
               asm.label("rt_music_frame_played")
-              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes) if sharing
-              emit_later_ticks(asm, at, clock_step, strikes) if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+              emit_effect_pass(asm, at, "rt_sfx_below", clock_step, strikes: strikes, interrupts: !tempo_step.nil?) if sharing
+              if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
+                tempo_step ? emit_later_interrupts(asm, at, clock_step, tempo_step, strikes) : emit_later_ticks(asm, at, clock_step, strikes)
+              end
               asm.jal("rt_music_swells") if swells?(memory)
               asm.jal("rt_music_slides") if slides?(memory)
               asm.jal("rt_music_wobbles") if wobbles?(memory)
@@ -719,6 +733,78 @@ module VBlank
               asm.label("rt_sfx_later_ticks_done")
             end
 
+            # With the tempo counted on a driver's own interrupt (IR::Tunes.effect_tempo_step), inline after
+            # the clock has moved on: each of the frame's interrupts (EFFECT_TICKED) in turn adds the tempo's
+            # step to its count until one comes round, the frame's first tick. EFFECT_TICKED is left the
+            # interrupts from that one on, nought for a frame with no tick. An effect started this frame
+            # moves on with that tick unless it is on the first interrupt, the one it started on
+            # (STARTED_MOVE_ON). With +strikes+ the starting passes are struck on the first interrupt's line
+            # (START_DUE, the frame's start where it has none) and the tick on its own.
+            def emit_find_first_tick(asm, at, clock_step, tempo_step, strikes)
+              asm.sw(:zero, at.call(STARTED_MOVE_ON), :gp)
+              if strikes
+                Strikes.emit_striking_from_frame_start(asm, at)
+                asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+                asm.beq(:t0, :zero, "rt_sfx_start_due")
+                Strikes.emit_striking_on(asm, at, clock_step)
+                asm.label("rt_sfx_start_due")
+                asm.lw(:t0, at.call(Strikes::DUE), :gp)
+                asm.sw(:t0, at.call(START_DUE), :gp)
+                Strikes.emit_striking_off(asm, at)
+              end
+              asm.label("rt_sfx_interrupt")
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.beq(:t0, :zero, "rt_sfx_interrupts_found")
+              emit_step_effect_tempo(asm, at, tempo_step)
+              asm.bne(:t1, :zero, "rt_sfx_interrupts_found")
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.addiu(:t0, :t0, -1)
+              asm.sw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(STARTED_MOVE_ON), :gp)
+              Strikes.emit_next_tick(asm, at) if strikes
+              asm.b("rt_sfx_interrupt")
+              asm.label("rt_sfx_interrupts_found")
+            end
+
+            # The tempo's count moved on an interrupt (EFFECT_TEMPO), inline: T1 not nought where it comes
+            # round, a tick. Uses T0.
+            def emit_step_effect_tempo(asm, at, step)
+              asm.lw(:t0, at.call(EFFECT_TEMPO), :gp)
+              asm.addiu(:t0, :t0, step) if step < 0x8000
+              unless step < 0x8000
+                asm.li(:t1, step)
+                asm.addu(:t0, :t0, :t1)
+              end
+              asm.srl(:t1, :t0, 16)
+              asm.andi(:t0, :t0, 0xFFFF)
+              asm.sw(:t0, at.call(EFFECT_TEMPO), :gp)
+            end
+
+            # ...and each interrupt after the first tick's, inline after its pass below the tune: the tempo
+            # moved on, and where it comes round, both passes again with an effect started this frame moving
+            # on too, with +strikes+ each on its interrupt's line.
+            def emit_later_interrupts(asm, at, clock_step, tempo_step, strikes)
+              asm.li(:t0, 1)
+              asm.sw(:t0, at.call(STARTED_MOVE_ON), :gp)
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.beq(:t0, :zero, "rt_sfx_later_interrupts_done")
+              asm.label("rt_sfx_later_interrupt")
+              asm.lw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.addiu(:t0, :t0, -1)
+              asm.sw(:t0, at.call(EFFECT_TICKED), :gp)
+              asm.beq(:t0, :zero, "rt_sfx_later_interrupts_done")
+              Strikes.emit_next_tick(asm, at) if strikes
+              emit_step_effect_tempo(asm, at, tempo_step)
+              asm.beq(:t1, :zero, "rt_sfx_later_interrupt")
+              Strikes.emit_striking_on(asm, at, clock_step) if strikes
+              asm.jal("rt_sfx_above")
+              asm.jal("rt_sfx_below")
+              Strikes.emit_striking_off(asm, at) if strikes
+              asm.b("rt_sfx_later_interrupt")
+              asm.label("rt_sfx_later_interrupts_done")
+            end
+
             # The sound effects' timer moved on a frame, inline (EFFECT_CLOCK, EFFECT_TICKED: how many
             # ticks the frame has).
             def emit_step_effect_clock(asm, at, step)
@@ -738,7 +824,7 @@ module VBlank
             # first's keys are struck at the frame's start and the second's at its tick's own line (Strikes).
             # The list is struck in the order it was made, so the starting pass below the tune, listed after
             # the tick's pass above it, is struck at that tick where the pass above listed something for it.
-            def emit_effect_pass(asm, at, routine, clock_step, strikes: false)
+            def emit_effect_pass(asm, at, routine, clock_step, strikes: false, interrupts: false)
               unless clock_step
                 asm.jal(routine)
                 return
@@ -746,7 +832,14 @@ module VBlank
 
               asm.li(:t0, 1)
               asm.sw(:t0, at.call(EFFECTS_STARTING), :gp)
-              Strikes.emit_striking_from_frame_start(asm, at) if strikes
+              if strikes && interrupts # on the frame's first interrupt (#emit_find_first_tick)
+                asm.lw(:t0, at.call(START_DUE), :gp)
+                asm.sw(:t0, at.call(Strikes::DUE), :gp)
+                asm.li(:t0, 1)
+                asm.sw(:t0, at.call(Strikes::STRIKING), :gp)
+              elsif strikes
+                Strikes.emit_striking_from_frame_start(asm, at)
+              end
               asm.jal(routine)
               Strikes.emit_striking_off(asm, at) if strikes
               asm.sw(:zero, at.call(EFFECTS_STARTING), :gp)
@@ -1488,7 +1581,14 @@ module VBlank
               # Started on this frame: the tick's passes leave it, and the next frame's move it on. An effect
               # on the timer is never started where the game asks (rt_sfx_play_now, `this_frame:`), which
               # Guardrails::EffectOnTimerThisFrame refuses, so this is not reached outside a starting pass.
-              if timed
+              if timed && memory.reserved?(STARTED_MOVE_ON) # a tick on a later interrupt moves it on
+                asm.lw(:t0, at.call(EFFECTS_STARTING), :gp)
+                asm.bne(:t0, :zero, "rt_sfx_frame_starting")
+                asm.lw(:t0, at.call(STARTED_MOVE_ON), :gp)
+                asm.beq(:t0, :zero, "rt_sfx_frame_end")
+                asm.b("rt_sfx_frame_not_asked")
+                asm.label("rt_sfx_frame_starting")
+              elsif timed
                 asm.lw(:t0, at.call(EFFECTS_STARTING), :gp)
                 asm.beq(:t0, :zero, "rt_sfx_frame_end")
               end

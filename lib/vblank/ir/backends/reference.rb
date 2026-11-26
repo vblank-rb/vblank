@@ -680,6 +680,7 @@ module VBlank
         def collect_definitions(node)
           @timer_handlers = Nodes::OnTimer.of(node)
           @player.effect_clock_step = IR::Tunes.effect_clock_step(node, @console)
+          @player.effect_tempo_step = IR::Tunes.effect_tempo_step(node)
           node.walk do |n|
             case n.kind
             when :func

@@ -17,10 +17,10 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
   # Five strikes three and two ticks apart, each at a volume of its own so the voice says which it
   # is on: at 50 ticks a second by default, asked for on the pass counted +asked_on+.
-  private def program(tempo: 125, ticks_per_beat: 24, asked_on: 7)
+  private def program(tempo: 125, ticks_per_beat: 24, asked_on: 7, interrupts: nil)
     notes = VOLUMES.zip([0, 3, 5, 8, 10]).map { |volume, at| Note.new(at: at, key: :A5, volume: volume) }
     effect = Score.new(tempo: tempo, ticks_per_beat: ticks_per_beat, length: 20, plays_once: true, on_timer: true,
-                       parts: [Part.new(notes: notes)])
+                       interrupts_per_second: interrupts, parts: [Part.new(notes: notes)])
     b = Builder.new
     # Nothing to paint as it sets up, so its first pass takes one frame on the cartridge as on the
     # interpreter, and the timer, which counts from power-on, is at the same place on both.
@@ -106,5 +106,27 @@ class TestSoundEffectOnTimerCartridge < Minitest::Test
 
     assert_operator heard.size, :<, VOLUMES.size - 1, "two notes share a frame"
     assert_equal heard, changes(cartridge_volumes(game))
+  end
+  # On a driver's own interrupt, 83 and a third a second, a frame holds one or two interrupts and a
+  # tick falls on some of them: the notes are as many frames apart as on the interpreter wherever the
+  # effect is asked for.
+  def test_on_a_drivers_interrupt_the_notes_are_as_many_frames_apart_as_on_the_interpreter
+    [5, 6, 7, 8].each do |asked_on|
+      game = program(asked_on: asked_on, interrupts: Rational(8000, 0x60))
+      heard = changes(interpreter_volumes(game))
+
+      assert_equal 4, heard.size, "asked on #{asked_on}"
+      assert_equal heard, changes(cartridge_volumes(game)), "asked on #{asked_on}"
+    end
+  end
+
+  # ...and on one of 300 a second, with 160 ticks a second counted on it, a frame holds five
+  # interrupts and two or three ticks.
+  def test_on_a_fast_interrupt_the_voice_is_left_where_the_interpreter_leaves_it
+    [5, 7].each do |asked_on|
+      game = program(tempo: 100, ticks_per_beat: 96, asked_on: asked_on, interrupts: 300)
+
+      assert_equal changes(interpreter_volumes(game)), changes(cartridge_volumes(game)), "asked on #{asked_on}"
+    end
   end
 end

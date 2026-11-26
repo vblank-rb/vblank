@@ -70,7 +70,8 @@ module VBlank
             Tint.reserve(memory, changing_colors: c.changing_colors, dims: c.dims)
             Chip.reserve(memory, extra_buttons: c.extra_buttons, controllers: c.controllers) if c.chip?
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
-            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?, strikes: !c.effect_clock_step.nil?) if c.sound
+            Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?, strikes: !c.effect_clock_step.nil?,
+                                  interrupts: !c.effect_tempo_step.nil?) if c.sound
             reserve_music(memory, c) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
             Mosaic.reserve(memory) if c.mosaic
@@ -80,7 +81,7 @@ module VBlank
             c = carries
             Music.reserve(memory, follows_level: c.follows_level, effects: c.effects, holds: c.holds_music, wobbles: c.wobbles,
                                   steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides,
-                                  effect_clock_step: c.effect_clock_step)
+                                  effect_clock_step: c.effect_clock_step, effect_tempo_step: c.effect_tempo_step)
           end
 
           # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):
@@ -215,7 +216,8 @@ module VBlank
             end
             if lowered[:music]
               Music.emit(asm, memory, level_at: lowered[:level_at], effects: carries.effects, recorded: lowered[:recorded_parts],
-                                      notes_apart: lowered[:music].notes_apart?, effect_clock_step: carries.effect_clock_step)
+                                      notes_apart: lowered[:music].notes_apart?, effect_clock_step: carries.effect_clock_step,
+                                      effect_tempo_step: carries.effect_tempo_step)
             end
             Recordings.emit(asm, memory, voices: carries.recording_voices) if lowered[:plays]
           end

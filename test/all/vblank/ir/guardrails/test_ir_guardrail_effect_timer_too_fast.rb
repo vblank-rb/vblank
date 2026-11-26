@@ -39,6 +39,19 @@ class TestEffectTimerTooFastGuardrail < Minitest::Test
     assert_empty Check.new.detect(game(Rational(50)))
   end
 
+  # On a driver's own interrupt each interrupt is a pass, so the interrupts are what a frame holds.
+  def test_a_drivers_interrupt_with_more_than_a_frame_holds_stops_the_build
+    fast = program(song(:"sfx.a", total_frames: 4, events: [[0, 880]], timer_rate: Rational(50), interrupt_rate: Rational(1000)),
+                   sound_effect_list(:sfx, [:"sfx.a"]))
+    slow = program(song(:"sfx.a", total_frames: 4, events: [[0, 880]], timer_rate: Rational(50), interrupt_rate: Rational(250, 3)),
+                   sound_effect_list(:sfx, [:"sfx.a"]))
+    findings = Check.new.detect(fast)
+
+    assert_equal 1, findings.length
+    assert_match(/interrupts_per_second/, findings.first.message)
+    assert_empty Check.new.detect(slow)
+  end
+
   def test_effects_counted_in_frames_are_quiet
     assert_empty Check.new.detect(program(song(:"sfx.a", total_frames: 4, events: [[0, 880]]), sound_effect_list(:sfx, [:"sfx.a"])))
   end

@@ -537,6 +537,10 @@ module VBlank
               if timed
                 asm.lda(asm.abs(memory[Music::EFFECTS_STARTING]))
                 asm.bne("rt_sfx_frame_starting")
+                if memory.reserved?(Music::STARTED_MOVE_ON) # a tick on a later interrupt moves it on
+                  asm.lda(asm.abs(memory[Music::STARTED_MOVE_ON]))
+                  asm.bne("rt_sfx_frame_not_asked")
+                end
                 asm.rts
                 asm.label("rt_sfx_frame_starting")
               end

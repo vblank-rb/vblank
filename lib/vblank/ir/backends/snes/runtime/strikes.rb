@@ -133,10 +133,14 @@ module VBlank
             # ...and the first tick's, kept while a pass that starts effects strikes them at the
             # frame's start (Music#emit_effect_pass).
             TICK_OFFSET = "rt strikes tick offset"
+            # ...and the frame's first interrupt's, where the effects' tempo is counted on a driver's own
+            # (Music#emit_find_first_tick).
+            START_OFFSET = "rt strikes start offset"
 
             module_function
 
-            def reserve(memory)
+            def reserve(memory, interrupts: false)
+              memory.reserve(START_OFFSET, 2) if interrupts
               memory.reserve(FROM_SENT, 2)
               memory.reserve(OFFSET, 2)
               memory.reserve(TICK_OFFSET, 2)

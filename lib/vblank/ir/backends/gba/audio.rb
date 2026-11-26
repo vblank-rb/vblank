@@ -415,6 +415,15 @@ module VBlank
           EFFECT_TICKED = :__effect_ticked
           EFFECTS_MOVE_ON = :__effects_move_on
 
+          # Where the effects' tempo is counted on a driver's own interrupt (IR::Tunes.effect_tempo_step),
+          # the clock above is the interrupt's and EFFECT_TICKED the frame's interrupts. EFFECT_TEMPO is the
+          # tempo's count, 16 bits; STARTED_MOVE_ON is not nought while an effect started this frame moves
+          # on with the tick playing now, one not on the frame's first interrupt; and START_LINE is the
+          # line the first walk's writes are due on, the first interrupt's (#emit_find_first_tick).
+          EFFECT_TEMPO = :__effect_tempo
+          STARTED_MOVE_ON = :__started_move_on
+          START_LINE = :__effects_start_line
+
           # Who holds the console voice numbered +channel+: a rank, or 0 for nobody.
           def self.voice_rank(channel) = :"__voice_rank_#{channel}"
 
@@ -428,10 +437,12 @@ module VBlank
             @effect_lists = {}
             @effect_waves = false
             @effects_keep_voices = @effects.any? { |name| @songs.fetch(name).keeps_voices }
+            @effect_tempo_step = nil
             return @effect_clock_step = nil unless plays_sound_effects?
 
             # Read off the program only in a game with effects: a walk of the whole program each.
             @effect_clock_step = IR::Tunes.effect_clock_step(program, program.described_console)
+            @effect_tempo_step = @effect_clock_step && IR::Tunes.effect_tempo_step(program)
 
             slots = @effects.each_with_index.to_h
             program.walk.each do |node|
@@ -1089,6 +1100,7 @@ module VBlank
 
             @strikes.emit_frame_begun(EFFECT_CLOCK) if effects && striking?
             emit_step_effect_clock(value, frame) if effects && @effect_clock_step
+            emit_find_first_tick if effects && @effect_tempo_step
             @primitives.load_var(value, MUSIC_WANTED)
             @primitives.load_var(playing, MUSIC_PLAYING)
             if @any_plays_once
@@ -1235,6 +1247,7 @@ module VBlank
             @emitter.emit(ASM.push(EFFECT_SLOT, EFFECT_ENTRY, EFFECT_OUTRANKS))
             @emitter.emit(ASM.load_immediate(ACC, 0))
             @primitives.store_var(ACC, EFFECTS_MOVE_ON)
+            @primitives.load_var(ACC, START_LINE) if striking? && @effect_tempo_step
             @primitives.store_var(ACC, EffectStrikes::DUE_LINE) if striking?
             @emitter.emit_branch(:bl, SOUND_EFFECTS)
             @emitter.emit(ASM.pop(EFFECT_SLOT, EFFECT_ENTRY, EFFECT_OUTRANKS))
@@ -1252,6 +1265,7 @@ module VBlank
           # Emitted only where a frame can hold more than one.
           def emit_later_ticks
             return unless @effect_clock_step && IR::Tunes.most_ticks_a_frame(@effect_clock_step) > 1
+            return emit_later_interrupts if @effect_tempo_step
 
             again = @emitter.gensym
             over = @emitter.gensym
@@ -1268,6 +1282,82 @@ module VBlank
             @emitter.emit_branch(:bl, SOUND_EFFECTS)
             @emitter.emit_branch(:b, again)
             @emitter.place_label(over)
+          end
+
+          # With the tempo counted on a driver's own interrupt (IR::Tunes.effect_tempo_step), inline after
+          # the clock has moved on: each of the frame's interrupts (EFFECT_TICKED) in turn adds the tempo's
+          # step to its count until one comes round, the frame's first tick. EFFECT_TICKED is left the
+          # interrupts from that one on, nought for a frame with no tick. An effect started this frame
+          # moves on with that tick unless it is on the first interrupt, the one it started on
+          # (STARTED_MOVE_ON). Struck inside the frame, the first walk is due on the first interrupt's line
+          # (START_LINE, the blank's where the frame has none) and the tick's walk on its own. Uses r0 to r3.
+          def emit_find_first_tick
+            e = @emitter
+            loop = e.gensym
+            found = e.gensym
+            e.emit(ASM.load_immediate(ACC, 0))
+            @primitives.store_var(ACC, STARTED_MOVE_ON)
+            if striking?
+              @primitives.store_var(ACC, START_LINE)
+              @primitives.load_var(TMP, EFFECT_TICKED)
+              e.emit(ASM.cmp_imm(TMP, 0))
+              e.emit_branch(:bcond, found, cond: :eq) # no interrupt: due at once, and no tick
+              @primitives.load_var(ACC, EffectStrikes::DUE_LINE)
+              @primitives.store_var(ACC, START_LINE)
+            end
+            e.place_label(loop)
+            @primitives.load_var(TMP, EFFECT_TICKED)
+            e.emit(ASM.cmp_imm(TMP, 0))
+            e.emit_branch(:bcond, found, cond: :eq)
+            emit_step_effect_tempo
+            e.emit_branch(:bcond, found, cond: :ne)
+            @primitives.load_var(TMP, EFFECT_TICKED)
+            e.emit(ASM.sub_imm(TMP, TMP, 1))
+            @primitives.store_var(TMP, EFFECT_TICKED)
+            e.emit(ASM.load_immediate(ACC, 1))
+            @primitives.store_var(ACC, STARTED_MOVE_ON)
+            @strikes.emit_next_tick if striking?
+            e.emit_branch(:b, loop)
+            e.place_label(found)
+          end
+
+          # The tempo's count moved on an interrupt (EFFECT_TEMPO), inline: ACC not nought, and the flags
+          # not equal, where it came round, a tick.
+          def emit_step_effect_tempo
+            @primitives.load_var(ACC, EFFECT_TEMPO)
+            @emitter.emit(ASM.load_immediate(TMP, @effect_tempo_step))
+            @emitter.emit(ASM.add_reg(ACC, ACC, TMP))
+            @emitter.emit(ASM.lsl_imm(TMP, ACC, 16))
+            @emitter.emit(ASM.lsr_imm(TMP, TMP, 16))
+            @primitives.store_var(TMP, EFFECT_TEMPO)
+            @emitter.emit(ASM.lsr_imm(ACC, ACC, 16))
+            @emitter.emit(ASM.cmp_imm(ACC, 0))
+          end
+
+          # ...and each interrupt after the first tick's, after the tune: the tempo moved on, and where it
+          # comes round, a walk of every effect, an effect started this frame moving on too; struck inside
+          # the frame, each on its interrupt's line.
+          def emit_later_interrupts
+            e = @emitter
+            again = e.gensym
+            over = e.gensym
+            e.emit(ASM.load_immediate(ACC, 1))
+            @primitives.store_var(ACC, STARTED_MOVE_ON)
+            e.place_label(again)
+            @primitives.load_var(ACC, EFFECT_TICKED)
+            e.emit(ASM.cmp_imm(ACC, 1))
+            e.emit_branch(:bcond, over, cond: :ls)
+            e.emit(ASM.sub_imm(ACC, ACC, 1))
+            @primitives.store_var(ACC, EFFECT_TICKED)
+            @strikes.emit_next_tick if striking?
+            emit_step_effect_tempo
+            e.emit_branch(:bcond, again, cond: :eq)
+            e.emit_load_data_address(TUNE_REGS.first, MUSIC_SCORE)
+            e.emit(ASM.load_immediate(EFFECT_OUTRANKS, 0))
+            emit_point_at_busy_effects
+            e.emit_branch(:bl, SOUND_EFFECTS)
+            e.emit_branch(:b, again)
+            e.place_label(over)
           end
 
           # The registers a frame of the player works in: the score, an entry or a row in it, the
@@ -1656,7 +1746,17 @@ module VBlank
             e.emit_branch(:b, onward)
             e.place_label(ticking)
             e.emit(ASM.tst_imm(frame, STARTED_THIS_FRAME))
-            e.emit_branch(:bcond, onward, cond: :ne)
+            return e.emit_branch(:bcond, onward, cond: :ne) unless @effect_tempo_step
+
+            # On a driver's interrupt, a tick on a later interrupt than the first moves it on.
+            moving = e.gensym
+            e.emit_branch(:bcond, moving, cond: :eq)
+            @primitives.load_var(ACC, STARTED_MOVE_ON)
+            e.emit(ASM.cmp_imm(ACC, 0))
+            e.emit_branch(:bcond, onward, cond: :eq)
+            e.emit(ASM.bic_imm(frame, frame, STARTED_THIS_FRAME))
+            e.emit(ASM.str_offset(frame, slot, EFFECT_FRAME))
+            e.place_label(moving)
           end
 
           # Where an effect's waveform sits in its entry, after where its lanes start — and how

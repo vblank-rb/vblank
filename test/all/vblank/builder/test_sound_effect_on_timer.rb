@@ -28,10 +28,10 @@ class TestSoundEffectOnTimer < Minitest::Test
   FRAMES = 1200 # past the frames where exact fractions and the rounded step part
   ASKED_EVERY = 40 # passes, so each effect has ended before the next is asked for
 
-  private def effect(on_timer: true, tempo: 125, ticks_per_beat: 24)
+  private def effect(on_timer: true, tempo: 125, ticks_per_beat: 24, interrupts: nil)
     notes = NOTE_TICKS.each_with_index.map { |at, n| Note.new(at: at, key: n.even? ? :A5 : :E5) }
     Score.new(tempo: tempo, ticks_per_beat: ticks_per_beat, length: LENGTH, plays_once: true, on_timer: on_timer,
-              parts: [Part.new(notes: notes)])
+              interrupts_per_second: interrupts, parts: [Part.new(notes: notes)])
   end
 
   # The game: the effect asked for in each pass whose count is +asked_on+ past a whole number of
@@ -210,6 +210,63 @@ class TestSoundEffectOnTimer < Minitest::Test
     asks = (0...STEP_FRAMES).count { |count| count % STEP_ASKED_EVERY == 3 && first_frame_after(count) <= STEP_FRAMES }
     assert_equal asks, starts.size, by_frame.inspect
     starts.each { |frame, pitches| assert_equal [first], pitches, "the first note alone on frame #{frame}" }
+  end
+
+  # On a driver's own interrupt (`interrupts_per_second:`), as the answer key keeps it
+  # (IR::Tunes.effect_tempo_step): each frame adds the interrupt's step to a count of 16 bits and holds
+  # an interrupt each time it comes round; each interrupt adds the tempo's step to a count of its own
+  # and holds a tick where that comes round. An effect starts on the frame it is taken up, and its
+  # note at tick t sounds on the frame of the t-th tick after its start, a tick on the first interrupt
+  # of that frame not counting, since it started on that interrupt. 8000 / 0x60, a timer's divider
+  # worked out, is 83 and a third interrupts a second: one or two a frame.
+  INTERRUPTS = Rational(8000, 0x60)
+
+  # Each tick of the timer from power-on, as [frame, which interrupt of that frame], counted from 1.
+  private def ticks_on_interrupts(program, console, through:)
+    step = VBlank::IR::Tunes.effect_clock_step(program, console)
+    tempo_step = VBlank::IR::Tunes.effect_tempo_step(program)
+    interrupt_count = 0
+    tempo = 0
+    (1..through).flat_map do |frame|
+      interrupt_count += step
+      interrupts = interrupt_count / VBlank::IR::Tunes::CLOCK_MODULUS
+      interrupt_count %= VBlank::IR::Tunes::CLOCK_MODULUS
+      (0...interrupts).filter_map do |index|
+        tempo += tempo_step
+        ticked = tempo >= VBlank::IR::Tunes::CLOCK_MODULUS
+        tempo %= VBlank::IR::Tunes::CLOCK_MODULUS
+        [frame, index] if ticked
+      end
+    end
+  end
+
+  def test_on_a_drivers_interrupt_the_notes_sound_on_the_frames_of_its_ticks
+    [0, 7, 13, 22].each do |asked_on|
+      program, started, notes = played(effect(interrupts: INTERRUPTS), asked_on: asked_on)
+      ticks = ticks_on_interrupts(program, console_played(program), through: FRAMES)
+      runs = (asked_on...FRAMES).step(ASKED_EVERY).map do |count|
+        start = first_frame_after(count)
+        own = [start] + ticks.reject { |frame, index| frame < start || (frame == start && index.zero?) }.map(&:first)
+        [start, NOTE_TICKS.zip(PITCHES).filter_map { |tick, pitch| [own[tick], pitch] if own[tick] }]
+      end
+
+      assert_equal runs.map(&:first), started, "asked on #{asked_on}"
+      assert_equal runs.flat_map(&:last), notes, "asked on #{asked_on}"
+    end
+  end
+
+  def test_an_interrupt_slower_than_the_ticks_is_refused
+    error = assert_raises(ArgumentError) { effect(interrupts: 30).to_song }
+
+    assert_match(/cannot tick as often/, error.message)
+  end
+
+  def test_every_effect_names_the_same_interrupt
+    one = effect(interrupts: INTERRUPTS)
+    other = effect
+    error = assert_raises(ArgumentError) { Builder.new.instance_eval { sound_effects :sfx, { a: one, b: other } } }
+
+    assert_match(/one interrupt/, error.message)
   end
 
   def test_an_effect_not_on_the_timer_counts_frames

@@ -115,7 +115,7 @@ module VBlank
             settings = { effects: songs.effects, slides: songs.slides?, pans: songs.pans?, wobbles: songs.wobbles?,
                          shapes: songs.shapes?, waves: songs.waves?, swells: swells.any?, noise_swells: swells.include?(:noise),
                          holds: kinds.include?(:hold_music), tune_plays_once: songs.tune_plays_once?,
-                         effect_clock_step: songs.effect_clock_step }
+                         effect_clock_step: songs.effect_clock_step, effect_tempo_step: songs.effect_tempo_step }
             reserved = difference("the music player's extras", proc { |memory| Runtime::Music.reserve(memory) }) do |memory|
               Runtime::Music.reserve(memory, **settings)
               if songs.effect_clock_step && !songs.effects.empty?

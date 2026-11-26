@@ -207,8 +207,9 @@ module VBlank
             end
 
             # +strikes+ for a game whose sound effects are struck inside the frame (Strikes), which
-            # sends them ahead, so has a queue and effects too.
-            def reserve(memory, queued: false, effects: false, strikes: false)
+            # sends them ahead, so has a queue and effects too; +interrupts+ where their tempo is counted on a
+            # driver's own interrupt (Music#emit_find_first_tick).
+            def reserve(memory, queued: false, effects: false, strikes: false, interrupts: false)
               if queued
                 memory.reserve_table(QUEUE, QUEUE_ENTRIES * ENTRY_BYTES)
                 memory.reserve(QUEUE_HEAD, 2)
@@ -218,7 +219,7 @@ module VBlank
               if queued && effects
                 memory.reserve_table(AHEAD, AHEAD_ENTRIES * ENTRY_BYTES)
                 [AHEAD_HEAD, AHEAD_TAIL, ASKING_AHEAD, FRONT_LEFT, FORGET_KEEPS].each { |name| memory.reserve(name, 2) }
-                Strikes.reserve(memory) if strikes
+                Strikes.reserve(memory, interrupts: interrupts) if strikes
               end
               memory.reserve(LIVE, 2)
               memory.reserve(SENT, 2)
