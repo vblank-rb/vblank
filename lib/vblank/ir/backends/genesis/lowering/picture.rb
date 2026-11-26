@@ -1558,16 +1558,29 @@ module VBlank
               store_number(hidden, 0)
               @asm.bra(done)
               @asm.label(placing)
-              IR::Stacking.items_in_draw_order(node).each do |item|
-                next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
-
-                emit_sprite_placing(object_named(item))
+              items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object_named(item) }
+              ShownWhen.scene_runs(items) { |obj| shown_when(obj.active) }.each do |item|
+                case item
+                when Build::DrawOrder then emit_ordered_run(item)
+                when SceneRun then emit_scene_run(item)
+                else emit_sprite_placing(item)
+                end
               end
               call_routine("rt_sprites_end")
               @asm.label(done)
             end
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
+
+            # Sprites one scene owns, placed one after another (ShownWhen.scene_runs): the tests they
+            # share, "is this scene up", asked once for all of them, so a scene that is not up costs
+            # the frame one test however many sprites it owns. Each sprite then asks only its own.
+            def emit_scene_run(run)
+              past = fresh("scene_sprites_off")
+              run.tests.each { |test| jump_unless(test, past) }
+              run.members.each { |obj, shown| emit_sprite_placing(obj, shown: shown) }
+              @asm.label(past)
+            end
 
             # One sprite placed, if it is showing: its numbers into the registers the runtime reads
             # them from (Runtime::Tiles#emit_sprites) and a call. +returns+ for a placing that is
@@ -1582,12 +1595,13 @@ module VBlank
             # (#emit_sprite_numbers_worked_out).
             #
             # +shown_known+ for a sprite already found showing on this pass (#emit_ordered_run): it is
-            # placed without being asked.
-            def emit_sprite_placing(obj, returns: false, shown_known: false)
+            # placed without being asked. +shown+, a ShownWhen, for one whose scene's test its run has
+            # asked already (#emit_scene_run): only its own tests are asked.
+            def emit_sprite_placing(obj, returns: false, shown_known: false, shown: nil)
               skip = fresh("sprite_off")
               numbers = [obj.pose, obj.x, obj.y]
               numbers << obj.recolor unless obj.recolors.empty?
-              shown = shown_known ? ShownWhen.new(tests: [], flag: nil) : shown_when(obj.active)
+              shown ||= shown_known ? ShownWhen.new(tests: [], flag: nil) : shown_when(obj.active)
               if shown && numbers.all? { |number| value_keeps_counters?(number) }
                 emit_jump_unless_shown(shown, skip, near: shown.tests.empty? && numbers.all? { |number| operand_of(number) })
                 emit_sprite_numbers_in_place(numbers)
