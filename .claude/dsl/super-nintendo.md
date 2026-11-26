@@ -71,7 +71,7 @@ and a test fails when the two differ. The Advance's answers are in
 - `color` — works: the same as on the Advance.
 - `rgb` — works: the same as on the Advance.
 - `rgb8` — works: the same as on the Advance.
-- `colors` — works: a list of colours holds sixteen places on a Super Nintendo, the first see-through on a sprite. The console holds eight lists for sprites and eight for backgrounds on each screen. If the sprites do not fit the 512 tiles of sprite memory with a copy of their pictures for each list they wear with `draw_with`, the build keeps one set of pictures for all those lists.
+- `colors` — works: a list of colours holds sixteen places on a Super Nintendo, the first see-through on a sprite. The console holds eight lists for sprites and eight for backgrounds on each screen. If the sprites do not fit the 512 tiles of sprite memory with a copy of their pictures for each list they wear with `draw_with`, the build first uses the tiles of the picture for each copy, with a palette for each list. It cannot do this for a list that shows two colours where the picture has one. If the sprites still do not fit, the build keeps one set of pictures for all those lists.
 - `recolor` — works: a list told to hold other colours keeps a palette to itself, so a game can change eight lists of backgrounds on each screen and eight of sprites. A list of sprites counts only on the screens whose sprites draw with it, and the colours of a sprite's own picture count only on the screens that show it. A background that draws with more than one list the game changes is not made yet: the build refuses it and says so.
 - `color_walk` — works: the same as on the Advance.
 - `colors_in_use` — works: the same as on the Advance.

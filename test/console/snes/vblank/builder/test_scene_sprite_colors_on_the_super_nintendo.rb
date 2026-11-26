@@ -306,6 +306,92 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
     end
   end
 
+  # Four players of one big pose set on the demo, the first in the pose's own colours and three drawn
+  # with lists of their own laid out place for place like the pose's. The poses take 320 of the
+  # sprites' 512 tiles, so a copy for each list does not fit, and the console's way does: one set of
+  # tiles, each sprite naming its own set of colours (fullsnes, OAM, the palette bits of a sprite's
+  # attributes). Wearing every list in its own places (+one_sprite_tile_set+) does not fit either:
+  # a bomb drawn in the pose's colours then takes a set of its own, and the demo's eight are full.
+  def test_four_players_of_one_pose_set_keep_its_tiles_once
+    prog = players_of_one_pose_set
+
+    assert_equal first_color(WALKER_LIST), shown_by(prog, 4).pixel(0, 0), "the walker on the stage"
+    demo = shown_by(prog, 18)
+    last = (0...(64 * 64)).max_by { |at| self.class.walker_place(at, 0) }
+    place = self.class.walker_place(last, 0)
+    assert_equal first_color(WALKER_LIST), demo.pixel(*player_spot(0)), "the first player on the demo"
+    PLAYER_LISTS.each_with_index do |n, at|
+      x, y = player_spot(at + 1)
+      assert_equal first_color(n), demo.pixel(x, y), "player #{at + 2} on the demo"
+      assert_equal self.class.player_list(n, at + 1)[place], demo.pixel(x + (last % 64), y + (last / 64)),
+                   "player #{at + 2}'s last place drawn"
+    end
+  end
+
+  # The place of the walker's list pixel +at+ of its pose +pose+ is drawn at.
+  def self.walker_place(at, pose) = 1 + (((at * at / 3) + (at * 7) + (pose * 11)) % 15)
+
+  # A copy whose list gives two places of the pose's one colour two colours of its own cannot be the
+  # pose's tiles in another set: it keeps tiles of its own, beside the players that share theirs.
+  def test_a_copy_not_laid_out_like_its_pose_keeps_its_own_tiles
+    demo = shown_by(players_of_one_pose_set, 18)
+
+    assert_equal first_color(WALKER_LIST), demo.pixel(TWIN_SPOT[0], TWIN_SPOT[1]), "the twin's first place, as its pose"
+    assert_equal SceneColorLists.full_list(0)[1], demo.pixel(TWIN_SPOT[0] + 8, TWIN_SPOT[1]), "the copy's first place"
+    assert_equal SceneColorLists.full_list(0)[2], demo.pixel(TWIN_SPOT[0] + 9, TWIN_SPOT[1]), "the copy's second place"
+  end
+
+  TWIN_SPOT = [96, 136].freeze # Where the twin pose stands, and its copy 8 pixels to its right
+
+  # The stage, up from the start, shows the walker in five poses of 64×64; the demo, from tick 8,
+  # four players of them (#player_spot), the three after the first drawn with PLAYER_LISTS
+  # (#player_list, a place on), a bomb in three of the walker's colours, four pictures of lists 0 to
+  # 3, and a twin: a picture of 2×1 whose two places hold the walker's first colour, and a copy of
+  # it drawn with the first two colours of list 0.
+  private def players_of_one_pose_set
+    test = self.class
+    walker_list = WALKER_LIST
+    players = PLAYER_LISTS
+    twin_spot = TWIN_SPOT
+    program do
+      screen :tiled
+      colors :walker_list, SceneColorLists.full_list(walker_list)
+      walk = (0...5).map do |pose|
+        image(:"walker#{pose}", width: 64, height: 64, colors: :walker_list,
+                                places: Array.new(64 * 64) { |i| test.walker_place(i, pose) })
+        :"walker#{pose}"
+      end
+      shows = { frames: walk, rate: 60 }
+      players.each_with_index { |n, at| colors :"list#{n}", test.player_list(n, at + 1) }
+      image(:bomb, width: 8, height: 8, colors: :walker_list, places: Array.new(64) { |i| 1 + (i % 3) })
+      fillers = (0..3).map { |n| test.declare_picture(self, n) }
+      first = SceneColorLists.full_list(walker_list)[1]
+      colors :twin_list, [:transparent, first, first]
+      colors :twin_copy_list, SceneColorLists.full_list(0).take(3)
+      image(:twin, width: 2, height: 1, colors: :twin_list, places: [1, 2])
+      state = var :state, 0
+      tick = var :tick, 0
+      scene(:stage) { sprite :stage_walker, at: [0, 0], **shows }
+      scene(:demo) do
+        sprite :demo_walker, at: test.player_spot(0), **shows
+        players.each_with_index do |n, at|
+          player = sprite :"player#{at}", at: test.player_spot(at + 1), **shows
+          player.draw_with :"list#{n}"
+        end
+        sprite :bomb, image: :bomb, at: [0, 136]
+        fillers.each_with_index { |name, at| sprite name, at: [16 + (at * 16), 136] }
+        sprite :twin, image: :twin, at: twin_spot
+        copy = sprite :twin_copy, image: :twin, at: [twin_spot[0] + 8, twin_spot[1]]
+        copy.draw_with :twin_copy_list
+      end
+      game_loop do
+        tick += 1
+        state = 1 if tick == 8
+        call({ 0 => :stage, 1 => :demo }, number: :state)
+      end
+    end
+  end
+
   # What is on both screens keeps its set on both.
   def test_a_picture_both_scenes_show_keeps_its_colors_on_both
     switch = SWITCH_AT

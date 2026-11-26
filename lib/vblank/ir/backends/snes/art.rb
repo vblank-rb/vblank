@@ -562,9 +562,32 @@ module VBlank
           # later finds both where they were put. A picture only +scenes+ show has its colours placed
           # in their copies alone (#sprite_palette_copies), before any picture of one scene, so a set
           # alike in all of them is still free; its tiles are every screen's.
-          def reserve_shared_sprite_picture(image, mixed: false, held: nil, scenes: nil)
-            sprite_picture(:reserved, image, mixed: mixed, held: held, scenes: scenes)
+          def reserve_shared_sprite_picture(image, mixed: false, held: nil, scenes: nil, worn: nil)
+            sprite_picture(:reserved, image, mixed: mixed, held: held, scenes: scenes, worn: worn)
             @sprite_pictures.delete(:reserved)
+          end
+
+          # A sprite's picture drawn with another list, kept as the picture's own tiles in a set of
+          # its own. Each row of the console's sprite table names one of the eight sets its tile is
+          # drawn from (fullsnes, "OAM", the palette bits of a sprite's attributes), so a set holding
+          # the copy's colours where the picture's own set holds the picture's draws the copy from
+          # the very same tiles, and four players of one set of poses take its tiles once, as the
+          # console's own games keep them. +colors+ gives each colour the picture draws the one the
+          # copy shows there; +scenes+ are the scenes whose sprites alone show the copy, as
+          # #sprite_picture's.
+          Worn = Data.define(:colors, :scenes)
+
+          # The Worn for +image+ drawn with +recolor+ (an Assets::Recolor), shown by +scenes+, or nil
+          # where the list gives two places of one colour of the picture two colours: a tile names a
+          # place in its set, and those two pixels name the same one, so the copy needs tiles of its own.
+          #
+          # A colour of the picture's list that this picture does not draw takes the colour at its
+          # place in the list worn, so every pose of a set drawn with one list comes to the same set.
+          def worn_for(image, recolor, scenes)
+            shown = worn_color_pairs(image, recolor).group_by(&:first).transform_values { |pairs| pairs.map(&:last).uniq }
+            return nil unless shown.each_value.all?(&:one?)
+
+            Worn.new(colors: list_swaps(image, recolor).merge(shown.transform_values(&:first)), scenes: scenes)
           end
 
           # What +scene+ brings into video memory as it takes over, as [the first tile, its tiles'
@@ -685,13 +708,18 @@ module VBlank
           # try would only find the next. So the screen is noted, its pictures from then on stand in
           # with no pieces, and the try goes on to find every screen that does not fit before it
           # stops (#refuse_crowded_scenes!).
-          def sprite_picture(name, image, mixed: false, held: nil, scenes: nil, tile_scene: nil, number: @sprite_pictures.length)
+          #
+          # +worn+ (a Worn) makes +image+, a sprite's own picture, into its copy in another list: the
+          # picture's own tiles, made as ever, each piece naming the set that shows the copy's colours
+          # in the places of the picture's own (#worn_picture).
+          def sprite_picture(name, image, mixed: false, held: nil, scenes: nil, tile_scene: nil, worn: nil, number: @sprite_pictures.length)
             @sprite_pictures[name] ||= begin
               raise ScreenSpritesFull.new(@crowded_scenes[tile_scene], scenes: [tile_scene]) if @crowded_scenes.key?(tile_scene)
 
-              with_sprite_tiles_of(tile_scene) do
+              picture = with_sprite_tiles_of(tile_scene) do
                 recording_lost_squares(name) { make_sprite_picture(name, image, mixed, held, scenes, number) }
               end
+              worn ? worn_picture(picture, worn, mixed, scenes) : picture
             rescue ScreenSpritesFull => e
               @crowded_scenes[tile_scene] ||= e.message
               SpritePicture.new(name: name, number: number, width: image.width, height: image.height, pieces: [])
@@ -1046,6 +1074,47 @@ module VBlank
               palette_alike_for(copies, sprite_image_colors(image), "sprites", within)
             end
             [copies.first, palette]
+          end
+
+          # +picture+, made of a sprite's own picture shown by +scenes+, as its copy +worn+ (a Worn): each
+          # piece naming the set that holds the copy's colours in the places of the set the picture was
+          # drawn from. That set is kept for the copy alone, since its places must not move, and a
+          # list's colours can hold one colour twice, which a set shared with other pictures would
+          # fold into one place; copies of one list in the same places share it.
+          def worn_picture(picture, worn, mixed, scenes)
+            return picture if picture.pieces.empty?
+
+            own = sprite_palette_copies(scenes).first.fetch(picture.pieces.first.palette)
+            colors = own.map { |color| worn.colors.fetch(color, color) }
+            shown = allocate_sprite_palette(mixed, worn.scenes || [nil]) do |within|
+              held_palette(sprite_palette_copies(worn.scenes), [:worn, colors, mixed, worn.scenes], colors, "sprites", within)
+            end
+            picture.with(pieces: picture.pieces.map { |piece| piece.with(palette: shown) })
+          end
+
+          # Each colour +image+ draws beside the one its copy drawn with +recolor+ shows there, a pair
+          # for each pixel drawn, or for each place a piece of a picture of pieces draws.
+          def worn_color_pairs(image, recolor)
+            unless image.pieces
+              return (0...(image.width * image.height)).select { |at| image.drawn_at?(at) }.map do |at|
+                color = image.color_at(at)
+                [color, recolor.color_for(at, color) & 0x7FFF]
+              end
+            end
+
+            image.pieces.flat_map { |_, _, own| own.bytes }.uniq.reject(&:zero?).map { |place| place_swap(image, recolor, place) }
+          end
+
+          # Each colour of +image+'s list beside the one +recolor+ shows at its first place.
+          def list_swaps(image, recolor)
+            (1...image.colors.length).reverse_each.to_h { |place| place_swap(image, recolor, place) }
+          end
+
+          # The colour at +place+ of +image+'s list beside the one its copy drawn with +recolor+ shows there.
+          def place_swap(image, recolor, place)
+            color = image.colors.fetch(place)
+            shown = recolor.color_at_place(place, color)
+            [color & 0x7FFF, shown & 0x7FFF]
           end
 
           # The sets of colours a sprite picture of +scenes+ takes its set in: each of those scenes'

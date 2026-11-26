@@ -269,8 +269,9 @@ module VBlank
           # +screen_colors+ has each scene bring its own background colours in, and +sprite_colors+ its
           # own sprite colours, +sprite_tiles+ its own sprite tiles, and +background_tiles+ its own
           # background tiles (Art). +one_sprite_tile_set+ makes one set of a sprite's pictures for
-          # all the lists of colours it wears (Picture#palette_in_places). +chip+ is a cartridge
-          # with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
+          # all the lists of colours it wears (Picture#palette_in_places), and +shared_pose_tiles+ draws a
+          # copy in a list the game never changes from its picture's own tiles where it can (Art::Worn).
+          # +chip+ is a cartridge with a Super FX, which runs the routines marked for it (Chip). +cache+ is what the build
           # works out from the program once for all its tries (BuildCache), its background pictures'
           # pixels among it (Art::TileMemo). +scene_recordings+ has each scene bring its own recordings
           # into the sound unit (Runtime::Sound, "Each scene's recordings"). +shared_held_lists+ has the
@@ -278,8 +279,10 @@ module VBlank
           # +small_sprite_scenes+ are the crowded scenes whose sprites give up squares (Art).
           def initialize(program, memory:, sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                          background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [], one_sprite_tile_set: false,
-                         chip: false, scene_recordings: false, shared_held_lists: false, cache: BuildCache.for(SNES, program))
+                         chip: false, scene_recordings: false, shared_held_lists: false, shared_pose_tiles: false,
+                         cache: BuildCache.for(SNES, program))
             @program = program
+            @shared_pose_tiles = shared_pose_tiles
             @shared_held_lists = shared_held_lists
             @scene_recordings = scene_recordings
             @cache = cache

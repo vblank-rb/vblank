@@ -267,8 +267,12 @@ module VBlank
         end
 
         # The color pixel +index+ is drawn in, +color+ being the one the picture stores there.
-        def color_for(index, color)
-          return by_place[places.getbyte(index)] || color if places
+        def color_for(index, color) = color_at_place(places&.getbyte(index), color)
+
+        # The color a pixel drawn at +place+ of the picture's own list is drawn in, +color+ being
+        # the one the list holds there. A lowering that cuts a picture of pieces asks by place.
+        def color_at_place(place, color)
+          return by_place[place] || color if places
 
           by_color.fetch(color, color)
         end

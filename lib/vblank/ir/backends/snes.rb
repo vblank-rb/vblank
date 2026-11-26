@@ -113,16 +113,17 @@ module VBlank
         GameRoutine = Data.define(:addresses, :routine)
 
         # The settings of one try (#build, BuildTries), each the Lowering's setting of the same name
-        # (Art says what each does), and +far_tables+ Memory's. +one_sprite_tile_set+ is false, true,
-        # or :failed for a game that tried it and did not fit, which is not tried again.
+        # (Art says what each does), and +far_tables+ Memory's. +one_sprite_tile_set+ and
+        # +shared_pose_tiles+ are each false, true, or :failed for a game that tried it and did not fit,
+        # which is not tried again.
         Tried = Data.define(:sprite_squares, :screen_colors, :sprite_colors, :sprite_tiles, :background_tiles,
                             :lean_square_scenes, :small_sprite_scenes, :one_sprite_tile_set, :scene_recordings,
-                            :shared_held_lists, :far_tables) do
+                            :shared_held_lists, :far_tables, :shared_pose_tiles) do
           # Everything the simple way: a game that fits so builds the bytes it always has.
           def self.first = new(sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                                background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [],
                                one_sprite_tile_set: false, scene_recordings: false, shared_held_lists: false,
-                               far_tables: false)
+                               far_tables: false, shared_pose_tiles: false)
         end
 
         # A try that fit: the cartridge, the settings and lowering it was made with, what the
@@ -174,9 +175,14 @@ module VBlank
         # more (#spare_tiles_attempt), and one that does not fit even so is cut small alone
         # (+small_sprite_scenes+); each says what it gave up (Picture#crowded_scene_findings). A try
         # finds every crowded screen before it stops (Art::ScreenSpritesFull), so a game of many takes
-        # a try for each of those steps, not one for each screen. Before any of
-        # those, a game of sprites in several lists of colours is built with one set of their
-        # pictures, worn in every list (+one_sprite_tile_set+): what it costs is a whole set of
+        # a try for each of those steps, not one for each screen. Before any of those, a game of sprites
+        # drawn with lists the game never changes is built with each copy whose list gives each colour
+        # of its picture one colour shown, as the picture's own tiles in a set of its own
+        # (+shared_pose_tiles+, Art::Worn): a set for each such list, so it is tried only where the
+        # sprites do not fit otherwise. It goes first because it costs fewer sets than the next: the
+        # picture's own set stays open to other pictures. Then a game of sprites in several lists of
+        # colours is built with one set of their pictures, worn in every list
+        # (+one_sprite_tile_set+): what it costs is a whole set of
         # colours for each list, so it is tried only where the sprites do not fit otherwise, and
         # given up if the lists do not fit that way. A game whose backgrounds still need more than
         # eight sets with each scene's colours its own, some of them held by lists the game changes, is
@@ -249,7 +255,8 @@ module VBlank
                                                       small_sprite_scenes: settings.small_sprite_scenes,
                                                       one_sprite_tile_set: settings.one_sprite_tile_set == true,
                                                       chip: carries.chip?, scene_recordings: settings.scene_recordings,
-                                                      shared_held_lists: settings.shared_held_lists, cache: cache)
+                                                      shared_held_lists: settings.shared_held_lists,
+                                                      shared_pose_tiles: settings.shared_pose_tiles == true, cache: cache)
           begin
             game = lowering.sections + lowering.art_sections
           rescue LoweringError => e
@@ -306,13 +313,13 @@ module VBlank
             settings.with(scene_recordings: true) unless settings.scene_recordings || !lowering.recordings_of_one_scene?
           when Art::TooManyHeldBackgroundLists then settings.with(shared_held_lists: true)
           when Art::ScreenSpritesFull
-            one_sprite_tile_set_attempt(error, settings, lowering) || crowded_scenes_settings(error, settings)
+            shared_pose_tiles_attempt(settings, lowering) || one_sprite_tile_set_attempt(error, settings, lowering) ||
+              crowded_scenes_settings(error, settings)
           when Art::TooManyBackgroundColors then settings.with(screen_colors: true)
           when Art::TooManySpriteColors then settings.with(sprite_colors: true)
           when Art::TooManySceneSpriteLists then settings.with(sprite_colors: :lists)
           when Art::TooMuch
-            (one_sprite_tile_set_attempt(error, settings, lowering) if error.is_a?(Art::TooManySpriteTiles)) ||
-              tiles_settings(error, settings, lowering)
+            sprite_tiles_attempt(error, settings, lowering) || tiles_settings(error, settings, lowering)
           end
         end
 
@@ -340,6 +347,26 @@ module VBlank
           lean_already = error.scenes.select { |scene| lean.key?(scene) }
           settings.with(lean_square_scenes: lean.merge(fresh.to_h { |scene| [scene, 0] }),
                         small_sprite_scenes: settings.small_sprite_scenes | lean_already)
+        end
+
+        # The attempts made where the sprites' tiles did not fit (+error+): sharing a picture's tiles
+        # with its copies, then one set of pictures for every list. Nil for any other error.
+        def sprite_tiles_attempt(error, settings, lowering)
+          return nil unless error.is_a?(Art::TooManySpriteTiles)
+
+          shared_pose_tiles_attempt(settings, lowering) || one_sprite_tile_set_attempt(error, settings, lowering)
+        end
+
+        # The game tried with each copy of a picture drawn with a list it never changes showing the
+        # picture's own tiles where it can (+shared_pose_tiles+), an Attempt, or nil where no sprite draws
+        # with such a list or it was tried already. If it does not fit, the build carries on from
+        # +settings+ as though it had not been tried: that try is made again, and the error it stops
+        # with leads on as before.
+        def shared_pose_tiles_attempt(settings, lowering)
+          return nil if settings.shared_pose_tiles || !lowering.sprites_draw_with_fixed_lists?
+
+          BuildTries::Attempt.new(settings: settings.with(shared_pose_tiles: true), otherwise: settings.with(shared_pose_tiles: :failed),
+                                  given_up_on: [Art::TooMuch, Lowering::NotMadeYet], except: [Art::BackgroundColorsFull])
         end
 
         # The game tried with one set of its sprites' pictures (+one_sprite_tile_set+), an Attempt, or

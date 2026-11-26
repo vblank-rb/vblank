@@ -447,11 +447,33 @@ module VBlank
             end
 
             def reserve_shared_recolored_picture(pose, list, swapped, mixed)
+              copy = recolored_copy(pose, list, swapped, mixed.include?(pose))
+              @art.reserve_shared_sprite_picture(copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
+                                                             worn: copy.worn)
+            end
+
+            # How the copy of +pose+ drawn with +list+ (colours +swapped+) is made (#recolored_copy): from
+            # +image+, with +held+ the set of a list kept in its places (#palette_of_worn_list), +scenes+
+            # those whose colours +image+ is placed in (Art#sprite_picture), and +worn+ an Art::Worn for a
+            # copy drawn from the pose's own tiles.
+            RecoloredCopy = Data.define(:image, :held, :scenes, :worn)
+
+            # The copy of +pose+ drawn with +list+: kept in places where the list is (#palette_of_worn_list);
+            # in a game of +shared_pose_tiles+, the pose's own picture in a set of the copy's colours where
+            # each colour the pose draws comes to one colour of the list (Art#worn_for), placed as the pose
+            # places its own; otherwise a copy made pixel by pixel (Assets::RecoloredImage), with tiles of
+            # its own wherever its colours land in other places of its set.
+            def recolored_copy(pose, list, swapped, mixed)
               image = @cache.image(picture_named(pose))
-              held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
-              image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
-              @art.reserve_shared_sprite_picture(image, mixed: mixed.include?(pose), held: held,
-                                                        scenes: colors_scenes_of_recolored(pose, list))
+              copy_scenes = colors_scenes_of_recolored(pose, list)
+              held = palette_of_worn_list(pose, list, swapped, mixed)
+              return RecoloredCopy.new(image: image, held: held, scenes: copy_scenes, worn: nil) if held
+
+              recolor = Assets::Recolor.of(image, swapped)
+              worn = @shared_pose_tiles && @art.worn_for(image, recolor, copy_scenes)
+              return RecoloredCopy.new(image: image, held: nil, scenes: colors_scenes_of_picture(pose), worn: worn) if worn
+
+              RecoloredCopy.new(image: Assets::RecoloredImage.new(image: image, recolor: recolor), held: nil, scenes: copy_scenes, worn: nil)
             end
 
             # The one scene whose sprites alone show the picture +name+ (LoweringPlan#scene_showing_picture);
@@ -534,18 +556,16 @@ module VBlank
             # into a copy of each of its pictures (Assets::Recolor, the rule the interpreter draws
             # by), with tiles and a palette of its own — two places of a picture's list may share a
             # colour and still swap to two, so no one palette could stand in for another. A game of
-            # +one_sprite_tile_set+ keeps those places instead (#palette_in_places). They are
+            # +one_sprite_tile_set+ keeps those places instead (#palette_in_places), and a game of
+            # +shared_pose_tiles+ draws a copy from its picture's own tiles where it can (#recolored_copy). They are
             # made after every plain picture, whose numbers stay SpriteNames'; #sprite_picture_names
             # names each copy as the picture it copies. A list's colours never change as the game
             # runs: a list told to hold others (`holds`) is not made yet.
             def make_recolored_art(mixed)
               each_recolored_picture do |pose, list, swapped|
-                image = @cache.image(picture_named(pose))
-                held = palette_of_worn_list(pose, list, swapped, mixed.include?(pose))
-                image = Assets::RecoloredImage.new(image: image, recolor: Assets::Recolor.of(image, swapped)) unless held
-                @art.sprite_picture([pose, swapped], image, mixed: mixed.include?(pose), held: held,
-                                                            scenes: colors_scenes_of_recolored(pose, list),
-                                                            tile_scene: tiles_scene_of_recolored(pose, list))
+                copy = recolored_copy(pose, list, swapped, mixed.include?(pose))
+                @art.sprite_picture([pose, swapped], copy.image, mixed: mixed.include?(pose), held: copy.held, scenes: copy.scenes,
+                                                                 worn: copy.worn, tile_scene: tiles_scene_of_recolored(pose, list))
               end
             end
 
@@ -615,6 +635,10 @@ module VBlank
 
             # Whether a sprite wears another list, so that its pictures can share tiles (SNES#build).
             public def sprites_draw_with_lists? = @objects.each_value.any? { |obj| !obj.recolors.empty? }
+
+            # Whether a sprite wears a list the game never changes, whose copies can show their pose's
+            # own tiles (+shared_pose_tiles+, SNES#build).
+            public def sprites_draw_with_fixed_lists? = @objects.each_value.any? { |obj| obj.recolors.any? { |list| !changing_list?(list) } }
 
             # Reference#exec_color_list_holds: the sets the list can hold, written over its palette. A
             # list nothing is drawn with has no palette, and nothing to show.

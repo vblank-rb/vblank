@@ -126,7 +126,9 @@ module VBlank
                       "on a sprite. The console holds eight lists for sprites and eight " \
                       "for backgrounds on each screen. If the sprites do not fit the 512 tiles of sprite " \
                       "memory with a copy of their pictures for each list they wear with `draw_with`, the " \
-                      "build keeps one set of pictures for all those lists."),
+                      "build first uses the tiles of the picture for each copy, with a palette for each " \
+                      "list. It cannot do this for a list that shows two colours where the picture has one. " \
+                      "If the sprites still do not fit, the build keeps one set of pictures for all those lists."),
         recolor: works("a list told to hold other colours keeps a palette to itself, so a game can change " \
                        "eight lists of backgrounds on each screen and eight of sprites. A list of sprites counts " \
                        "only on the screens whose sprites draw with it, and the colours of a sprite's own " \
