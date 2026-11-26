@@ -10,6 +10,7 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   include SceneColorLists
 
   SWITCH_AT = 4
+  LEADER = 7 # The list the stage and the demo share
 
   private def program(&block)
     b = Builder.new
@@ -120,6 +121,73 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
     assert_equal first_color(20), shown_by(prog, 3).pixel(56, 0), "the list as it starts"
     assert_equal first_color(15), shown_by(prog, (SWITCH_AT * 2) + 2).pixel(56, 0), "the other screen's list in its set"
     assert_equal first_color(22), shown_by(prog, (SWITCH_AT * 3) + 3).pixel(56, 0), "what it was told while away"
+  end
+
+  # A list the game changes that two of three screens draw with keeps its set on those two alone.
+  # Every sprite is the pose :walker in a list of its own, as players in their own colours are, and
+  # each screen fills all eight sets: the pose's own colours, then seven changing lists. The title
+  # has seven of its own; the stage and the demo share the leader's list and have six each. Kept
+  # for every screen, the leader's list would make the title nine.
+  def test_a_changing_list_two_of_three_scenes_draw_with_counts_on_those_two
+    prog = leader_on_two_of_three_scenes
+
+    assert_equal first_color(0), shown_by(prog, 2).pixel(0, 0), "the title's first list"
+    assert_equal first_color(6), shown_by(prog, 2).pixel(48, 0), "the title's last list"
+    assert_equal dusk_color(0), shown_by(prog, 6).pixel(0, 0), "the title's first list changed"
+    assert_equal dusk_color(6), shown_by(prog, 6).pixel(48, 0), "the title's last list changed"
+    assert_equal dusk_color(LEADER), shown_by(prog, 10).pixel(0, 0), "the leader as told while the title was up"
+    assert_equal first_color(13), shown_by(prog, 10).pixel(48, 0), "the stage's last list"
+    assert_equal dusk_color(13), shown_by(prog, 14).pixel(48, 0), "the stage's last list changed"
+    assert_equal dusk_color(LEADER), shown_by(prog, 18).pixel(0, 0), "the leader as the stage left it, on the demo"
+    assert_equal first_color(19), shown_by(prog, 18).pixel(48, 0), "the demo's last list"
+    assert_equal dusk_color(19), shown_by(prog, 22).pixel(48, 0), "the demo's last list changed"
+    assert_equal dusk_color(LEADER), shown_by(prog, 26).pixel(0, 0), "the leader on the stage again"
+    assert_equal dusk_color(13), shown_by(prog, 26).pixel(48, 0), "the stage's own again, changed"
+  end
+
+  # The colour list +n+ is changed to: list 20 to 31, round again.
+  private def dusk_color(n) = first_color(20 + (n % 12))
+
+  # Three scenes of sprites of the pose :walker, each drawn with a changing list: the title's lists
+  # 0 to 6, the stage's the leader's (LEADER) and 8 to 13, the demo's the leader's and 14 to 19. The
+  # title is up from the start, the stage from tick 8, the demo from 16, the stage again from 24;
+  # each changes its own lists four ticks after it arrives, and the title the leader's, which no
+  # sprite of the title draws with.
+  private def leader_on_two_of_three_scenes
+    leader = LEADER
+    program do
+      screen :tiled
+      colors :walker_list, [:transparent, *(1..15).map { |place| Color.rgb(place * 2, 0, 0) }]
+      image(:walker, width: 8, height: 8, colors: :walker_list, places: Array.new(64) { |i| 1 + (i % 15) })
+      (0...20).each do |n|
+        colors :"walk#{n}", SceneColorLists.full_list(n)
+        colors :"dusk#{n}", SceneColorLists.full_list(20 + (n % 12))
+      end
+      state = var :state, 0
+      tick = var :tick, 0
+      row = lambda do |lists|
+        lists.each_with_index do |n, at|
+          walker = sprite :walker, at: [at * 8, 0]
+          walker.draw_with :"walk#{n}"
+        end
+      end
+      title = (0..6).to_a
+      stage = [leader, *8..13]
+      demo = [leader, *14..19]
+      scene(:title) { row.call(title) }
+      scene(:stage) { row.call(stage) }
+      scene(:demo) { row.call(demo) }
+      game_loop do
+        tick += 1
+        state = 1 if tick == 8
+        state = 2 if tick == 16
+        state = 1 if tick == 24
+        [*title, leader].each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 4
+        stage.drop(1).each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 12
+        demo.drop(1).each { |n| recolor :"walk#{n}", :"dusk#{n}" } if tick == 20
+        call({ 0 => :title, 1 => :stage, 2 => :demo }, number: :state)
+      end
+    end
   end
 
   # What is on both screens keeps its set on both.

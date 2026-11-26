@@ -108,6 +108,12 @@ module VBlank
           # The same for the sprites' (+sprite_colors+).
           class TooManySpriteColors < TooMuch; end
 
+          # A scene's sprites hold more lists of colours the game changes than its eight sets, some of
+          # them lists that only other scenes draw with too, which is not yet the end of it: built
+          # again, such a list keeps a set only in the scenes that draw with it (+sprite_colors+ of
+          # :lists, #held_scene_sprite_palette).
+          class TooManySceneSpriteLists < TooMuch; end
+
           # The same for the sprites' tiles (+scene_tiles+).
           class TooManySpriteTiles < TooMuch; end
 
@@ -207,6 +213,9 @@ module VBlank
           # those (#scene_colors). The sprites' eight sets go the same way (+sprite_colors+), the
           # pictures only one scene's sprites show drawn from that scene's (#sprite_palettes), so a
           # list of one screen pushes out no list of another screen, which never share a frame.
+          # Built with +sprite_colors+ of :lists, a list the game changes that the sprites of several
+          # scenes draw with, but not every screen's, keeps its set in those scenes alone
+          # (#held_scene_sprite_palette).
           #
           # Each screen's sprite tiles (+scene_tiles+). Video memory holds 512 sprite tiles at once, and
           # nothing says they stay the same ones. Those of what every screen keeps go in at power-on
@@ -454,7 +463,7 @@ module VBlank
               return shared if shared
             end
 
-            held_palette(palettes, key, colors, backgrounds_in_message(scene), 0...PALETTES).tap do |palette|
+            held_palette([palettes], key, colors, backgrounds_in_message(scene), 0...PALETTES).tap do |palette|
               @held_owners[[scene, palette]] = owner
               (@held_lengths[owner] ||= []) << colors.length if owner
             end
@@ -528,7 +537,23 @@ module VBlank
           end
 
           def held_sprite_palette(key, colors, mixed: false, scene: nil)
-            allocate_sprite_palette(mixed, scene) { |within| held_palette(sprite_palettes(scene), key, colors, "sprites", within) }
+            allocate_sprite_palette(mixed, [scene]) { |within| held_palette([sprite_palettes(scene)], key, colors, "sprites", within) }
+          end
+
+          # A list the game changes that the sprites of +scenes+ alone draw with keeps a set in those
+          # scenes' copies (#sprite_palettes) and no other's, so every other scene has that set for its
+          # own pictures. The console's colour memory is written freely during the blank (fullsnes,
+          # "CGRAM"), so a screen's sets can be loaded as the screen loads. The set has one number in
+          # all of them, since a sprite drawn with the list names it: the first that none of their
+          # copies holds yet. The lowering writes the list's colours only while one of +scenes+ is
+          # up, and again as one of them takes over.
+          #
+          # Must be called once every set every screen keeps is placed, and before any scene's own,
+          # which then go around it: the copies are taken the first time they are asked for.
+          def held_scene_sprite_palette(key, colors, scenes, mixed: false)
+            allocate_sprite_palette(mixed, scenes) do |within|
+              held_palette(scenes.map { |scene| sprite_palettes(scene) }, key, colors, "sprites", within)
+            end
           end
 
           # The colours and tiles of +image+, a picture of what every screen keeps, placed before any
@@ -562,20 +587,29 @@ module VBlank
           def background_palette_at(palette) = ((palette * PLACES) + 1) * 2
           def sprite_palette_at(palette) = ((128 + (palette * PLACES)) + 1) * 2
 
-          def held_palette(palettes, key, colors, what, within)
+          # The set of +within+ that the list kept under +key+ takes, the same one in each of +copies+
+          # (each a game's or a scene's sets of colours), the first none of them holds yet.
+          def held_palette(copies, key, colors, what, within)
             @held_palettes.fetch(key) do
-              held = held_in(palettes)
-              free = within.find { |p| palettes[p].nil? || (palettes[p].empty? && !held.include?(p)) }
-              unless free
-                raise too_much_error_for(palettes), "The #{what} hold more lists of colours the game changes than a Super " \
-                                              "Nintendo can show. It holds #{PALETTES} sets of #{OWN_COLORS} colours. " \
-                                              "To fix this, change fewer lists."
-              end
+              free = within.find { |p| copies.all? { |palettes| held_palette_free?(palettes, p) } }
+              raise too_much_error_for(copies.first), held_lists_message(what) unless free
 
-              palettes[free] = colors.dup
-              held << free
+              copies.each do |palettes|
+                palettes[free] = colors.dup
+                held_in(palettes) << free
+              end
               @held_palettes[key] = free
             end
+          end
+
+          # Whether set +palette+ of +palettes+ holds nothing yet, and so can take a list the game changes.
+          def held_palette_free?(palettes, palette)
+            palettes[palette].nil? || (palettes[palette].empty? && !held_in(palettes).include?(palette))
+          end
+
+          def held_lists_message(what)
+            "The #{what} hold more lists of colours the game changes than a Super Nintendo can show. " \
+              "It holds #{PALETTES} sets of #{OWN_COLORS} colours. To fix this, change fewer lists."
           end
 
           # Which place of its list pixel +at+ of +image+ was drawn at.
@@ -1005,7 +1039,7 @@ module VBlank
             return pieced_sprite_picture(name, image, mixed, held, scene, number) if image.pieces
 
             palettes = sprite_palettes(scene)
-            palette = held || allocate_sprite_palette(mixed, scene) do |within|
+            palette = held || allocate_sprite_palette(mixed, [scene]) do |within|
               palette_for(palettes, sprite_image_colors(image), "sprites", within)
             end
             cut = SpritePieces.cut(image.width, image.height) do |x, y|
@@ -1065,7 +1099,7 @@ module VBlank
           def pieced_sprite_picture(name, image, mixed, held, scene, number)
             given = (squares_here? ? image.pieces : image.small_pieces).reject { |_, _, own| own.bytes.all?(&:zero?) }
             palettes = sprite_palettes(scene)
-            palette = held || allocate_sprite_palette(mixed, scene) do |within|
+            palette = held || allocate_sprite_palette(mixed, [scene]) do |within|
               palette_for(palettes, sprite_image_colors(image), "sprites", within)
             end
             # Last given first: sprites go into the table back-most first (Lowering::Picture
@@ -1133,14 +1167,14 @@ module VBlank
           def square_tiles_from(first) = [first, first + 1, first + TILES_ACROSS, first + TILES_ACROSS + 1]
 
           # The sprite palette the block allocates from the sets it is handed: those a picture that is
-          # +mixed+ (or not) is drawn from, and where those are full, all eight in a scene of
-          # +unmixed_scenes+ (#split_sprite_palettes!). The four come first, so a game they hold
-          # keeps the palettes it had. Neither the block's palette_for nor held_palette changes a
-          # set before refusing, so the second try starts from what the first found.
-          def allocate_sprite_palette(mixed, scene)
+          # +mixed+ (or not) is drawn from, and where those are full, all eight where every one of
+          # +scenes+ is of +unmixed_scenes+ (#split_sprite_palettes!). The four come first, so a game
+          # they hold keeps the palettes it had. Neither the block's palette_for nor held_palette
+          # changes a set before refusing, so the second try starts from what the first found.
+          def allocate_sprite_palette(mixed, scenes)
             yield @sprite_palettes_for.fetch(mixed)
           rescue TooMuch
-            raise if mixed || !@unmixed_scenes.include?(scene)
+            raise if mixed || !scenes.all? { |scene| @unmixed_scenes.include?(scene) }
 
             yield (0...PALETTES)
           end

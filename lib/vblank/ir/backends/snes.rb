@@ -163,7 +163,10 @@ module VBlank
         # A game whose backgrounds need more than the console's eight sets of colours is built again
         # with each scene bringing its own in (+screen_colors+, and +sprite_colors+ for a game whose
         # sprites are what does not fit; Art), which a game that fits has no
-        # need of and is not built with: it stays the bytes it was. A game whose sprites do not fit
+        # need of and is not built with: it stays the bytes it was. A scene whose sprites still hold
+        # more lists the game changes than its eight sets, some of them lists other scenes draw with
+        # too, is built again with each such list kept by the scenes that draw with it alone
+        # (+sprite_colors+ of :lists, Art#held_scene_sprite_palette). A game whose sprites do not fit
         # the console's 512 tiles has each scene's in video memory while it is up (+sprite_tiles+),
         # before it gives up squares, and the same for 1024 background tiles (+background_tiles+).
         # A screen that still does not fit keeps a square only where it takes no more tiles than its
@@ -306,6 +309,7 @@ module VBlank
             one_sprite_tile_set_attempt(error, settings, lowering) || crowded_scenes_settings(error, settings)
           when Art::TooManyBackgroundColors then settings.with(screen_colors: true)
           when Art::TooManySpriteColors then settings.with(sprite_colors: true)
+          when Art::TooManySceneSpriteLists then settings.with(sprite_colors: :lists)
           when Art::TooMuch
             (one_sprite_tile_set_attempt(error, settings, lowering) if error.is_a?(Art::TooManySpriteTiles)) ||
               tiles_settings(error, settings, lowering)
