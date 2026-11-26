@@ -85,10 +85,11 @@ static function set_pixel(x:Int, y:Int, color:Int):Void {
 static function fill_cells(x:Int, y:Int, width:Int, height:Int, color:Int):Void {
   var left = x < 0 ? 0 : x;
   var top = y < 0 ? 0 : y;
-  var right = x + width;
-  var bottom = y + height;
-  if (right > RG_SCREEN_WIDTH) right = RG_SCREEN_WIDTH;
-  if (bottom > RG_SCREEN_HEIGHT) bottom = RG_SCREEN_HEIGHT;
+  // The far edge is worked out as a float: a corner and a size that sum past 32 bits are cut to the screen, not wrapped.
+  var far_x:Float = (x:Float) + width;
+  var far_y:Float = (y:Float) + height;
+  var right:Int = far_x > RG_SCREEN_WIDTH ? RG_SCREEN_WIDTH : Std.int(far_x);
+  var bottom:Int = far_y > RG_SCREEN_HEIGHT ? RG_SCREEN_HEIGHT : Std.int(far_y);
   for (py in top...bottom) {
     for (px in left...right) set_pixel(px, py, color);
   }
@@ -108,14 +109,20 @@ static function clear_to(color:Int):Void {
 static function rg_screen_clear(color:Int):Void { clear_to(color); }
 static function rg_screen_fill_rect(x:Int, y:Int, width:Int, height:Int, color:Int):Void { fill_cells(x, y, width, height, color); }
 
+/* A sum of positions held to what an Int holds, where a float sum would pass it: an edge past every pixel is as good as any. */
+static function rg_held_sum(a:Int, b:Int):Int {
+  var sum:Float = (a:Float) + b;
+  return sum > RG_INT32_MAX ? RG_INT32_MAX : (sum < RG_INT32_MIN ? RG_INT32_MIN : Std.int(sum));
+}
+
 static function rg_screen_inside(x:Int, y:Int, width:Int, height:Int):Void {
   if (outer_areas.length >= AREAS_DEEP) rg_fault("more than " + AREAS_DEEP + " `inside` blocks are open at once");
   outer_areas.push([area_in_force, area_left, area_top, area_right, area_bottom]);
   area_in_force = 1;
   area_left = x;
   area_top = y;
-  area_right = x + width;
-  area_bottom = y + height;
+  area_right = rg_held_sum(x, width);
+  area_bottom = rg_held_sum(y, height);
 }
 
 static function rg_screen_inside_ended():Void {
