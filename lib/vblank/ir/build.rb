@@ -336,9 +336,11 @@ module VBlank
       # +timer_rate:+ means a sound effect counts its ticks on a timer of that rate: its
       # events and +total_frames+ are then in the timer's ticks (IR::Tunes.effect_clock_step), and
       # +interrupt_rate:+ the interrupt its tempo is counted on (IR::Tunes.effect_tempo_step).
+      #
+      # +cuts_own_notes:+ means each recorded note of a part takes the voice of the part's note before it.
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
                group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil,
-               timer_rate: nil, interrupt_rate: nil)
+               timer_rate: nil, interrupt_rate: nil, cuts_own_notes: false)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -349,6 +351,7 @@ module VBlank
         said[:length_from_file] = length_from_file if length_from_file
         said[:timer_rate] = timer_rate if timer_rate
         said[:interrupt_rate] = interrupt_rate if interrupt_rate
+        said[:cuts_own_notes] = true if cuts_own_notes
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 

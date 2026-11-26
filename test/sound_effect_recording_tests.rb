@@ -120,6 +120,15 @@ module SoundEffectRecordingGames
     game([recorded_hit(68, parts: VOICES)], tune: tune) { |sfx, pass| sfx.play 0 if pass == 3 }
   end
 
+  # An effect of two shaped notes two frames apart, asked for on pass 3; with +cuts+ it cuts its own
+  # notes (`cuts_own_notes: true`).
+  private def two_quick_shaped_notes(cuts:)
+    score = Score.new(tempo: 150, cuts_own_notes: cuts, parts: [Part.new(plays: :piano, envelope: { release: 0.5 }, notes: [
+      Note.new(at: 0, key: :C4, length: 2), Note.new(at: 2, key: :E4, length: 2),
+    ])])
+    game([score]) { |sfx, pass| sfx.play 0 if pass == 3 }
+  end
+
   # The effect's voice through a restart, its own restart, its end, and a shaped end: each game,
   # whose each mixer voice is, and how many frames in.
   private def effect_voices_kept_and_let_go
@@ -295,6 +304,14 @@ module SoundEffectRecordingTests
   # An effect filling every voice: the song's note under it is not played, and its next one is.
   def test_the_songs_next_note_has_a_voice_once_an_effect_filling_the_mixer_ends
     assert_equal [[:song, 0]], game_player.run(effect_filling_the_mixer, frames: 45).sound_owners
+  end
+
+  # Two shaped notes two frames apart. Each falls away on its own voice while the next takes another,
+  # so the two overlap; with `cuts_own_notes: true` the second takes the first's voice, as a sound
+  # driver keys each note of a part on one voice.
+  def test_an_effect_that_cuts_its_own_notes_plays_them_on_one_voice
+    assert_equal [[:"sfx.0", 0]] * 2, game_player.run(two_quick_shaped_notes(cuts: false), frames: 9).sound_owners
+    assert_equal [[:"sfx.0", 0]], game_player.run(two_quick_shaped_notes(cuts: true), frames: 9).sound_owners
   end
 
   # The effect's voice through a restart, its own restart, its end, and a shaped end.

@@ -145,6 +145,7 @@ module VBlank
           runtime = Runtime.sections(memory, main: Lowering::MAIN, frame_begins: lowering.frame_begins,
                                              faces: lowering.fills_faces?, sound: sound, songs: songs, effects: effects,
                                              effect_clock_step: clock_step, effect_tempo_step: tempo_step,
+                                             effects_cut_notes: IR::Tunes.effects_cut_notes?(program),
                                              music_level_at: (lowering.variables[IR::Tunes::LEVEL] if follows_level), samples: samples,
                                              tiled: lowering.tiled_screen, colors: colors,
                                              collides: lowering.collides?, by_number: by_number, over_picture: over_picture,

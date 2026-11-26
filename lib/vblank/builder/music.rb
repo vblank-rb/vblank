@@ -229,6 +229,7 @@ module VBlank
         scores = scores_with_pack_notes(scores, "songs :#{name}")
         keys, members = record_scores(name: name, scores: scores, verb: :songs, entry: "Song") do |key, score|
           refuse_song_keeping_voices!(name, key, score)
+          refuse_song_cutting_notes!(name, key, score)
           refuse_song_on_timer!(name, key, score)
           next unless score.group
 
@@ -245,6 +246,30 @@ module VBlank
 
         raise ArgumentError, "Song #{key.inspect} of :#{name} has `keeps_voices:`. It says a sound effect holds " \
                              "its voices until it ends. Remove `keeps_voices:` from this Score."
+      end
+
+      private def refuse_song_cutting_notes!(name, key, score)
+        return unless score.cuts_own_notes
+
+        raise ArgumentError, "Song #{key.inspect} of :#{name} has `cuts_own_notes:`. It is for a sound effect. " \
+                             "Remove `cuts_own_notes:` from this Score."
+      end
+
+      # A game's sound effects all cut their own notes, or none does: a cartridge's sound driver keys
+      # every effect's notes one way. The first effect declared decides (+@effects_cut+).
+      private def refuse_mixed_note_cutting!(effect, score)
+        cuts = score.cuts_own_notes
+        if !defined?(@effects_cut)
+          @effects_cut = cuts
+          @effect_deciding_cuts = effect
+          return
+        end
+        return if cuts == @effects_cut
+
+        cutting, other = cuts ? [effect, @effect_deciding_cuts] : [@effect_deciding_cuts, effect]
+        raise ArgumentError, "#{cutting} has `cuts_own_notes: true`, and #{other} does not. The sound effects of a " \
+                             "game all cut their own notes, or none does. Give `cuts_own_notes: true` to every sound " \
+                             "effect, or remove it from all."
       end
 
       private def refuse_song_on_timer!(name, key, score)
@@ -328,6 +353,7 @@ module VBlank
                                       entry: "Sound effect") do |key, score|
           refuse_looping_sound_effect!(effect: "Sound effect #{key.inspect} of :#{name}", score: score)
           refuse_effect_off_timer!("Sound effect #{key.inspect} of :#{name}", score)
+          refuse_mixed_note_cutting!("Sound effect #{key.inspect} of :#{name}", score)
         end
         record(Build.sound_effect_list(name, members))
         VBlank::DSL::SoundEffectList.new(self, name, keys)

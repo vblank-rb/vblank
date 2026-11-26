@@ -2181,6 +2181,8 @@ module VBlank
       # rest or a note at volume 0. +timer_rate+ means a sound effect counts its ticks on a
       # timer of that rate, and its events and +total_frames+ are in those ticks (IR::Tunes.effect_clock_step).
       # +interrupt_rate+ is the interrupt that timer's tempo is counted on, where it has one (IR::Tunes.effect_tempo_step).
+      # +cuts_own_notes+ means each recorded note of a part takes the voice of the part's note before it
+      # (Reference::Mixer#start_music_note).
       class Song
         include Node
         kind :song
@@ -2188,7 +2190,8 @@ module VBlank
         category :sound
         operands name: :name, voices: :score, total_frames: :int, loop_frame: :int, priority: :int,
                  group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag,
-                 length_from_file: :file_song_length, timer_rate: :rate, interrupt_rate: :rate
+                 length_from_file: :file_song_length, timer_rate: :rate, interrupt_rate: :rate,
+                 cuts_own_notes: :flag
 
         # +length_from_file+ is where the song's length and the tick it comes round to are in the
         # file the program is handed as it starts (a StartFile::SongLength), or absent for a song

@@ -145,13 +145,14 @@ module VBlank
               memory.reserve(LOUDNESS_BY_PASS, Frame::STEPS_KEPT * PLACES * 2)
             end
 
-            def emit(asm, memory)
+            # +cuts+ for a game whose sound effects cut their own notes (IR::Tunes.effects_cut_notes?).
+            def emit(asm, memory, cuts: false)
               at = ->(name) { Runtime.at(memory, name) }
               place = ->(field) { at.call(PLACES_STATE) + field }
               sides = memory.reserved?(SIDES)
               emit_play(asm, at, place)
               emit_take(asm, at, place, sides: sides)
-              emit_note(asm, at, place)
+              emit_note(asm, at, place, cuts)
               emit_glide(asm, at, place, sides: sides, glides: memory.reserved?(GLIDES))
               emit_note_release(asm, at, place)
               emit_stop(asm, at, place)
@@ -296,12 +297,26 @@ module VBlank
             # rt_recordings_note(a0 = row, a1 = owner, a2 = rank): a note of a song's or effect's recorded part,
             # the row's recording played in a place found by the interpreter's rule (the comment atop this
             # module). v0 = 1 when it found one, nought when the note is not played.
-            def emit_note(asm, at, place)
+            #
+            # With +cuts+ an effect's note (+owner+ EFFECT_OWNER and over) takes the part's own place first,
+            # whatever it holds, sounding or falling away (Reference::Mixer#owned_slot).
+            def emit_note(asm, at, place, cuts = false)
               asm.label("rt_recordings_note")
               Music.enter(asm, %i[s0 s1 s2 s3])
               asm.move(:s2, :a1)
               asm.move(:s3, :a2)
               emit_row(asm)
+              if cuts
+                asm.sltiu(:t0, :s2, EFFECT_OWNER)
+                asm.bne(:t0, :zero, "rt_recordings_note_uncut") # a song's
+                each_place(asm, "rt_recordings_note_own") do |next_place|
+                  asm.lw(:t0, place.call(HELD), :t9)
+                  asm.beq(:t0, :zero, next_place)
+                  asm.lw(:t0, place.call(OWNER), :t9)
+                  asm.beq(:t0, :s2, "rt_recordings_note_found")
+                end
+                asm.label("rt_recordings_note_uncut")
+              end
               # The part's own place, still sounding its note — unless that note has a shape: then it is told
               # to fall away there, and this note takes another place.
               asm.move(:a0, :s2)

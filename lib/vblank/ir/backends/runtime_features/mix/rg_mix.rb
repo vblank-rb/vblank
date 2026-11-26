@@ -229,9 +229,22 @@ def rg_mix_glide_music_note(effect, lane, sound, loudness)
 end
 
 # +sound+ is where the note's eight numbers start in @rg_game_note_sounds. 1 when it is heard.
-def rg_mix_start_music_note(effect, lane, rank, sound, loudness)
+# rg_mix.c's owned_voice.
+def rg_mix_owned_voice(effect, lane)
   at = rg_mix_sounding_voice(effect, lane)
-  at = -1 if at >= 0 && rg_mix_start_release(@rg_mix_voices[at])
+  return at if at >= 0
+
+  rg_mix_voice_count.times do |i|
+    voice = @rg_mix_voices[i]
+    return i if voice.sounding && voice.owner == RG_MIX_EFFECT && voice.effect == effect && voice.lane == lane
+  end
+  -1
+end
+
+def rg_mix_start_music_note(effect, lane, rank, sound, loudness, cuts)
+  cutting = cuts != 0 && effect >= 0
+  at = cutting ? rg_mix_owned_voice(effect, lane) : rg_mix_sounding_voice(effect, lane)
+  at = -1 if at >= 0 && !cutting && rg_mix_start_release(@rg_mix_voices[at])
   at = rg_mix_free_voice if at < 0
   at = rg_mix_quietest_releasing_voice if at < 0
   at = rg_mix_lowest_ranked_voice_below(rank) if at < 0

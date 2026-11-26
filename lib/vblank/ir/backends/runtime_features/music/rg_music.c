@@ -24,7 +24,8 @@
  * rg_game_effects: how many sound effects there are, 1 if each wave note puts its waveform in — any
  * effect plays the wave voice, or a note names a waveform of its own (see wave_put_in) — what the
  * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — what the tempo
- * adds on each of a driver's own interrupts, 0 for none (see count_ticks_on_interrupts) — then five
+ * adds on each of a driver's own interrupts, 0 for none (see count_ticks_on_interrupts) — 1 where the
+ * effects cut their own notes (rg_mix_start_music_note's +cuts+), else 0 — then five
  * numbers each, in the order they were declared — the song it plays (by
  * which the log names it), which entry of rg_game_music holds its notes, its rank
  * (IR::Tunes.effect_rank), its group (-1 for none, else which of the game's groups), and its
@@ -121,7 +122,8 @@
 #define NOTES_PUT_IN_WAVEFORMS (rg_game_effects[1])
 #define EFFECT_CLOCK_STEP (rg_game_effects[2]) /* what the effects' timer adds a frame, 0 for none */
 #define EFFECT_TEMPO_STEP (rg_game_effects[3]) /* what the tempo adds on each interrupt, 0 for none */
-#define EFFECT_ROWS 4
+#define EFFECTS_CUT_NOTES (rg_game_effects[4]) /* 1 where an effect's note takes its part's own voice */
+#define EFFECT_ROWS 5
 #define NUMBERS_PER_EFFECT 6
 /* Each effect's numbers in rg_game_effects, by where they are in its row. */
 #define EFFECT_SONG 0
@@ -147,8 +149,9 @@
 #define mixer_release_all_notes rg_mix_release_all_music
 #define mixer_rescale_note rg_mix_rescale_music
 #else
-static inline int32_t mixer_start_note(int32_t effect, int32_t lane, int32_t rank, const int32_t *sound, int32_t loudness) {
-  (void)effect, (void)lane, (void)rank, (void)sound, (void)loudness;
+static inline int32_t mixer_start_note(int32_t effect, int32_t lane, int32_t rank, const int32_t *sound, int32_t loudness,
+                                       int32_t cuts) {
+  (void)effect, (void)lane, (void)rank, (void)sound, (void)loudness, (void)cuts;
   return 0;
 }
 static inline int32_t mixer_glide_note(int32_t effect, int32_t lane, const int32_t *sound, int32_t loudness) {
@@ -651,7 +654,7 @@ static void play_recorded_note(const part_walk *part, const int32_t *note) {
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
     int32_t heard_loudness = level_variable ? scaled_volume(loudness) : loudness;
     int32_t heard = note[5] & GLIDES ? mixer_glide_note(-1, part->tone, numbers, note[5] & GLIDE_KEEPS_LOUDNESS ? -1 : heard_loudness)
-                                     : mixer_start_note(-1, part->tone, song[3], numbers, heard_loudness);
+                                     : mixer_start_note(-1, part->tone, song[3], numbers, heard_loudness, 0);
     if (!heard) return;
   }
   rg_sound_log("note %d %d", (int)playing, (int)pitch);
@@ -870,7 +873,7 @@ static void play_effect_note(int32_t effect, const part_walk *part, const int32_
     const int32_t *numbers = &rg_game_note_sounds[1 + (sound * NUMBERS_PER_NOTE_SOUND)];
     int32_t heard = !sounds            ? mixer_release_note(effect, part->tone)
                     : note[5] & GLIDES ? mixer_glide_note(effect, part->tone, numbers, note[5] & GLIDE_KEEPS_LOUDNESS ? -1 : loudness)
-                                       : mixer_start_note(effect, part->tone, rank, numbers, loudness);
+                                       : mixer_start_note(effect, part->tone, rank, numbers, loudness, EFFECTS_CUT_NOTES);
     if (heard) rg_sound_log("note %d %d", (int)number, (int)pitch);
     return;
   }

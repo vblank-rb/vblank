@@ -352,6 +352,7 @@ module VBlank
             @songs_have_recorded_parts = false # ...a song's, in particular?
             @uses_envelopes = false # does any note in it have a shape (see #emit_envelope_step)?
             @effect_marks = {}      # a sound effect's part's mark -> [effect, part], when its notes rank
+            @effects_cut_notes = false # whether an effect's note takes its part's own voice first (#cuts_effect_notes!)
             @between_voices = nil   # writes what the mix does between two voices, or nil for nothing
           end
 
@@ -414,6 +415,10 @@ module VBlank
           end
 
           def ranks_voices? = !@effect_marks.empty?
+
+          # The game's sound effects cut their own notes (IR::Tunes.effects_cut_notes?): an effect's note
+          # takes the voice its part holds, whatever it holds (#emit_take_music_voice_routine).
+          def cuts_effect_notes! = @effects_cut_notes = true
 
           # The slot nothing mixes, one past the last voice, kept in a game whose notes can find
           # no voice at all (#ranks_voices?): a note handed it is written there and never heard.
@@ -1041,6 +1046,7 @@ module VBlank
             ranked = e.gensym
             kept = ranks_voices? ? [2, 3, 4, 5] : @uses_envelopes ? [2, 3] : []
             e.place_label(MUSIC_VOICE)
+            emit_take_effect_part_voice if @effects_cut_notes && ranks_voices?
             emit_rank_song_mark if ranks_song_marks?
             e.emit(ASM.push(*kept)) unless kept.empty?
             e.emit(ASM.load_immediate(7, @voice_base))
@@ -1114,6 +1120,32 @@ module VBlank
             e.place_label(done)
             e.emit(ASM.pop(*kept)) unless kept.empty?
             e.emit(ASM.return)
+          end
+
+          # 0, in a game whose sound effects cut their own notes: an effect's note (a mark with a rank; a
+          # song's comes here without one) takes the voice its part holds, sounding or falling away, as a
+          # sound driver keys each note of a part on one voice (Reference::Mixer#owned_slot). Returns
+          # with it in r7; with none, on to the rule below. Uses r0, r1 and r7.
+          def emit_take_effect_part_voice
+            e = @emitter
+            song = e.gensym
+            scan = e.gensym
+            found = e.gensym
+            e.emit(ASM.cmp_imm(8, 1 << MARK_RANK_SHIFT))
+            e.emit_branch(:bcond, song, cond: :lo)
+            e.emit(ASM.load_immediate(7, @voice_base))
+            e.emit(ASM.load_immediate(1, @voice_base + (MAX_VOICES * SLOT_BYTES)))
+            e.place_label(scan)
+            e.emit(ASM.ldr_offset(0, 7, SLOT_ACTIVE))
+            e.emit(ASM.cmp_reg(0, 8))
+            e.emit_branch(:bcond, found, cond: :eq)
+            e.emit(ASM.add_imm(7, 7, SLOT_BYTES))
+            e.emit(ASM.cmp_reg(7, 1))
+            e.emit_branch(:bcond, scan, cond: :lt)
+            e.emit_branch(:b, song)
+            e.place_label(found)
+            e.emit(ASM.return)
+            e.place_label(song)
           end
 
           # 1, in a game that shapes a note: the part's own voice, with the flags of comparing its

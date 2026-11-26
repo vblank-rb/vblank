@@ -225,11 +225,12 @@ module VBlank
             end
 
             # +voices+ is the sound chip's voices recordings play on, the first place's first.
-            def emit(asm, memory, voices:)
+            # +cuts+ for a game whose sound effects cut their own notes (IR::Tunes.effects_cut_notes?).
+            def emit(asm, memory, voices:, cuts: false)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               heard = voices.size * PLACE_BYTES
               emit_play(asm, at, memory, heard)
-              emit_note(asm, at, memory, heard)
+              emit_note(asm, at, memory, heard, cuts)
               emit_glide(asm, at, memory, heard) if memory.reserved?(GLIDES)
               emit_note_release(asm, at, memory, heard)
               emit_stop(asm, at, memory, heard)
@@ -565,7 +566,10 @@ module VBlank
             # part's own (+owner+'s), the first free, or the place of the lowest-ranked sound ranked
             # below +rank+ — by its rank, then its ticket, the first of two alike. A = 1 when it found
             # one, nought when the note is not played.
-            def emit_note(asm, at, memory, heard)
+            #
+            # With +cuts+ an effect's note (+owner+ EFFECT_OWNER and over) takes the part's own place first,
+            # whatever it holds, sounding or falling away (Reference::Mixer#owned_slot).
+            def emit_note(asm, at, memory, heard, cuts = false)
               place = place_field(asm, memory)
               asm.label("rt_recordings_note")
               asm.lda(asm.direct(Sound::R0))
@@ -575,6 +579,19 @@ module VBlank
               asm.sta(at.call(NOTE_OWNER))
               asm.lda(asm.direct(Sound::R2))
               asm.sta(at.call(NOTE_RANK))
+              if cuts
+                asm.lda(at.call(NOTE_OWNER))
+                asm.cmp(EFFECT_OWNER)
+                asm.bcc("rt_recordings_note_uncut") # a song's
+                each_place(asm, "rt_recordings_note_own") do |next_place|
+                  asm.lda(place.call(HELD))
+                  asm.beq(next_place)
+                  asm.lda(place.call(OWNER))
+                  asm.cmp(at.call(NOTE_OWNER))
+                  asm.branch_long(:beq, "rt_recordings_note_found")
+                end
+                asm.label("rt_recordings_note_uncut")
+              end
               # The part's own place, still sounding its note — unless that note has a shape: then it
               # is told to fall away there, and this note takes another place.
               asm.jsr(asm.abs("rt_recordings_sounding"))

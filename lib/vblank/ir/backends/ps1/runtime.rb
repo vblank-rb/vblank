@@ -88,7 +88,7 @@ module VBlank
           # carries Disc.
           def sections(memory, main:, frame_begins: nil, faces: false, sound: false, songs: false, effects: 0, music_level_at: nil,
                        samples: false, tiled: nil, colors: false, collides: false, by_number: false, over_picture: false,
-                       count_at: nil, effect_clock_step: nil, effect_tempo_step: nil, disc: false)
+                       count_at: nil, effect_clock_step: nil, effect_tempo_step: nil, effects_cut_notes: false, disc: false)
             asm = R3000.new("runtime")
             Faces.reserve_pieces(memory) if faces
             # A game with timers whose screen can be a tear-free painted one: its handlers paint ahead, on the page
@@ -112,7 +112,7 @@ module VBlank
             Collide.emit(asm) if collides
             Sound.emit(asm, memory, songs: songs, samples: samples) if sound
             Strikes.emit(asm, memory) if Strikes.strikes?(memory)
-            Recordings.emit(asm, memory) if samples
+            Recordings.emit(asm, memory, cuts: effects_cut_notes) if samples
             Music.emit(asm, memory, level_at: music_level_at, effects: effects, effect_clock_step: effect_clock_step,
                                     effect_tempo_step: effect_tempo_step) if songs
             Disc.emit(asm) if disc

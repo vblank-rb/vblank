@@ -481,6 +481,10 @@ module VBlank
         (effect_timer_rate(program) / interrupts * CLOCK_MODULUS).floor
       end
 
+      # Do the game's sound effects cut their own notes (Audio::Score's +cuts_own_notes+): each recorded
+      # note of a part on the voice of the part's note before it? All of them do, or none.
+      def effects_cut_notes?(program) = program.walk.any? { |node| node.kind == :song && node.cuts_own_notes }
+
       # How many times a second the driver's interrupt comes, for effects that name one, or nil.
       def effect_interrupt_rate(program)
         program.walk.find { |node| node.kind == :song && node.interrupt_rate }&.interrupt_rate

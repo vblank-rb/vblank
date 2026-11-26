@@ -127,6 +127,17 @@ class TestSoundEffectsOnTheAdvanceCartridge < Minitest::Test
     end
   end
 
+  # An effect that cuts its own notes plays its second shaped note on its first note's voice.
+  def test_the_console_plays_an_effect_that_cuts_its_own_notes_on_one_voice
+    [false, true].each do |cuts|
+      program = two_quick_shaped_notes(cuts: cuts)
+      interpreter, console = owners_on_both(program, frames: 9)
+
+      assert_equal (cuts ? 1 : 2), interpreter.size, "cuts: #{cuts}"
+      assert_equal interpreter, console, "cuts: #{cuts}"
+    end
+  end
+
   # An effect's voice plays at the effect's own volume while the music volume moves, and reads its
   # recording at its note's pitch.
   def test_the_console_plays_an_effects_recording_at_its_own_volume_and_pitch

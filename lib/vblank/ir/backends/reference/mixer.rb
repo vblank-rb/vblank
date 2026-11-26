@@ -327,6 +327,10 @@ module VBlank
           # away on its own voice while the new note takes another. Taking it over would stop the
           # old wave dead, which is the click the shape is there to remove.
           #
+          # A part whose Score +cuts+ its own notes (Audio::Score's +cuts_own_notes+) takes its own voice
+          # whatever it holds, a note with a shape or one falling away, as a cartridge's own sound driver
+          # keys each note of a part on one voice: the note before stops where it is.
+          #
           # +owner+ is the part (a song's lane number, or [effect, lane]) and +rank+ the rank of its
           # song or effect. +name+ is the recording and +frequency+ the note, which is how fast it
           # is read: a higher note reads it faster, so it runs out sooner — unless the recording
@@ -334,11 +338,11 @@ module VBlank
           # is out of 512. +envelope+ is the shape this note was asked for — the note's own, or its
           # part's. A note that asks for none takes whatever the recording itself was declared
           # with.
-          def start_music_note(owner:, rank:, name:, frequency:, loudness:, envelope:)
+          def start_music_note(owner:, rank:, name:, frequency:, loudness:, envelope:, cuts: false)
             info = @samples[name] ||
                    raise(ProgramError, "a part plays #{name.inspect}, which is not declared")
-            own = sounding_slot(owner)
-            own = nil if own && start_release!(@slots[own])
+            own = cuts ? owned_slot(owner) : sounding_slot(owner)
+            own = nil if own && !cuts && start_release!(@slots[own])
             slot = own || @slots.index(nil) || quietest_releasing_slot || lowest_ranked_slot_below(rank) or return record_drop
             @slots[slot] = Voice.new(name: name, owner: owner, rank: rank,
                                      **recording_fields(name, frequency, info.loop_length, loudness,
@@ -396,6 +400,9 @@ module VBlank
 
           # The voice sounding a part's note now — not one of its earlier notes falling away.
           def sounding_slot(owner) = @slots.index { |v| v && v.owner == owner && !releasing?(v) }
+
+          # ...or, where it has none, one of its notes falling away.
+          def owned_slot(owner) = sounding_slot(owner) || @slots.index { |v| v&.owner == owner }
 
           # A note of the song's, rather than the game's or a sound effect's.
           def song?(voice) = voice.owner.is_a?(Integer)

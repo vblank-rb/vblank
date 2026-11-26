@@ -72,7 +72,15 @@ module VBlank
     # The timer runs at one rate, and a game's effects are all on it or none is
     # (Builder#sound_effects), since a cartridge's engine has the one timer.
     #
-    # The interrupt a sound driver counts its tempo on. Many a cartridge's sound driver runs on an
+    # A part's next recorded note on the voice of the one before. A recorded note with a shape
+    # normally falls away on its own voice while the part's next note takes another, so the two
+    # overlap and no wave stops dead. A cartridge's own sound driver keys each note of a part on the
+    # same voice, which cuts the note before it short. `cuts_own_notes: true` on an effect's Score does
+    # the same: each recorded note of a part takes the voice of the part's note before it, sounding or
+    # falling away, so its notes never overlap (Reference::Mixer#start_music_note). A game's effects
+    # all cut their notes or none does (Builder#sound_effects); a song's Score refuses it.
+    #
+    # The interrupt a sound driver counts its tempo on.  Many a cartridge's sound driver runs on an
     # interrupt of its own, a fixed number of times a second, and adds its tempo up on each one: a tick
     # falls on the interrupt where the sum comes round, so every note it strikes lands on that
     # interrupt's grid. `interrupts_per_second:` beside `on_timer: true` says how often the original's
@@ -90,7 +98,8 @@ module VBlank
     # `loop_from:` of the pack with every bit set is no loop (IR::StartFile.no_loop?): the song
     # plays once, as with `plays_once: true`.
     Score = Data.define(:parts, :tempo, :ticks_per_beat, :length, :loop_from, :plays_once, :priority, :group,
-                        :low_notes_intended, :keeps_voices, :longest, :on_timer, :interrupts_per_second)
+                        :low_notes_intended, :keeps_voices, :longest, :on_timer, :interrupts_per_second,
+                        :cuts_own_notes)
 
     class Score
       # Frames a second, the rate the music is played at — the same round figure a song block's
@@ -107,7 +116,7 @@ module VBlank
       # round, and +length+ is where it ends.
       def initialize(parts:, tempo: 120, ticks_per_beat: 24, length: nil, loop_from: nil, plays_once: false,
                      priority: 0, group: nil, low_notes_intended: false, keeps_voices: false, longest: nil,
-                     on_timer: false, interrupts_per_second: nil)
+                     on_timer: false, interrupts_per_second: nil, cuts_own_notes: false)
         super
       end
 
@@ -138,6 +147,7 @@ module VBlank
                  plays_once: plays_once, keeps_voices: keeps_voices }
         song[:timer_rate] = timer_rate if on_timer
         song[:interrupt_rate] = Rational(interrupts_per_second) if interrupts_per_second
+        song[:cuts_own_notes] = true if cuts_own_notes
         return song unless loop_from
 
         Checks.loop_from!(loop_from, ticks) { frames.at(loop_from) < total }
@@ -394,6 +404,7 @@ module VBlank
         # A timer ticks at one rate, so a Score on one keeps one tempo.
         def on_timer!(score)
           true_or_false!(:on_timer, score.on_timer)
+          true_or_false!(:cuts_own_notes, score.cuts_own_notes)
           return unless score.on_timer && score.tempo.is_a?(Array) && score.tempo.map(&:last).uniq.size > 1
 
           raise ArgumentError, "A Score has `on_timer: true` and a tempo that changes. A timer ticks at one " \

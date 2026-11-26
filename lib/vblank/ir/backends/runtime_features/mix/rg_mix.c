@@ -270,9 +270,22 @@ static int32_t start_release(mix_voice *voice) {
   return 1;
 }
 
-int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, const int32_t *sound, int32_t loudness) {
+/* ...or, for an effect's part that cuts its own notes, one of its notes falling away
+ * (Reference::Mixer#owned_slot). */
+static int32_t owned_voice(int32_t effect, int32_t lane) {
   int32_t at = sounding_voice(effect, lane);
-  if (at >= 0 && start_release(&voices[at])) at = -1;
+  for (int32_t i = 0; at < 0 && i < VOICES; i++) {
+    const mix_voice *voice = &voices[i];
+    if (voice->sounding && voice->owner == EFFECT && voice->effect == effect && voice->lane == lane) at = i;
+  }
+  return at;
+}
+
+int32_t rg_mix_start_music_note(int32_t effect, int32_t lane, int32_t rank, const int32_t *sound, int32_t loudness,
+                                int32_t cuts) {
+  int32_t cutting = cuts && effect >= 0;
+  int32_t at = cutting ? owned_voice(effect, lane) : sounding_voice(effect, lane);
+  if (at >= 0 && !cutting && start_release(&voices[at])) at = -1;
   if (at < 0) at = free_voice();
   if (at < 0) at = quietest_releasing_voice();
   if (at < 0) at = lowest_ranked_voice_below(rank);

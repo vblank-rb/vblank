@@ -460,6 +460,7 @@ module VBlank
                   [Mixer.ranked_owner(@effect_ranks.fetch(name), lane), [name, lane]]
                 end
               end.to_h)
+              @mixer.cuts_effect_notes! if IR::Tunes.effects_cut_notes?(program)
             end
             @effect_slot_bytes = Audio.effect_slot_bytes(@effect_lanes)
             @effect_table = @memory.alloc_roomy(@effects.size * @effect_slot_bytes)

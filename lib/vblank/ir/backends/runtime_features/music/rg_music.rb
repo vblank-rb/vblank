@@ -48,7 +48,7 @@ RG_WAVE_QUARTERS = 6 # Where the wave voice's loudness for each volume starts in
 RG_SONG_STARTS = 1
 RG_NUMBERS_PER_SONG = 5
 RG_NUMBERS_PER_PART = 6
-RG_EFFECT_ROWS = 4
+RG_EFFECT_ROWS = 5
 RG_NUMBERS_PER_EFFECT = 6
 RG_EFFECT_SONG = 0
 RG_EFFECT_NOTES = 1
@@ -126,6 +126,7 @@ def rg_effect_count = @rg_game_effects[0]
 def rg_notes_put_in_waveforms = @rg_game_effects[1]
 def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a frame, 0 for none
 def rg_effect_tempo_step = @rg_game_effects[3] # What the tempo adds on each of a driver's interrupts, 0 for none
+def rg_effects_cut_notes = @rg_game_effects[4] # 1 where an effect's note takes its part's own voice
 
 # --- the player ---
 
@@ -461,7 +462,7 @@ def rg_play_recorded_note(part, note)
               rg_mix_glide_music_note(-1, part.tone, numbers,
                                       music[note + 5].anybits?(RG_GLIDE_KEEPS_LOUDNESS) ? -1 : heard_loudness)
             else
-              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers, heard_loudness)
+              rg_mix_start_music_note(-1, part.tone, music[@rg_song + 3], numbers, heard_loudness, 0)
             end
     return if heard == 0
   end
@@ -649,7 +650,7 @@ def rg_play_effect_note(effect, part, note)
             elsif music[note + 5].anybits?(RG_GLIDES)
               rg_mix_glide_music_note(effect, part.tone, numbers, music[note + 5].anybits?(RG_GLIDE_KEEPS_LOUDNESS) ? -1 : volume)
             else
-              rg_mix_start_music_note(effect, part.tone, rank, numbers, volume)
+              rg_mix_start_music_note(effect, part.tone, rank, numbers, volume, rg_effects_cut_notes)
             end
     rg_sound_log("note #{number} #{pitch}") if heard != 0
     return
