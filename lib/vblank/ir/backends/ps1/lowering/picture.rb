@@ -909,10 +909,13 @@ module VBlank
               emit_store_number(hidden, 0)
               @asm.b(done)
               @asm.label(placing)
-              IR::Stacking.items_in_draw_order(node).each do |item|
-                next emit_ordered_run(item) if item.is_a?(Build::DrawOrder)
-
-                emit_sprite_placing(object_named(item))
+              items = IR::Stacking.items_in_draw_order(node).map { |item| item.is_a?(Build::DrawOrder) ? item : object_named(item) }
+              ShownWhen.scene_runs(items) { |obj| ShownWhen.of(obj.active.copy) { |part| folded(part) } }.each do |item|
+                case item
+                when Build::DrawOrder then emit_ordered_run(item)
+                when SceneRun then emit_scene_run(item)
+                else emit_sprite_placing(item)
+                end
               end
               @asm.label(done)
             end
@@ -982,12 +985,28 @@ module VBlank
 
             def object_named(name) = @objects.fetch(name) { raise LoweringError, "present of undeclared object #{name.inspect}" }
 
+            # Sprites one scene owns, placed one after another (ShownWhen.scene_runs): the tests they share,
+            # "is this scene up", asked once for all of them, so a scene that is not up costs the frame one
+            # test however many sprites it owns. Each sprite then asks only its own.
+            def emit_scene_run(run)
+              past = fresh_label("scene_sprites_off")
+              run.tests.each { |test| jump_unless(test, past) }
+              run.members.each { |obj, shown| emit_sprite_placing(obj, shown: shown) }
+              @asm.label(past)
+            end
+
             # One sprite placed if it is showing (Reference#objects_on_screen: its `active` is 1), from the table
             # of its pictures in the colours it is drawn with now. +shown_known+ for one already found
-            # showing on this pass (#emit_ordered_run), which is not asked again.
-            def emit_sprite_placing(obj, shown_known: false)
+            # showing on this pass (#emit_ordered_run), which is not asked again. +shown+, a ShownWhen, for one
+            # whose scene's test its run has asked already (#emit_scene_run): only its own tests are asked.
+            def emit_sprite_placing(obj, shown_known: false, shown: nil)
               skip = fresh_label("sprite_off")
-              jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip) unless shown_known
+              if shown
+                jump_unless(Build.binop(:==, shown.flag, Build.int(1)), skip) if shown.flag
+                shown.tests.each { |test| jump_unless(test, skip) }
+              elsif !shown_known
+                jump_unless(Build.binop(:==, obj.active, Build.int(1)), skip)
+              end
               table = obj.recolors.empty? ? LabelAddress.new(pose_table(obj.poses, followed_lists(obj))) : emit_recolored_pose_table(obj)
               level = [sprite_level(obj)] if @levels
               runtime_call("rt_sprite_place", [table, obj.pose, obj.x, obj.y, Build.int(@sprite_names.name_number(obj.declared)), *level])
