@@ -22,7 +22,7 @@ module SaveIntoGames
   # Two copies of a file keeping the hearts and a name, and a record of options keeping a
   # volume that holds a fraction. At power-on the game says whether copy 0 and copy 1 are good,
   # peeks at copy 1's hearts, and loads copy 0 and the options. A saves copy 0 with 7 hearts;
-  # SELECT erases copy 1; START copies copy 0 over copy 1.
+  # B erases copy 1; START copies copy 0 over copy 1.
   private def files_game(save_memory: nil)
     built(save_memory: save_memory) do
       screen :bitmap
@@ -44,7 +44,7 @@ module SaveIntoGames
           hearts = 7
           file[0].save
         end
-        file[1].erase if pressed(:select)
+        file[1].erase if pressed(:b)
         file.copy 0, to: 1 if pressed(:start)
       end
     end
@@ -134,7 +134,7 @@ class TestSaveInto < Minitest::Test
     image = SaveImage.new
     Reference.save_into(image, program, :file, 0, hearts: 12)
     Reference.save_into(image, program, :file, 1, hearts: 4)
-    boot(program, image, pressing: { 2 => :select }, frames: 6)
+    boot(program, image, pressing: { 2 => :b }, frames: 6)
     assert_equal 0, boot(program, image)[:second_good], "erased"
 
     boot(program, image, pressing: { 2 => :start }, frames: 6)
