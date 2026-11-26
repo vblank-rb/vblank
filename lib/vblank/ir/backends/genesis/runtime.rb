@@ -37,13 +37,13 @@ module VBlank
           # effects (Effects).
           # +sprites_over_picture+ for a painted screen that shows sprites over its picture (Paint).
           # +counted+ for a game that reads how many frames it has shown since power-on (Frame::SETTING_UP).
-          # +second_pad+ for a game that reads the second pad (Frame.reads_second_pad?), and +team_player+ for
-          # one that reads a Team Player there (Frame.reads_team_player?).
+          # +second_pad+ for a game that reads the second pad (Frame.reads_second_pad?), and +tap_plugs+ how
+          # many of a Team Player's plugs there it reads (Frame.tap_plugs).
           def reserve(memory, picture: :none, colors: false, sound: false, songs: false, music_follows_level: false, effects: 0,
                       holds_music: false, wobbles: false, steps_shapes: false, swells: false, slides: false, sides: false, samples: false,
                       sprites_over_picture: false, scene_tiles: false, counted: false, glides: false, recorded_sides: false,
-                      second_pad: false, team_player: false, bends: false, effect_clock_step: nil)
-            Frame.reserve(memory, counted: counted, second_pad: second_pad, team_player: team_player)
+                      second_pad: false, tap_plugs: 0, bends: false, effect_clock_step: nil)
+            Frame.reserve(memory, counted: counted, second_pad: second_pad, tap_plugs: tap_plugs)
             Picture.reserve(memory, picture: picture, colors: colors, sprites: sprites_over_picture, scene_tiles: scene_tiles, bends: bends)
             Sound.reserve(memory) if sound
             Recordings.reserve(memory, glides: glides, sides: recorded_sides) if samples

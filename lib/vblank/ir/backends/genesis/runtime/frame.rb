@@ -177,6 +177,20 @@ module VBlank
               end
             end
 
+            # How many of the Team Player's plugs +program+ reads, the first plug the second player's: one
+            # for each player past the first, up to its `players:` or the highest player it names by
+            # number, whichever is more. A game of three or four stops the read after its own players'
+            # plugs, as a tap allows (the next frame starts it again from the handshake), and so never
+            # pays for a fifth player it does not seat. 0 for a game that reads no tap (#reads_team_player?).
+            def tap_plugs(program)
+              return 0 unless reads_team_player?(program)
+
+              named = program.walk.filter_map do |node|
+                node.player if %i[held pressed pulled].include?(node.kind) && node.player.is_a?(Integer)
+              end
+              [program.max_players.to_i, *named].max.clamp(3, OTHER_CONTROLLERS.size + 1) - 1
+            end
+
             # Whether +program+ reads a six-button pad's X or Y: a button of that name asked of a player. `:any`
             # alone does not count, so a game that never names them reads the pads as before.
             def reads_six_buttons?(program)
@@ -202,8 +216,8 @@ module VBlank
             # +counted+ for a game that reads how many frames it has shown since power-on (COUNTING,
             # SETTING_UP). Must be the first places reserved, so the interrupt's are at the start of
             # work RAM (#counting_block). +second_pad+ for a game that reads it (#reads_second_pad?), and
-            # +team_player+ for one that reads the third to fifth players (#reads_team_player?).
-            def reserve(memory, counted: false, second_pad: false, team_player: false)
+            # +tap_plugs+ how many of a Team Player's plugs it reads (#tap_plugs), 0 for none.
+            def reserve(memory, counted: false, second_pad: false, tap_plugs: 0)
               if counted
                 memory.reserve(COUNTING, 2)
                 memory.reserve(SETTING_UP, 2)
@@ -232,10 +246,10 @@ module VBlank
               [SECOND_HELD, SECOND_SEEN, SECOND_PRESSED, SECOND_PAD_HELD, SECOND_PAD_PRESSED, PLAYERS_PAST_FIRST].each do |name|
                 memory.reserve(name, 2)
               end
-              return unless team_player
+              return unless tap_plugs.positive?
 
-              OTHER_CONTROLLERS.drop(1).each { |controller| controller.to_h.each_value { |name| memory.reserve(name, 2) } }
-              memory.reserve(TAP_BUTTONS, 2 * OTHER_CONTROLLERS.size)
+              OTHER_CONTROLLERS.first(tap_plugs).drop(1).each { |controller| controller.to_h.each_value { |name| memory.reserve(name, 2) } }
+              memory.reserve(TAP_BUTTONS, 2 * tap_plugs)
             end
 
             # Whether the game whose places are in +memory+ reads the second pad (#reserve).
@@ -450,7 +464,7 @@ module VBlank
               emit_pad_noted(asm, at, SEEN, PAD_PRESSED, PAD_HELD)
               if team_player?(memory)
                 asm.jsr(asm.abs_l("rt_tap_read"))
-                OTHER_CONTROLLERS.each_with_index do |controller, index|
+                other_controllers(memory).each_with_index do |controller, index|
                   asm.move(:w, at.call(TAP_BUTTONS, index * 2), asm.d(0))
                   emit_pad_noted(asm, at, controller.seen, controller.pad_pressed, controller.pad_held)
                 end
@@ -463,8 +477,9 @@ module VBlank
               emit_read_buttons(asm, memory, at)
               return unless team_player?(memory)
 
-              emit_team_player_read(asm, at, six_buttons)
-              emit_tap_held_from_power_on(asm, at)
+              tapped = other_controllers(memory)
+              emit_team_player_read(asm, at, tapped.size, six_buttons)
+              emit_tap_held_from_power_on(asm, at, tapped)
             end
 
             # ### The Team Player
@@ -489,15 +504,14 @@ module VBlank
             # A port with no Team Player is a pad, read as one, and the third to fifth players hold
             # nothing. A tap that stops answering, or answers out of turn, holds nothing at all.
             #
-            # rt_tap_read: TAP_BUTTONS holds the second to fifth players' buttons, a bit each in
-            # IR::Buttons's order. D0 to D3 are used.
-            def emit_team_player_read(asm, at, six_buttons = false)
+            # rt_tap_read: TAP_BUTTONS holds the buttons of the first +plugs+ plugs (#tap_plugs), the
+            # second player's first, a bit each in IR::Buttons's order. D0 to D3 are used.
+            def emit_team_player_read(asm, at, plugs, six_buttons = false)
               h = Console::GenesisHardware
               asm.label("rt_tap_read")
               asm.jsr(asm.abs_l("rt_second_buttons_now"))
               asm.move(:w, asm.d(0), at.call(TAP_BUTTONS))
-              asm.clr(:l, at.call(TAP_BUTTONS, 2))
-              asm.clr(:w, at.call(TAP_BUTTONS, 6))
+              emit_tap_words_cleared(asm, at, 1, plugs)
               # rt_second_buttons_now leaves the port's two halves in D1 and D2, turned over.
               asm.move(:b, asm.d(1), asm.d(3))
               asm.and(:b, asm.imm(0x0F), asm.d(3))
@@ -529,8 +543,8 @@ module VBlank
                 asm.lsl(:w, 4, asm.d(4))
                 asm.or(:w, asm.d(0), asm.d(4))
               end
-              # The four plugs' buttons, the second to fifth players'.
-              asm.moveq(OTHER_CONTROLLERS.size - 1, asm.d(5))
+              # The plugs' buttons the game reads, the second player's first.
+              asm.moveq(plugs - 1, asm.d(5))
               asm.label("rt_tap_read_plug")
               asm.rol(:w, 4, asm.d(4))
               asm.move(:b, asm.d(4), asm.d(6))
@@ -564,8 +578,7 @@ module VBlank
               asm.dbra(asm.d(5), "rt_tap_read_plug")
               asm.bra("rt_tap_read_rest")
               asm.label("rt_tap_read_lost")
-              asm.clr(:l, at.call(TAP_BUTTONS))
-              asm.clr(:l, at.call(TAP_BUTTONS, 4))
+              emit_tap_words_cleared(asm, at, 0, plugs)
               asm.label("rt_tap_read_rest")
               asm.move(:b, asm.imm(TAP_REST), asm.ind(2))
               asm.move(:b, asm.imm(h::PAD_TH), asm.abs_l(h::PAD2_CONTROL))
@@ -594,6 +607,16 @@ module VBlank
               asm.branch(:eq, "rt_tap_read_no_extra")
               asm.or(:w, asm.imm(BUTTON_BITS.fetch(:y)), asm.disp(0, -2))
               asm.label("rt_tap_read_no_extra")
+            end
+
+            # TAP_BUTTONS's words from +first+ up to +plugs+ cleared, a long word where two are left.
+            def emit_tap_words_cleared(asm, at, first, plugs)
+              word = first
+              if (plugs - first).odd?
+                asm.clr(:w, at.call(TAP_BUTTONS, word * 2))
+                word += 1
+              end
+              (word...plugs).step(2) { |pair| asm.clr(:l, at.call(TAP_BUTTONS, pair * 2)) }
             end
 
             # One nibble of the Team Player, written in place, its labels named from +label+: TR set to
@@ -626,13 +649,14 @@ module VBlank
             # rt_tap_held_from_power_on: the Team Player's buttons held from power-on, read once work RAM
             # is cleared, made the first pass's, as Boot makes the first pad's; and the players past
             # the first holding any connected from the first pass (Reference#count_connected_players).
-            def emit_tap_held_from_power_on(asm, at)
+            # +controllers+ are the pads the tap's plugs give (#other_controllers).
+            def emit_tap_held_from_power_on(asm, at, controllers)
               asm.label("rt_tap_held_from_power_on")
               asm.jsr(asm.abs_l("rt_tap_read"))
-              OTHER_CONTROLLERS.each_with_index do |controller, index|
+              controllers.each_with_index do |controller, index|
                 asm.move(:w, at.call(TAP_BUTTONS, index * 2), at.call(controller.held))
               end
-              emit_players_past_first_raised(asm, at, OTHER_CONTROLLERS.map(&:held), "rt_tap_held_joined")
+              emit_players_past_first_raised(asm, at, controllers.map(&:held), "rt_tap_held_joined")
               asm.rts
             end
 
@@ -735,7 +759,7 @@ module VBlank
               asm.clr(:w, at.call(PAD_PRESSED))
               asm.move(:w, at.call(PAD_HELD), at.call(HELD))
               if team_player?(memory)
-                emit_tap_buttons_for_pass(asm, at)
+                emit_tap_buttons_for_pass(asm, at, other_controllers(memory))
               elsif second_pad?(memory)
                 emit_second_pad_taken(asm, at)
               end
@@ -774,16 +798,16 @@ module VBlank
               asm.move(:w, at.call(SECOND_PAD_HELD), at.call(SECOND_HELD))
             end
 
-            # The second to fifth players' buttons for the pass about to start, as the first's
+            # The buttons of +controllers+, the pads the tap's plugs give, for the pass about to start, as the first's
             # are taken; and each connected from the first pass a button of theirs went down in the
             # frames the last one took (Reference#count_connected_players).
-            def emit_tap_buttons_for_pass(asm, at)
-              OTHER_CONTROLLERS.each do |controller|
+            def emit_tap_buttons_for_pass(asm, at, controllers)
+              controllers.each do |controller|
                 asm.move(:w, at.call(controller.pad_pressed), at.call(controller.pressed))
                 asm.clr(:w, at.call(controller.pad_pressed))
                 asm.move(:w, at.call(controller.pad_held), at.call(controller.held))
               end
-              emit_players_past_first_raised(asm, at, OTHER_CONTROLLERS.map(&:pressed), "rt_read_buttons_joined")
+              emit_players_past_first_raised(asm, at, controllers.map(&:pressed), "rt_read_buttons_joined")
             end
 
             # STOPPING. rt_halt stops the game where it is: what it drew since its last frame is

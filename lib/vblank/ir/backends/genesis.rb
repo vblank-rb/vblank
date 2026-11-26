@@ -213,7 +213,7 @@ module VBlank
                                   sides: Music.sides_under_level?(program), samples: samples, scene_tiles: scene_tiles,
                                   glides: samples && Music.glides?(program), recorded_sides: samples && IR::Tunes.recorded_pans?(program),
                                   second_pad: Runtime::Frame.reads_second_pad?(program),
-                                  team_player: Runtime::Frame.reads_team_player?(program), bends: bends,
+                                  tap_plugs: Runtime::Frame.tap_plugs(program), bends: bends,
                                   effect_clock_step: clock_step)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           lowering = try.made = Lowering.new(program, memory: memory, scene_tiles: scene_tiles, scene_colors: scene_colors,

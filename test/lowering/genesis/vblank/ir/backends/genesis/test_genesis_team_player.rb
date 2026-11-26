@@ -37,18 +37,18 @@ class TestGenesisTeamPlayer < Minitest::Test
   # port read as a pad once, for its ID, two reads of the handshake that starts it (%0011, then
   # %1111), and fourteen nibbles: six of the header and two for each plug. Each read of the
   # handshake and each nibble is priced at what one nibble costs here (the rt_tap_read_*_wait and
-  # _there labels, over the fourteen the read here takes, and takes the handshake's answers from
-  # the ID read), the ID read at what the two-player game's second pad
-  # read costs, and each of the pads past the second's keeping at what the two-player game spends a pad on all
-  # its buttons' keeping besides the reads. A game that reads the tap reads and keeps all four of its
-  # plugs, whatever its players, so a game of four pays for three pads' keeping.
+  # _there labels, over the twelve the read here takes: a game of four stops after the third plug
+  # (Frame.tap_plugs), and takes the handshake's answers from the ID read), the ID read at what the
+  # two-player game's second pad read costs, and each of two more pads' keeping at what the
+  # two-player game spends a pad on all its buttons' keeping besides the reads. A game of four never
+  # pays for the fifth player's plug.
   def test_the_third_and_fourth_players_cost_less_than_plutiedevs_read_and_their_keeping
     two = button_lines(2)
     four = button_lines(4)
     nibble = four.select { |label, _| label.match?(/\Art_tap_read_.*_(wait|there)\z/) }.values.sum / 12
     pad_read = two.fetch("rt_second_buttons_now")
     keeping = (two.values.sum - two.fetch("rt_buttons_now") - pad_read) / 2
-    budget = ((2 + 14) * nibble) + pad_read + (3 * keeping)
+    budget = ((2 + 14) * nibble) + pad_read + (2 * keeping)
     extra = four.values.sum - two.values.sum
 
     assert_operator extra, :<, budget, "players 3 and 4 cost #{extra.round(2)} lines a frame, the budget #{budget.round(2)}"

@@ -2341,7 +2341,7 @@ module VBlank
           def value_of_chance(node) = value(Build.binop(:<, node.draw, Build.int(node.percent)))
 
           # The buttons held, or pressed, through the pass: a bit each, in IR::Buttons's order, and
-          # any of them for Buttons::ANY; each other player's pad's for `player: 2` to 4, and every pad
+          # any of them for Buttons::ANY; each other player's pad's for `player: 2` to 5, and every pad
           # the game reads for `player: :any` (Runtime::Frame::OTHER_CONTROLLERS).
           def value_of_held(node) = emit_button_truth([Runtime::Frame::HELD] + Runtime::Frame::OTHER_CONTROLLERS.map(&:held), node)
           def value_of_pressed(node) = emit_button_truth([Runtime::Frame::PRESSED] + Runtime::Frame::OTHER_CONTROLLERS.map(&:pressed), node)
