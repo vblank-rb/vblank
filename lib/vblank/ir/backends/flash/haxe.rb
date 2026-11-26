@@ -35,6 +35,17 @@ module VBlank
                          "put its folder on the PATH), or set HAXE_PATH to the compiler or to its folder."
           end
 
+          # The compiler's version, as it says it (`haxe --version`), read once: a movie built by another compiler is another movie.
+          def version
+            @version ||= begin
+              path, environment = compiler
+              out, status = Open3.capture2e(environment, path, "--version")
+              raise Error, "Haxe would not say its version:\n#{out}" unless status.success?
+
+              out.strip
+            end
+          end
+
           # Compiles the Haxe in +source_dir+ (its main class is +main+) into the movie at +swf+, which is
           # +width+ by +height+ and asks to be woken +frame_rate+ times a second. Gives back +swf+.
           def compile(source_dir, main:, swf:, width:, height:, frame_rate: 60, defines: [])

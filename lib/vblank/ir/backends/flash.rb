@@ -171,19 +171,22 @@ module VBlank
         # written and compiled under names of its own and then renamed into place, so two tests building the
         # same game at once each put down a whole file.
         def compile(source, width:, height:, defines: [])
-          dir = File.join(Dir.tmpdir, "vblank-flash", Digest::SHA256.hexdigest([source, OVERRIDES_TEXT, *defines].join("\n"))[0, 24])
+          dir = File.join(Dir.tmpdir, "vblank-flash", Digest::SHA256.hexdigest([source, OVERRIDES_TEXT, Haxe.version, *defines].join("\n"))[0, 24])
           swf = File.join(dir, "game.swf")
           return swf if File.exist?(swf)
 
           FileUtils.mkdir_p(dir)
           working = File.join(dir, "build-#{Process.pid}-#{rand(1 << 30)}")
           FileUtils.mkdir_p(working)
-          FileUtils.cp_r(File.join(RUNTIME_DIR, "overrides", "."), working)
-          File.write(File.join(working, "Main.hx"), WRITTEN_BY + source)
-          Haxe.compile(working, main: "Main", swf: File.join(working, "game.swf"), width: width, height: height, defines: defines)
-          FileUtils.mv(File.join(working, "Main.hx"), File.join(dir, "Main.hx"))
-          File.rename(File.join(working, "game.swf"), swf)
-          FileUtils.remove_entry(working)
+          begin
+            FileUtils.cp_r(File.join(RUNTIME_DIR, "overrides", "."), working)
+            File.write(File.join(working, "Main.hx"), WRITTEN_BY + source)
+            Haxe.compile(working, main: "Main", swf: File.join(working, "game.swf"), width: width, height: height, defines: defines)
+            FileUtils.mv(File.join(working, "Main.hx"), File.join(dir, "Main.hx"))
+            File.rename(File.join(working, "game.swf"), swf)
+          ensure
+            FileUtils.remove_entry(working) # whether Haxe took the game or refused it
+          end
           swf
         end
 
