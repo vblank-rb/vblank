@@ -2,7 +2,7 @@
 
 require "test_helper"
 
-# The original Mode's traces (test/lowering/flash/fixtures/mode) are what the remake is held to, so they must be
+# The original Mode's traces (test/lowering/flash/fixtures/mode) are the answer key a remake of it will be held to, so they must be
 # whole: every update from 1 to the last, one picture hash each, the sounds in between, and an end.
 class TestModeOriginalTraces < Minitest::Test
   FIXTURES = File.expand_path("../fixtures/mode", __dir__)

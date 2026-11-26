@@ -2,7 +2,7 @@
 
 `attract1.trace` and `attract2.trace` are what the original Mode (Adam Saltsman's flixel demo game, MIT licence)
 did, update by update, while it played each of its two attract-mode replays from start-up. They are the answer key
-the remake in `examples/mode/` is held to. One line each:
+a remake of it will be held to. One line each:
 
     update N HASH      after update N's picture is drawn: CRC-32 of the 320x240 picture, each pixel cut to
                        5 bits a channel and packed as a 15-bit colour (red lowest), two bytes each, low

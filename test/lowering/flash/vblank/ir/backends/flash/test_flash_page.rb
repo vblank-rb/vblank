@@ -90,7 +90,8 @@ class TestFlashPage < Minitest::Test
   module FlashPlayerHelper
     module_function
 
-    # The check number of the picture each time the movie painted it.
+    # The check number of the picture each time the movie painted it. The movie plays by the machine's clock, so
+    # it is played in real time and a busy machine can make a run differ; the harness's own clock will fix that.
     def painted(swf, frames:, keys: [])
       VBlank::Diagnostics::FlashPlayer.play(swf, frames: frames, keys: keys, real_time: true).grep(/\Apicture-crc /).map { |line| line.delete_prefix("picture-crc ") }
     end

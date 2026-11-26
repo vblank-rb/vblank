@@ -17,15 +17,31 @@ class TestFlashKindCoverage < Minitest::Test
   end
 
   # The kitchen-sink fixture touches every kind, so its Haxe calls everything a game can call. A function the
-  # runtime lacks is a gap named in the refusal, never a Haxe error found by compiling.
-  def test_every_function_the_fixture_calls_is_defined_or_named_as_a_gap
+  # runtime lacks is a gap named in the refusal, never a Haxe error found by compiling; and a gap is a function the
+  # JavaScript runtime defines (or a feature of the runtime), or it is a mistake of the lowering, not a part to port.
+  def test_every_function_the_fixture_calls_is_defined_or_named_as_a_gap_the_javascript_runtime_has
     program = ConformanceFixture.program
     lowering = Flash::Lowering.new(program)
     _text, gaps = VBlank::Testing::BuildChecks.without_checks { lowering.text_and_gaps(Flash::HEADLESS_FUNCTIONS) }
-    unnamed = gaps.reject { |gap| gap.start_with?("rg_") || gap.start_with?("the ") }
+    javascript = VBlank::IR::Backends::JS::RUNTIME.map { |file| File.read(File.join(VBlank::IR::Backends::JS::RUNTIME_DIR, file)) }.join +
+                 VBlank::IR::Backends::RuntimeFeatures.js_text(VBlank::IR::Backends::RuntimeFeatures::ALL)
+    defined_in_javascript = javascript.scan(/^function\*? (\w+)\(/).flatten
+    features = VBlank::IR::Backends::RuntimeFeatures::ALL.map { |feature| "the #{feature.name} feature" }
+    unknown = gaps.reject { |gap| defined_in_javascript.include?(gap) || features.include?(gap) }
 
-    assert_empty unnamed
+    assert_empty unknown
     assert_empty(gaps.select { |gap| Flash::HEADLESS_FUNCTIONS.include?(gap) }, "a function the runtime defines is no gap")
+  end
+
+  # Every form of statement the shared lowering can build has a place in the Haxe printer, or is a part of the file
+  # the printer leaves out on purpose.
+  def test_the_printer_has_a_form_for_every_statement
+    source = File.read(File.join(File.dirname(Flash::Lowering.instance_method(:text_and_gaps).source_location.first), "printer.rb"))
+    forms = VBlank::IR::Backends::Computer::Statements.constants.map(&:to_s)
+    c_alone = %w[Struct ConstGlobal] # a struct and a pointer, which no lowering for a computer but C's builds (the JavaScript printer has none either)
+    unprinted = forms.reject { |form| c_alone.include?(form) || source.include?("Statements::#{form}") }
+
+    assert_empty unprinted
   end
 
   def test_a_game_the_runtime_can_play_has_no_gap
