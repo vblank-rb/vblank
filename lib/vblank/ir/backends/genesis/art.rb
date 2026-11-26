@@ -286,6 +286,24 @@ module VBlank
             end
           end
 
+          # A picture of the pieces of several banks of colours (Assets::Image#banked?), cut into pieces like
+          # any picture of a console's own pieces. Each piece is its own sprite entry, and an entry names its
+          # palette line, so each piece is drawn from its own bank's list: the parts of the picture's colours
+          # are the banks named by `banks:`, in that order. A piece's places are counted within its own bank
+          # (Image#part_of_piece says which), and a bank takes a palette line only when a piece draws from it.
+          def cut_banked_picture(name, image, taker:)
+            @cuts[name] ||= begin
+              lines = {}
+              blocks = SpritePieces.group_rectangles(image, most: PIECE_SQUARES).reverse.map do |dx, dy, columns, rows, squares|
+                part = image.part_of_piece(squares.find { |own| own.each_byte.any?(&:positive?) } || squares.first)
+                line = lines[part] ||= ordered_palette(bank_colors(image, part), taker: "#{taker}, bank part #{part}")
+                tiles = squares.map { |own| TileBytes.of(own.bytes.map { |place| place.zero? ? 0 : place % image.bank_places }) }
+                Block.new(dx: dx, dy: dy, columns: columns, rows: rows, tiles: tiles, palette: line)
+              end
+              Cut.new(name: name, width: image.width, height: image.height, blocks: blocks, pieced: true, shows: name)
+            end
+          end
+
           # The runs of tiles the pieces of +names+ NAME (pictures cut already, of a console's own pieces),
           # stored the longest first. A short piece's tiles are often part of a long one's, as an original
           # draws a small piece from the middle of the tiles a big one uses; stored after the long run the
@@ -637,6 +655,12 @@ module VBlank
           end
 
           def sprite_taker(name) = "sprite picture :#{name}"
+
+          # The colours of bank part +part+ of a picture of several banks (15-bit), its see-through place left
+          # out, as a palette's places hold them.
+          def bank_colors(image, part)
+            image.colors[(part * image.bank_places) + 1, image.bank_places - 1].map { |color| color & 0x7FFF }
+          end
 
           # The colours +image+'s pixels are drawn in, as places of a palette hold them: for a picture of a
           # console's own pieces every piece's, the ones another piece hides too, since each piece keeps

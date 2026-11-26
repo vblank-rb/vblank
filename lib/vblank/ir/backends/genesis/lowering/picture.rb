@@ -282,7 +282,9 @@ module VBlank
               image = @cache.image(picture_named(name))
               @art.with_colors_of(colors_scene_of_picture(name)) do
                 remapped_showing(name).each { |obj| reserve_remapped_colors(obj) }
-                if (list = followed_list_of(name))
+                if image.banked?
+                  @art.cut_banked_picture(name, image, taker: "the picture :#{name}")
+                elsif (list = followed_list_of(name))
                   @art.cut_sprite_picture(name, image, palette: @art.reserve_held_palette([:sprites, list], own_colors(image)))
                 elsif recolored?(name) || follows_unchanging_list?(name)
                   @art.cut_sprite_picture(name, image, palette: @art.ordered_palette(own_colors(image)))

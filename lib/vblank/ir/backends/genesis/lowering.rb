@@ -288,7 +288,7 @@ module VBlank
           # The game's code, as sections for the Linker: its data, every routine a run can reach, and
           # the program itself.
           def sections
-            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet)
+            @plan.refuse_unbuildable!(not_lowered_yet: NOT_LOWERED_YET, not_made_yet: NotMadeYet, makes_poses_of_banks: true)
             refuse_unmade_picture!
             refuse_unmade_tile_runs!
             assign_background_layers unless painted?
