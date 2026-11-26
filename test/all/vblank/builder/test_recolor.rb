@@ -371,14 +371,14 @@ class TestRecolor < Minitest::Test
   end
 
   # A list nothing is drawn with shows nothing whatever it holds: a name spelled two ways.
-  def test_recoloring_a_list_no_sprite_draws_with_says_so
+  def test_recoloring_a_list_nothing_draws_with_says_so
     message = refused do
       sprite :ship, at: [40, 40]
       game_loop { recolor :slot, :warm }
     end
 
     assert_match(/list of colors :slot/, message)
-    assert_match(/no sprite or pool draws with it/, message)
+    assert_match(/no sprite, pool or background draws with it/, message)
   end
 
   # A picture given as colors records no places. Where its own list has one color at two
@@ -463,6 +463,20 @@ class TestRecolor < Minitest::Test
     warm = colors_of(:yellow, :orange)
 
     assert_equal [warm, warm, shown(:red)], background_and_ship_halves(recolored, frames: 3)
+  end
+
+  # A background can be the only thing drawn with the list: a title that fades its letters alone.
+  def test_a_background_alone_drawn_with_the_list_shows_the_colors_the_list_holds_now
+    alone = built do
+      image :plate, width: 8, height: 8, data: PLATE, colors: :slot
+      tiles :hull, "#" => :plate
+      plates = background :plates, tiles: :hull, map: ["#####"]
+      plates.draw_with :slot
+      game_loop { recolor :slot, :warm }
+    end
+    i = game_player.run(alone, frames: 3)
+
+    assert_equal colors_of(:yellow, :orange), [i.screen.pixel(1, 1), i.screen.pixel(5, 1)]
   end
 
   # A program with no game loop has no gap between frames to move the writes to, so the

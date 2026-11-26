@@ -530,8 +530,8 @@ module VBlank
 
         @changing_color_lists.each do |name, list|
           users = @sprite_recolors.select { |recolors| recolors.draws_with?(name) }
-          followed = @backdrop_list&.name == name || followed_by_poses.include?(name)
-          refuse_changing_list_without_sprites!(name) if users.empty? && !followed
+          followed = @backdrop_list&.name == name || followed_by_poses.include?(name) || @lists_backgrounds_draw_with.key?(name)
+          refuse_changing_list_nothing_draws!(name) if users.empty? && !followed
           users.each { |user| refuse_sets_ambiguous_for!(user, name, list.recolors.names) }
           drawn_in_list = ->(pose) { list_drawn_from(pose).last == declared_colors(name) }
           users.each { |user| (boot = user.follow_changing_list_for_good(name, drawn_in_list)) && at_boot(boot) }
@@ -689,12 +689,12 @@ module VBlank
         end
       end
 
-      # A list no sprite is drawn with shows nothing whatever it holds, which is a name
+      # A list nothing is drawn with shows nothing whatever it holds, which is a name
       # spelled two ways far more often than it is meant.
-      def refuse_changing_list_without_sprites!(name)
+      def refuse_changing_list_nothing_draws!(name)
         raise ArgumentError,
-              "#{changing_list_subject(name)} was told to hold other colors, but no sprite or pool draws " \
-              "with it. So nothing shows the colors it holds. To fix this, tell a sprite " \
+              "#{changing_list_subject(name)} was told to hold other colors, but no sprite, pool or background " \
+              "draws with it. So nothing shows the colors it holds. To fix this, tell a sprite or a background " \
               "`draw_with :#{name}`, or correct the name."
       end
 
