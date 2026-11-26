@@ -41,6 +41,44 @@ class TestSpriteDrawsWith < Minitest::Test
     assert_backends_agree(program { |ship| ship.draw_with :hurt }, frames: 2)
   end
 
+  # A sprite declared `draw_with: :hurt` is drawn with that list from power-on: its first frame
+  # shows the list, never its own colours, and `draw_with :own` later still puts them back.
+  private def declared_hurt(&game)
+    builder = Builder.new
+    builder.instance_eval do
+      screen :tiled
+      image :ship, width: 8, height: 8, data: SHIP, colors: OWN
+      colors :hurt, HURT
+      ship = sprite :ship, at: [40, 40], draw_with: :hurt
+      tick = var :tick, 0
+      game_loop do
+        tick += 1
+        instance_exec(ship, tick, &game) if game
+      end
+    end
+    builder.finalize_program
+    builder.program
+  end
+
+  def test_a_sprite_declared_with_a_list_shows_it_from_its_first_frame
+    shown = (1..3).map { |frames| game_player.run(declared_hurt, frames: frames).screen }
+
+    shown.each do |screen|
+      assert_equal Color.resolve(:yellow), screen.pixel(41, 41), "the first place of the list"
+      assert_equal Color.resolve(:white), screen.pixel(45, 41), "and the second"
+    end
+  end
+
+  def test_a_sprite_declared_with_a_list_still_goes_back_to_its_own
+    screen = game_player.run(declared_hurt { |ship, tick| ship.draw_with :own if tick == 2 }, frames: 6).screen
+
+    assert_equal Color.resolve(:red), screen.pixel(41, 41)
+  end
+
+  def test_the_console_draws_a_sprite_declared_with_a_list_from_its_first_frame
+    assert_backends_agree(declared_hurt, frames: 3)
+  end
+
   # Art drawn in characters takes a list too, so a hand-drawn sprite can be recoloured.
   def test_a_picture_drawn_in_characters_can_be_given_its_list
     builder = Builder.new
@@ -385,6 +423,45 @@ class TestSpriteDrawsWith < Minitest::Test
     end
 
     assert_match(/:hurt, which is not a list of colors/, error.message)
+  end
+
+  def test_declaring_a_sprite_with_its_own_colors_or_several_lists_is_a_friendly_error
+    [:own, { ship: :hurt }, %i[hurt hurt]].each do |given|
+      error = refused do
+        screen :tiled
+        image :ship, width: 8, height: 8, data: SHIP, colors: OWN
+        colors :hurt, HURT
+        sprite :ship, at: [40, 40], draw_with: given
+        game_loop {}
+      end
+
+      assert_match(/needs the name of one list/, error.message)
+    end
+  end
+
+  def test_declaring_a_sprite_with_a_list_its_poses_cannot_take_is_a_friendly_error
+    error = refused do
+      screen :tiled
+      image :left, width: 8, height: 8, data: SHIP, colors: OWN
+      image :right, width: 8, height: 8, data: SHIP, colors: [:transparent, :red, :green, :blue]
+      colors :hurt, [:transparent, :yellow, :white, :orange]
+      sprite :ship, at: [40, 40], facing: { left: :left, right: :right }, draw_with: :hurt
+      game_loop {}
+    end
+
+    assert_match(/different `colors:` lists/, error.message)
+  end
+
+  def test_declaring_a_sprite_with_a_list_too_short_is_a_friendly_error
+    error = refused do
+      screen :tiled
+      image :ship, width: 8, height: 8, data: SHIP, colors: OWN
+      colors :hurt, [:transparent, :yellow]
+      sprite :ship, at: [40, 40], draw_with: :hurt
+      game_loop {}
+    end
+
+    assert_match(/has 2 colors/, error.message)
   end
 
   def test_a_sprite_with_no_list_can_still_be_told_its_own_colors

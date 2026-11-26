@@ -344,6 +344,47 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
 
   TWIN_SPOT = [96, 136].freeze # Where the twin pose stands, and its copy 8 pixels to its right
   SPARK_SPOT = [120, 136].freeze # Where the spark stands (#players_of_one_pose_set)
+  STAGE_LIST = 3 # The list whose colours, last place first, the stage's walker is drawn in (#stage_list)
+  STAGE_PICTURE_LISTS = (3..9).to_a.freeze # The lists of the stage's own seven pictures
+
+  # A sprite declared `draw_with:` a list is drawn with it from power-on, so shown from another block
+  # before its declaration runs it shows that list, never its own colours, and the cartridge agrees
+  # with the interpreter on that first frame too.
+  def test_a_sprite_shown_from_another_block_first_shows_the_list_it_is_declared_with
+    prog = players_of_one_pose_set(repeated: true, stage_list: :shown_first)
+
+    shown = (8..14).map { |frames| shown_by(prog, frames).pixel(*SHOWN_FIRST_SPOT) }
+    refute_includes shown, first_color(WALKER_LIST), "the walker never in the pose's own colours"
+    assert_equal self.class.stage_list[1], shown.last, "the stage's walker in the stage's list"
+  end
+
+  SHOWN_FIRST_SPOT = [176, 64].freeze # Where the stage's walker stands when the demo shows it first
+
+  # The stage walker's list: STAGE_LIST's colours, last place first. Its colours are all in the set
+  # of the stage's first picture, in other places, so a copy made by colour finds them there with
+  # tiles of its own, and one drawn by place needs a set of its own.
+  def self.stage_list = [:transparent, *SceneColorLists.full_list(STAGE_LIST).drop(1).reverse]
+
+  # The stage's walker is declared `draw_with:` a list of the stage's, so the pose's own colours,
+  # which only the demo's first player shows, never show on the stage: the stage keeps no set for
+  # them, and its walker's set and seven pictures' sets fill its eight, keeping its squares.
+  def test_a_scene_declaring_a_pose_drawn_with_a_list_keeps_no_set_for_its_own_colours
+    prog = players_of_one_pose_set(repeated: true, stage_list: true)
+    snes = VBlank::IR::Backends::SNES.new
+    snes.build(prog)
+    refute(snes.findings.any? { |finding| finding.message.include?("pieces of 8") }, "the stage keeps its squares of 16×16")
+    stage = shown_by(prog, 4)
+
+    assert_equal self.class.stage_list[1], stage.pixel(0, 0), "the stage's walker in the stage's list"
+    STAGE_PICTURE_LISTS.each_with_index do |n, at|
+      assert_equal first_color(n), stage.pixel(at * 8, 136), "the stage's picture of list #{n}"
+    end
+    demo = shown_by(prog, 18)
+    assert_equal first_color(WALKER_LIST), demo.pixel(*player_spot(0)), "the first player in the pose's own list"
+    PLAYER_LISTS.each_with_index do |n, at|
+      assert_equal first_color(n), demo.pixel(*player_spot(at + 1)), "player #{at + 2}"
+    end
+  end
 
   # Where the demo's eight sets are full with the players' and one more copy wants a ninth, that
   # copy is made in tiles of its own from the sets there are, as the console's games do for a
@@ -368,12 +409,17 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
   # 20, and to #day_list at 16. With +repeated+, the walker's list holds its first colour at
   # REPEATED_PLACE too (#repeated_walker_list), and each player's list keeps the walker's colour
   # there (#repeated_player_list). With +spark+, a spark of 2×1 in the walker's list stands at
-  # SPARK_SPOT drawn with list 0, a list of a ninth set.
-  private def players_of_one_pose_set(changing: false, repeated: false, spark: false)
+  # SPARK_SPOT drawn with list 0, a list of a ninth set. With +stage_list+, the stage's walker is
+  # declared `draw_with: :stage_list` (#stage_list), beside seven pictures of lists of their own
+  # (STAGE_PICTURE_LISTS). With +stage_list+ of :shown_first, it is declared hidden, the demo is up
+  # first and shows it, the stage from tick 8, and the stage waits for a frame before the line that
+  # declares it.
+  private def players_of_one_pose_set(changing: false, repeated: false, spark: false, stage_list: false)
     test = self.class
     walker_list = WALKER_LIST
     players = PLAYER_LISTS
     twin_spot = TWIN_SPOT
+    held = {} # the stage's walker, for the game loop to show
     program do
       screen :tiled
       colors :walker_list, repeated ? test.repeated_walker_list : SceneColorLists.full_list(walker_list)
@@ -403,9 +449,21 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         image(:spark, width: 2, height: 1, colors: :walker_list, places: [3, 4])
       end
       spark_spot = SPARK_SPOT
-      state = var :state, 0
+      state = var :state, (stage_list == :shown_first ? 1 : 0)
       tick = var :tick, 0
-      scene(:stage) { sprite :stage_walker, at: [0, 0], **shows }
+      if stage_list
+        colors :stage_list, test.stage_list
+        stage_pictures = test::STAGE_PICTURE_LISTS.map { |n| test.declare_picture(self, n) }
+        scene(:stage) do
+          wait_vblank if stage_list == :shown_first
+          stage_walker = sprite :stage_walker, at: (stage_list == :shown_first ? test::SHOWN_FIRST_SPOT : [0, 0]),
+                                               shown: stage_list != :shown_first, draw_with: :stage_list, **shows
+          held[:stage_walker] = stage_walker
+          stage_pictures.each_with_index { |name, at| sprite name, at: [at * 8, 136] }
+        end
+      else
+        scene(:stage) { sprite :stage_walker, at: [0, 0], **shows }
+      end
       scene(:demo) do
         sprite :demo_walker, at: test.player_spot(0), **shows
         players.each_with_index do |n, at|
@@ -418,10 +476,11 @@ class TestSceneSpriteColorsOnTheSuperNintendo < Minitest::Test
         copy = sprite :twin_copy, image: :twin, at: [twin_spot[0] + 8, twin_spot[1]]
         copy.draw_with :twin_copy_list
         sprite(:spark, image: :spark, at: spark_spot).draw_with :spark_list if spark
+        held[:stage_walker].show if stage_list == :shown_first
       end
       game_loop do
         tick += 1
-        state = 1 if tick == 8
+        state = (stage_list == :shown_first ? 0 : 1) if tick == 8
         if changing
           players.each { |n| recolor :"list#{n}", :"dusk#{n}" } if tick == 12 || tick == 20
           players.each { |n| recolor :"list#{n}", :"day#{n}" } if tick == 16

@@ -511,14 +511,20 @@ module VBlank
 
           which = one_list
         end
-        @recolors ||= begin
-          @colors_var = :"#{@object_name}_colors"
-          @builder.make_object_recolorable(@object_node, @colors_var)
-          Recolors.new(@builder, subject: "The sprite :#{@object_node.declared || @poses.first}", poses: @poses,
-                                 choice_var: @colors_var)
-                   .attach_object(@object_node)
-        end
+        recolors
+        undo_drawn_with_from_start unless which.is_a?(Symbol) && which != Recolors::OWN && showing.nil?
         @recolors.draw_with(Value.new(@builder, Build.var_ref(@colors_var), name: @colors_var), which, showing)
+        self
+      end
+
+      # The sprite drawn with the list +name+ from power-on (`sprite ..., draw_with: name`): its choice
+      # of colours starts at that list, so it never shows its own colours, and its object says so
+      # (IR::Nodes::Object#drawn_with_from_start). The list is checked as #draw_with checks it. A
+      # later `draw_with :own`, or a list picked by a number, which can name none, takes the mark away.
+      def draw_with_from_power_on(name) # :nodoc:
+        start = recolors.number_of_list(name)
+        @colors_boot.value = Build.int(start)
+        @object_node.drawn_with_from_start = true
         self
       end
 
@@ -551,6 +557,22 @@ module VBlank
       end
 
       private
+
+      # The lists the sprite can be drawn with, made the first time it is drawn with one.
+      def recolors
+        @recolors ||= begin
+          @colors_var = :"#{@object_name}_colors"
+          @colors_boot = @builder.make_object_recolorable(@object_node, @colors_var)
+          Recolors.new(@builder, subject: "The sprite :#{@object_node.declared || @poses.first}", poses: @poses,
+                                 choice_var: @colors_var)
+                   .attach_object(@object_node)
+        end
+      end
+
+      # A sprite drawn with a list from power-on (#draw_with_from_power_on) told its own colours, or a
+      # list picked by a number, can show its own colours after all, from where that is written on.
+      # It still starts in the list it was declared with.
+      def undo_drawn_with_from_start = (@object_node.drawn_with_from_start = nil)
 
       # A sprite that follows its lists shows what each list holds, and one drawn with one other list
       # shows that list: it cannot be told both.

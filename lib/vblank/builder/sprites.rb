@@ -139,18 +139,37 @@ module VBlank
       # * `in_front:` - `true` draws the sprite over a background's cells marked `cells_in_front:`
       #   as well as over everything else, as a cursor or a speech box frame sits over scenery its
       #   characters walk behind.
+      # * `draw_with:` - the name of a list declared with `colors` that the sprite is drawn with from
+      #   power-on, as `draw_with` draws it from where it is written: a second player in colours of
+      #   their own. It never shows its own colours, so a console that keeps its colours by screen
+      #   keeps none for them on a screen of only such sprites. A later `draw_with` changes it as ever.
       #--
       # A sprite's `hitbox:` default is per-pixel collision, gated by the visible-pixel box. The
       # in_front frame draws the sprite after every sprite not in front
       # (Builder#finalize_present_lists), so it is in front of those too: the console keeps a
       # priority bit in each sprite as it does in each cell. Returns a Sprite or a HardwareSprite.
       #++
-      def sprite(name, image: nil, in_front: false, **settings)
+      def sprite(name, image: nil, in_front: false, draw_with: nil, **settings)
         refuse_image_beside_poses!(name, settings) if image
         handle = sprite_handle(image || name, **settings)
         put_sprite_in_front!(name, handle) if refuse_bad_in_front!(name, in_front)
+        draw_sprite_with_from_power_on!(name, handle, draw_with) if draw_with
         declared_sprites << DeclaredSprite.new(name: name, handle: handle)
         handle
+      end
+
+      # A sprite declared `draw_with: list`, drawn with it from power-on
+      # (HardwareSprite#draw_with_from_power_on). The list is the name of one list declared with
+      # `colors`; the sprite's own colours, a set of lists or a hash are what `draw_with` is for.
+      def draw_sprite_with_from_power_on!(name, handle, list)
+        return handle.draw_with(list) unless handle.is_a?(DSL::HardwareSprite)
+
+        if !list.is_a?(Symbol) || list == DSL::Recolors::OWN || list_chosen_at_start?(list)
+          raise ArgumentError, "Sprite :#{name} has `draw_with: #{list.inspect}`. `draw_with:` needs the name of one list " \
+                               "declared with `colors`. To show the sprite in its own colours, remove `draw_with:`. To " \
+                               "change its colours while the game runs, use `draw_with` on the sprite."
+        end
+        handle.draw_with_from_power_on(list)
       end
 
       # A sprite in front (`in_front: true`) is drawn over a background's cells marked in front of
@@ -209,7 +228,7 @@ module VBlank
           sprites.one? ? sprites.first.handle.reading_named(name) : IR::SharedName.new(name: name, count: sprites.size)
         end
       end
-      private :declared_sprites, :refuse_image_beside_poses!, :finalize_sprite_readings, :refuse_bad_in_front!,
+      private :declared_sprites, :refuse_image_beside_poses!, :draw_sprite_with_from_power_on!, :finalize_sprite_readings, :refuse_bad_in_front!,
               :put_sprite_in_front!
 
       # The sprite itself, painted on a bitmap screen or the console's own on a tiled one (#sprite).
@@ -364,14 +383,17 @@ module VBlank
 
       # Make a hardware sprite able to draw with other colours (see HardwareSprite#draw_with):
       # the same shape as #make_object_rotatable. Its choice starts at its own colours, and a
-      # sprite never told otherwise keeps the constant and emits nothing for it.
+      # sprite never told otherwise keeps the constant and emits nothing for it. Hands back the
+      # statement that sets the choice at power-on, nil where the sprite had one already.
       # Hook behind `draw_with` on a sprite: gives it somewhere to keep its choice of colours. Documented on `colors` and `draw_with`.
       def make_object_recolorable(object_node, colors_var)  # :nodoc:
         return unless object_node.recolor.kind == :int
 
-        at_boot(Build.set(colors_var, Build.int(Build::NO_RECOLOR)))
+        boot = Build.set(colors_var, Build.int(Build::NO_RECOLOR))
+        at_boot(boot)
         ensure_var(colors_var)
         object_node.recolor = Build.var_ref(colors_var)
+        boot
       end
 
       # Make a hardware sprite able to change layer (see HardwareSprite#put_in_layer): allocate

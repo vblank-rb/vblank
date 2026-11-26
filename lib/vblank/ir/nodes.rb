@@ -1495,13 +1495,18 @@ module VBlank
         # thing after every thing not marked, so it is also in front of every other sprite, which
         # is how that console tells which sprite's pixel to show before it asks the priority.
         # Absent otherwise.
+        #
+        # +drawn_with_from_start+ means it never shows in its own colours: +recolor+ starts at one of
+        # its +recolors+ from power-on, and it is never told its own colours or a list picked by a
+        # number. A target that keeps sets of colours by scene keeps none for a picture's own colours
+        # where every thing showing the picture is drawn so. Absent otherwise.
         operands name: :name, declared: :name,
                  poses: :list, pose: :value, x: :value,
                  y: :value, active: :value, angle: :value,
                  scale: :value, layer: :name, scene: :name,
                  recolor: :value, recolors: :list,
                  layers: :list, layer_pick: :name, over_picture: :flag, follows: :name, follows_each: :list,
-                 follows_unchanging: :list, in_front: :flag
+                 follows_unchanging: :list, in_front: :flag, drawn_with_from_start: :flag
 
         # The ColorList a pose drawn from the list named +colors_name+ follows (see +follows_each+),
         # or nil for a pose that is shown as it was drawn.

@@ -67,6 +67,11 @@ module VBlank
         write_choice(choice, requested_lists!(which, showing), showing)
       end
 
+      # The number the objects count the list +which+ by, checked as #draw_with checks it, with no
+      # write of a choice: for a sprite drawn with the list from power-on, whose choice starts there
+      # (HardwareSprite#draw_with_from_power_on).
+      def number_of_list(which) = list_offset_for(requested_lists!(which, nil))
+
       # The same, for names already checked: nil for the own colours, or the names in order.
       # +choice+ is the game's own variable.
       def write_choice(choice, names, showing)

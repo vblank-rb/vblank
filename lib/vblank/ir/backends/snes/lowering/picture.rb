@@ -559,6 +559,21 @@ module VBlank
               scenes_of(@objects.values.select { |obj| obj.poses.include?(name) })
             end
 
+            # The scenes whose sprites can show the picture +name+ in its own colours, as
+            # #colors_scenes_of_picture gives them: a sprite drawn with another list from before it can
+            # show (IR::Nodes::Object#drawn_with_from_start) never does, so a screen of only such
+            # sprites keeps no set for the picture's own colours, and that set is free for the
+            # screen's other pictures. None where no sprite can: the picture's pieces then name a set
+            # that holds other colours, which is right only because nothing ever shows them. Nil for
+            # every screen, as there.
+            def own_colors_scenes_of_picture(name)
+              own = @objects.values.select { |obj| obj.poses.include?(name) && !obj.drawn_with_from_start }
+              return colors_scenes_of_picture(name) if @tile_runs.any? { |run| run.picture == name }
+              return [] if own.empty?
+
+              colors_scenes_of_picture(name) && scenes_of(own)
+            end
+
             # The same for the copy of the picture +pose+ drawn with +list+.
             def scene_of_recolored(pose, list) = one_scene_of(objects_wearing(pose, list))
 
@@ -704,7 +719,7 @@ module VBlank
 
               (@list_places_of ||= {}).fetch(name) do
                 @list_places_of[name] = sharing_or_nil do
-                  @art.list_places_palette(palette_colors(image.colors), colors_scenes_of_picture(name), mixed: mixed)
+                  @art.list_places_palette(palette_colors(image.colors), own_colors_scenes_of_picture(name), mixed: mixed)
                 end
               end
             end
