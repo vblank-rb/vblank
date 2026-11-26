@@ -459,12 +459,18 @@ static function fade_nothing():Void { paint_fade = null; }
 /* Reference#placed_fade_in_picture?: a placed fade in force changes the backdrop, which is behind everything. */
 static function placed_fade_in_picture():Bool { return rg_hook_paint_fade_for(RG_NO_LAYER) != null; }
 
+/* The colour a filter shows +color+ as. A filter's table holds the colour plus one, and 0 for one not worked out yet
+ * (which a movie's new vector holds to begin with), and its +fill+ works a colour out, stores it and answers it. */
+static inline function through_filter(filter:RgShownFilter, color:Int):Int {
+  var held = filter.table[color];
+  return held != 0 ? held - 1 : filter.fill(color);
+}
+
 /* Framebuffer#apply_placed_fade: a colour as it is painted while a placed fade reaches it. */
 static function faded_as_painted(color:Int):Int {
   var masked = color & 0xFFFF;
   if (paint_fade == null) return masked;
-  var faded = paint_fade.table[masked];
-  return faded < 0 ? paint_fade.fill(masked) : faded;
+  return through_filter(paint_fade, masked);
 }
 
 /* --- see-through layers --- */
@@ -791,33 +797,22 @@ static function rg_screen_shown():Vector<Int> {
       if (in_front != RG_NOTHING_IN_FRONT) {
         // a sprite over the picture is not in blocks
         color = in_front;
-        if (fade_here) {
-          color = fade.table[in_front];
-          if (color < 0) color = fade.fill(in_front);
-        }
+        if (fade_here) color = through_filter(fade, in_front);
       } else {
         var from_x = (columns != null ? columns[x] : x) + camera_x;
         var at = from_y * RG_SCREEN_WIDTH + from_x;
         var stored = on_screen(from_x, from_y) ? viewed[at] : 0;
         if (fade != null && fade.remix && on_screen(from_x, from_y) && picture_mixes.is_mixed[at] != 0) {
           // Framebuffer#shown_color: a mixed cell is mixed again from its two sides, each through the table
-          var top = fade.table[picture_mixes.tops[at]];
-          if (top < 0) top = fade.fill(picture_mixes.tops[at]);
-          var under = fade.table[picture_mixes.unders[at]];
-          if (under < 0) under = fade.fill(picture_mixes.unders[at]);
+          var top = through_filter(fade, picture_mixes.tops[at]);
+          var under = through_filter(fade, picture_mixes.unders[at]);
           color = mixed_with_under(top, under, mixed_cells_by);
         } else {
           color = stored;
-          if (fade_here) {
-            color = fade.table[stored];
-            if (color < 0) color = fade.fill(stored);
-          }
+          if (fade_here) color = through_filter(fade, stored);
         }
       }
-      if (dim != null && (!dim_covers || filter_row_covers(dim.rows, y * 3, x))) {
-        var dimmed = dim.table[color];
-        color = dimmed < 0 ? dim.fill(color) : dimmed;
-      }
+      if (dim != null && (!dim_covers || filter_row_covers(dim.rows, y * 3, x))) color = through_filter(dim, color);
       shown[y * RG_SCREEN_WIDTH + x] = held != 0 ? 0x7FFF : color;
     }
   }

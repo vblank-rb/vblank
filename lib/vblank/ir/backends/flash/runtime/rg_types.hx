@@ -62,8 +62,8 @@ class RgDrawnSprite {
 }
 
 /* The filter the finished picture is read through while a fade or a light changes a colour: the colour shown
- * for each value a cell can hold (-1 where it is not worked out yet, which +fill+ works out), and where it
- * reaches (see runtime_features.rb). */
+ * for each value a cell can hold, plus one (0 where it is not worked out yet, which +fill+ works out: see
+ * through_filter), and where it reaches (see runtime_features.rb). */
 class RgShownFilter {
   public var table:Vector<Int>;
   public var everywhere:Bool;
