@@ -334,7 +334,7 @@ static function rg_clock_starts_at(seconds:Float, ticks:Int, set:Int):Void {
   rg_clock_counts_frames = 1;
   rg_clock_seconds = RG_CLOCK_KEEPS_DATE != 0
     ? seconds
-    : RG_UNDATED_FIRST_DAY * RG_SECONDS_A_DAY * 1.0 + (seconds - rg_floor(seconds / RG_SECONDS_A_DAY) * RG_SECONDS_A_DAY);
+    : RG_UNDATED_FIRST_DAY * 1.0 * RG_SECONDS_A_DAY + (seconds - rg_floor(seconds / RG_SECONDS_A_DAY) * RG_SECONDS_A_DAY);
   rg_clock_ticks = ticks;
 }
 
@@ -368,7 +368,7 @@ static function rg_clock_reads(year:Int, month:Int, day:Int, hour:Int, minute:In
   rg_clock_present = 1;
   rg_clock_set = 1;
   rg_clock_counts_frames = 0;
-  rg_clock_seconds = rg_days_from_date(year, month, day) * RG_SECONDS_A_DAY * 1.0 + hour * 3600 + minute * 60 + second;
+  rg_clock_seconds = rg_days_from_date(year, month, day) * 1.0 * RG_SECONDS_A_DAY + hour * 3600 + minute * 60 + second;
   rg_clock_ticks = 0;
 }
 
@@ -391,9 +391,9 @@ static function rg_clock_reading(reading:Int, offset_days:Int, offset_seconds:In
   if (RG_CLOCK_KEEPS_DATE == 0 && offset_days == 0 && offset_seconds == 0) return 0;
   if (reading == RG_CLOCK_SET) return 1;
 
-  var now:Float = rg_clock_seconds + offset_days * RG_SECONDS_A_DAY * 1.0 + offset_seconds;
+  var now:Float = rg_clock_seconds + offset_days * 1.0 * RG_SECONDS_A_DAY + offset_seconds;
   var days = Std.int(rg_floor(now / RG_SECONDS_A_DAY));
-  var into_day = Std.int(now - days * RG_SECONDS_A_DAY * 1.0);
+  var into_day = Std.int(now - days * 1.0 * RG_SECONDS_A_DAY);
   var date = rg_date_from_days(days);
   switch (reading) {
     case RG_CLOCK_HOUR: return rg_floor_div(into_day, 3600);
@@ -418,7 +418,7 @@ static function rg_clock_set_to(year:Int, month:Int, day:Int, hour:Int, minute:I
   if (rg_clock_present == 0) return;
   var today = Std.int(rg_floor(rg_clock_seconds / RG_SECONDS_A_DAY));
   var days = rg_days_from_date(year, month, day) - today;
-  var seconds = hour * 3600 + minute * 60 + second - Std.int(rg_clock_seconds - today * RG_SECONDS_A_DAY * 1.0);
+  var seconds = hour * 3600 + minute * 60 + second - Std.int(rg_clock_seconds - today * 1.0 * RG_SECONDS_A_DAY);
   if (seconds < 0) {
     seconds += RG_SECONDS_A_DAY;
     days -= 1;
