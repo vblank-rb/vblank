@@ -5,6 +5,7 @@
 //!   rg_start(text)     the frames to play, then each option on a line of its own, once, before frame 1
 //!   rg_buttons(line)   the buttons for the frame about to be played, as a line of numbers
 //!   rg_picture()       the picture as a string, a character for each pixel, for the picture file
+//!   rg_save_hex()      the save memory as hex digits, for the save file (written when the game ends)
 //!
 //! The movie traces "buttons?" when a frame has ended and it is waiting for the next frame's buttons. The
 //! harness then reads standard input a line at a time: the line "picture" asks it to write the picture
@@ -81,9 +82,34 @@ fn write_picture(path: &str, player: &Arc<Mutex<Player>>) {
     }
 }
 
-fn finish(player: &Arc<Mutex<Player>>, picture_out: Option<&str>, exit_request: &ExitRequest) -> ! {
+/// The save memory the movie holds, as bytes (it gives them as hex digits; none for a game with no save memory).
+fn save_bytes(player: &Arc<Mutex<Player>>) -> Vec<u8> {
+    let digits = match player.lock().unwrap().call_internal_interface("rg_save_hex", []) {
+        Value::String(text) => text,
+        _ => String::new(),
+    };
+    (0..digits.len() / 2).filter_map(|at| u8::from_str_radix(&digits[at * 2..at * 2 + 2], 16).ok()).collect()
+}
+
+/// Writes the save file as the movie holds it: whole, under another name first and then renamed into place.
+fn write_save(path: &str, player: &Arc<Mutex<Player>>) {
+    let bytes = save_bytes(player);
+    if bytes.is_empty() {
+        return;
+    }
+    let writing = format!("{path}.writing");
+    if std::fs::write(&writing, bytes).and_then(|_| std::fs::rename(&writing, path)).is_err() {
+        eprintln!("the save memory could not be written to {path}");
+        exit(1);
+    }
+}
+
+fn finish(player: &Arc<Mutex<Player>>, picture_out: Option<&str>, save_file: Option<&str>, exit_request: &ExitRequest) -> ! {
     if let Some(path) = picture_out {
         write_picture(path, player);
+    }
+    if let Some(path) = save_file {
+        write_save(path, player);
     }
     let _ = std::io::stdout().flush();
     let message = exit_request.message.borrow();
@@ -100,6 +126,7 @@ pub fn play_headless(
     frames: u32,
     options: &[String],
     picture_out: Option<&str>,
+    save_file: Option<&str>,
     asked_for_buttons: &Rc<Cell<bool>>,
     exit_request: &Rc<ExitRequest>,
 ) -> ! {
@@ -107,6 +134,12 @@ pub fn play_headless(
     for option in options {
         start.push('\n');
         start.push_str(option);
+    }
+    // The save memory the game starts with, from the file a test handed over, if there is one.
+    if let Some(bytes) = save_file.and_then(|path| std::fs::read(path).ok()) {
+        let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
+        start.push_str("\n--save-bytes\n");
+        start.push_str(&digits);
     }
     player.lock().unwrap().call_internal_interface("rg_start", [Value::String(start)]);
 
@@ -123,7 +156,7 @@ pub fn play_headless(
             player.audio_mut().tick();
         }
         if exit_request.requested.get() {
-            finish(player, picture_out, exit_request);
+            finish(player, picture_out, save_file, exit_request);
         }
         if !asked_for_buttons.replace(false) {
             continue;

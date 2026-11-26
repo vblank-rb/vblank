@@ -14,7 +14,7 @@ module VBlank
         # it is asked for (the harness is asked, between a frame's end and its buttons), since a movie
         # writing every frame's picture costs more than playing the frame.
         #
-        # What the movie does not do yet (sound, saves, the state image and the start file) is
+        # What the movie does not do yet (sound, the state image and the start file) is
         # refused before the run starts, as a question the lowering cannot answer.
         class HeadlessRun < Computer::HeadlessRun
           # Raised for something a test asks that the Flash lowering cannot answer yet. The shared one's,
@@ -40,10 +40,6 @@ module VBlank
           def refuse_unmade!(what)
             raise CannotAnswer, "the Flash lowering cannot answer yet: #{what}. Its runtime does not make it."
           end
-
-          # A game that keeps save memory calls a runtime the Flash build has not got, which refuses it by
-          # name before it starts; this is for a save handed to a game that does not keep one.
-          def save_options(_dir) = []
 
           # The program is waiting for its buttons from here until they are sent: the picture is asked for
           # of the harness then.

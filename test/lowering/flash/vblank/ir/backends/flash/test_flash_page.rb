@@ -50,6 +50,22 @@ class TestFlashPage < Minitest::Test
     assert_includes moving, painted.last
   end
 
+  # A game that saves keeps its save memory in a SharedObject, written when it has changed and been quiet a moment.
+  def test_a_game_that_saves_keeps_its_save_memory
+    saver = VBlank.game "saver", consoles: %i[gba] do
+      best = save_var :best, 0
+      best.store!(7)
+      game_loop do
+        clear_screen :black
+      end
+    end
+    swf = Flash.new.build_swf(saver, File.join(@folder, "saver.swf"), console: :gba, trace_pictures: true, err: StringIO.new)
+    saved = VBlank::Diagnostics::FlashPlayer.play(swf, frames: 12, real_time: true).grep(/\Asaved /)
+
+    refute_empty saved
+    assert_match(/07000000/, saved.last, "the number 7, low byte first, is in what was kept")
+  end
+
   def test_the_movie_is_for_the_size_of_the_screen_enlarged
     movie = File.binread(@swf)
     body = movie.start_with?("CWS") ? Zlib::Inflate.inflate(movie[8..]) : movie[8..]

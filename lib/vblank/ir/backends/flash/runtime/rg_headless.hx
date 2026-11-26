@@ -14,10 +14,10 @@
  * It talks to the harness through ExternalInterface: the harness calls rg_start with the options (as the
  * C runtime's command line has them: --every-picture, --held-from-power-on MASK, --picture-out FILE, the
  * last the harness's own), rg_buttons with each frame's buttons, and rg_picture for the picture as the
- * harness's file holds it. rg_start is given one string: the frames to play, then each option on a line of its own. Each frame is one ENTER_FRAME: it plays the game from where it stopped to its
+ * harness's file holds it, and rg_save_hex for the save memory the harness's file holds when the game ends. rg_start is given one string: the frames to play, then each option on a line of its own. Each frame is one ENTER_FRAME: it plays the game from where it stopped to its
  * next frame boundary.
  *
- * Left out of what rg_headless.js does: sound, saves, the state image, the start file and matches. The run that asks for one says so before it starts (Flash::HeadlessRun).
+ * Left out of what rg_headless.js does: sound, the state image, the start file and matches. The run that asks for one says so before it starts (Flash::HeadlessRun).
  */
 
 static var headless_frames_to_play:Int = 0;
@@ -139,6 +139,15 @@ static function headless_start(given:String):Void {
     } else if (option == "--held-from-power-on" && at + 1 < options.length) {
       rg_players_held_from_power_on(headless_players(options[at + 1]));
       at++;
+    } else if (option == "--save-bytes" && at + 1 < options.length) {
+      if (!rg_save_load_hex(options[at + 1])) {
+        headless_exit(2, "the file the game was handed is not this game's save memory, which is " + rg_save_size() + " bytes");
+        return;
+      }
+      at++;
+    } else if (option == "--save-cut-after" && at + 1 < options.length) {
+      rg_save_cut_power_after(Std.parseInt(options[at + 1]));
+      at++;
     } else if (option == "--clock-at" && at + 3 < options.length) {
       rg_clock_starts_at(Std.parseFloat(options[at + 1]), Std.parseInt(options[at + 2]), Std.parseInt(options[at + 3]));
       at += 3;
@@ -187,5 +196,6 @@ static function main():Void {
   flash.external.ExternalInterface.addCallback("rg_start", headless_start);
   flash.external.ExternalInterface.addCallback("rg_buttons", headless_buttons);
   flash.external.ExternalInterface.addCallback("rg_picture", headless_picture);
+  flash.external.ExternalInterface.addCallback("rg_save_hex", rg_save_hex);
   flash.Lib.current.addEventListener(flash.events.Event.ENTER_FRAME, headless_on_frame);
 }

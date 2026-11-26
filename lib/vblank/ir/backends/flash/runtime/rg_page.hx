@@ -12,7 +12,7 @@
  * Built with the define rg_trace_pictures, it traces the picture's check number each time it paints (Flash#build_swf's
  * trace_pictures), which is how a test sees what the stage would show.
  *
- * What it does not do yet: sound, saves, a menu, a gamepad. Left out of the movie, a game that needs one is
+ * What it does not do yet: sound, a menu, a gamepad. Left out of the movie, a game that needs one is
  * refused by name before it is built (Flash#runtime_gaps).
  */
 
@@ -25,6 +25,7 @@ static var page_keys_down:Array<Int> = [];
 static var page_started_at:Int = 0;
 static var page_passes:Int = 0;
 static var page_stopped:Bool = false;
+static var page_shared:flash.net.SharedObject = null;
 
 /* The 15-bit colours as the opaque 24-bit ones the picture shows, each channel widened by repeating its top
  * bits underneath ((c << 3) | (c >> 2)), so the brightest is 255 and not 248. */
@@ -89,10 +90,12 @@ static function page_play_pass():Void {
     if (rg_frame_ends_late() != 0) {
       rg_frame_begins();
       page_paint();
+      page_store_saves();
       return;
     }
     if (rg_frame_begins() == 0) {
       page_paint();
+      page_store_saves();
       return;
     }
   }
@@ -115,6 +118,24 @@ static function page_on_frame(_:flash.events.Event):Void {
   if (played == PAGE_MOST_PASSES) page_passes = due; // too far behind to catch up
 }
 
+/* The save memory is kept in a SharedObject of the game's own (named by the digest of the build), as hex digits,
+ * written when the game has changed it and been quiet a moment (rg_save_file_is_due). */
+static function page_keep_saves():Void {
+  if (rg_save_size() == 0) return;
+  page_shared = flash.net.SharedObject.getLocal("vblank-" + RG_GAME_BUILD.substr(0, 24));
+  if (Std.isOfType(page_shared.data.save, String)) rg_save_load_hex(page_shared.data.save);
+}
+
+static function page_store_saves():Void {
+  if (page_shared == null || rg_save_file_is_due() == 0) return;
+  page_shared.data.save = rg_save_hex();
+  page_shared.flush();
+  rg_save_file_written();
+  #if rg_trace_pictures
+  flash.Lib.trace("saved " + page_shared.data.save);
+  #end
+}
+
 /* The driver's part of what the game asks of its runtime: a page prints nothing. */
 static function rg_dump_variable(name:String, value:Int):Void {}
 static function rg_dump_list(list:RgList):Void {}
@@ -130,6 +151,7 @@ static function main():Void {
   flash.Lib.current.addChild(bitmap);
   stage.addEventListener(flash.events.KeyboardEvent.KEY_DOWN, function(event:flash.events.KeyboardEvent) { page_key(event, true); });
   stage.addEventListener(flash.events.KeyboardEvent.KEY_UP, function(event:flash.events.KeyboardEvent) { page_key(event, false); });
+  page_keep_saves();
   page_started_at = flash.Lib.getTimer();
   stage.addEventListener(flash.events.Event.ENTER_FRAME, page_on_frame);
 }

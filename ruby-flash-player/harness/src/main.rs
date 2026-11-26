@@ -8,7 +8,7 @@
 //! clock (getTimer) is the machine's, so a movie that plays by it is given --real-time, which waits out each
 //! frame's time before the next. A movie that draws into bitmaps (BitmapData.draw) is given --render. A movie that asks to stop (fscommand "rg_exit", "CODE:MESSAGE") ends the run early.
 //!
-//! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [OPTIONS...]
+//! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [--save FILE] [OPTIONS...]
 //!
 //! The same, for a game built to be tested (see bridge.rs): what it asks of the harness is answered from
 //! standard input, a line at a time, and it is told FRAMES and the options it did not take itself.
@@ -135,6 +135,7 @@ fn main() {
     let mut real_time = false;
     let mut render = false;
     let mut picture_out = None;
+    let mut save_file: Option<String> = None;
     let mut movie_options: Vec<String> = Vec::new();
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
@@ -154,6 +155,9 @@ fn main() {
                 if frames.is_none() {
                     fail("--headless needs the number of frames to play");
                 }
+            }
+            "--save" if headless => {
+                save_file = Some(arguments.next().unwrap_or_else(|| fail("--save needs a file")));
             }
             "--picture-out" if headless => {
                 picture_out = Some(arguments.next().unwrap_or_else(|| fail("--picture-out needs a file")));
@@ -201,7 +205,7 @@ fn main() {
     }
 
     if headless {
-        bridge::play_headless(&player, frame_time, frames, &movie_options, picture_out.as_deref(), &asked_for_buttons, &exit_request);
+        bridge::play_headless(&player, frame_time, frames, &movie_options, picture_out.as_deref(), save_file.as_deref(), &asked_for_buttons, &exit_request);
     }
 
     let mut next_press = 0;
