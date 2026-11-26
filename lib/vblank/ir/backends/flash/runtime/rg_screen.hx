@@ -74,11 +74,26 @@ static function paintable(x:Int, y:Int):Bool {
   return area_in_force == 0 || (x >= area_left && x < area_right && y >= area_top && y < area_bottom);
 }
 
+/* Where drawing goes: the picture, or for a moment the copy of the scenery kept to put back under a sprite
+ * (Reference#drawing_into). */
+static var scenery:Vector<Int> = new Vector<Int>(RG_CELLS);
+static var target:Vector<Int> = first_page;
+
+/* A layer a feature paints into as it is, while one is handed over (paint_onto_plain_layer, null to give it back): a
+ * screen's worth of cells, each painted pixel stored whole there and nowhere else, with no area, mix or fade. */
+static var plain_layer:Vector<Int> = null;
+
+static function paint_onto_plain_layer(layer:Vector<Int>):Void { plain_layer = layer; }
+
 /* Framebuffer#set_pixel: a cell drawing may not land on is dropped. */
 static function set_pixel(x:Int, y:Int, color:Int):Void {
+  if (plain_layer != null) {
+    if (on_screen(x, y)) plain_layer[y * RG_SCREEN_WIDTH + x] = color;
+    return;
+  }
   if (!paintable(x, y)) return;
   picture_touched = 1;
-  pixels[y * RG_SCREEN_WIDTH + x] = faded_as_painted(color);
+  target[y * RG_SCREEN_WIDTH + x] = faded_as_painted(color);
 }
 
 /* Framebuffer#fill_rect */
@@ -103,7 +118,7 @@ static function clear_to(color:Int):Void {
   }
   picture_touched = 1;
   var painted = faded_as_painted(color);
-  for (at in 0...RG_CELLS) pixels[at] = painted;
+  for (at in 0...RG_CELLS) target[at] = painted;
 }
 
 static function rg_screen_clear(color:Int):Void { clear_to(color); }
@@ -221,6 +236,21 @@ static function blit_image(image:Int, x:Int, y:Int):Void {
       set_pixel(x + col, y + row, colors == RG_NO_IMAGE_COLORS ? held : pixels_of[colors + held]);
     }
   }
+}
+
+/* One picture: its pixels (a vector and where in it they start), its size, and where in that vector the colours of its
+ * places start where its pixels are places (RG_NO_IMAGE_COLORS where they are colours). */
+static function picture_of(image:Int):RgArt {
+  var info = RG_IMAGE_FIELDS * image;
+  var painted = image < painted_images.length ? painted_images[image] : null;
+  if (painted != null) return new RgArt(painted, 0, rg_game_images[info + 1], rg_game_images[info + 2], RG_NO_IMAGE_COLORS);
+  return new RgArt(rg_game_image_pixels, rg_game_images[info], rg_game_images[info + 1], rg_game_images[info + 2], rg_game_images[info + 3]);
+}
+
+/* The colour a picture shows at pixel +at+ of itself, or RG_NOT_DRAWN. */
+static function picture_pixel(art:RgArt, at:Int):Int {
+  var held = art.pixels[art.start + at];
+  return art.colors != RG_NO_IMAGE_COLORS && held != RG_NOT_DRAWN ? art.pixels[art.colors + held] : held;
 }
 
 /* The images the game has painted, by image number (Reference#store_run_picture): each made again from the places
@@ -472,6 +502,7 @@ static function rg_screen_frame_ended():Void {
   var finished = pixels;
   pixels = viewed;
   viewed = finished;
+  target = pixels;
   picture_touched = 1; // the page handed over was built before the one just shown
   rg_game_sprites_over_picture(); // Reference#advance_frame: placed with the page published
 }

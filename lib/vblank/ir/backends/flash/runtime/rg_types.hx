@@ -146,3 +146,77 @@ class RgHeldTile {
     this.tile = tile;
   }
 }
+
+/* One picture as the screen reads it (see picture_of). */
+class RgArt {
+  public var pixels:Vector<Int>;
+  public var start:Int;
+  public var width:Int;
+  public var height:Int;
+  public var colors:Int;
+
+  public function new(pixels:Vector<Int>, start:Int, width:Int, height:Int, colors:Int) {
+    this.pixels = pixels;
+    this.start = start;
+    this.width = width;
+    this.height = height;
+    this.colors = colors;
+  }
+}
+
+/* A sprite as it is put on screen: which, its picture, where, its level, how it is turned, and the slices of it a crowded
+ * line leaves out (each [line, piece, first column left out]), or none. */
+class RgPlaced {
+  public var sprite:Int;
+  public var image:Int;
+  public var x:Int;
+  public var y:Int;
+  public var level:Int;
+  public var see_through:Int;
+  public var fade_place:Int;
+  public var turned:Int;
+  public var angle:Int;
+  public var size:Int;
+  public var resizes:Int;
+  public var cuts:Array<Array<Int>> = null;
+
+  public function new(sprite:Int, image:Int, x:Int, y:Int, level:Int, see_through:Int, fade_place:Int, turned:Int, angle:Int, size:Int, resizes:Int) {
+    this.sprite = sprite;
+    this.image = image;
+    this.x = x;
+    this.y = y;
+    this.level = level;
+    this.see_through = see_through;
+    this.fade_place = fade_place;
+    this.turned = turned;
+    this.angle = angle;
+    this.size = size;
+    this.resizes = resizes;
+  }
+}
+
+/* Where a sprite was last drawn straight onto the picture (Reference @obj_prev). */
+class RgDrawnPlace {
+  public var drawn:Int = 0;
+  public var x:Int = 0;
+  public var y:Int = 0;
+
+  public function new() {}
+}
+
+/* A piece of a sprite's picture, kept for a crowded line (rg_sprites.c's line pieces). */
+class RgLinePiece {
+  public var sprite:RgPlaced;
+  public var piece:Int;
+  public var left:Int;
+  public var width:Int;
+  public var from:Int;
+
+  public function new(sprite:RgPlaced, piece:Int, left:Int, width:Int, from:Int) {
+    this.sprite = sprite;
+    this.piece = piece;
+    this.left = left;
+    this.width = width;
+    this.from = from;
+  }
+}
