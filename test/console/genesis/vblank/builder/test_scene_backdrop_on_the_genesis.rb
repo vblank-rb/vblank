@@ -8,14 +8,17 @@ require "screen_backdrop_games"
 # title of a blue sky hands over to a stage of black, and a scene that says no backdrop shows the
 # game's.
 class TestSceneBackdropOnTheGenesis < Minitest::Test
-  # The sky as the Genesis shows it: its colours have three bits a channel.
-  SKY = VBlank::Console::GENESIS.shown(ScreenBackdropGames::SKY)
+  # The sky the game names, which the Genesis cannot show exactly, and the sky as it shows it: its
+  # colours have three bits a channel, so the game's five-bit colour comes out widened from three.
+  NAMED_SKY = ScreenBackdropGames::SKY
+  SKY = VBlank::Console::GENESIS.shown(NAMED_SKY)
   OUT_OF_THE_TILE = [100, 100].freeze
 
   private def shown_by(prog, frames) = game_player.run(prog, frames: frames).screen.pixel(*OUT_OF_THE_TILE)
 
   def test_a_scene_shows_its_own_backdrop_and_the_next_the_games
-    prog = ScreenBackdropGames.title_and_board(title_screen: { backdrop: SKY })
+    refute_equal NAMED_SKY, SKY, "a sky the Genesis cannot show exactly"
+    prog = ScreenBackdropGames.title_and_board(title_screen: { backdrop: NAMED_SKY })
 
     assert_equal SKY, shown_by(prog, 3), "the title's own"
     assert_equal 0, shown_by(prog, 10), "the board says none, so the game's"
@@ -23,7 +26,7 @@ class TestSceneBackdropOnTheGenesis < Minitest::Test
 
   # Arriving under a fade, the new colour 0 is faded with the rest.
   def test_a_scene_arriving_under_a_fade_toward_white_fades_its_backdrop
-    sky = SKY
+    sky = NAMED_SKY
     b = Builder.new
     b.instance_eval do
       screen :tiled
