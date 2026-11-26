@@ -59,7 +59,8 @@ class TestFlashKindCoverage < Minitest::Test
     assert_empty gaps
   end
 
-  def test_a_game_that_beeps_is_refused_by_the_function_it_needs
+  # A function the runtime does not define is a gap named in the refusal, so a game that needs one is never built.
+  def test_a_game_that_needs_a_function_the_runtime_lacks_is_refused_by_it
     game = VBlank.game("beeper", consoles: %i[gba]) do
       enable_sound
       game_loop do
@@ -67,9 +68,23 @@ class TestFlashKindCoverage < Minitest::Test
       end
     end
     program = VBlank::IR::Backends::Computer::CheckedProgram.build(game, console: :gba, err: StringIO.new)
+    _text, gaps = Flash::Lowering.new(program).text_and_gaps(Flash::HEADLESS_FUNCTIONS - ["rg_sound_beep"])
+
+    assert_includes gaps, "rg_sound_beep"
+  end
+
+  # The sound chip of a console whose voices read sound memory is not worked out, so a game that makes sound there is
+  # refused by name; a game of that console that makes none is not.
+  def test_a_game_that_makes_sound_on_a_sound_memory_console_is_refused_by_the_chip
+    game = VBlank.game("beeper", consoles: %i[ps1]) do
+      enable_sound
+      game_loop do
+        beep :blip
+      end
+    end
+    program = VBlank::IR::Backends::Computer::CheckedProgram.build(game, console: :ps1, err: StringIO.new)
     error = assert_raises(Flash::RuntimeGap) { Flash.new.build_headless(program) }
 
-    assert_match(/\Arg_sound_/, error.part)
-    assert_includes error.message, "rg_sound_beep"
+    assert_equal "the sound chip that reads sound memory", error.part
   end
 end
