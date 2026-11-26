@@ -128,6 +128,11 @@ static function headless_players(line:String):Array<Int> {
 
 /* --- what the harness calls --- */
 
+/* What the C and JavaScript programs take that this one does not yet, each refused by name rather than played without. */
+static var HEADLESS_REFUSED:Array<String> = ["--start-file", "--sound-out", "--sound-voice", "--state-out", "--state-out-after", "--state-in"];
+static var HEADLESS_REFUSED_WORDS:Array<String> = ["a file handed to the game as it starts", "the sound the game makes", "one voice of the sound",
+  "a state image to write", "a state image to write", "a state image to read"];
+
 static function headless_start(given:String):Void {
   var options = given.split("\n");
   headless_frames_to_play = Std.parseInt(options.shift());
@@ -148,6 +153,9 @@ static function headless_start(given:String):Void {
     } else if (option == "--save-cut-after" && at + 1 < options.length) {
       rg_save_cut_power_after(Std.parseInt(options[at + 1]));
       at++;
+    } else if (HEADLESS_REFUSED.indexOf(option) >= 0) {
+      headless_exit(RG_GAME_WENT_WRONG, "the Flash build does not take " + option + " yet: " + HEADLESS_REFUSED_WORDS[HEADLESS_REFUSED.indexOf(option)]);
+      return;
     } else if (option == "--clock-at" && at + 3 < options.length) {
       rg_clock_starts_at(Std.parseFloat(options[at + 1]), Std.parseInt(options[at + 2]), Std.parseInt(options[at + 3]));
       at += 3;
