@@ -122,12 +122,13 @@ module VBlank
       # it built and why it missed, and the building the hits saved. Asking again for a cartridge a
       # Ractor already holds is neither. A game's test run calls it once, in the process the run
       # started in, as the run ends (`Minitest.after_run { BUILDS.report }`). Nothing is written when
-      # nothing was asked. A log a stopped run left, a day old or more, is deleted unread.
+      # nothing was asked. A log a stopped run left, a day old or more, is deleted unread. A log gone
+      # before it is read is passed over.
       def report(out = $stdout)
-        logs = Dir.glob(File.join(@base, "runs", "*.jsonl"))
-        stale, current = logs.partition { File.mtime(it) < Time.now - SECONDS_A_DAY }
-        current.select! { File.mtime(it) >= @made_at }
-        asks = current.flat_map { |log| File.readlines(log).map { Ask.new(**JSON.parse(it, symbolize_names: true)) } }
+        logs = Dir.glob(File.join(@base, "runs", "*.jsonl")).select { File.exist?(it) }
+        stale, current = logs.partition { modified_before?(it, Time.now - SECONDS_A_DAY) }
+        current.select! { !modified_before?(it, @made_at) }
+        asks = current.flat_map { |log| asks_in(log) }
         FileUtils.rm_f(stale + current)
         return if asks.empty?
 
@@ -295,6 +296,13 @@ module VBlank
         File.mtime(path) < time
       rescue Errno::ENOENT
         false
+      end
+
+      # The asks one run log holds, or none when the log is gone.
+      def asks_in(log)
+        File.readlines(log).map { Ask.new(**JSON.parse(it, symbolize_names: true)) }
+      rescue Errno::ENOENT
+        []
       end
 
       def remove_unheld_lock(path)

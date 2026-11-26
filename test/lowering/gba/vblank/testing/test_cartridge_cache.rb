@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "fileutils"
 require "stringio"
 require "tmpdir"
 require "vblank/testing/cartridge_cache"
@@ -239,6 +240,21 @@ class TestCartridgeCache < Minitest::Test
       cartridge = VBlank::Testing::CartridgeCache.new(folder).cartridge(dot_game(:blue), console: :gba)
 
       assert_equal dot_game(:blue).build_rom(out: nil, err: nil, console: :gba).buffer, cartridge.buffer
+    end
+  end
+
+  # The report reads every run log it finds, and another process can remove one between the finding
+  # and the reading. A link to nothing stands in for such a log.
+  def test_a_run_log_gone_before_the_report_reads_it_is_passed_over
+    Dir.mktmpdir do |folder|
+      cache = VBlank::Testing::CartridgeCache.new(folder)
+      FileUtils.mkdir_p(File.join(folder, "runs"))
+      File.symlink(File.join(folder, "missing"), File.join(folder, "runs", "left.jsonl"))
+      out = StringIO.new
+
+      cache.report(out)
+
+      assert_empty out.string
     end
   end
 
