@@ -49,6 +49,27 @@ class TestSNESThirdLayer < Minitest::Test
     assert_operator run[:step], :>=, 6
   end
 
+  # Only the cells above the row are shown by the third layer alone, so a see-through tile that none
+  # of them uses (in the set but not the map, or in rows below the held row) cannot show the arena.
+  def test_a_held_tile_with_see_through_pixels_no_cell_uses_builds_and_plays_alike
+    run = SNES::CheckedRun.new.run(game_with_unseen_holes, frames: 4)
+
+    assert_operator run[:pass], :>=, 2
+  end
+
+  def test_a_held_tile_with_see_through_pixels_only_below_the_row_builds_and_plays_alike
+    run = SNES::CheckedRun.new.run(game_with_unseen_holes(row_below: true), frames: 4)
+
+    assert_operator run[:pass], :>=, 2
+  end
+
+  # A set_tile can put any tile of the set in view, so one with see-through pixels is still refused.
+  def test_a_held_tile_a_set_tile_can_show_is_still_refused
+    error = assert_raises(SNES::Art::HeldArtSeeThrough) { SNES.new.build(game_with_unseen_holes(changes: true)) }
+
+    assert_match(/:holey_art has see-through pixels/, error.message)
+  end
+
   # A background held above a row beside two others goes on the third layer too, and shows alone
   # above its row: a tile it cannot draw in four colours is refused as a bar's is, and so is one
   # that could show the arena behind it, which that layer cannot.
@@ -124,6 +145,36 @@ class TestSNESThirdLayer < Minitest::Test
       game_loop do
         top.scroll_by 0, 1 if scrolls
         top.hide if hides
+      end
+    end
+    b.finalize_program
+    b.program.copy.tap { |program| program.console = :snes }
+  end
+
+  # The arena and cloud of game_with_held, and a background of four rows held above row 32 whose set
+  # holds a see-through tile (:holey_art) beside a solid one. No cell of the four rows shows the
+  # see-through tile unless +row_below+ puts it in a fifth row, which is below the held row, or
+  # +changes+ lets a set_tile put it in view on the third pass.
+  private def game_with_unseen_holes(row_below: false, changes: false)
+    b = Builder.new
+    b.instance_eval do
+      screen :tiled
+      image(:ground, "a" => 0x0118, "b" => 0x0231) { "abababab\n" * 8 }
+      image(:cloud, "." => :transparent, "w" => :white) { "ww....ww\n" * 8 }
+      image(:top_art, "x" => 0x001F, "y" => 0x03E0) { "xyxyxyxy\n" * 8 }
+      image(:holey_art, "." => :transparent, "y" => 0x03E0) { "y.y.y.y.\n" * 8 }
+      tiles :top_tiles, "t" => :top_art, "h" => :holey_art
+      tiles :arena_tiles, "#" => :ground
+      tiles :cloud_tiles, "o" => :cloud
+      background :arena, tiles: :arena_tiles, map: Array.new(32) { "#" * 32 }
+      background :clouds, tiles: :cloud_tiles, map: Array.new(32) { "o   " * 8 }
+      map = Array.new(4) { "t" * 32 }
+      map += ["h" * 32] if row_below
+      top = background :top, tiles: :top_tiles, map: map, above_row: 32
+      pass = var :pass, 0
+      game_loop do
+        pass += 1
+        top.set_tile 0, 0, "h" if changes && pass == 3
       end
     end
     b.finalize_program

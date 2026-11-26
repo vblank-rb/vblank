@@ -1837,15 +1837,17 @@ module VBlank
             # too), so showing all three above the row would put the arena over the bar. The
             # interpreter draws the backgrounds behind it there too, where it is see-through. So a held
             # background that can be see-through on its rows is refused: a tile with a see-through
-            # pixel, or a cell left empty that can come into view. Without a scroll of its own the cells
-            # in view are the ones its corner shows; with one, every cell of its grid. One the game
-            # shows alone (`alone: true`) is not asked: the interpreter shows the backdrop there too.
+            # pixel that a cell in view shows, or a cell left empty that can come into view. Black in
+            # tile art is see-through on every console, so a bar that draws black is refused as any
+            # see-through tile is. Without a scroll of its own the cells in view are the ones its
+            # corner shows; with one, every cell of its grid. One the game shows alone (`alone: true`)
+            # is not asked: the interpreter shows the backdrop there too.
             def refuse_held_see_through!(held)
               subject = "The background :#{held.name} is held above a row beside two other backgrounds"
               why = "On a Super Nintendo, that background goes on a layer that shows alone above its row. " \
                     "The backgrounds behind it cannot show through it there."
               alone = "Or, to show the backdrop there, give :#{held.name} `alone: true`."
-              tile = held.tiles.find { |name| (0...64).any? { |at| @cache.image(picture_named(name)).tile_see_through_at?(at) } }
+              tile = held_tiles_in_view(held).find { |name| (0...64).any? { |at| @cache.image(picture_named(name)).tile_see_through_at?(at) } }
               if tile
                 raise Art::HeldArtSeeThrough, "#{subject}, and its tile :#{tile} has see-through pixels. #{why} " \
                                               "To fix this, draw the tile :#{tile} with no see-through pixels. #{alone}"
@@ -1860,15 +1862,29 @@ module VBlank
             # Whether a cell of +held+'s maps that can come into view above its row is empty. (A
             # `set_tile` never empties one: it names a tile the background has, and a picked tile
             # that stands for none changes nothing, Reference#exec_set_tile.)
-            def held_cells_empty?(held)
+            def held_cells_empty?(held) = held_cells_in_view(held).any? { |tile| tile.nil? || tile.negative? }
+
+            # The tiles +held+'s cells in view show: all of its set when a `set_tile` can put any of them
+            # in view or when map indexes count within one of several sets.
+            def held_tiles_in_view(held)
+              changed = @program.walk.any? { |node| node.kind == :set_tile && node.name == held.name }
+              return held.tiles if changed || held.several_sets?
+
+              held_cells_in_view(held).select { |tile| tile && !tile.negative? }.uniq.map { |tile| held.tiles.fetch(tile) }
+            end
+
+            # Every cell value (a tile index, nil or negative) of every map of +held+ that can come into
+            # view above its row. Without a scroll of its own they are the cells its corner shows; with
+            # one, every cell of its grid.
+            def held_cells_in_view(held)
               scrolled = @program.walk.any? { |node| node.kind == :scroll_background && node.name == held.name }
-              held.every_map.any? do |map|
+              held.every_map.flat_map do |map|
                 columns, rows = TileMap.grid(map)
                 unless scrolled
                   rows = [rows, (held.above_row + held.tile_h - 1) / held.tile_h].min
                   columns = [columns, (Console::SUPER_NINTENDO.screen_width + held.tile_w - 1) / held.tile_w].min
                 end
-                (0...rows).any? { |row| (0...columns).any? { |column| (tile = Array(map[row])[column]).nil? || tile.negative? } }
+                (0...rows).flat_map { |row| (0...columns).map { |column| Array(map[row])[column] } }
               end
             end
 
