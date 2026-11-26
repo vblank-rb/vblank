@@ -7,6 +7,8 @@
 //!   rg_picture()       the picture as a string, a character for each pixel, for the picture file
 //!   rg_save_hex()      the save memory as hex digits, for the save file (written when the game ends)
 //!
+//! and the movie calls out rg_write_sound (a frame's sound) and rg_write_state (the state image, once).
+//!
 //! The movie traces "buttons?" when a frame has ended and it is waiting for the next frame's buttons. The
 //! harness then reads standard input a line at a time: the line "picture" asks it to write the picture
 //! file now (answered "picture-written"), and any other line is the buttons. The movie asks the harness to
@@ -50,11 +52,16 @@ impl FsCommandProvider for ExitCommand {
 /// Where the sound a movie makes goes, when a test asked for it (--sound-out FILE).
 pub type SoundFile = Rc<RefCell<Option<std::fs::File>>>;
 
-/// Makes ExternalInterface available to the movie. The one thing the movie calls out is rg_write_sound: a frame's
-/// sound as hex digits (each sample two bytes, low byte first, the left speaker's then the right's), written to the
-/// sound file at once, so whoever plays the game can read it as it is made.
+/// Where the state image the movie writes goes, when a test asked for it (--state-out FILE).
+pub type StatePath = Rc<RefCell<Option<String>>>;
+
+/// Makes ExternalInterface available to the movie. It calls out rg_write_sound: a frame's sound as hex digits (each
+/// sample two bytes, low byte first, the left speaker's then the right's), written to the sound file at once, so whoever
+/// plays the game can read it as it is made; and rg_write_state: the state image's text as hex digits, written to the
+/// state file.
 pub struct Provider {
     pub sound: SoundFile,
+    pub state: StatePath,
 }
 
 impl ExternalInterfaceProvider for Provider {
@@ -64,6 +71,15 @@ impl ExternalInterfaceProvider for Provider {
                 let bytes: Vec<u8> = (0..digits.len() / 2).filter_map(|at| u8::from_str_radix(&digits[at * 2..at * 2 + 2], 16).ok()).collect();
                 let _ = file.write_all(&bytes);
                 let _ = file.flush();
+            }
+        }
+        if name == "rg_write_state" {
+            if let (Some(path), Some(Value::String(digits))) = (self.state.borrow().as_ref(), args.first()) {
+                let bytes: Vec<u8> = (0..digits.len() / 2).filter_map(|at| u8::from_str_radix(&digits[at * 2..at * 2 + 2], 16).ok()).collect();
+                if std::fs::write(path, bytes).is_err() {
+                    eprintln!("the state could not be written to {path}");
+                    exit(1);
+                }
             }
         }
         Value::Null
@@ -141,6 +157,7 @@ pub fn play_headless(
     options: &[String],
     picture_out: Option<&str>,
     save_file: Option<&str>,
+    state_in: Option<&[u8]>,
     asked_for_buttons: &Rc<Cell<bool>>,
     exit_request: &Rc<ExitRequest>,
 ) -> ! {
@@ -153,6 +170,12 @@ pub fn play_headless(
     if let Some(bytes) = save_file.and_then(|path| std::fs::read(path).ok()) {
         let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
         start.push_str("\n--save-bytes\n");
+        start.push_str(&digits);
+    }
+    // The state the game starts from, likewise, if a test handed one over.
+    if let Some(bytes) = state_in {
+        let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
+        start.push_str("\n--state-bytes\n");
         start.push_str(&digits);
     }
     player.lock().unwrap().call_internal_interface("rg_start", [Value::String(start)]);

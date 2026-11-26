@@ -8,7 +8,8 @@
 //! clock (getTimer) is the machine's, so a movie that plays by it is given --real-time, which waits out each
 //! frame's time before the next. A movie that draws into bitmaps (BitmapData.draw) is given --render. A movie that asks to stop (fscommand "rg_exit", "CODE:MESSAGE") ends the run early.
 //!
-//! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [--save FILE] [OPTIONS...]
+//! flash_player_harness GAME.swf --headless FRAMES [--picture-out FILE] [--save FILE] [--sound-out FILE]
+//!                      [--state-out FILE] [--state-in FILE] [OPTIONS...]
 //!
 //! The same, for a game built to be tested (see bridge.rs): what it asks of the harness is answered from
 //! standard input, a line at a time, and it is told FRAMES and the options it did not take itself.
@@ -137,6 +138,8 @@ fn main() {
     let mut picture_out = None;
     let mut save_file: Option<String> = None;
     let sound_file: bridge::SoundFile = Rc::new(std::cell::RefCell::new(None));
+    let state_path: bridge::StatePath = Rc::new(std::cell::RefCell::new(None));
+    let mut state_in: Option<Vec<u8>> = None;
     let mut movie_options: Vec<String> = Vec::new();
     let mut arguments = std::env::args().skip(1);
     while let Some(argument) = arguments.next() {
@@ -161,6 +164,21 @@ fn main() {
                 let path = arguments.next().unwrap_or_else(|| fail("--sound-out needs a file"));
                 *sound_file.borrow_mut() = Some(std::fs::File::create(&path).unwrap_or_else(|error| fail(&format!("the sound could not be written to {path}: {error}"))));
                 movie_options.push("--sound-out".to_string());
+            }
+            "--state-out" if headless => {
+                *state_path.borrow_mut() = Some(arguments.next().unwrap_or_else(|| fail("--state-out needs a file")));
+                movie_options.push("--state-out".to_string());
+            }
+            "--state-in" if headless => {
+                let path = arguments.next().unwrap_or_else(|| fail("--state-in needs a file"));
+                match std::fs::read(&path) {
+                    Ok(bytes) => state_in = Some(bytes),
+                    Err(_) => {
+                        eprintln!("the state at {path} could not be read");
+                        exit(2);
+                    }
+                }
+                movie_options.push("--state-in".to_string());
             }
             "--save" if headless => {
                 save_file = Some(arguments.next().unwrap_or_else(|| fail("--save needs a file")));
@@ -187,7 +205,7 @@ fn main() {
     let mut builder = PlayerBuilder::new()
         .with_log(PrintingLog { asked_for_buttons: asked_for_buttons.clone() })
         .with_audio(audio::SilentAudioBackend::default())
-        .with_external_interface(Box::new(bridge::Provider { sound: sound_file.clone() }))
+        .with_external_interface(Box::new(bridge::Provider { sound: sound_file.clone(), state: state_path.clone() }))
         .with_fs_commands(Box::new(bridge::ExitCommand { request: exit_request.clone() }));
     if render {
         builder = builder.with_renderer(drawing_renderer());
@@ -211,7 +229,7 @@ fn main() {
     }
 
     if headless {
-        bridge::play_headless(&player, frame_time, frames, &movie_options, picture_out.as_deref(), save_file.as_deref(), &asked_for_buttons, &exit_request);
+        bridge::play_headless(&player, frame_time, frames, &movie_options, picture_out.as_deref(), save_file.as_deref(), state_in.as_deref(), &asked_for_buttons, &exit_request);
     }
 
     let mut next_press = 0;

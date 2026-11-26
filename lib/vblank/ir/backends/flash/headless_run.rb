@@ -14,16 +14,15 @@ module VBlank
         # it is asked for (the harness is asked, between a frame's end and its buttons), since a movie
         # writing every frame's picture costs more than playing the frame.
         #
-        # What the movie does not do yet (sound, the state image and the start file) is
-        # refused before the run starts, as a question the lowering cannot answer.
+        # What the movie does not do yet (the start file) is refused before the run starts, as a question the
+        # lowering cannot answer. The state image is written and read through the harness, which keeps the
+        # file the state is written to and hands over the bytes of the one it is to start from.
         class HeadlessRun < Computer::HeadlessRun
           # Raised for something a test asks that the Flash lowering cannot answer yet. The shared one's,
           # since both are asked the same questions.
           CannotAnswer = Computer::HeadlessRun::CannotAnswer
 
           def hand_file(*) = refuse_unmade!("a file handed to the game as it starts")
-          def writing_state_after(*) = refuse_unmade!("writing the state image")
-          def starting_from_state(*) = refuse_unmade!("reading a state image")
 
           private
 

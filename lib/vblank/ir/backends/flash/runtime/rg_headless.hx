@@ -17,7 +17,7 @@
  * harness's file holds it, and rg_save_hex for the save memory the harness's file holds when the game ends. rg_start is given one string: the frames to play, then each option on a line of its own. Each frame is one ENTER_FRAME: it plays the game from where it stopped to its
  * next frame boundary.
  *
- * Left out of what rg_headless.js does: sound, the state image, the start file and matches. The run that asks for one says so before it starts (Flash::HeadlessRun).
+ * Left out of what rg_headless.js does: the start file and matches. The run that asks for one says so before it starts (Flash::HeadlessRun).
  */
 
 static var headless_frames_to_play:Int = 0;
@@ -31,6 +31,9 @@ static var headless_hex_bytes:Array<String> = null;
 static var headless_waiting_for_buttons:Bool = false;
 static var headless_over:Bool = false;
 static var headless_sound_held_up:Int = 0;
+static var headless_state_out:Bool = false; /* the state is written (the harness keeps it in the file it was given)... */
+static var headless_state_out_after:Int = -1; /* ...at the boundary after this frame */
+static var headless_state_in:String = null; /* the state read in at the first boundary, until it is */
 
 /* The picture as the last moment showed it. */
 static var headless_shown_now:Vector<Int> = new Vector<Int>(RG_CELLS);
@@ -123,7 +126,20 @@ static function headless_write_frame_sound():Void {
   flash.external.ExternalInterface.call("rg_write_sound", parts.join(""));
 }
 
+/* The state read in or written out at this frame boundary, as the options asked: read in at the first boundary, written
+ * where the frames started so far are the number asked for. */
+static function headless_state_at_boundary():Void {
+  if (headless_state_in != null) {
+    var text = headless_state_in;
+    headless_state_in = null;
+    rg_state_read(text);
+  }
+  if (!headless_state_out || headless_frame != headless_state_out_after) return;
+  flash.external.ExternalInterface.call("rg_write_state", haxe.io.Bytes.ofString(rg_state_write()).toHex());
+}
+
 static function headless_wait_vblank():Void {
+  headless_state_at_boundary();
   if (rg_frame_ends_late() != 0) {
     headless_write_frame_sound();
     rg_frame_begins();
@@ -159,8 +175,8 @@ static function headless_players(line:String):Array<Int> {
 /* --- what the harness calls --- */
 
 /* What the C and JavaScript programs take that this one does not yet, each refused by name rather than played without. */
-static var HEADLESS_REFUSED:Array<String> = ["--start-file", "--state-out", "--state-out-after", "--state-in"];
-static var HEADLESS_REFUSED_WORDS:Array<String> = ["a file handed to the game as it starts", "a state image to write", "a state image to write", "a state image to read"];
+static var HEADLESS_REFUSED:Array<String> = ["--start-file"];
+static var HEADLESS_REFUSED_WORDS:Array<String> = ["a file handed to the game as it starts"];
 
 static function headless_start(given:String):Void {
   var options = given.split("\n");
@@ -184,6 +200,16 @@ static function headless_start(given:String):Void {
       at++;
     } else if (option == "--sound-out") {
       headless_sound_out = true;
+    } else if (option == "--state-out") {
+      headless_state_out = true;
+    } else if (option == "--state-out-after" && at + 1 < options.length) {
+      headless_state_out_after = Std.parseInt(options[at + 1]);
+      at++;
+    } else if (option == "--state-in") {
+      // the harness read the file, and hands its bytes over as hex digits after --state-bytes
+    } else if (option == "--state-bytes" && at + 1 < options.length) {
+      headless_state_in = haxe.io.Bytes.ofHex(options[at + 1]).toString();
+      at++;
     } else if (option == "--sound-voice" && at + 1 < options.length) {
       rg_sound_hear_only(Std.parseInt(options[at + 1]));
       at++;
