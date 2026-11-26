@@ -6,14 +6,12 @@ module VBlank
     # loads. Both the rake tasks (RakeTasks) and the tests themselves (Testing.lowering) read it
     # from here, so the two cannot answer differently.
     #
-    # A game is played four ways, and once more for each cartridge console it is for besides the
-    # Advance (see Run#console). The GBA lowering's run plays it on the interpreter
-    # (Backends::Reference), which is what the cartridge is checked against; the native
-    # lowering's run builds it as C and plays that, the JavaScript lowering's run builds it as
-    # JavaScript and plays that under node, the Ruby lowering's builds it as Ruby and plays that
-    # in a Ruby of its own, and the Game Boy Color lowering's builds it as a
-    # Game Boy Color cartridge and plays that in the emulator, each checked against the
-    # interpreter on every frame. A test written once plays on whichever the run is for.
+    # The GBA lowering's run plays a game on the interpreter (Backends::Reference), which is what
+    # every other build is checked against. The runs of the builds for a computer (C, JavaScript,
+    # Ruby, Flash) build it in that language and play it once for each console it is for, and each
+    # cartridge console's run builds that console's cartridge and plays it in an emulator, every one
+    # checked against the interpreter on every frame (see Run#console). A test written once plays on
+    # whichever the run is for.
     #
     # Each lowering's run is one record (runs), and everything in the testing kit that differs from
     # one run to the next reads it from there: the rake tasks, the player a test is handed, the
@@ -50,11 +48,16 @@ module VBlank
       #            measured to pay: every Ractor shares one heap, and Ruby's default collects so
       #            often under many of them that it made the Super Nintendo run much slower than
       #            in processes. A setting already in the environment wins
-      Run = Data.define(:name, :title, :console, :checked, :ractors, :does, :needs, :player, :yjit, :roomy_heap) do
+      #   whole_run  whether `rake test:all`, `rake test:golden`, a group's task and `rake test TEST=`
+      #            play the run. A run still being made is left out of them, since the tools it needs
+      #            are not on every machine that plays the whole suite, and its own task
+      #            (`rake test:lowering:<name>`) plays it
+      Run = Data.define(:name, :title, :console, :checked, :ractors, :does, :needs, :player, :yjit, :roomy_heap, :whole_run) do
         alias_method :checked?, :checked
         alias_method :ractors?, :ractors
         alias_method :yjit?, :yjit
         alias_method :roomy_heap?, :roomy_heap
+        alias_method :whole_run?, :whole_run
 
         # The class `game_player` makes one of on this run.
         def player_class = player ? VBlank.const_get(player) : Testing::CartridgeCheckedPlayer.for(console)
@@ -74,36 +77,36 @@ module VBlank
       RUNS = Ractor.make_shareable([
                                      Run.new(name: :gba, title: "GBA", console: :gba, checked: false, ractors: true,
                                              does: "the game on the interpreter", needs: nil,
-                                             player: "Testing::InterpreterPlayer", yjit: true, roomy_heap: false),
+                                             player: "Testing::InterpreterPlayer", yjit: true, roomy_heap: false, whole_run: true),
                                      Run.new(name: :native, title: "native", console: :gba, checked: true, ractors: false,
                                              does: "the game built as C, checked against the interpreter",
-                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true, roomy_heap: false),
+                                             needs: "zig", player: "Testing::CheckedPlayer", yjit: true, roomy_heap: false, whole_run: true),
                                      Run.new(name: :js, title: "JavaScript", console: :gba, checked: true, ractors: false,
                                              does: "the game built as JavaScript, checked against the interpreter",
-                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true, roomy_heap: false),
+                                             needs: "node", player: "Testing::JSCheckedPlayer", yjit: true, roomy_heap: false, whole_run: true),
                                      Run.new(name: :ruby, title: "Ruby", console: :gba, checked: true, ractors: false,
                                              does: "the game built as Ruby, checked against the interpreter",
-                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true, roomy_heap: false),
+                                             needs: nil, player: "Testing::RubyCheckedPlayer", yjit: true, roomy_heap: false, whole_run: true),
                                      Run.new(name: :flash, title: "Flash", console: :gba, checked: true, ractors: false,
                                              does: "the game built as a Flash movie, played in Ruffle and checked against the interpreter",
                                              needs: "haxe and the Flash player (rake compile_flash_player)",
-                                             player: "Testing::FlashCheckedPlayer", yjit: true, roomy_heap: false),
+                                             player: "Testing::FlashCheckedPlayer", yjit: true, roomy_heap: false, whole_run: false),
                                      Run.new(name: :gbc, title: "Game Boy Color", console: :gbc, checked: true, ractors: false,
                                              does: "the game built as a Game Boy Color cartridge, played in the " \
                                                    "emulator and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: false, roomy_heap: false),
+                                             needs: nil, player: nil, yjit: false, roomy_heap: false, whole_run: true),
                                      Run.new(name: :snes, title: "Super Nintendo", console: :snes, checked: true, ractors: true,
                                              does: "the game built as a Super Nintendo cartridge, played in bsnes " \
                                                    "and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true, roomy_heap: true),
+                                             needs: nil, player: nil, yjit: true, roomy_heap: true, whole_run: true),
                                      Run.new(name: :genesis, title: "Sega Genesis", console: :genesis, checked: true, ractors: false,
                                              does: "the game built as a Sega Genesis cartridge, played in Genesis " \
                                                    "Plus GX and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true, roomy_heap: false),
+                                             needs: nil, player: nil, yjit: true, roomy_heap: false, whole_run: true),
                                      Run.new(name: :ps1, title: "PlayStation", console: :ps1, checked: true, ractors: false,
                                              does: "the game built as a PlayStation program, played in Beetle PSX " \
                                                    "and checked against the interpreter",
-                                             needs: nil, player: nil, yjit: true, roomy_heap: false)
+                                             needs: nil, player: nil, yjit: true, roomy_heap: false, whole_run: true)
                                    ])
 
       # The setting a run's lowering is read from: each run but the GBA lowering's sets it to its

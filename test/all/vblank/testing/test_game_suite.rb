@@ -65,6 +65,16 @@ class TestGameSuite < Minitest::Test
     refute_match(/test:lowering:gbc/, rake("-T").first)
   end
 
+  # A run still being made (the Flash one) has a task of its own, but the whole run leaves it out:
+  # the tools it needs are not on every machine that plays the suite. The whole run above plays
+  # exactly the four lowerings, so this needs only the task list.
+  def test_a_run_still_being_made_has_its_own_task_and_is_left_out_of_the_whole_run
+    listed = rake("-T").first
+
+    assert_match(/rake test:lowering:flash\b/, listed)
+    refute VBlank::Testing::Lowering.run_named(:flash).whole_run?
+  end
+
   # A copy of the game with a golden path of one file.
   private def game_with_a_golden_path
     Dir.mktmpdir do |folder|

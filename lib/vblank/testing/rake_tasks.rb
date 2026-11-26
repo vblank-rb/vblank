@@ -127,8 +127,11 @@ module VBlank
       private
 
       # Every run of the suite, as a lowering and the console it plays games as, in the order
-      # `rake test:all` plays them.
-      def plays = @lowerings.flat_map { |lowering| plays_of(lowering) }
+      # `rake test:all` plays them. A run still being made (Lowering::Run#whole_run) is left out: only
+      # its own task plays it.
+      def plays
+        @lowerings.select { |lowering| Lowering.run_named(lowering).whole_run? }.flat_map { |lowering| plays_of(lowering) }
+      end
 
       def plays_of(lowering)
         Lowering.consoles_for(Lowering.run_named(lowering), @consoles).map { |console| [lowering, console] }
