@@ -2459,7 +2459,7 @@ module VBlank
           pivot_y = turn.pivot_y
           pa, pb, pc, pd = Affine.matrix(turn.angle, turn.size)
 
-          scenery_rows.times do |py|
+          rows_shown_of(bg).times do |py|
             dy = py - (py % tall) - pivot_y
             @screen.width.times do |px|
               dx = px - pivot_x
