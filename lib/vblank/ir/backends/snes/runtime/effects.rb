@@ -71,11 +71,12 @@ module VBlank
             # with no row, as the frame found it; the wake a row asked from; the tick before whose walk
             # it starts this frame, two bytes a tick from 2, nought for none; and whether it starts on
             # that tick's own wake, which then does not move it on.
-            PLAIN = 40
-            ROW_WAKE = 42
-            JOIN = 44
-            ON_TICK = 46
-            STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
+            PLAIN = CURSORS + (2 * SNES::Music::PARTS)
+            ROW_WAKE = PLAIN + 2
+            JOIN = ROW_WAKE + 2
+            ON_TICK = JOIN + 2
+            STATE_BYTES = 64 # Room for CURSORS, a word for each of the most parts an effect has, and the four above
+            raise "an effect's state needs #{ON_TICK + 2} bytes, past STATE_BYTES" if ON_TICK + 2 > STATE_BYTES
             # The effects a frame has to look at, by number, each one up, the highest rank first, and
             # nought after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the
             # order. A word an effect. An effect asked for goes in as it is asked (rt_sfx_live_add);
@@ -402,6 +403,13 @@ module VBlank
               asm.sta(live.call)
               asm.lda(at.call(LIVE_RANK))
               asm.sta(ranks.call)
+              if memory.reserved?(DriverWakes::ROWS)
+                # Just live, it was not in the walk that found what was asked for with no row: one asked
+                # for at a row as a frame begins is not, whatever it was the last time it was live.
+                asm.ldy(at.call(STATE))
+                asm.lda(0)
+                asm.sta(asm.abs_y(memory[STATES], PLAIN))
+              end
               asm.label("rt_sfx_live_add_done")
               asm.rts
 
@@ -418,6 +426,10 @@ module VBlank
               asm.lda(asm.abs_y(memory[STATES], ASKED))
               asm.ora(asm.abs_y(memory[STATES], RUNNING))
               asm.ora(asm.abs_y(memory[STATES], STOPPING))
+              # On a driver's wakes, an effect given its wake is asked for no longer but has not started:
+              # it starts at a later pass of the frame, and an effect ending before then marks LIVE to be
+              # pruned. It stays live.
+              asm.ora(asm.abs_y(memory[STATES], JOIN)) if DriverWakes.on_wakes?(memory)
               asm.beq("rt_sfx_live_prune_past")
               asm.ldx(at.call(LIVE_AT))
               asm.lda(ranks.call)

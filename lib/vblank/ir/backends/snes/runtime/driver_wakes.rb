@@ -145,6 +145,13 @@ module VBlank
               asm.lda(at.call(Strikes::OFFSET))
               asm.sta(at.call(Strikes::START_OFFSET))
               asm.jsr(asm.abs("rt_sfx_count_wakes"))
+              if habits.starts_on_tick # what starts is struck at the frame's first tick, where it has one
+                asm.lda(at.call(TICK_END))
+                asm.beq("rt_sfx_starts_at_first_wake")
+                asm.lda(at.call(TICK_OFFSETS))
+                asm.sta(at.call(Strikes::START_OFFSET))
+                asm.label("rt_sfx_starts_at_first_wake")
+              end
               asm.jsr(asm.abs("rt_sfx_take_up"))
               emit_first_walk(asm, at, habits)
               emit_later_walks(asm, at, memory)
@@ -176,7 +183,7 @@ module VBlank
               asm.stz(at.call(ORDINAL_AT))
               asm.lda(2)
               asm.sta(at.call(JOIN_NOW))
-              starting = habits.starts_on_tick ? at.call(TICK_OFFSETS) : at.call(Strikes::START_OFFSET)
+              starting = at.call(Strikes::START_OFFSET)
               emit_starting_pass(asm, at, "rt_sfx_above", starting)
               emit_tick_pass(asm, at, "rt_sfx_above")
               asm.lda(at.call(Music::PLAYING))
@@ -291,6 +298,8 @@ module VBlank
               asm.inc(at.call(WAKE))
               emit_song_picked_up(asm, at, count_at_song_start) if song_rows
               if level_at
+                # The level is held to 0..IR::Tunes::FULL_LEVEL before it is stored (Builder#music_volume,
+                # and the fade through it), so its low half is the whole of it, as Music#emit_level reads it.
                 asm.lda(asm.abs(level_at))
                 asm.beq("rt_sfx_wake_counted")
               end
@@ -542,6 +551,9 @@ module VBlank
             # asked for as the frame takes it up; of two before one wake, the later row's is kept.
             def emit_play_at_row(asm, at, memory)
               row = ->(plus = 0) { asm.abs_x(memory[ROWS], plus) }
+              # ASKED_WAKE is scratch the frame's take-up uses too. The two never meet: the music frame runs
+              # where a pass's wait ends (Sound's rt_sound_frame), never from the screen's interrupt, so it
+              # never comes between two lines of the game's own (Music, "Where it runs").
               asm.label("rt_sfx_play_at_row")
               asm.lda(at.call(Music::EFFECT_CLOCK)) # the wake past the row, from the clock as it stands
               asm.clc

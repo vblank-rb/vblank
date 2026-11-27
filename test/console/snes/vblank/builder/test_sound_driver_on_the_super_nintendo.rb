@@ -28,17 +28,17 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
   FIRST_PITCHES = [880, 659].freeze # the first notes of :a and :b, A5 and E5
   SONG_ROWS = [0, 60, 120, 180, 240].freeze
 
-  private def effect(key)
+  private def effect(key, group)
     notes = [Score::Note.new(at: 0, key: key), Score::Note.new(at: 1, key: :C4), Score::Note.new(at: 2, key: :D4)]
-    Score.new(tempo: 125, ticks_per_beat: 24, length: 4, plays_once: true, parts: [Score::Part.new(notes: notes)])
+    Score.new(tempo: 125, ticks_per_beat: 24, length: 4, plays_once: true, group: group, parts: [Score::Part.new(notes: notes)])
   end
 
   # The game: the driver described by +driver+, and on each pass whose count is a key of +asks+, the
   # effects that pass asks for, each [name, row or nil]. With +song_on+, [count, row], the pass of that count
   # names a quiet tune at that row; with +silent_on+ the music volume goes to 0 on that pass.
-  private def game(asks, song_on: nil, silent_on: nil, **driver)
+  private def game(asks, song_on: nil, silent_on: nil, group: nil, **driver)
     b = Builder.new
-    effects = { a: effect(:A5), b: effect(:E5) }
+    effects = { a: effect(:A5, group), b: effect(:E5, group) }
     tune = Score.new(tempo: 150, length: 96, parts: [Score::Part.new(plays: :noise, notes: [Score::Note.new(at: 0, key: :C4)])])
     b.instance_eval do
       screen :bitmap
@@ -153,6 +153,18 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
     moved = starts.reject { |_, _, at_row, at_once| at_row == at_once }
     refute_empty moved, "a late row puts some start on a later tick"
     moved.each { |program, *| play_checked(program) }
+  end
+
+  # An effect asked for with no row, and cut off at once by another of its group asked for at a row, is
+  # asked for later at a row: it starts from its row, as one never asked for before does.
+  def test_an_effect_asked_with_no_row_before_starts_from_its_row_later
+    ons = (30..70).reject { |on| predicted(on, 200, on_tick: true) == predicted(on, 0, on_tick: true) }
+    (18..21).to_a.product(ons.first(2)).each do |cut_on, on|
+      program = game({ cut_on => [[:a, nil], [:b, 0]], on => [[:a, 200]] }, group: :voice, effects_start: :on_next_tick)
+
+      assert_equal predicted(on, 200, on_tick: true), first_notes(program)[:"sfx.a"].last, "cut on #{cut_on}, asked on #{on}"
+      play_checked(program)
+    end
   end
 
   # An effect not keyed on a tick starts on the first wake past its row, part way through the frame:
