@@ -554,8 +554,19 @@ module VBlank
 
             # Reference#exec_play_song: the tune named, from the next frame or from here.
             def emit_play_song(node)
+              tune = Build.int(@music.number(node.name))
+              return runtime_call("rt_music_play_at_row", [tune, row_share(node)]) if node.sent_after_rows
+
               routine = node.this_frame ? "rt_music_play_now" : "rt_music_play"
-              runtime_call(routine, [Build.int(@music.number(node.name))])
+              runtime_call(routine, [tune])
+            end
+
+            # How far into the frame a request sent at a screen row (`sent_after_rows:`) is, in 65536ths
+            # of a wake of the sound driver, worked out here, as Reference#row_share works it out
+            # (IR::Tunes.row_share; Runtime::DriverWakes).
+            def row_share(node)
+              console = @program.described_console
+              Build.int(IR::Tunes.row_share(node.sent_after_rows, IR::Tunes.effect_clock_step(@program, console) || 0, console))
             end
 
             def emit_stop_music(_node) = runtime_call("rt_music_stop", [])
@@ -563,14 +574,20 @@ module VBlank
 
             # Reference#exec_play_from_list: the song at the place the game works out, of the list.
             def emit_play_from_list(node)
+              list = [node.which, Build.int(@music.list_number(node.name))]
+              return runtime_call("rt_music_play_from_list_at_row", [*list, row_share(node)]) if node.sent_after_rows
+
               routine = node.this_frame ? "rt_music_play_from_list_now" : "rt_music_play_from_list"
-              runtime_call(routine, [node.which, Build.int(@music.list_number(node.name))])
+              runtime_call(routine, list)
             end
 
             # Reference#exec_play_sound_effect: the effect at the place the game works out, of the list.
             def emit_play_sound_effect(node)
+              list = [node.which, Build.int(@music.effect_list_number(node.name))]
+              return runtime_call("rt_sfx_play_at_row", [*list, row_share(node)]) if node.sent_after_rows
+
               routine = node.this_frame ? "rt_sfx_play_now" : "rt_sfx_play"
-              runtime_call(routine, [node.which, Build.int(@music.effect_list_number(node.name))])
+              runtime_call(routine, list)
             end
 
             # Reference#exec_wave's entry.

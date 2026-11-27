@@ -46,7 +46,7 @@ repeats, up to 65536 in a game (`super-nintendo.md`, `songs`).
   the first such wake holding a tick; a song named at a row sets the count there. Two requests at rows that reach
   the driver before one wake: the last sent is the one heard (effects share one, songs another). A row on
   `fade_music_out` or `fade_music_in` is a friendly error, since a fade moves the volume a frame at a time, and so is
-  a row with `this_frame: true`. Rows are the Super Nintendo's for now; the other consoles refuse them.
+  a row with `this_frame: true`. The Super Nintendo plays rows, `:on_next_tick` and `silent_music_stops_ticks:`, and so do the C, JavaScript and Ruby builds made for it; every other console refuses them by name until its build plays them.
 - `enable_sound`, `define_sound :name, frequency:, duty:, decay:, volume:`, `beep :tone` — SFX (channel 2).
   `enable_sound mix_rate: 13379` names how many samples a second recordings are mixed at (1000 to 65536), in
   place of the rate most of the game's recordings were made at (see `sample`); the mix still runs at the

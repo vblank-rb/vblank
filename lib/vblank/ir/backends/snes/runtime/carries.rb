@@ -56,6 +56,8 @@ module VBlank
           # (Audio::Score's +note_fade_out+; Runtime::Recordings#fade_gain). +effect_count_at_song_start+ is
           # where a song's start sets the effects' tempo count, or nil (IR::Tunes.effect_count_at_song_start), and
           # +tune_tempo_steps+ what the count adds while each song plays, or nil (IR::Tunes.tune_tempo_steps).
+          # +driver_habits+ are the sound driver's habits that put the effects on its wakes, or nil
+          # (DriverWakes::Habits).
           Carries = Data.define(:collides,:board, :painted, :saves, :sound, :songs, :follows_level, :effects, :samples, :recording_voices,
                                 :holds_music, :wobbles, :steps_shapes, :swells, :slides, :sides, :status_bar, :row_held,
                                 :alone_flag_in_line_table, :held_hides_sprites, :bends, :scene_bends, :tile_runs, :straight_tile_runs, :held_runs, :changing_colors,
@@ -63,7 +65,8 @@ module VBlank
                                 :scene_background_tiles, :extra_buttons, :controllers, :counts_players, :glides, :text_layer,
                                 :paint_turns, :third_layer, :chip_envelopes, :mosaic, :recorded_pans, :shown_band,
                                 :doubled, :boxes, :sprites_over_picture, :effect_clock_step, :effect_tempo_step,
-                                :effects_cut_notes, :note_fades, :effect_count_at_song_start, :tune_tempo_steps) do
+                                :effects_cut_notes, :note_fades, :effect_count_at_song_start, :tune_tempo_steps,
+                                :driver_habits) do
             # What +program+ needs on +board+. The rest are what the build chose: +screen_colors+ and
             # +sprite_colors+ bring colours in by scene, +sprite_tiles+ and +background_tiles+ tiles.
             # +handover+ is what each of its scenes hands the next (SceneHandover) and +stacking+ how
@@ -109,7 +112,8 @@ module VBlank
                   effects_cut_notes: IR::Tunes.effects_cut_notes?(program),
                   note_fades: program.walk.any? { |node| node.kind == :song && node.note_fade_out },
                   effect_count_at_song_start: IR::Tunes.effect_count_at_song_start(program),
-                  tune_tempo_steps: IR::Tunes.tune_tempo_steps(program))
+                  tune_tempo_steps: IR::Tunes.tune_tempo_steps(program),
+                  driver_habits: DriverWakes::Habits.of(program))
             end
 
             # A Super FX on the board (Chip).

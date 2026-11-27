@@ -62,10 +62,7 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
   end
 
   # +program+ played by the run's player, which fails at the first frame it and the interpreter differ.
-  private def play_checked(program)
-    skip_on_snes "the cartridge does not play a sound driver's habits or a request's row yet"
-    VBlank::Testing::BuildChecks.without_checks { game_player.run(program, frames: FRAMES) }
-  end
+  private def play_checked(program) = game_player.run(program, frames: FRAMES)
 
   # The frame of each effect's first note, as the interpreter's log has it: { name => [frames] }.
   private def first_notes(program)
@@ -143,7 +140,7 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
   end
 
   # A late row puts some starts on a later tick than the frame's first wake would. Each pass is
-  # checked against the key; the run's player plays the passes where the row moves the start.
+  # checked against the key; the run's player plays each pass where the row moves the start.
   def test_a_row_moves_the_start_off_the_frames_first_wake
     starts = (30..70).map do |on|
       program = game({ on => [[:a, 200]] }, effects_start: :on_next_tick)
@@ -155,7 +152,7 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
     starts.each { |_, heard, at_row, _| assert_equal at_row, heard }
     moved = starts.reject { |_, _, at_row, at_once| at_row == at_once }
     refute_empty moved, "a late row puts some start on a later tick"
-    moved.first(2).each { |program, *| play_checked(program) }
+    moved.each { |program, *| play_checked(program) }
   end
 
   # An effect not keyed on a tick starts on the first wake past its row, part way through the frame:
@@ -181,7 +178,7 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
 
   # A song named at a row sets the count on the first wake past the row (`tick_count_at_song_start:`), and
   # an effect keyed on a tick starts on the beat that count gives. The run's player plays a row of each
-  # beat the row gives.
+  # beat a row gives.
   def test_a_song_named_at_a_row_sets_the_count_on_the_wake_past_it
     played = {}
     moved = (30..37).map do |song_on|
@@ -198,7 +195,7 @@ class TestSoundDriverOnTheSuperNintendo < Minitest::Test
       keys.uniq.size > 1
     end
     assert moved.any?, "where the song is named moves the beat"
-    played.values.first(3).each { |program| play_checked(program) }
+    played.each_value { |program| play_checked(program) }
   end
 
   # While the music is silent the driver skips its tick, so an effect keyed on one waits for the music.

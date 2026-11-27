@@ -67,6 +67,14 @@ module VBlank
             RUNNING = 6
             FRAME = 8
             CURSORS = 10
+            # ...and past those, where the effects play on a driver's wakes (DriverWakes): asked for
+            # with no row, as the frame found it; the wake a row asked from; the tick before whose walk
+            # it starts this frame, two bytes a tick from 2, nought for none; and whether it starts on
+            # that tick's own wake, which then does not move it on.
+            PLAIN = 40
+            ROW_WAKE = 42
+            JOIN = 44
+            ON_TICK = 46
             STATE_BYTES = 64 # Past CURSORS and a word for each of the most parts an effect has
             # The effects a frame has to look at, by number, each one up, the highest rank first, and
             # nought after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the
@@ -452,6 +460,8 @@ module VBlank
                 asm.branch_long(:beq, "rt_sfx_asked_live_done")
               end
               emit_live_walk(asm, at, memory, "rt_sfx_asked") do
+                next emit_joining_now(asm, at, memory) if DriverWakes.on_wakes?(memory)
+
                 asm.lda(asm.abs_y(memory[STATES], ASKED))
                 asm.sta(asm.abs_y(memory[STATES], ASKED_NOW))
                 asm.lda(0)
@@ -471,6 +481,21 @@ module VBlank
               asm.label("rt_sfx_below")
               emit_pass(asm, at, memory, "rt_sfx_below", above: false)
               asm.rts
+            end
+
+            # On a driver's wakes, inline for the effect selected: asked for now where it joins the frame
+            # at the tick playing (DriverWakes::JOIN_NOW), which DriverWakes#emit_take_up worked out
+            # as the frame began; not, for every other.
+            def emit_joining_now(asm, at, memory)
+              asm.lda(asm.abs_y(memory[STATES], JOIN))
+              asm.cmp(at.call(DriverWakes::JOIN_NOW))
+              asm.beq(joins = "rt_sfx_joins_#{asm.here}")
+              asm.lda(0)
+              asm.bra(put = "rt_sfx_joins_put_#{asm.here}")
+              asm.label(joins)
+              asm.lda(1)
+              asm.label(put)
+              asm.sta(asm.abs_y(memory[STATES], ASKED_NOW))
             end
 
             # One pass over the live effects in rank order, playing those that outrank the tune
@@ -537,7 +562,15 @@ module VBlank
               if timed
                 asm.lda(asm.abs(memory[Music::EFFECTS_STARTING]))
                 asm.bne("rt_sfx_frame_starting")
-                if memory.reserved?(Music::STARTED_MOVE_ON) # a tick on a later interrupt moves it on
+                if DriverWakes.on_wakes?(memory) # a tick past the wake it started on moves it on
+                  # ASKED_NOW may be an earlier tick's still: a tick nothing joins at starts nothing,
+                  # so it has no pass to set the flags again (DriverWakes#emit_later_walks).
+                  asm.lda(state.call(JOIN))
+                  asm.cmp(at.call(DriverWakes::JOIN_NOW))
+                  asm.bne("rt_sfx_frame_not_asked")
+                  asm.lda(state.call(ON_TICK))
+                  asm.beq("rt_sfx_frame_not_asked")
+                elsif memory.reserved?(Music::STARTED_MOVE_ON) # a tick on a later interrupt moves it on
                   asm.lda(asm.abs(memory[Music::STARTED_MOVE_ON]))
                   asm.bne("rt_sfx_frame_not_asked")
                 end

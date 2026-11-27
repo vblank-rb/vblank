@@ -35,6 +35,10 @@ class TestSoundDriverNotMadeYetGuardrail < Minitest::Test
     assert_empty Check.new.detect(game(:gba))
   end
 
+  def test_the_super_nintendos_build_makes_every_habit
+    assert_empty Check.new.detect(game(:snes, starts_on_tick: true, rows: 30))
+  end
+
   def test_a_row_with_no_wakes_is_refused
     findings = Rows.new.detect(game(:gba, rows: 30, interrupt_rate: nil))
 

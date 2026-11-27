@@ -126,7 +126,8 @@ module VBlank
             # +follows_level+ for a game that sets the music volume (SNES::Music.follows_level?);
             # +effects+ how many sound effects the game has (Effects).
             def reserve(memory, follows_level: false, effects: 0, holds: false, wobbles: false, steps_shapes: false, swells: false,
-                        slides: false, sides: false, effect_clock_step: nil, effect_tempo_step: nil, counts_tempo_now: false)
+                        slides: false, sides: false, effect_clock_step: nil, effect_tempo_step: nil, counts_tempo_now: false,
+                        driver_habits: nil, count_at_song_start: nil)
               [EFFECT_CLOCK, EFFECT_TICKED, EFFECTS_STARTING].each { |name| memory.reserve(name, 2) } if effect_clock_step
               [EFFECT_TEMPO, STARTED_MOVE_ON].each { |name| memory.reserve(name, 2) } if effect_clock_step && effect_tempo_step
               memory.reserve(TEMPO_NOW, 2) if effect_clock_step && effect_tempo_step && counts_tempo_now
@@ -149,6 +150,10 @@ module VBlank
                ENTRY, NOTE].each { |name| memory.reserve(name, 2) }
               memory.reserve(CURSORS, SNES::Music::PARTS * 2)
               Effects.reserve(memory, effects) if effects.positive?
+              if driver_habits # the effects on a driver's wakes (DriverWakes.on_wakes?)
+                DriverWakes.reserve(memory, driver_habits, most_wakes: IR::Tunes.most_ticks_a_frame(effect_clock_step),
+                                                           count_at_song_start: count_at_song_start)
+              end
               return unless follows_level
 
               [LEVEL_SET, LOUDNESS, LEVEL_NOW, LOUDNESS_TABLE, HELD_END, HELD_WALK, CHANNEL_FOUND].each { |name| memory.reserve(name, 2) }
@@ -164,15 +169,20 @@ module VBlank
             # +effects+ how many sound effects the game has; +notes_apart+ for a game whose song
             # parts' notes are apart from the table (SongBanks).
             def emit(asm, memory, level_at: nil, effects: 0, recorded: false, notes_apart: false, effect_clock_step: nil,
-                     effect_tempo_step: nil, count_at_song_start: nil, tune_tempo_steps: nil)
+                     effect_tempo_step: nil, count_at_song_start: nil, tune_tempo_steps: nil, driver_habits: nil)
               count_at_song_start = nil unless effects.positive? && effect_clock_step
               effect_tempo_step = :tune if tune_tempo_steps && effect_tempo_step # the song playing's (#emit_step_effect_tempo)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               sharing = effects.positive?
               reserve_notes_apart(memory) if notes_apart
-              emit_game_side(asm, at)
+              emit_game_side(asm, at, memory)
               emit_tune_hold(asm, at) if holds?(memory)
-              emit_frames(asm, at, sharing, memory, sharing && effect_clock_step, effect_tempo_step)
+              if DriverWakes.on_wakes?(memory)
+                DriverWakes.emit_frame(asm, at, memory, step: effect_clock_step, tempo: effect_tempo_step, habits: driver_habits,
+                                                        level_at: level_at, count_at_song_start: count_at_song_start)
+              else
+                emit_frames(asm, at, sharing, memory, sharing && effect_clock_step, effect_tempo_step)
+              end
               emit_wobbles(asm, at, memory) if wobbles?(memory)
               emit_shapes(asm, at, memory) if steps_shapes?(memory)
               emit_swells(asm, at, memory) if swells?(memory)
@@ -722,15 +732,21 @@ module VBlank
             # rt_music_play(tune): play it from the next frame, unless it is playing already.
             # rt_music_play_now(tune): the same, and a tune that is starting plays its first frame
             # here (Reference::Player#start_song_here). rt_music_stop(): no tune.
-            def emit_game_side(asm, at)
+            #
+            # In a game that names a song at a row, a song named or stopped another way is no longer the
+            # one named at a row (DriverWakes::SONG_AT_ROW).
+            def emit_game_side(asm, at, memory)
+              song_rows = memory.reserved?(DriverWakes::SONG_AT_ROW)
               asm.label("rt_music_play")
               asm.lda(asm.direct(Sound::R0))
               asm.sta(at.call(NAMED))
+              asm.stz(at.call(DriverWakes::SONG_AT_ROW)) if song_rows
               asm.rtl
 
               asm.label("rt_music_play_now")
               asm.lda(asm.direct(Sound::R0))
               asm.sta(at.call(NAMED))
+              asm.stz(at.call(DriverWakes::SONG_AT_ROW)) if song_rows
               # The tune named, caught up with here: one that starts plays its first frame.
               asm.label("rt_music_start_here")
               asm.jsr(asm.abs("rt_music_switch"))
@@ -743,6 +759,7 @@ module VBlank
 
               asm.label("rt_music_stop")
               asm.stz(at.call(NAMED))
+              asm.stz(at.call(DriverWakes::SONG_AT_ROW)) if song_rows
               asm.inc(at.call(STOPS))
               asm.rtl
 
@@ -781,6 +798,7 @@ module VBlank
               asm.tax
               asm.lda(asm.long_x("music_data", 2))
               asm.sta(at.call(NAMED))
+              asm.stz(at.call(DriverWakes::SONG_AT_ROW)) if song_rows
               asm.lda(1)
               asm.rts
               asm.label("rt_music_name_from_list_outside")
@@ -815,6 +833,12 @@ module VBlank
               if sharing && clock_step && IR::Tunes.most_ticks_a_frame(clock_step) > 1
                 tempo_step ? emit_later_interrupts(asm, at, memory, clock_step, tempo_step, strikes) : emit_later_ticks(asm, at, memory, clock_step, strikes)
               end
+              emit_frame_end(asm, memory, strikes: strikes)
+            end
+
+            # What every frame ends with, inline: the notes that swell, slide, wobble and step their shapes
+            # moved on, the sound unit told the frame's strikes are over, and back.
+            def emit_frame_end(asm, memory, strikes:)
               asm.jsr(asm.abs("rt_music_swells")) if swells?(memory)
               asm.jsr(asm.abs("rt_music_slides")) if slides?(memory)
               asm.jsr(asm.abs("rt_music_wobbles")) if wobbles?(memory)

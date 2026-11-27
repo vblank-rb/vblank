@@ -19,7 +19,7 @@ module VBlank
           PLAIN_NAME = "a sound driver's habit that the console's build does not make yet"
 
           # The consoles whose builds make every habit.
-          MADE = %i[].freeze
+          MADE = %i[snes].freeze
 
           def detect(program)
             console = program.described_console
