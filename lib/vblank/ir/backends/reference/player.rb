@@ -33,6 +33,10 @@ module VBlank
           # on every frame it plays.
           EffectRun = Struct.new(:frame, :cursors, keyword_init: true)
 
+          # The effects' tempo count on a driver's wakes, and the share it adds until it next comes round
+          # after a song's start, nought for the tempo.
+          TempoCount = Data.define(:count, :share)
+
           def initialize(mixer:, log:)
             @mixer = mixer
             @log = log
@@ -77,8 +81,8 @@ module VBlank
             @frame_level = nil
             @effects_at_rows = [] # effects asked for at a row this pass: [list, which, share into the frame]
             @song_at_row = nil    # ...and the song, its share into the frame, while it is still the one named last
-            @count_before_switch = [0, 0] # the tempo count and its share as a frame began, before a song's start set it
-            @song_count_owed = false # a song named at a row past its frame's last wake sets the count before the next frame's first
+            @count_before_switch = TempoCount.new(count: 0, share: 0) # the tempo count and its share as a frame began, before a song's start set it
+            @song_count_reset_pending = false # a song named at a row past its frame's last wake sets the count before the next frame's first
           end
 
           # The sound effects count their ticks on a timer that adds this a frame
@@ -250,7 +254,7 @@ module VBlank
           # several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
           def advance(level: nil)
             song_before = @playing
-            @count_before_switch = [@effect_tempo, @effect_tempo_now]
+            @count_before_switch = TempoCount.new(count: @effect_tempo, share: @effect_tempo_now)
             switch_to_wanted_song
             @frame_level = level
             ticks = step_effect_clock(song_before)
@@ -329,11 +333,12 @@ module VBlank
             @frame_ticked = []
             if change
               wake, saved = change
-              @effect_tempo, @effect_tempo_now = saved
+              @effect_tempo = saved.count
+              @effect_tempo_now = saved.share
               @effect_tempo, @effect_tempo_now, before = count_wakes(@effect_tempo, @effect_tempo_now, [wake - 1, interrupts].min, tune_tempo(song_before))
               @frame_ticked.concat(before)
               @effect_tempo = @effect_tempo_now = @effect_count_at_song_start if @effect_count_at_song_start && @playing && wake <= interrupts
-              @song_count_owed = wake > interrupts
+              @song_count_reset_pending = wake > interrupts
             end
             @effect_tempo, @effect_tempo_now, after = count_wakes(@effect_tempo, @effect_tempo_now, interrupts - @frame_ticked.length, tune_tempo(@playing))
             @frame_ticked.concat(after)
@@ -343,10 +348,10 @@ module VBlank
 
           # Where a song named at a row this pass is picked up, and the count as it stood before the song's
           # start set it: [wake, [count, share]], or nil for a frame whose song changed with no row, or not at
-          # all. A count the song's start still owes from the frame before is set before this frame's first.
+          # all. A count the song's start left for the next frame is set before this frame's first.
           def song_change_wake(song_before, interrupts)
-            if @song_count_owed
-              @song_count_owed = false
+            if @song_count_reset_pending
+              @song_count_reset_pending = false
               @effect_tempo = @effect_tempo_now = @effect_count_at_song_start if @effect_count_at_song_start && @playing
             end
             name, share = @song_at_row

@@ -113,7 +113,7 @@ module VBlank
                   note_fades: program.walk.any? { |node| node.kind == :song && node.note_fade_out },
                   effect_count_at_song_start: IR::Tunes.effect_count_at_song_start(program),
                   tune_tempo_steps: IR::Tunes.tune_tempo_steps(program),
-                  driver_habits: DriverWakes::Habits.of(program))
+                  driver_habits: DriverWakes::Habits.named_in(program))
             end
 
             # A Super FX on the board (Chip).

@@ -562,12 +562,8 @@ module VBlank
             end
 
             # How far into the frame a request sent at a screen row (`sent_after_rows:`) is, in 65536ths
-            # of a wake of the sound driver, worked out here, as Reference#row_share works it out
-            # (IR::Tunes.row_share; Runtime::DriverWakes).
-            def row_share(node)
-              console = @program.described_console
-              Build.int(IR::Tunes.row_share(node.sent_after_rows, IR::Tunes.effect_clock_step(@program, console) || 0, console))
-            end
+            # of a wake of the sound driver, worked out here (IR::Tunes.request_row_share; Runtime::DriverWakes).
+            def row_share(node) = Build.int(IR::Tunes.request_row_share(@program, node.sent_after_rows))
 
             def emit_stop_music(_node) = runtime_call("rt_music_stop", [])
             def emit_hold_music(node) = runtime_call(node.held ? "rt_music_hold_tune" : "rt_music_release_tune", [])

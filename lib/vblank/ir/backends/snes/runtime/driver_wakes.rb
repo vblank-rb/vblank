@@ -21,7 +21,7 @@ module VBlank
           # the tick's place in the frame (Strikes). So the frame first counts its wakes, as
           # Reference::Player#count_ticks_on_interrupts does: which of them hold a tick, and where in
           # the frame each tick falls (TICK_WAKES, TICK_OFFSETS). Then each effect asked for is given
-          # the wake it starts on (#emit_take_up), and the frame is walked a tick at a time, an effect
+          # the wake it starts on (#emit_assign_start_wakes), and the frame is walked a tick at a time, an effect
           # starting just before the walk of the first tick on or after its wake
           # (Reference::Player#play_effects_on_wakes).
           #
@@ -46,7 +46,7 @@ module VBlank
             # (an effect asked for at a row) and +song_rows+ (a song).
             Habits = Data.define(:starts_on_tick, :silent_stops_ticks, :effect_rows, :song_rows) do
               # The habits +program+ names, or nil for none, or for effects not on a driver's wakes.
-              def self.of(program)
+              def self.named_in(program)
                 return unless IR::Tunes.effect_tempo_step(program) && IR::Tunes.effects(program).any?
 
                 rows = program.walk.select { |node| IR::Tunes::ROW_REQUESTS.include?(node.kind) && node.sent_after_rows }
@@ -64,18 +64,18 @@ module VBlank
             TICK_END = "rt sfx tick end"
             TICK_WAKES = "rt sfx tick wakes"
             TICK_OFFSETS = "rt sfx tick offsets"
-            WAKE = "rt sfx wake"
+            WAKE_COUNTED = "rt sfx wake counted"
             TUNE_COUNTED = "rt sfx tune counted"
             # The walk: which tick is playing, two bytes each, and what an effect joining at it holds
-            # in JOIN (Effects); and, while an effect is given its wake, the wake asked from, whether it
+            # in STARTS_BEFORE_TICK (Effects); and, while an effect is given its wake, the wake asked from, whether it
             # was asked with no row, and the wake it starts on.
             ORDINAL_AT = "rt sfx ordinal at"
-            JOIN_NOW = "rt sfx join now"
+            STARTS_BEFORE_TICK_NOW = "rt sfx starts before tick now"
             # ...whether any effect joins at each tick, and past the last, a word each, so a tick that
             # starts nothing needs no walk to start it.
-            JOINED = "rt sfx joined"
+            TICK_HAS_STARTS = "rt sfx tick has starts"
             ASKED_WAKE = "rt sfx asked wake"
-            ASKED_PLAINLY = "rt sfx asked plainly"
+            EFFECT_ASKED_WITHOUT_ROW = "rt sfx effect asked without row"
             START_WAKE = "rt sfx start wake"
             # The effects asked for at a row this pass, ROW_BYTES each, ROWS_MOST at most: the wake
             # its row comes before, the place asked for (R0's two words), the list (R1) and the share
@@ -90,7 +90,7 @@ module VBlank
             ROWS_MOST = 16
             # A song named at a row: the song, nought for none, and its share; the song, the count and
             # its share as the frame began; the clock then; the wake the song is picked up on, nought
-            # for none this frame; and whether its start still owes the count it sets, past the frame.
+            # for none this frame; and whether its start has yet to set its count, past the frame.
             SONG_AT_ROW = "rt music song at row"
             SONG_ROW_SHARE = "rt music song row share"
             SONG_BEFORE = "rt music song before"
@@ -98,16 +98,16 @@ module VBlank
             NOW_BEFORE = "rt sfx now before"
             FRAME_CLOCK_START = "rt sfx frame clock start"
             CHANGE_WAKE = "rt sfx change wake"
-            COUNT_OWED = "rt sfx count owed"
+            COUNT_RESET_PENDING = "rt sfx count reset pending"
 
             module_function
 
             # +most_wakes+ is the most a frame has (IR::Tunes.most_ticks_a_frame); +count_at_song_start+
             # is where a song's start sets the count, or nil.
             def reserve(memory, habits, most_wakes:, count_at_song_start:)
-              [TICK_END, WAKE, TUNE_COUNTED, ORDINAL_AT, JOIN_NOW, ASKED_WAKE, ASKED_PLAINLY, START_WAKE].each { |name| memory.reserve(name, 2) }
+              [TICK_END, WAKE_COUNTED, TUNE_COUNTED, ORDINAL_AT, STARTS_BEFORE_TICK_NOW, ASKED_WAKE, EFFECT_ASKED_WITHOUT_ROW, START_WAKE].each { |name| memory.reserve(name, 2) }
               [TICK_WAKES, TICK_OFFSETS].each { |name| memory.reserve(name, most_wakes * 2) }
-              memory.reserve(JOINED, (most_wakes + 1) * 2)
+              memory.reserve(TICK_HAS_STARTS, (most_wakes + 1) * 2)
               if habits.effect_rows
                 [ROW_END, ROW_AT].each { |name| memory.reserve(name, 2) }
                 memory.reserve(ROWS, ROWS_MOST * ROW_BYTES)
@@ -116,8 +116,11 @@ module VBlank
 
               [SONG_AT_ROW, SONG_BEFORE, COUNT_BEFORE, NOW_BEFORE, FRAME_CLOCK_START, CHANGE_WAKE].each { |name| memory.reserve(name, 2) }
               memory.reserve(SONG_ROW_SHARE, 4)
-              memory.reserve(COUNT_OWED, 2) if count_at_song_start
+              memory.reserve(COUNT_RESET_PENDING, 2) if count_at_song_start
             end
+
+            # Whether a song is named at a row here: the one place the runtime asks (Habits#song_rows).
+            def song_rows?(memory) = memory.reserved?(SONG_AT_ROW)
 
             # Whether the effects here play on a driver's wakes.
             def on_wakes?(memory) = memory.reserved?(TICK_END)
@@ -127,9 +130,9 @@ module VBlank
             # is the clock's step, +tempo+ the tempo's (:tune for the song playing's), +level_at+ where the
             # game keeps its music volume, or nil.
             def emit_frame(asm, at, memory, step:, tempo:, habits:, level_at:, count_at_song_start:)
-              song_rows = memory.reserved?(SONG_AT_ROW)
+              song_rows = song_rows?(memory)
               asm.label("rt_music_frame")
-              emit_kept_before_switch(asm, at, memory) if song_rows
+              emit_store_count_before_switch(asm, at, memory) if song_rows
               asm.jsr(asm.abs("rt_music_switch"))
               asm.jsl(asm.long("rt_strikes_mark"))
               Strikes.emit_first_offset(asm, memory, Music::EFFECT_CLOCK, step)
@@ -152,20 +155,20 @@ module VBlank
                 asm.sta(at.call(Strikes::START_OFFSET))
                 asm.label("rt_sfx_starts_at_first_wake")
               end
-              asm.jsr(asm.abs("rt_sfx_take_up"))
+              asm.jsr(asm.abs("rt_sfx_assign_start_wakes"))
               emit_first_walk(asm, at, habits)
               emit_later_walks(asm, at, memory)
               Music.emit_frame_end(asm, memory, strikes: true)
               emit_count_wakes(asm, at, memory, step: step, tempo: tempo, level_at: (level_at if habits.silent_stops_ticks),
                                                 count_at_song_start: count_at_song_start)
-              emit_take_up(asm, at, memory, habits, step)
+              emit_assign_start_wakes(asm, at, memory, habits, step)
               emit_song_change_wake(asm, at, count_at_song_start) if song_rows
               emit_play_at_row(asm, at, memory) if habits.effect_rows
               emit_song_at_row(asm, at) if song_rows
             end
 
             # The song, the count and its share as the frame begins, before a song's start sets them.
-            def emit_kept_before_switch(asm, at, memory)
+            def emit_store_count_before_switch(asm, at, memory)
               asm.lda(at.call(Music::PLAYING))
               asm.sta(at.call(SONG_BEFORE))
               asm.lda(at.call(Music::EFFECT_TEMPO))
@@ -182,15 +185,15 @@ module VBlank
             def emit_first_walk(asm, at, habits)
               asm.stz(at.call(ORDINAL_AT))
               asm.lda(2)
-              asm.sta(at.call(JOIN_NOW))
+              asm.sta(at.call(STARTS_BEFORE_TICK_NOW))
               starting = at.call(Strikes::START_OFFSET)
-              emit_starting_pass(asm, at, "rt_sfx_above", starting)
+              emit_starting_walk(asm, at, %w[rt_sfx_above], offset: starting)
               emit_tick_pass(asm, at, "rt_sfx_above")
               asm.lda(at.call(Music::PLAYING))
               asm.beq("rt_music_frame_played")
               asm.jsr(asm.abs("rt_music_song_frame"))
               asm.label("rt_music_frame_played")
-              emit_starting_pass(asm, at, "rt_sfx_below", starting)
+              emit_starting_walk(asm, at, %w[rt_sfx_below], offset: starting)
               emit_tick_pass(asm, at, "rt_sfx_below")
             end
 
@@ -204,56 +207,54 @@ module VBlank
               asm.sta(at.call(ORDINAL_AT))
               asm.cmp(at.call(TICK_END))
               asm.branch_long(:bcs, "rt_sfx_later_walks_done")
-              asm.inc(at.call(JOIN_NOW))
-              asm.inc(at.call(JOIN_NOW))
+              asm.inc(at.call(STARTS_BEFORE_TICK_NOW))
+              asm.inc(at.call(STARTS_BEFORE_TICK_NOW))
               asm.ldx(at.call(ORDINAL_AT))
               asm.lda(asm.abs_x(memory[TICK_OFFSETS]))
               asm.sta(at.call(Strikes::OFFSET))
-              asm.lda(asm.abs_x(memory[JOINED])) # nothing joins at most ticks: no walk to start it
+              asm.lda(asm.abs_x(memory[TICK_HAS_STARTS])) # nothing joins at most ticks: no walk to start it
               asm.beq("rt_sfx_later_none_join")
-              emit_starting_walk(asm, at)
+              emit_starting_walk(asm, at, BOTH_SIDES)
               asm.label("rt_sfx_later_none_join")
-              asm.jsr(asm.abs("rt_sfx_above"))
-              asm.jsl(asm.long("rt_strikes_close"))
-              asm.jsr(asm.abs("rt_sfx_below"))
-              asm.jsl(asm.long("rt_strikes_close"))
+              emit_passes(asm, BOTH_SIDES)
               asm.brl("rt_sfx_later_walk")
               asm.label("rt_sfx_later_walks_done")
               asm.lda(at.call(TICK_END))
               asm.beq("rt_sfx_past_last_done")
               asm.tax
-              asm.lda(asm.abs_x(memory[JOINED]))
+              asm.lda(asm.abs_x(memory[TICK_HAS_STARTS]))
               asm.beq("rt_sfx_past_last_done")
               asm.txa
               asm.inc
               asm.inc
-              asm.sta(at.call(JOIN_NOW))
+              asm.sta(at.call(STARTS_BEFORE_TICK_NOW))
               asm.lda(asm.abs_x(memory[TICK_OFFSETS], -2)) # the last tick's place
               asm.sta(at.call(Strikes::OFFSET))
-              emit_starting_walk(asm, at)
+              emit_starting_walk(asm, at, BOTH_SIDES)
               asm.label("rt_sfx_past_last_done")
             end
 
-            # A starting pass on both sides of the tune, in rank order, at Strikes::OFFSET as it stands.
-            def emit_starting_walk(asm, at)
+            BOTH_SIDES = %w[rt_sfx_above rt_sfx_below].freeze # Every effect, in rank order
+
+            # +routines+ as passes that start what joins at the tick playing, struck at +offset+, or at
+            # Strikes::OFFSET as it stands.
+            def emit_starting_walk(asm, at, routines, offset: nil)
               asm.lda(1)
               asm.sta(at.call(Music::EFFECTS_STARTING))
-              asm.jsr(asm.abs("rt_sfx_above"))
-              asm.jsl(asm.long("rt_strikes_close"))
-              asm.jsr(asm.abs("rt_sfx_below"))
-              asm.jsl(asm.long("rt_strikes_close"))
+              if offset
+                asm.lda(offset)
+                asm.sta(at.call(Strikes::OFFSET))
+              end
+              emit_passes(asm, routines)
               asm.stz(at.call(Music::EFFECTS_STARTING))
             end
 
-            # +routine+ as a pass that starts what joins at the tick playing, struck at +offset+.
-            def emit_starting_pass(asm, at, routine, offset)
-              asm.lda(1)
-              asm.sta(at.call(Music::EFFECTS_STARTING))
-              asm.lda(offset)
-              asm.sta(at.call(Strikes::OFFSET))
-              asm.jsr(asm.abs(routine))
-              asm.jsl(asm.long("rt_strikes_close"))
-              asm.stz(at.call(Music::EFFECTS_STARTING))
+            # Each of +routines+, a pass over the effects, its strikes closed after it.
+            def emit_passes(asm, routines)
+              routines.each do |routine|
+                asm.jsr(asm.abs(routine))
+                asm.jsl(asm.long("rt_strikes_close"))
+              end
             end
 
             # ...and as the first tick's pass, on a frame with one.
@@ -262,8 +263,7 @@ module VBlank
               asm.beq(skipped = "#{routine}_no_tick")
               asm.lda(at.call(TICK_OFFSETS))
               asm.sta(at.call(Strikes::OFFSET))
-              asm.jsr(asm.abs(routine))
-              asm.jsl(asm.long("rt_strikes_close"))
+              emit_passes(asm, [routine])
               asm.label(skipped)
             end
 
@@ -273,10 +273,10 @@ module VBlank
             # named at a row is counted from its wake, the wakes before it as the song before had
             # them. With +level_at+, a wake adds nothing while the music volume is nought.
             def emit_count_wakes(asm, at, memory, step:, tempo:, level_at:, count_at_song_start:)
-              song_rows = memory.reserved?(SONG_AT_ROW)
+              song_rows = song_rows?(memory)
               asm.label("rt_sfx_count_wakes")
               asm.stz(at.call(TICK_END))
-              asm.stz(at.call(WAKE))
+              asm.stz(at.call(WAKE_COUNTED))
               asm.lda(at.call(Music::PLAYING))
               asm.sta(at.call(TUNE_COUNTED))
               if song_rows
@@ -292,11 +292,11 @@ module VBlank
                 asm.sta(at.call(TUNE_COUNTED))
               end
               asm.label("rt_sfx_wake_next")
-              asm.lda(at.call(WAKE))
+              asm.lda(at.call(WAKE_COUNTED))
               asm.cmp(at.call(Music::EFFECT_TICKED))
               asm.branch_long(:bcs, "rt_sfx_wakes_counted")
-              asm.inc(at.call(WAKE))
-              emit_song_picked_up(asm, at, count_at_song_start) if song_rows
+              asm.inc(at.call(WAKE_COUNTED))
+              emit_switch_count_to_new_song(asm, at, count_at_song_start) if song_rows
               if level_at
                 # The level is held to 0..IR::Tunes::FULL_LEVEL before it is stored (Builder#music_volume,
                 # and the fade through it), so its low half is the whole of it, as Music#emit_level reads it.
@@ -306,7 +306,7 @@ module VBlank
               emit_step(asm, at, memory, tempo, step)
               asm.bcc("rt_sfx_wake_counted")
               asm.ldx(at.call(TICK_END))
-              asm.lda(at.call(WAKE))
+              asm.lda(at.call(WAKE_COUNTED))
               asm.sta(asm.abs_x(memory[TICK_WAKES]))
               asm.lda(at.call(Strikes::OFFSET))
               asm.sta(asm.abs_x(memory[TICK_OFFSETS]))
@@ -316,21 +316,21 @@ module VBlank
               Strikes.emit_next_offset(asm, memory, step)
               asm.brl("rt_sfx_wake_next")
               asm.label("rt_sfx_wakes_counted")
-              if song_rows && count_at_song_start # a song picked up past the frame's last wake owes its count
+              if song_rows && count_at_song_start # a song picked up past the frame's last wake sets its count in the next frame
                 asm.lda(at.call(Music::EFFECT_TICKED))
                 asm.cmp(at.call(CHANGE_WAKE))
-                asm.bcs("rt_sfx_wakes_owed")
+                asm.bcs("rt_sfx_wakes_reset_kept")
                 asm.lda(1)
-                asm.sta(at.call(COUNT_OWED))
-                asm.label("rt_sfx_wakes_owed")
+                asm.sta(at.call(COUNT_RESET_PENDING))
+                asm.label("rt_sfx_wakes_reset_kept")
               end
               asm.rts
             end
 
             # On the wake a song named at a row is picked up on: the count from there is the song's, set
             # where its start sets one.
-            def emit_song_picked_up(asm, at, count_at_song_start)
-              asm.lda(at.call(WAKE))
+            def emit_switch_count_to_new_song(asm, at, count_at_song_start)
+              asm.lda(at.call(WAKE_COUNTED))
               asm.cmp(at.call(CHANGE_WAKE))
               asm.bne("rt_sfx_wake_same_song")
               asm.lda(at.call(Music::PLAYING))
@@ -369,19 +369,19 @@ module VBlank
               asm.label("rt_sfx_wake_kept")
             end
 
-            # rt_sfx_take_up: each effect asked for given the wake it starts on this frame
-            # (Reference::Player#effect_starts_on_wakes), as JOIN, the tick before whose walk it starts
-            # (two bytes a tick, from 2), and ON_TICK, whether that wake holds the tick. One asked for
+            # rt_sfx_assign_start_wakes: each effect asked for given the wake it starts on this frame
+            # (Reference::Player#effect_starts_on_wakes), as STARTS_BEFORE_TICK, the tick before whose walk it starts
+            # (two bytes a tick, from 2), and STARTS_ON_TICK_WAKE, whether that wake holds the tick. One asked for
             # with no row is asked from the frame's first wake; one at a row is asked for here, from the
             # wake past it. One whose wake is past the frame's stays asked for, for the next frame.
-            def emit_take_up(asm, at, memory, habits, step)
+            def emit_assign_start_wakes(asm, at, memory, habits, step)
               state = ->(field) { asm.abs_y(memory[Effects::STATES], field) }
-              asm.label("rt_sfx_take_up")
-              (0..IR::Tunes.most_ticks_a_frame(step)).each { |tick| asm.stz(at.call(JOINED, tick * 2)) }
+              asm.label("rt_sfx_assign_start_wakes")
+              (0..IR::Tunes.most_ticks_a_frame(step)).each { |tick| asm.stz(at.call(TICK_HAS_STARTS, tick * 2)) }
               if habits.effect_rows # which were asked for with no row, before the rows are
                 Effects.emit_live_walk(asm, at, memory, "rt_sfx_plain") do
                   asm.lda(state.call(Effects::ASKED))
-                  asm.sta(state.call(Effects::PLAIN))
+                  asm.sta(state.call(Effects::ASKED_WITHOUT_ROW))
                   asm.lda(0)
                   asm.sta(state.call(Effects::ROW_WAKE))
                 end
@@ -389,13 +389,13 @@ module VBlank
               end
               Effects.emit_live_walk(asm, at, memory, "rt_sfx_starts") do
                 asm.lda(0)
-                asm.sta(state.call(Effects::JOIN))
-                asm.sta(state.call(Effects::ON_TICK))
+                asm.sta(state.call(Effects::STARTS_BEFORE_TICK))
+                asm.sta(state.call(Effects::STARTS_ON_TICK_WAKE))
                 asm.lda(state.call(Effects::ASKED))
                 asm.branch_long(:beq, "rt_sfx_starts_walk")
                 if habits.effect_rows
-                  asm.lda(state.call(Effects::PLAIN))
-                  asm.sta(at.call(ASKED_PLAINLY))
+                  asm.lda(state.call(Effects::ASKED_WITHOUT_ROW))
+                  asm.sta(at.call(EFFECT_ASKED_WITHOUT_ROW))
                   asm.beq("rt_sfx_starts_row")
                   asm.lda(1)
                   asm.bra("rt_sfx_starts_from")
@@ -404,7 +404,7 @@ module VBlank
                   asm.label("rt_sfx_starts_from")
                 else
                   asm.lda(1)
-                  asm.sta(at.call(ASKED_PLAINLY))
+                  asm.sta(at.call(EFFECT_ASKED_WITHOUT_ROW))
                 end
                 asm.sta(at.call(ASKED_WAKE))
                 emit_starting_wake(asm, at, memory, habits)
@@ -415,18 +415,18 @@ module VBlank
                 asm.sta(state.call(Effects::ASKED))
                 emit_join(asm, at, memory)
                 asm.lda(1)
-                asm.sta(asm.abs_x(memory[JOINED]))
+                asm.sta(asm.abs_x(memory[TICK_HAS_STARTS]))
                 asm.txa
                 asm.inc
                 asm.inc
-                asm.sta(state.call(Effects::JOIN))
+                asm.sta(state.call(Effects::STARTS_BEFORE_TICK))
                 asm.cpx(at.call(TICK_END)) # the first tick on or after its wake is on that wake
                 asm.bcs("rt_sfx_starts_walk")
                 asm.lda(asm.abs_x(memory[TICK_WAKES]))
                 asm.cmp(at.call(START_WAKE))
                 asm.bne("rt_sfx_starts_walk")
                 asm.lda(1)
-                asm.sta(state.call(Effects::ON_TICK))
+                asm.sta(state.call(Effects::STARTS_ON_TICK_WAKE))
                 asm.label("rt_sfx_starts_walk")
               end
               asm.rts
@@ -469,18 +469,10 @@ module VBlank
             # first wake for one asked with no row, even in a frame with none. Uses X.
             def emit_starting_wake(asm, at, memory, habits)
               if habits.starts_on_tick
-                asm.ldx(0)
-                asm.label("rt_sfx_starting_next")
+                emit_find_tick_from(asm, at, memory, ASKED_WAKE, "rt_sfx_starting_search")
                 asm.cpx(at.call(TICK_END))
                 asm.bcs("rt_sfx_starting_none")
                 asm.lda(asm.abs_x(memory[TICK_WAKES]))
-                asm.cmp(at.call(ASKED_WAKE))
-                asm.bcs("rt_sfx_starting_tick")
-                asm.inx
-                asm.inx
-                asm.bra("rt_sfx_starting_next")
-                asm.label("rt_sfx_starting_tick")
-                asm.lda(asm.abs_x(memory[TICK_WAKES])) # again, for the zero flag the compare spent
                 asm.bra("rt_sfx_starting_found")
                 asm.label("rt_sfx_starting_none")
                 asm.lda(0)
@@ -491,7 +483,7 @@ module VBlank
               asm.lda(at.call(Music::EFFECT_TICKED))
               asm.cmp(at.call(ASKED_WAKE))
               asm.bcs("rt_sfx_starting_in_frame")
-              asm.lda(at.call(ASKED_PLAINLY)) # a plain ask is from wake 1, so the frame has no wake
+              asm.lda(at.call(EFFECT_ASKED_WITHOUT_ROW)) # a plain ask is from wake 1, so the frame has no wake
               asm.beq("rt_sfx_starting_found")
               asm.label("rt_sfx_starting_in_frame")
               asm.lda(at.call(ASKED_WAKE))
@@ -499,33 +491,37 @@ module VBlank
             end
 
             # X, the ticks before START_WAKE, two bytes each: the tick an effect starting there joins.
-            def emit_join(asm, at, memory)
+            def emit_join(asm, at, memory) = emit_find_tick_from(asm, at, memory, START_WAKE, "rt_sfx_join")
+
+            # X, inline, the place in TICK_WAKES of the first tick on or after the wake in +wake+, two
+            # bytes each, TICK_END where none is: how many ticks come before that wake. Labels start +name+.
+            def emit_find_tick_from(asm, at, memory, wake, name)
               asm.ldx(0)
-              asm.label("rt_sfx_join_next")
+              asm.label("#{name}_next")
               asm.cpx(at.call(TICK_END))
-              asm.bcs("rt_sfx_join_found")
+              asm.bcs("#{name}_found")
               asm.lda(asm.abs_x(memory[TICK_WAKES]))
-              asm.cmp(at.call(START_WAKE))
-              asm.bcs("rt_sfx_join_found")
+              asm.cmp(at.call(wake))
+              asm.bcs("#{name}_found")
               asm.inx
               asm.inx
-              asm.bra("rt_sfx_join_next")
-              asm.label("rt_sfx_join_found")
+              asm.bra("#{name}_next")
+              asm.label("#{name}_found")
             end
 
             # rt_sfx_song_change_wake: CHANGE_WAKE and A, the wake a song named at a row this pass is
             # picked up on, nought for a frame whose song changed with no row, or not at all. A count the
-            # song's start still owes from the frame before is set first (Reference::Player#song_change_wake).
+            # song's start left for this frame is set first (Reference::Player#song_change_wake).
             def emit_song_change_wake(asm, at, count_at_song_start)
               asm.label("rt_sfx_song_change_wake")
               if count_at_song_start
-                asm.lda(at.call(COUNT_OWED))
-                asm.beq("rt_sfx_change_none_owed")
-                asm.stz(at.call(COUNT_OWED))
+                asm.lda(at.call(COUNT_RESET_PENDING))
+                asm.beq("rt_sfx_change_no_reset_pending")
+                asm.stz(at.call(COUNT_RESET_PENDING))
                 asm.lda(at.call(Music::PLAYING))
-                asm.beq("rt_sfx_change_none_owed")
+                asm.beq("rt_sfx_change_no_reset_pending")
                 Music.emit_tick_count_at_song_start(asm, at, count_at_song_start)
-                asm.label("rt_sfx_change_none_owed")
+                asm.label("rt_sfx_change_no_reset_pending")
               end
               asm.stz(at.call(CHANGE_WAKE))
               asm.lda(at.call(SONG_AT_ROW))
@@ -607,19 +603,19 @@ module VBlank
               asm.label("rt_music_play_at_row")
               asm.lda(asm.direct(Sound::R0))
               asm.sta(at.call(Music::NAMED))
-              emit_song_row_kept(asm, at, Sound::R1)
+              emit_store_song_at_row(asm, at, Sound::R1)
               asm.rtl
 
               asm.label("rt_music_play_from_list_at_row")
               asm.jsr(asm.abs("rt_music_name_from_list"))
               asm.beq("rt_music_play_from_list_at_row_done")
-              emit_song_row_kept(asm, at, Sound::R2)
+              emit_store_song_at_row(asm, at, Sound::R2)
               asm.label("rt_music_play_from_list_at_row_done")
               asm.rtl
             end
 
             # SONG_AT_ROW the tune NAMED, and its share the one in +register+.
-            def emit_song_row_kept(asm, at, register)
+            def emit_store_song_at_row(asm, at, register)
               asm.lda(at.call(Music::NAMED))
               asm.sta(at.call(SONG_AT_ROW))
               asm.lda(asm.direct(register))

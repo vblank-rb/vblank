@@ -172,8 +172,8 @@ module VBlank
             Field.new(name: "mix.slice", count: :slice_samples, feature: :mix),
             # The music: the tune wanted, playing and ended, stops asked and seen, held, how far into
             # the tune, the volume its notes were set at, how many notes are held and voices have
-            # been held, the sound effects' timer and tempo counts, and whether a song's start still owes the
-            # count it sets (a song named at a row past its frame's last wake); each part's walk (after its first time through,
+            # been held, the sound effects' timer and tempo counts, and whether a song's start has yet to set
+            # its count (a song named at a row past its frame's last wake); each part's walk (after its first time through,
             # and its next note); each held note (voice, lane, volume, ticks, eighths high, fade); each voice's wobble, swell
             # and shapes and who holds it; and each sound effect's place.
             Field.new(name: "music", count: MUSIC_NUMBERS, feature: :music),

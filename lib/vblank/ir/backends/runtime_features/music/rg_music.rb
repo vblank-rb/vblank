@@ -106,8 +106,9 @@ def rg_music_setup
   @rg_frame_clock_start = 0
   @rg_frame_ticked = []
   @rg_effect_start_wake = Array.new(RG_EFFECTS_MOST, 0)
-  @rg_count_before_switch = [0, 0]
-  @rg_song_count_owed = false
+  @rg_count_before_switch = 0 # the count as the frame began, before a song's start set it
+  @rg_share_before_switch = 0 # ...and the share it added until it came round
+  @rg_song_count_reset_pending = false
   @rg_row_requests = []
   @rg_song_at_row = -1
   @rg_song_at_row_share = 0
@@ -137,10 +138,13 @@ def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a 
 def rg_effect_tempo_step = @rg_game_effects[3] # What the tempo adds on each of a driver's interrupts, 0 for none
 def rg_effects_cut_notes = @rg_game_effects[4] # 1 where an effect's note takes its part's own voice
 def rg_effect_count_at_song_start = @rg_game_effects[5] # Where a song's start sets the tempo count, -1 for nowhere
-# The sound driver's habits, a bit each (rg_music.c's EFFECT_DRIVER_HABITS)
-def rg_effects_on_tune_tempo? = @rg_game_effects[6].anybits?(1) # Whether the count is the tune's tempo
-def rg_effects_start_on_tick? = @rg_game_effects[6].anybits?(2) # Whether an effect starts only on a wake holding a tick
-def rg_silent_music_stops_ticks? = @rg_game_effects[6].anybits?(4) # Whether the count stands still while the music is at volume 0
+# The sound driver's habits, a bit each (rg_music.c's EFFECT_DRIVER_HABITS and HABIT_ bits)
+RG_HABIT_TUNE_TEMPO = 1
+RG_HABIT_STARTS_ON_TICK = 2
+RG_HABIT_SILENT_STOPS_TICKS = 4
+def rg_effects_on_tune_tempo? = @rg_game_effects[6].anybits?(RG_HABIT_TUNE_TEMPO) # Whether the count is the tune's tempo
+def rg_effects_start_on_tick? = @rg_game_effects[6].anybits?(RG_HABIT_STARTS_ON_TICK) # Whether an effect starts only on a wake holding a tick
+def rg_silent_music_stops_ticks? = @rg_game_effects[6].anybits?(RG_HABIT_SILENT_STOPS_TICKS) # Whether the count stands still while the music is at volume 0
 
 # --- the player ---
 
@@ -816,8 +820,8 @@ end
 
 # rg_music.c's song_change_wake.
 def rg_song_change_wake(song_before)
-  if @rg_song_count_owed
-    @rg_song_count_owed = false
+  if @rg_song_count_reset_pending
+    @rg_song_count_reset_pending = false
     rg_set_song_start_count if @rg_playing >= 0
   end
   named = @rg_song_at_row
@@ -833,10 +837,11 @@ def rg_count_ticks_on_interrupts(interrupts, song_before)
   wake = rg_song_change_wake(song_before)
   @rg_frame_ticked = []
   unless wake.zero?
-    @rg_effect_tempo, @rg_effect_tempo_now = @rg_count_before_switch
+    @rg_effect_tempo = @rg_count_before_switch
+    @rg_effect_tempo_now = @rg_share_before_switch
     rg_count_wakes([wake - 1, interrupts].min, rg_tune_tempo(song_before))
     rg_set_song_start_count if @rg_playing >= 0 && wake <= interrupts
-    @rg_song_count_owed = wake > interrupts
+    @rg_song_count_reset_pending = wake > interrupts
   end
   rg_count_wakes(interrupts - @rg_frame_ticked.length, rg_tune_tempo(@rg_playing))
   @rg_frame_ticked.count(true)
@@ -864,8 +869,8 @@ def rg_starting_wake(wake, plain)
   0
 end
 
-# rg_music.c's take_up_effect_starts.
-def rg_take_up_effect_starts
+# rg_music.c's assign_effect_start_wakes.
+def rg_assign_effect_start_wakes
   plain = @rg_effect_asked.first(rg_effect_count)
   row_wake = Array.new(rg_effect_count, 0)
   @rg_row_requests.each do |request|
@@ -983,7 +988,8 @@ def rg_music_sound_frame
   @rg_level = rg_full_level if @rg_level < 0
   rg_refuse_too_many_effects
   song_before = @rg_playing
-  @rg_count_before_switch = [@rg_effect_tempo, @rg_effect_tempo_now]
+  @rg_count_before_switch = @rg_effect_tempo
+  @rg_share_before_switch = @rg_effect_tempo_now
   rg_switch_to_wanted_song
   ticks = rg_step_effect_clock(song_before)
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
@@ -993,7 +999,7 @@ def rg_music_sound_frame
   if rg_effect_tempo_step.zero?
     rg_play_effects_on_frames(by_rank, at, ticks)
   else
-    rg_take_up_effect_starts
+    rg_assign_effect_start_wakes
     rg_play_effects_on_wakes(by_rank, at, ticks)
   end
   rg_step_swells
@@ -1086,9 +1092,9 @@ RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
 
 # "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
 # far into the tune, the volume its notes were set at, how many notes and voices are held, the
-# sound effects' timer and tempo counts, and whether a song's start still owes the count it sets.
+# sound effects' timer and tempo counts, and whether a song's start has yet to set its count.
 RgMusicFields = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
-                           :held_voices, :effect_clock, :effect_tempo, :effect_tempo_now, :song_count_owed)
+                           :held_voices, :effect_clock, :effect_tempo, :effect_tempo_now, :song_count_reset_pending)
 
 # "music.parts", one a part of the playing tune: whether it walks its notes after the first time
 # through, and which comes next. The rest of a part is the song's, read again from it.
@@ -1102,7 +1108,7 @@ def rg_music_visit_sound_state
                                      song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
                                      held_voices: @rg_holder_order.length, effect_clock: @rg_effect_clock,
                                      effect_tempo: @rg_effect_tempo, effect_tempo_now: @rg_effect_tempo_now,
-                                     song_count_owed: rg_state_flag(@rg_song_count_owed)
+                                     song_count_reset_pending: rg_state_flag(@rg_song_count_reset_pending)
                                    ))
   songs = (-1...rg_song_count)
   unless [fields.wanted, fields.playing, fields.ended].all? { |song| songs.cover?(song) } &&
@@ -1120,7 +1126,7 @@ def rg_music_visit_sound_state
   @rg_effect_clock = fields.effect_clock
   @rg_effect_tempo = fields.effect_tempo
   @rg_effect_tempo_now = fields.effect_tempo_now
-  @rg_song_count_owed = fields.song_count_owed != 0
+  @rg_song_count_reset_pending = fields.song_count_reset_pending != 0
   rg_visit_part_walks
   rg_visit_held_notes(fields.held_notes)
   rg_visit_music_voices(fields.held_voices)

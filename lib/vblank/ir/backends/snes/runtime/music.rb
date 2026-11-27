@@ -736,7 +736,7 @@ module VBlank
             # In a game that names a song at a row, a song named or stopped another way is no longer the
             # one named at a row (DriverWakes::SONG_AT_ROW).
             def emit_game_side(asm, at, memory)
-              song_rows = memory.reserved?(DriverWakes::SONG_AT_ROW)
+              song_rows = DriverWakes.song_rows?(memory)
               asm.label("rt_music_play")
               asm.lda(asm.direct(Sound::R0))
               asm.sta(at.call(NAMED))

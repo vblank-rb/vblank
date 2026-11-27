@@ -71,12 +71,12 @@ module VBlank
             # with no row, as the frame found it; the wake a row asked from; the tick before whose walk
             # it starts this frame, two bytes a tick from 2, nought for none; and whether it starts on
             # that tick's own wake, which then does not move it on.
-            PLAIN = CURSORS + (2 * SNES::Music::PARTS)
-            ROW_WAKE = PLAIN + 2
-            JOIN = ROW_WAKE + 2
-            ON_TICK = JOIN + 2
+            ASKED_WITHOUT_ROW = CURSORS + (2 * SNES::Music::PARTS)
+            ROW_WAKE = ASKED_WITHOUT_ROW + 2
+            STARTS_BEFORE_TICK = ROW_WAKE + 2
+            STARTS_ON_TICK_WAKE = STARTS_BEFORE_TICK + 2
             STATE_BYTES = 64 # Room for CURSORS, a word for each of the most parts an effect has, and the four above
-            raise "an effect's state needs #{ON_TICK + 2} bytes, past STATE_BYTES" if ON_TICK + 2 > STATE_BYTES
+            raise "an effect's state needs #{STARTS_ON_TICK_WAKE + 2} bytes, past STATE_BYTES" if STARTS_ON_TICK_WAKE + 2 > STATE_BYTES
             # The effects a frame has to look at, by number, each one up, the highest rank first, and
             # nought after the last; and beside each, in LIVE_RANKS, its rank's place, which keeps the
             # order. A word an effect. An effect asked for goes in as it is asked (rt_sfx_live_add);
@@ -408,7 +408,7 @@ module VBlank
                 # for at a row as a frame begins is not, whatever it was the last time it was live.
                 asm.ldy(at.call(STATE))
                 asm.lda(0)
-                asm.sta(asm.abs_y(memory[STATES], PLAIN))
+                asm.sta(asm.abs_y(memory[STATES], ASKED_WITHOUT_ROW))
               end
               asm.label("rt_sfx_live_add_done")
               asm.rts
@@ -429,7 +429,7 @@ module VBlank
               # On a driver's wakes, an effect given its wake is asked for no longer but has not started:
               # it starts at a later pass of the frame, and an effect ending before then marks LIVE to be
               # pruned. It stays live.
-              asm.ora(asm.abs_y(memory[STATES], JOIN)) if DriverWakes.on_wakes?(memory)
+              asm.ora(asm.abs_y(memory[STATES], STARTS_BEFORE_TICK)) if DriverWakes.on_wakes?(memory)
               asm.beq("rt_sfx_live_prune_past")
               asm.ldx(at.call(LIVE_AT))
               asm.lda(ranks.call)
@@ -496,11 +496,11 @@ module VBlank
             end
 
             # On a driver's wakes, inline for the effect selected: asked for now where it joins the frame
-            # at the tick playing (DriverWakes::JOIN_NOW), which DriverWakes#emit_take_up worked out
+            # at the tick playing (DriverWakes::STARTS_BEFORE_TICK_NOW), which DriverWakes#emit_assign_start_wakes worked out
             # as the frame began; not, for every other.
             def emit_joining_now(asm, at, memory)
-              asm.lda(asm.abs_y(memory[STATES], JOIN))
-              asm.cmp(at.call(DriverWakes::JOIN_NOW))
+              asm.lda(asm.abs_y(memory[STATES], STARTS_BEFORE_TICK))
+              asm.cmp(at.call(DriverWakes::STARTS_BEFORE_TICK_NOW))
               asm.beq(joins = "rt_sfx_joins_#{asm.here}")
               asm.lda(0)
               asm.bra(put = "rt_sfx_joins_put_#{asm.here}")
@@ -577,10 +577,10 @@ module VBlank
                 if DriverWakes.on_wakes?(memory) # a tick past the wake it started on moves it on
                   # ASKED_NOW may be an earlier tick's still: a tick nothing joins at starts nothing,
                   # so it has no pass to set the flags again (DriverWakes#emit_later_walks).
-                  asm.lda(state.call(JOIN))
-                  asm.cmp(at.call(DriverWakes::JOIN_NOW))
+                  asm.lda(state.call(STARTS_BEFORE_TICK))
+                  asm.cmp(at.call(DriverWakes::STARTS_BEFORE_TICK_NOW))
                   asm.bne("rt_sfx_frame_not_asked")
-                  asm.lda(state.call(ON_TICK))
+                  asm.lda(state.call(STARTS_ON_TICK_WAKE))
                   asm.beq("rt_sfx_frame_not_asked")
                 elsif memory.reserved?(Music::STARTED_MOVE_ON) # a tick on a later interrupt moves it on
                   asm.lda(asm.abs(memory[Music::STARTED_MOVE_ON]))

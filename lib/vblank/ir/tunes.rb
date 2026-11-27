@@ -550,6 +550,25 @@ module VBlank
         (Rational(rows) * console.cycles_a_line / console.cycles_a_frame * clock_step).floor
       end
 
+      # ...for a request of +program+ at +rows+, on its console's driver wakes: what a lowering hands its
+      # runtime, worked out as the build is made.
+      def request_row_share(program, rows)
+        console = program.described_console
+        row_share(rows, effect_clock_step(program, console) || 0, console)
+      end
+
+      # The sound driver's habits as bits, for a runtime that reads them from one number of its effects
+      # table: the count at the tune's tempo, an effect started only on a tick, silent music stopping the ticks.
+      HABIT_TUNE_TEMPO = 1
+      HABIT_STARTS_ON_TICK = 2
+      HABIT_SILENT_STOPS_TICKS = 4
+
+      # ...those +program+ names.
+      def driver_habit_bits(program)
+        (effects_on_tune_tempo?(program) ? HABIT_TUNE_TEMPO : 0) | (effects_start_on_tick?(program) ? HABIT_STARTS_ON_TICK : 0) |
+          (silent_music_stops_ticks?(program) ? HABIT_SILENT_STOPS_TICKS : 0)
+      end
+
       # How many times a second the driver's interrupt comes, for effects that name one, or nil.
       def effect_interrupt_rate(program)
         program.walk.find { |node| node.kind == :song && node.interrupt_rate }&.interrupt_rate
