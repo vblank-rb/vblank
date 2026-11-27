@@ -118,6 +118,24 @@ class TestSoundDriver < Minitest::Test
     end
   end
 
+  # Row 0 is the first row of the vertical blank, as good a row as any other.
+  def test_a_request_at_row_nought_builds_a_tree_any_build_can_take
+    chime = Score.new(parts: [Score::Part.new(notes: notes)], plays_once: true)
+    tunes = [tune]
+    b = Builder.new
+    b.instance_eval do
+      enable_sound
+      sound_driver interrupts_per_second: WAKES
+      list = sound_effects :sfx, { chime: chime }
+      music = songs :music, tunes
+      list.play :chime, sent_after_rows: 0
+      music.play 0, sent_after_rows: 0
+    end
+    b.finalize_program
+
+    VBlank::IR::Verifier.verify!(b.program)
+  end
+
   def test_a_music_fade_at_a_row_is_refused
     error = assert_raises(ArgumentError) do
       Builder.new.instance_eval do

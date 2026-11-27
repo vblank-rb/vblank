@@ -1598,7 +1598,7 @@ module VBlank
         include Node
         kind :play_song
         category :sound
-        operands name: :name, this_frame: :flag, sent_after_rows: :rate
+        operands name: :name, this_frame: :flag, sent_after_rows: :quantity
       end
 
       class PresentObjects
@@ -2226,7 +2226,7 @@ module VBlank
         include Node
         kind :play_sound_effect
         category :sound
-        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :rate
+        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :quantity
       end
 
       # A named list of songs, in order — the game's music, picked by number (see
@@ -2247,7 +2247,7 @@ module VBlank
         include Node
         kind :play_from_list
         category :sound
-        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :rate
+        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :quantity
       end
 
       class StopMusic
