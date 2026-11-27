@@ -95,14 +95,14 @@ module VBlank
 
           # The sprites the game placed in its last pass, as the interpreter gives them
           # (Reference#sprites): what the runtime keeps of what it placed (Runtime::Picture::DRAWN).
-          # +drawn+ is the program's SpriteNames; +read16+ reads a word of the running cartridge's
+          # +drawn+ is the program's SpriteNames; the block reads a word of the running cartridge's
           # memory, given its address. A picture copied in other colours is named as the picture
           # it copies.
-          def drawn_sprite_rows(drawn, &read16)
+          def drawn_sprite_rows(drawn)
             at = runtime.fetch(Runtime::Picture::DRAWN)
             signed = ->(value) { value >= 0x8000 ? value - 0x10000 : value }
-            Array.new(read16.call(at)) do |i|
-              whose, picture, x, y = Array.new(4) { |word| read16.call(at + 2 + (i * Runtime::Picture::DRAWN_BYTES) + (word * 2)) }
+            Array.new(yield(at)) do |i|
+              whose, picture, x, y = Array.new(4) { |word| yield(at + 2 + (i * Runtime::Picture::DRAWN_BYTES) + (word * 2)) }
               drawn.row(signed.call(whose), sprite_picture_names.fetch(picture, picture), signed.call(x), signed.call(y))
             end
           end
