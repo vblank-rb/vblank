@@ -13,8 +13,6 @@
  * and working out sixty-five thousand colours a frame costs more than the reading it saves. A table holds the colour
  * shown plus one, so a colour not looked up yet is 0 (a new table is a new vector, which a movie zeroes itself), and the
  * table's +fill+ works it out, stores it and answers it. Every change of state starts its table again.
- *
- * Left out: the state image (rg_fades_visit_state refuses it).
  */
 
 static inline var RG_FADE_WHOLE_SCREEN:Int = 0;
@@ -202,7 +200,29 @@ static function rg_fades_paint_fade_for(fade_place:Int):RgShownFilter {
   return placed_fade_filter;
 }
 
-static function rg_fades_visit_state():Void { rg_state_refuse(); }
+/* rg_hook_visit_state (rg_fades.c's rg_fades_visit_state). */
+static function rg_fades_visit_state():Void {
+  var numbers:Array<Int> = [
+    fade_white, fade_steps, tint_mode, tint_white, tint_color, tint_steps, tint_by_display,
+    placed_in_force, placed_layer_place, placed_toward_white, placed_steps,
+    fade_side, fade_area[0], fade_area[1], fade_area[2], fade_area[3]];
+  rg_state_numbers("fades", numbers);
+  if (numbers[2] < TINT_NONE || numbers[2] > TINT_COLOR) rg_state_refuse_damaged("the screen names a tint it does not have");
+  fade_white = numbers[0];
+  fade_steps = numbers[1];
+  tint_mode = numbers[2];
+  tint_white = numbers[3];
+  tint_color = numbers[4];
+  tint_steps = numbers[5];
+  tint_by_display = numbers[6];
+  placed_in_force = numbers[7];
+  placed_layer_place = numbers[8];
+  placed_toward_white = numbers[9];
+  placed_steps = numbers[10];
+  fade_side = numbers[11];
+  for (i in 0...4) fade_area[i] = numbers[12 + i];
+  fade_filter_stale = true;
+}
 
 /* Reference#exec_fade, through Framebuffer#fade_steps_to or #tint_steps_to */
 static function fade_to(placed:Int, layer_place:Int, toward_white:Int, steps:Int, walked:Int):Void {

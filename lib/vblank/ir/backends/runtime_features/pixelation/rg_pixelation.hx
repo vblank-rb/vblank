@@ -2,8 +2,6 @@
  * The picture in flat blocks (Reference @block, Reference::SpriteBlocks): `pixelate`. A port of the JavaScript runtime's
  * rg_pixelation.js, function for function (rg_pixelation.c says how, rule for rule). A runtime feature
  * (backends/runtime_features.rb), joined into the runtime after rg_screen.hx for a game that pixelates.
- *
- * Left out: the state image (rg_pixelation_visit_state refuses it).
  */
 
 static var block:Int = 1;
@@ -39,4 +37,10 @@ static function rg_pixelation_shown_columns():Vector<Int> {
 static function rg_pixelation_shown_row(y:Int):Int { return y - (y % read_block); }
 
 /* rg_hook_visit_state: the two sizes (Computer::StateFields "pixelation"). */
-static function rg_pixelation_visit_state():Void { rg_state_refuse(); }
+static function rg_pixelation_visit_state():Void {
+  var numbers:Array<Int> = [block, read_block];
+  rg_state_numbers("pixelation", numbers);
+  if (numbers[0] < 1 || numbers[1] < 1) rg_state_refuse_damaged("its blocks are smaller than a pixel");
+  block = numbers[0];
+  read_block = numbers[1];
+}
