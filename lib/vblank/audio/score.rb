@@ -141,10 +141,19 @@ module VBlank
         super
       end
 
-      # The tempo a Score's ticks are turned into frames by when the game is built: its own, or for one
-      # `on_timer:`, one tick a frame (FRAME_RATE ticks a second), since its ticks are counted on the
-      # timer as it plays (IR::Tunes.effect_clock_step).
-      def frame_timing = on_timer ? with(tempo: FRAME_RATE * 60, ticks_per_beat: 1) : self
+      # The tempo a Score's ticks are turned into frames by when the game is built, laid out +frame_rate+
+      # frames a second: its own at FRAME_RATE, or for one `on_timer:`, one tick a frame (FRAME_RATE ticks
+      # a second), since its ticks are counted on the timer as it plays (IR::Tunes.effect_clock_step). A
+      # song on a sound driver's own interrupt is laid out at the frames a second of the driver's clock
+      # holds (IR::Tunes.driver_song_frame_rate): its tempo is moved by as much, and Timing, which counts
+      # FRAME_RATE frames a second, puts each tick on the frame that clock gives.
+      def frame_timing(frame_rate = FRAME_RATE)
+        return with(tempo: FRAME_RATE * 60, ticks_per_beat: 1) if on_timer
+        return self if frame_rate == FRAME_RATE
+
+        scale = Rational(FRAME_RATE) / frame_rate
+        with(tempo: tempo.is_a?(Array) ? tempo.map { |at, bpm| [at, bpm * scale] } : tempo * scale)
+      end
 
       # How many times a second the Score ticks at its tempo, or nil for one whose tempo changes: what a song
       # counts a driver's effects at, `on_tune_tempo:` (IR::Tunes.tune_tempo_step).
@@ -180,10 +189,11 @@ module VBlank
       # The score as the plain data every backend replays: each part's events as [frame,
       # frequency in Hz, instrument, volume] — a frequency of 0 a rest, and a nil instrument or
       # volume meaning the part's own — the song's length in frames, its priority and group, and
-      # the frame it loops from when it has an introduction.
-      def to_song
+      # the frame it loops from when it has an introduction. Its frames are laid out +frame_rate+ a
+      # second (#frame_timing).
+      def to_song(frame_rate: FRAME_RATE)
         Checks.score!(self)
-        frames = Timing.new(frame_timing)
+        frames = Timing.new(frame_timing(frame_rate))
         ticks = length || last_tick
         total = [frames.at(ticks), 1].max
         song = { voices: parts_without_release.each_with_index.map { |part, n| part.to_voice(frames, total, "Part #{n} of a Score") },
@@ -206,8 +216,8 @@ module VBlank
       # Whether the song can come round to +tick+: one before its end, counted in ticks and in the
       # frames they fall on, as #to_song asks of `loop_from:`. Builder::PackScores asks it of a loop
       # point read from the pack, which it holds rather than refuses.
-      def comes_round_to?(tick)
-        frames = Timing.new(frame_timing)
+      def comes_round_to?(tick, frame_rate: FRAME_RATE)
+        frames = Timing.new(frame_timing(frame_rate))
         ticks = length || last_tick
         tick < ticks && frames.at(tick) < [frames.at(ticks), 1].max
       end

@@ -41,13 +41,14 @@ module VBlank
       private
 
       # +scores+ (a list or a Hash of Audio::Score, for `songs` or `sound_effects`) with each part
-      # whose notes are a slot of the pack given the notes the slot holds. +verb+ names the line.
-      def scores_with_pack_notes(scores, verb)
-        read = ->(score) { score.is_a?(Audio::Score) ? score_with_pack_notes(score, verb) : score }
+      # whose notes are a slot of the pack given the notes the slot holds. +verb+ names the line, and
+      # +frame_rate+ is the frames a second the songs are laid out in (Audio::Score#frame_timing).
+      def scores_with_pack_notes(scores, verb, frame_rate: Audio::Score::FRAME_RATE)
+        read = ->(score) { score.is_a?(Audio::Score) ? score_with_pack_notes(score, verb, frame_rate) : score }
         scores.is_a?(Hash) ? scores.transform_values(&read) : Array(scores).map(&read)
       end
 
-      def score_with_pack_notes(score, verb)
+      def score_with_pack_notes(score, verb, frame_rate)
         return score unless score.parts.any? { |part| pack_notes?(part.notes) || part.plays.is_a?(DSL::PackWave) } || pack_timing?(score)
         return score_reading_notes_at_start(score, verb) if pack_left_out?
 
@@ -56,7 +57,7 @@ module VBlank
           pack_notes?(part.notes) ? part.with(notes: notes_read_from_pack(part, verb)) : part
         end
         read = score.with(parts: parts, length: pack_setting_value(score.length, "#{verb} reading a song's length", nil))
-        read.with(**pack_loop_settings(read, "#{verb} reading where a song comes round"))
+        read.with(**pack_loop_settings(read, "#{verb} reading where a song comes round", frame_rate))
       end
 
       # +score+'s `loop_from:` and `plays_once:`, its loop point read here where it is a number of
@@ -65,7 +66,7 @@ module VBlank
       # game wrote is refused. One with every bit set is no loop (IR::StartFile.no_loop?), as a
       # sound driver's unpacking writes a song that ends, so the song plays once; one below 0 is 0;
       # and one at or past the song's end comes round to its start.
-      def pack_loop_settings(score, subject)
+      def pack_loop_settings(score, subject, frame_rate)
         loop_from = score.loop_from
         return { loop_from: loop_from } unless loop_from.is_a?(DSL::PackNumber)
 
@@ -73,7 +74,7 @@ module VBlank
         return { loop_from: nil, plays_once: true } if IR::StartFile.no_loop?(tick, loop_from.slot.layout.width)
 
         held = [tick, 0].max
-        { loop_from: (held if score.comes_round_to?(held)) }
+        { loop_from: (held if score.comes_round_to?(held, frame_rate: frame_rate)) }
       end
 
       def pack_notes?(notes)
@@ -156,18 +157,19 @@ module VBlank
       #
       # A song whose length or loop is a number of the pack is made as one +longest+ ticks long that
       # comes round to its start, and keeps where those numbers are (an IR::StartFile::SongLength).
-      def song_reading_notes_at_start(score)
+      def song_reading_notes_at_start(score, frame_rate)
         emptied = score.with(parts: score.parts.map { |part| part.notes.is_a?(DSL::PackNotes) ? part.with(notes: []) : part },
                              length: score.length.is_a?(DSL::PackNumber) ? score.longest : score.length,
                              loop_from: (score.loop_from unless score.loop_from.is_a?(DSL::PackNumber)))
-        song = emptied.to_song
+        song = emptied.to_song(frame_rate: frame_rate)
+        timing = score.frame_timing(frame_rate) # the tempo the start file turns ticks into frames by
         # Only the song's first square part slides (Guardrails::Checks::SlideOffFirstSquare).
         sliding = song.fetch(:voices).index { |voice| IR::Tunes.part_kind(voice) == :square }
         voices = song.fetch(:voices).each_with_index.map do |voice, number|
           handle = score.parts[number].notes
           next voice unless handle.is_a?(DSL::PackNotes)
 
-          voice.with(from_file: pack_notes_in_start_file(handle, emptied, number, recorded: !voice.instrument.nil?,
+          voice.with(from_file: pack_notes_in_start_file(handle, emptied, number, timing, recorded: !voice.instrument.nil?,
                                                                                   takes_slide: number == sliding))
         end
         song = song.merge(voices: voices)
@@ -175,18 +177,18 @@ module VBlank
 
         song.merge(length_from_file: IR::StartFile::SongLength.new(length: pack_number_in_start_file(score.length),
                                                                     loop_from: pack_number_in_start_file(score.loop_from),
-                                                                    tempo: score.frame_timing.tempo, ticks_per_beat: score.frame_timing.ticks_per_beat))
+                                                                    tempo: timing.tempo, ticks_per_beat: timing.ticks_per_beat))
       end
 
       # Where part +number+ of +score+ reads its notes in the start file. Only a part that plays
       # a recording picks an instrument for a note, so any other part names none.
-      def pack_notes_in_start_file(handle, score, number, recorded:, takes_slide:)
+      def pack_notes_in_start_file(handle, score, number, timing, recorded:, takes_slide:)
         slot = handle.slot.layout
         instruments = recorded ? handle.instruments.map { |named| named.is_a?(Symbol) ? named : named.name } : []
         # A wave of the pack a note names is read from where it is in the start file, as a part's is.
         waves = handle.waves.map { |wave| wave.is_a?(DSL::PackWave) ? pack_wave_in_start_file(wave, "A song") : written_wave(wave) }
         notes = IR::StartFile::Notes.new(at: @pack_slot_starts.fetch(slot.name), count: slot.count, instruments: instruments.freeze,
-                                         part: score.parts[number], tempo: score.frame_timing.tempo, ticks_per_beat: score.frame_timing.ticks_per_beat,
+                                         part: score.parts[number], tempo: timing.tempo, ticks_per_beat: timing.ticks_per_beat,
                                          who: "Part #{number} of a Score", recorded: recorded,
                                          voiced: slot.shape == :voiced_notes, takes_slide: takes_slide, waves: waves.freeze)
         refuse_keys_part_cannot_play!(notes, slot)

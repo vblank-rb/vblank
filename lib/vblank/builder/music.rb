@@ -230,7 +230,7 @@ module VBlank
       # * `scores` - the tunes, as a list or a hash.
       def songs(name, scores)
         turn_sound_on
-        scores = scores_with_pack_notes(scores, "songs :#{name}")
+        scores = scores_with_pack_notes(scores, "songs :#{name}", frame_rate: song_frame_rate)
         keys, members = record_scores(name: name, scores: scores, verb: :songs, entry: "Song") do |key, score|
           refuse_song_keeping_voices!(name, key, score)
           refuse_song_cutting_notes!(name, key, score)
@@ -290,6 +290,7 @@ module VBlank
       private def refuse_effect_off_timer!(effect, score)
         rate = score.timer_rate
         if !defined?(@effect_timer_rate)
+          refuse_interrupts_after_songs!(effect, score)
           @effect_timer_rate = rate
           @effect_interrupts = score.interrupts_per_second
           @effect_tick_counts = effect_tick_counts(score)
@@ -454,6 +455,7 @@ module VBlank
         end
 
         entries = score_entries(name: name, scores: scores, verb: verb)
+        frame_rate = verb == :songs ? song_frame_rate : VBlank::Audio::Score::FRAME_RATE
         members = entries.map do |key, score|
           unless score.is_a?(VBlank::Audio::Score)
             raise ArgumentError, "#{entry} #{key.inspect} of :#{name} is #{score.inspect}, which is not a " \
@@ -462,19 +464,42 @@ module VBlank
 
           score = score_under_driver(score, effect: verb == :sound_effects, entry: "#{entry} #{key.inspect} of :#{name}")
           yield key, score if block_given?
-          record_score(member: :"#{name}.#{key}", score: score)
+          @song_before_interrupts ||= "#{entry} #{key.inspect} of :#{name}" if verb == :songs && !driver_interrupts
+          record_score(member: :"#{name}.#{key}", score: score, frame_rate: frame_rate)
         end
         @song_lists[name] = members
         [entries.map(&:first), members]
       end
 
-      def record_score(member:, score:)
+      # +frame_rate+ is the frames a second the Score's ticks are laid out in (Audio::Score#frame_timing).
+      def record_score(member:, score:, frame_rate:)
         @songs[member] = score
         # A part that reads its notes from the data pack as the game starts keeps its handle until here (PackScores).
         reads_at_start = score.parts.any? { |part| part.notes.is_a?(DSL::PackNotes) }
-        song = reads_at_start ? song_reading_notes_at_start(score) : score.to_song
+        song = reads_at_start ? song_reading_notes_at_start(score, frame_rate) : score.to_song(frame_rate: frame_rate)
         record(Build.song(member, **song, **driver_song_flags(score)))
         member
+      end
+
+      # The interrupt the game's sound driver wakes on, from `sound_driver` or the first sound effect's
+      # Score (`interrupts_per_second:`), or nil for none named yet.
+      def driver_interrupts = @sound_driver&.interrupts_per_second || (@effect_interrupts if defined?(@effect_interrupts))
+
+      # The frames a second a song's Score is laid out in: on the driver's interrupt where the game names
+      # one, since a driver runs every song on its one timer, and the round Audio::Score::FRAME_RATE
+      # elsewhere (IR::Tunes.driver_song_frame_rate).
+      def song_frame_rate
+        driver_interrupts ? IR::Tunes.driver_song_frame_rate(@console) : VBlank::Audio::Score::FRAME_RATE
+      end
+
+      # A song is laid out as it is declared, so a song declared before the sound effect that first names
+      # the driver's interrupt could not keep time on it.
+      def refuse_interrupts_after_songs!(effect, score)
+        return unless score.interrupts_per_second && defined?(@song_before_interrupts) && @song_before_interrupts
+
+        raise ArgumentError, "#{effect} has `interrupts_per_second:`, and #{@song_before_interrupts} comes before it. " \
+                             "The songs keep time on the sound driver's wakes too. Declare the sound effects before " \
+                             "the songs, or put `sound_driver interrupts_per_second:` before the songs."
       end
 
       # +score+ with the sound driver's settings (Audio::SoundDriver#effect_settings, #song_settings), where

@@ -99,15 +99,16 @@ module PackScoresAtStartTests
   # declares them and plays neither. With +waves+ the pack has a slot of WAVES, and the block is
   # handed a way to get one of them for a part's `plays:`, the same way.
   # +timing_slot+ is the timing slot's shape: its width and whether it goes below zero, and its
-  # byte order where it names one.
+  # byte order where it names one. +driver+ is the game's `sound_driver` settings, or nil for none.
   private def scored_game(parts, folder: nil, instruments: {}, plays: true, waves: false, timing_slot: { width: :half, signed: false },
-                          &scores)
+                          driver: nil, &scores)
     test = self
     b = VBlank::Builder.new(options: folder ? PACK_AT_START : VBlank::Cartridge::Options.new)
     from = folder && original_nowhere(folder)
     b.instance_eval do
       screen :bitmap
       enable_sound
+      sound_driver(**driver) if driver
       pack = from && data_pack(from: from, version: "1") do |slots|
         parts.each_key.with_index { |name, place| slots.notes name, at: place * MOST * PackNote::BYTES, count: MOST }
         slots.numbers :settings, at: SETTINGS_AT, count: SHAPE.length + 1, width: :byte, signed: false
@@ -154,10 +155,10 @@ module PackScoresAtStartTests
   # out of sound memory), which the sound log and the recordings' mix do not show.
   private def speakers_kept(player) = player.respond_to?(:recording_sound) ? player.recording_sound : player
 
-  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, &scores)
+  private def assert_plays_as_written(parts, frames:, buttons: %i[a], instruments: {}, waves: false, driver: nil, &scores)
     Dir.mktmpdir do |folder|
-      by_hand = scored_game(parts, instruments: instruments, waves: waves, &scores)
-      left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, &scores)
+      by_hand = scored_game(parts, instruments: instruments, waves: waves, driver: driver, &scores)
+      left_out = scored_game(parts, folder: folder, instruments: instruments, waves: waves, driver: driver, &scores)
       buttons.each do |button|
         once = ->(frame) { frame == 1 ? [button] : [] }
         wanted = speakers_kept(game_player).input_each_frame(&once).run(by_hand, frames: frames)
@@ -183,6 +184,37 @@ module PackScoresAtStartTests
       { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody), volume: 12), Part.new(notes: notes_of.(:bass), volume: 10)],
                           tempo: 150, length: 96, plays_once: true)] }
     end
+  end
+
+  # A song in a game whose sound driver wakes on a timer of its own keeps time on that timer
+  # (IR::Tunes.driver_song_frame_rate): its ticks fall on other frames than VBlank's round sixty a
+  # second gives from tick 130 on, and the start file turns the records' ticks into the same frames.
+  LONG_MELODY = [[0, 12, 72, OWN, OWN], [130, 0, 76, OWN, 9], [200, 20, 79, OWN, OWN], [250, 0, 67, OWN, OWN]].freeze
+
+  def test_a_song_on_the_drivers_wakes_read_as_the_game_starts_plays_as_written_by_hand
+    parts = { melody: LONG_MELODY }
+    driver = { interrupts_per_second: Rational(8000, 0x60) }
+    song = proc { |notes_of| { songs: [Score.new(parts: [Part.new(notes: notes_of.(:melody))], tempo: 150, length: 280, plays_once: true)] } }
+    Dir.mktmpdir do |folder|
+      by_hand = note_frames(game_player, scored_game(parts, driver: driver, &song))
+      played = note_frames(game_player.hand_file(pack_file(parts)), scored_game(parts, folder: folder, driver: driver, &song))
+
+      round_sixty = LONG_MELODY.map { |at, *| by_hand.first + at } # a tick a frame at sixty a second
+      refute_equal round_sixty, by_hand, "the song keeps the driver's time"
+      assert_equal by_hand, played
+    end
+  end
+
+  # The frame of each note +program+'s song sounds, from +player+'s log, with A pressed on the first.
+  private def note_frames(player, program)
+    frames = []
+    logged = 0
+    player.each_vblank do |frame|
+      player.audio.drop(logged).each { |entry| frames << frame if entry.first == :note && entry[2].positive? }
+      logged = player.audio.size
+    end
+    player.input_each_frame { |frame| frame == 1 ? [:a] : [] }.run(program, frames: 300)
+    frames
   end
 
   # Records out of order, two on one tick, two that fall on one frame, a note whose length ends on

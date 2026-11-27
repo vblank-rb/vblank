@@ -476,9 +476,34 @@ module VBlank
       # more or less often. What a tick is worth on each, the tempo's step, is the driver's own, unmoved.
       def effect_clock_step(program, console)
         interrupts = effect_interrupt_rate(program)
-        rate = interrupts ? interrupts * console.sound_clock_ratio : effect_timer_rate(program) or return nil
+        return (interrupts * driver_seconds_a_frame(console) * CLOCK_MODULUS).floor if interrupts
+
+        rate = effect_timer_rate(program) or return nil
         (rate * console.frame_seconds * CLOCK_MODULUS).floor
       end
+
+      # How long one of +console+'s frames lasts on the clock a sound driver's own timer keeps, in the
+      # seconds that clock's documentation names: the frame's real length, times how much faster the
+      # sound unit runs than named (Console::Description#sound_clock_ratio). On the Super Nintendo the
+      # timers divide the sound unit's clock, which runs near 32040 samples a second where its output
+      # is named for 32000 (fullsnes, "SNES APU"), so a frame holds that much more of the driver's time.
+      def driver_seconds_a_frame(console) = console.frame_seconds * console.sound_clock_ratio
+
+      # ### A song on the driver's own interrupt
+      #
+      # A cartridge's sound driver runs its songs and its effects on its one timer: each interrupt adds
+      # the song's tempo to the count, and a row of the song plays where the count comes round, just as
+      # an effect's note does (#tune_tempo_step). So where a game's driver names its interrupt, every
+      # song a Score gives keeps time on that interrupt, not only the ones the effects count their tempo
+      # at: its notes are laid out in the console's frames, as many a second of the driver's clock as
+      # that second really holds (Audio::Score#to_song). Its ticks then fall where the count's do, and
+      # the effects asked for over it keep in step with it over a long run.
+      #
+      # The frames a song is laid out in are worked out once, as the game is built, and the interrupts
+      # fall at a different place in each frame, so a note can be a frame either side of the count's
+      # tick; what the two cannot do is drift apart. A game whose driver names no interrupt keeps the
+      # round Audio::Score::FRAME_RATE, as a `song` block always does.
+      def driver_song_frame_rate(console) = 1 / driver_seconds_a_frame(console)
 
       # What the tempo's count adds on each interrupt of the driver's own (#effect_clock_step), in 65536ths
       # of a tick, rounded down; nil for effects with no interrupt named, whose clock is the tick's own.

@@ -435,6 +435,19 @@ class TestSoundEffectOnTimer < Minitest::Test
     assert_match(/tempo that changes/, error.message)
   end
 
+  # The songs keep time on the driver's interrupt, and a song is laid out as it is declared.
+  def test_an_effects_interrupt_cannot_come_after_the_songs
+    timed = effect(interrupts: INTERRUPTS)
+    error = assert_raises(ArgumentError) do
+      Builder.new.instance_eval do
+        songs :music, TUNES
+        sound_effects :sfx, { a: timed }
+      end
+    end
+
+    assert_match(/Declare the sound effects before the songs/, error.message)
+  end
+
   def test_an_effect_on_the_timer_cannot_start_this_frame
     score = effect
     error = assert_raises(ArgumentError) { Builder.new.instance_eval { sound_effects(:sfx, { a: score }).play(:a, this_frame: true) } }

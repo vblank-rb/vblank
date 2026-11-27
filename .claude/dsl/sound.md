@@ -31,7 +31,13 @@ repeats, up to 65536 in a game (`super-nintendo.md`, `songs`).
   effects. A port reads each setting from its original, by measuring it in the emulator or reading its sound code,
   and every build then plays the effects and songs on the beats the original did. Every setting left out keeps
   VBlank's own way, so a game that names none sounds as it always did. `interrupts_per_second:` is how often the
-  driver wakes, as the Score setting of that name, and puts every sound effect on the timer; `effects_tempo:` is
+  driver wakes, as the Score setting of that name, and puts every sound effect on the timer. It puts every `songs`
+  Score on that timer too, as a driver runs its songs: a song's ticks are laid out in frames at the rate the wakes
+  really come on the console (on the Super Nintendo the sound unit's 32040 a second, not the 32000 named), so its
+  notes keep time with the effects' count over a long run and never drift from its ticks (a note is laid out as the
+  game is built, so it can be a frame off where the wake falls in the frame). A
+  `song` block keeps VBlank's own frames. A sound effect's Score that names the interrupt must come before the
+  songs, or the build says so; `sound_driver` comes before them already. `effects_tempo:` is
   `:own` (each effect at its Score's tempo) or `:song` (every effect at the tempo of the song playing, the Score's
   `on_tune_tempo:`); `tick_count_at_song_start:` is where a song's start sets the count. `effects_start:` is
   `:at_once`, an effect's first note on the first wake after it is asked for, or `:on_next_tick`, on the first wake

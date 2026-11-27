@@ -14,7 +14,7 @@ module VBlank
     # - +interrupts_per_second+: how often the driver wakes, from a timer of the sound chip. On each
     #   wake it adds its tempo to a count, and a tick is where the count comes round, so the effects'
     #   notes fall on the wakes (Audio::Score's +interrupts_per_second+). Naming it puts every sound
-    #   effect on the timer.
+    #   effect on the timer, and lays every song's Score out on it (IR::Tunes.driver_song_frame_rate).
     # - +effects_tempo+: `:own`, each effect at its own Score's tempo, or `:song`, every effect at the
     #   tempo of the song playing, and not at all while none plays (Score's +on_tune_tempo+).
     # - +tick_count_at_song_start+: where a song's start sets the count, a share of a tick from 0 up to 1
