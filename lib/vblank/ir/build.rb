@@ -341,7 +341,8 @@ module VBlank
       def song(name, total_frames:, voices: nil, events: nil, duty: :half, volume: 12, loop_frame: nil, priority: nil,
                group: nil, low_notes_intended: false, plays_once: false, keeps_voices: false, length_from_file: nil,
                timer_rate: nil, interrupt_rate: nil, cuts_own_notes: false, note_fade_out: nil,
-               tick_count_at_song_start: nil, on_tune_tempo: false, tick_rate: nil)
+               tick_count_at_song_start: nil, on_tune_tempo: false, tick_rate: nil, starts_on_tick: false,
+               silent_music_stops_ticks: false)
         voices ||= [Audio::Music::Part.new(events: events, duty: duty, volume: volume)]
         said = loop_frame ? { loop_frame: loop_frame } : {}
         said[:priority] = priority if priority
@@ -357,6 +358,8 @@ module VBlank
         said[:tick_count_at_song_start] = tick_count_at_song_start if tick_count_at_song_start
         said[:on_tune_tempo] = true if on_tune_tempo
         said[:tick_rate] = tick_rate if tick_rate
+        said[:starts_on_tick] = true if starts_on_tick
+        said[:silent_music_stops_ticks] = true if silent_music_stops_ticks
         Nodes.build(:song, name: name, voices: voices, total_frames: total_frames, **said)
       end
 
@@ -366,15 +369,17 @@ module VBlank
       end
 
       # Effect number +which+ of list +name+ (counting from 0) starts from its first note.
-      def play_sound_effect(name, which:, this_frame: false)
-        Nodes.build(:play_sound_effect, name: name, which: to_value_node(which), this_frame: this_frame)
+      def play_sound_effect(name, which:, this_frame: false, sent_after_rows: nil)
+        rows = sent_after_rows ? { sent_after_rows: Rational(sent_after_rows) } : {}
+        Nodes.build(:play_sound_effect, name: name, which: to_value_node(which), this_frame: this_frame, **rows)
       end
 
       # Name the tune playing now. Every backend moves it on once per frame by itself, and
       # starts it from its beginning when the name changes; naming it again changes nothing.
       # +this_frame+ starts it where this runs rather than on the next frame.
-      def play_song(name, this_frame: false)
-        Nodes.build(:play_song, name: name, this_frame: this_frame)
+      def play_song(name, this_frame: false, sent_after_rows: nil)
+        rows = sent_after_rows ? { sent_after_rows: Rational(sent_after_rows) } : {}
+        Nodes.build(:play_song, name: name, this_frame: this_frame, **rows)
       end
 
       # No tune is playing now. Given in the same frame as naming a tune, it starts that tune
@@ -394,8 +399,9 @@ module VBlank
       end
 
       # The tune playing now is song number +which+ of list +name+ (counting from 0).
-      def play_from_list(name, which:, this_frame: false)
-        Nodes.build(:play_from_list, name: name, which: to_value_node(which), this_frame: this_frame)
+      def play_from_list(name, which:, this_frame: false, sent_after_rows: nil)
+        rows = sent_after_rows ? { sent_after_rows: Rational(sent_after_rows) } : {}
+        Nodes.build(:play_from_list, name: name, which: to_value_node(which), this_frame: this_frame, **rows)
       end
 
       # --- sampled (PCM) audio ---

@@ -1598,7 +1598,7 @@ module VBlank
         include Node
         kind :play_song
         category :sound
-        operands name: :name, this_frame: :flag
+        operands name: :name, this_frame: :flag, sent_after_rows: :rate
       end
 
       class PresentObjects
@@ -2186,6 +2186,8 @@ module VBlank
       # takes to fall to silence at its end (Audio::Score#parts_without_release). +tick_count_at_song_start+ is
       # where a song's start sets its interrupt's tempo count, +on_tune_tempo+ counts it at the tempo of the song
       # playing, and +tick_rate+ is a song's ticks a second, that tempo (IR::Tunes.tune_tempo_step).
+      # +starts_on_tick+ keys an effect only on a tick, and +silent_music_stops_ticks+ stands the count still
+      # while the music is at volume 0 (Audio::SoundDriver).
       class Song
         include Node
         kind :song
@@ -2195,7 +2197,7 @@ module VBlank
                  group: :name, low_notes_intended: :flag, plays_once: :flag, keeps_voices: :flag,
                  length_from_file: :file_song_length, timer_rate: :rate, interrupt_rate: :rate,
                  cuts_own_notes: :flag, note_fade_out: :rate, tick_count_at_song_start: :rate,
-                 on_tune_tempo: :flag, tick_rate: :rate
+                 on_tune_tempo: :flag, tick_rate: :rate, starts_on_tick: :flag, silent_music_stops_ticks: :flag
 
         # +length_from_file+ is where the song's length and the tick it comes round to are in the
         # file the program is handed as it starts (a StartFile::SongLength), or absent for a song
@@ -2217,12 +2219,14 @@ module VBlank
       # Effect number +which+ of a SoundEffectList starts from its first note, counting from 0 — a
       # number that may be worked out as the program runs. Asked for while it is still sounding,
       # it starts again; a number naming no effect in the list plays nothing. With +this_frame+
-      # it is on its first frame where this is reached, rather than from the next frame on.
+      # it is on its first frame where this is reached, rather than from the next frame on. With
+      # +sent_after_rows+ it is sent that many screen rows after the vertical blank starts, in the pass that
+      # asks, and the driver picks it up on its next wake (Reference::Player#request_effect_at_row).
       class PlaySoundEffect
         include Node
         kind :play_sound_effect
         category :sound
-        operands name: :name, which: :value, this_frame: :flag
+        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :rate
       end
 
       # A named list of songs, in order — the game's music, picked by number (see
@@ -2243,7 +2247,7 @@ module VBlank
         include Node
         kind :play_from_list
         category :sound
-        operands name: :name, which: :value, this_frame: :flag
+        operands name: :name, which: :value, this_frame: :flag, sent_after_rows: :rate
       end
 
       class StopMusic

@@ -529,6 +529,27 @@ module VBlank
       # (#effects_on_tune_tempo?)? Every lowering then keeps the share as it counts.
       def effect_tempo_varies?(program) = !effect_count_at_song_start(program).nil? || effects_on_tune_tempo?(program)
 
+      # Does the driver key an effect only on a wake whose count comes round, a tick, rather than on the
+      # first wake after it is asked for (Audio::SoundDriver's +effects_start+ `:on_next_tick`)?
+      def effects_start_on_tick?(program) = program.walk.any? { |node| node.kind == :song && node.starts_on_tick }
+
+      # ...and skip its tick while the music is at volume 0 (Audio::SoundDriver's +silent_music_stops_ticks+)?
+      def silent_music_stops_ticks?(program) = program.walk.any? { |node| node.kind == :song && node.silent_music_stops_ticks }
+
+      # Does any request say the screen row it is sent at (`sent_after_rows:`)?
+      def requests_at_rows?(program) = program.walk.any? { |node| ROW_REQUESTS.include?(node.kind) && node.sent_after_rows }
+
+      ROW_REQUESTS = %i[play_sound_effect play_from_list play_song].freeze
+
+      # How far into a frame a request sent +rows+ screen rows after the vertical blank starts is, counted
+      # in the frame's wakes of the driver, in 65536ths: the frame starts where the blank does, and the
+      # wakes come +clock_step+ 65536ths a frame (#effect_clock_step). A frame's first wake is the one its
+      # count, starting at its share left from the frame before, reaches first; the request comes before
+      # the first wake whose place in the frame is past this. Rounded down, as the step is.
+      def row_share(rows, clock_step, console)
+        (Rational(rows) * console.cycles_a_line / console.cycles_a_frame * clock_step).floor
+      end
+
       # How many times a second the driver's interrupt comes, for effects that name one, or nil.
       def effect_interrupt_rate(program)
         program.walk.find { |node| node.kind == :song && node.interrupt_rate }&.interrupt_rate

@@ -31,8 +31,9 @@ module VBlank
       #   game works out as it runs.
       # * `this_frame:` - true to start the song here rather than on the next frame, as with
       #   `play_song`.
-      def play(which, this_frame: false)
-        @builder.play_from_list(@name, entry_number(which), this_frame: this_frame)
+      # * `sent_after_rows:` - the screen row the request is sent at, as with `play_song`.
+      def play(which, this_frame: false, sent_after_rows: nil)
+        @builder.play_from_list(@name, entry_number(which), this_frame: this_frame, sent_after_rows: sent_after_rows)
         self
       end
 

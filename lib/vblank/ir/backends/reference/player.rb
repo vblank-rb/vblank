@@ -68,6 +68,17 @@ module VBlank
             @tune_tempo_steps = nil  # what the tempo count adds while each song plays, by name, or nil for the effects' own
             @effect_tempo_now = 0    # ...and what it adds until it next comes round after a song's start, nought for the tempo
             @tick_on_first_interrupt = false # whether this frame's first interrupt holds a tick
+            @starts_on_tick = false  # the driver keys an effect only on a tick (IR::Tunes.effects_start_on_tick?)
+            @silent_stops_ticks = false # ...and skips its tick while the music is silent (IR::Tunes.silent_music_stops_ticks?)
+            # This frame's wakes: its clock's count as it began, which wakes held a tick, and the music volume
+            # the frame plays at (#effect_starts_on_wakes, #count_wakes).
+            @frame_clock_start = 0
+            @frame_ticked = []
+            @frame_level = nil
+            @effects_at_rows = [] # effects asked for at a row this pass: [list, which, share into the frame]
+            @song_at_row = nil    # ...and the song, its share into the frame, while it is still the one named last
+            @count_before_switch = [0, 0] # the tempo count and its share as a frame began, before a song's start set it
+            @song_count_owed = false # a song named at a row past its frame's last wake sets the count before the next frame's first
           end
 
           # The sound effects count their ticks on a timer that adds this a frame
@@ -80,6 +91,13 @@ module VBlank
           def set_effect_tempo_counting(at_song_start:, tune_steps:)
             @effect_count_at_song_start = at_song_start
             @tune_tempo_steps = tune_steps
+          end
+
+          # The sound driver's habits that are not counts (Audio::SoundDriver): it keys an effect only on a
+          # tick, and it skips its tick while the music is silent.
+          def set_driver_habits(starts_on_tick:, silent_stops_ticks:)
+            @starts_on_tick = starts_on_tick
+            @silent_stops_ticks = silent_stops_ticks
           end
 
           # The name of the tune the player is on, or nil for none. It takes up what the program
@@ -124,10 +142,32 @@ module VBlank
             start_effect_here(name) if this_frame
           end
 
+          # An effect asked for at a screen row (`sent_after_rows:`), +share+ 65536ths of a wake into the frame
+          # (IR::Tunes.row_share): kept until the pass ends, where the driver's next wake picks it up
+          # (#take_up_requests_at_rows).
+          def request_effect_at_row(list, which, share)
+            @effects_at_rows << [list, which, share]
+          end
+
+          # ...and a song named at a row: named now, as `play_song` names it, and its start, if it is still the
+          # one named last when the pass ends, taken up at the wake that row precedes.
+          def request_song_at_row(name, share)
+            request_song(name)
+            @song_at_row = [name, share]
+          end
+
+          # ...a song by its place in a list. True when it named one.
+          def request_song_at_row_in_list(list, which, share)
+            named = request_song_at(list, which)
+            @song_at_row = [@wanted, share] if named
+            named
+          end
+
           # Name the tune playing now. The player takes it up at the next frame, so this can be
           # written once or every frame, from a branch or a scene, and it is the same tune.
           def request_song(name)
             @songs[name] || raise(ProgramError, "play_song for undefined song #{name.inspect}")
+            @song_at_row = nil
             @wanted = name
           end
 
@@ -140,6 +180,7 @@ module VBlank
                     raise(ProgramError, "play_from_list of undefined list #{list.inspect}")
             return false unless which >= 0 && which < songs.length
 
+            @song_at_row = nil
             @wanted = songs[which]
             true
           end
@@ -165,6 +206,7 @@ module VBlank
           # No tune. Counted as well as set, so a stop and a play in the same frame still reach
           # the player as a stop — which is how a tune starts over.
           def stop
+            @song_at_row = nil
             @wanted = nil
             @stops += 1
           end
@@ -207,8 +249,16 @@ module VBlank
           # tick as far as one tick, from the frame after (#play_effects_first_pass). A frame with
           # several ticks plays them in order (IR::Tunes, "Several ticks in one frame").
           def advance(level: nil)
+            song_before = @playing
+            @count_before_switch = [@effect_tempo, @effect_tempo_now]
             switch_to_wanted_song
-            ticks = step_effect_clock
+            @frame_level = level
+            ticks = step_effect_clock(song_before)
+            if @effect_tempo_step
+              play_effects_on_wakes(level, effect_starts_on_wakes, ticks)
+              return finish_frame
+            end
+
             asked = @asked.uniq
             @asked.clear
             tune = @playing ? IR::Tunes.song_rank(@songs[@playing]) : -1
@@ -218,6 +268,11 @@ module VBlank
             play_effects_first_pass(below, asked, ticks)
             later = (above + below).reject { |name, _| @effect_clock_step && !@effect_tempo_step && asked.include?(name) }
             (ticks - 1).times { later.each { |name, rank| play_effect_frame(name, rank, []) } }
+            finish_frame
+          end
+
+          # What every frame ends with: the notes that swell, wobble and step their shapes moved on.
+          def finish_frame
             step_swells
             step_wobbles
             step_shapes
@@ -248,13 +303,14 @@ module VBlank
 
           # The sound effects' timer moved on a frame: how many ticks the frame has, one on every frame
           # in a game whose effects count frames.
-          def step_effect_clock
+          def step_effect_clock(song_before = @playing)
             return 1 unless @effect_clock_step
 
+            @frame_clock_start = @effect_clock
             @effect_clock += @effect_clock_step
             ticks = @effect_clock / IR::Tunes::CLOCK_MODULUS
             @effect_clock %= IR::Tunes::CLOCK_MODULUS
-            @effect_tempo_step ? count_ticks_on_interrupts(ticks) : ticks
+            @effect_tempo_step ? count_ticks_on_interrupts(ticks, song_before) : ticks
           end
 
           # With the tempo counted on the driver's own interrupt (IR::Tunes.effect_tempo_step), the frame's
@@ -264,18 +320,141 @@ module VBlank
           # Each interrupt adds the tempo's step: the effects' own, or the song playing's, with nothing added
           # while none plays (+@tune_tempo_steps+); and after a song's start that set the count, the share it
           # set until the count next comes round (+@effect_tempo_now+).
-          def count_ticks_on_interrupts(interrupts)
-            tempo = @tune_tempo_steps ? @tune_tempo_steps.fetch(@playing, 0) : @effect_tempo_step
-            ticked = Array.new(interrupts) do
-              step = @effect_tempo_now.nonzero? || tempo
-              @effect_tempo += step
-              carried = @effect_tempo >= IR::Tunes::CLOCK_MODULUS && step.positive?
-              @effect_tempo %= IR::Tunes::CLOCK_MODULUS
-              @effect_tempo_now = 0 if carried
+          #
+          # A song named at a row (`sent_after_rows:`) is picked up on the first wake past it: the wakes before
+          # count as the song before it had them, and the song's start sets the count on that wake. Past the
+          # frame's last wake, it sets it before the next frame's first.
+          def count_ticks_on_interrupts(interrupts, song_before = @playing)
+            change = song_change_wake(song_before, interrupts)
+            @frame_ticked = []
+            if change
+              wake, saved = change
+              @effect_tempo, @effect_tempo_now = saved
+              @effect_tempo, @effect_tempo_now, before = count_wakes(@effect_tempo, @effect_tempo_now, [wake - 1, interrupts].min, tune_tempo(song_before))
+              @frame_ticked.concat(before)
+              @effect_tempo = @effect_tempo_now = @effect_count_at_song_start if @effect_count_at_song_start && @playing && wake <= interrupts
+              @song_count_owed = wake > interrupts
+            end
+            @effect_tempo, @effect_tempo_now, after = count_wakes(@effect_tempo, @effect_tempo_now, interrupts - @frame_ticked.length, tune_tempo(@playing))
+            @frame_ticked.concat(after)
+            @tick_on_first_interrupt = @frame_ticked.first == true
+            @frame_ticked.count(true)
+          end
+
+          # Where a song named at a row this pass is picked up, and the count as it stood before the song's
+          # start set it: [wake, [count, share]], or nil for a frame whose song changed with no row, or not at
+          # all. A count the song's start still owes from the frame before is set before this frame's first.
+          def song_change_wake(song_before, interrupts)
+            if @song_count_owed
+              @song_count_owed = false
+              @effect_tempo = @effect_tempo_now = @effect_count_at_song_start if @effect_count_at_song_start && @playing
+            end
+            name, share = @song_at_row
+            @song_at_row = nil
+            return unless name && name == @playing && name != song_before
+
+            [wake_after(share), @count_before_switch]
+          end
+
+          # What the tempo count adds on a wake while +song+ plays: the effects' own step, or the song's.
+          def tune_tempo(song) = @tune_tempo_steps ? @tune_tempo_steps.fetch(song, 0) : @effect_tempo_step
+
+          # The tempo count from +count+ (and +now+, its share from a song's start) over +wakes+ wakes adding
+          # +tempo+: the count and share after, and which wakes held a tick. While the music is silent, a
+          # driver that skips its tick then adds nothing (Audio::SoundDriver's +silent_music_stops_ticks+).
+          def count_wakes(count, now, wakes, tempo)
+            silent = @silent_stops_ticks && @frame_level&.zero?
+            ticked = Array.new(wakes) do
+              step = silent ? 0 : now.nonzero? || tempo
+              count += step
+              carried = count >= IR::Tunes::CLOCK_MODULUS && step.positive?
+              count %= IR::Tunes::CLOCK_MODULUS
+              now = 0 if carried
               carried
             end
-            @tick_on_first_interrupt = ticked.first == true
-            ticked.count(true)
+            [count, now, ticked]
+          end
+
+          # The wake of this frame, counted from 1, that a request +share+ 65536ths of a wake into it comes
+          # before (IR::Tunes.row_share): one past the frame's last when none does. The frame's first wake
+          # is where its clock, from what the frame before left, first comes round.
+          def wake_after(share) = ((@frame_clock_start + share) / IR::Tunes::CLOCK_MODULUS) + 1
+
+          # The wake each sound effect asked for starts on this frame (IR::Tunes, "Requests at a row"). The
+          # pass that asked ran in this frame, so a request sent at a row lands in it: the driver picks it up
+          # on the first wake past the row, and an effect asked for with no row on the frame's first. A
+          # driver that keys an effect only on a tick starts it on the first wake from there that holds one.
+          # One whose wake is past the frame's waits for the next frame's first, as an effect asked for
+          # then does. Two requests sent at rows reaching the port before one wake: the last sent is the one
+          # heard.
+          def effect_starts_on_wakes
+            rows = @effects_at_rows
+            @effects_at_rows = []
+            plain = @asked.uniq
+            from_rows = rows.group_by { |_, _, share| wake_after(share) }.to_h do |wake, requests|
+              list, which, = requests.each_with_index.max_by { |(_, _, share), place| [share, place] }.first
+              request_effect(list, which)
+              [effect_named(list, which), wake]
+            end
+            asked = @asked.uniq
+            @asked.clear
+            asked.each_with_object({}) do |name, starts|
+              plainly = plain.include?(name)
+              start = starting_wake(plainly ? 1 : from_rows.fetch(name), plain: plainly)
+              start ? starts[name] = start : @asked << name
+            end
+          end
+
+          # ...the wake an effect asked for from +wake+ starts on, or nil to wait for the next frame. One asked
+          # for with no row starts this frame even where the frame has no wake, as it always has.
+          def starting_wake(wake, plain:)
+            wakes = @frame_ticked.length
+            return @frame_ticked.each_index.find { |at| at + 1 >= wake && @frame_ticked[at] }&.+(1) if @starts_on_tick
+            return wake if wake <= wakes || plain && wake == 1
+
+            nil
+          end
+
+          # The effect number +which+ of +list+ names, or nil for none.
+          def effect_named(list, which)
+            effects = @effect_lists.fetch(list)
+            effects[which] if which >= 0 && which < effects.length
+          end
+
+          # How many of this frame's ticks come on wakes before +wake+.
+          def ticks_before(wake) = @frame_ticked.first(wake - 1).count(true)
+
+          # A frame of the sound effects on a driver's wakes. The frame's ticks are played in order, each a
+          # walk of every effect: the first around the song, by rank, as a frame of one tick is, and each
+          # later one after it. An effect starts just before the first tick on or after the wake it starts
+          # on: with what was asked for at the frame's start where no tick comes before its wake, else just
+          # before that tick's walk, or after the frame's last tick. A tick on the wake an effect starts on
+          # does not move it on; every tick after does.
+          def play_effects_on_wakes(level, starts, ticks)
+            tune = @playing ? IR::Tunes.song_rank(@songs[@playing]) : -1
+            above, below = ranked_effects.partition { |_, rank| rank > tune }
+            tick_wakes = @frame_ticked.each_index.select { |at| @frame_ticked[at] }.map { |at| at + 1 }
+            first = starts.select { |_, wake| ticks_before(wake).zero? }
+            play_side_on_wakes(above, first, tick_wakes.first)
+            play_song_frame(level) if @playing
+            play_side_on_wakes(below, first, tick_wakes.first)
+            (1...ticks).each do |ordinal|
+              joining = starts.select { |_, wake| ticks_before(wake) == ordinal }
+              ranked_effects.each { |name, rank| play_effect_frame(name, rank, [name]) if joining.key?(name) }
+              ranked_effects.each { |name, rank| play_effect_frame(name, rank, []) unless joining[name] == tick_wakes[ordinal] }
+            end
+            last = ticks.positive? ? starts.select { |_, wake| ticks_before(wake) == ticks } : {}
+            ranked_effects.each { |name, rank| play_effect_frame(name, rank, [name]) if last.key?(name) }
+          end
+
+          # One side of the tune in the frame's first walk: what starts before the first tick, and what a
+          # group cuts off, and then, on a frame with a tick, every effect moved on, but one started on the
+          # tick's own wake.
+          def play_side_on_wakes(side, first, first_tick)
+            side.each { |name, rank| play_effect_frame(name, rank, first.keys) if first.key?(name) || @stopping.include?(name) }
+            return unless first_tick
+
+            side.each { |name, rank| play_effect_frame(name, rank, []) unless first[name] == first_tick }
           end
 
           def play_song_frame(level)

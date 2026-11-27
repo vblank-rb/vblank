@@ -21,9 +21,32 @@ repeats, up to 65536 in a game (`super-nintendo.md`, `songs`).
 - `songs :music, [score, …]`, `sound_effects :sfx, {…}` — music and effects as `Audio::Score` data; a part's `notes:` may be a slot of the data pack's notes (`original.md`).
 - `instrument :piano, from:, note:` → `Instrument`; `rate:`, `holds_from:` and `envelope:` may be numbers of the data pack; `envelope:` may be the Super Nintendo sound chip's own bytes (`Audio::SNESEnvelope`).
 - `sample :horn, brr: bytes, brr_loop: 27` (and `instrument`) — a recording in the Super Nintendo sound chip's own format, BRR, by hand or from a data pack slot (`Audio::SNESRecording`).
+- `sound_driver interrupts_per_second:, effects_tempo:, effects_start:, …` — how the original's sound driver keeps time, once for the game (`Audio::SoundDriver`); `sent_after_rows:` on a request.
 
 ## In full
 
+- `sound_driver interrupts_per_second: 8000 / 96r, effects_tempo: :song, tick_count_at_song_start: 255 / 256r,
+  effects_start: :on_next_tick, silent_music_stops_ticks: true, cuts_own_notes: true, note_fade_out: 1 / 240r` —
+  **how the original's sound driver keeps time, described once for the whole game**, before its songs and sound
+  effects. A port reads each setting from its original, by measuring it in the emulator or reading its sound code,
+  and every build then plays the effects and songs on the beats the original did. Every setting left out keeps
+  VBlank's own way, so a game that names none sounds as it always did. `interrupts_per_second:` is how often the
+  driver wakes, as the Score setting of that name, and puts every sound effect on the timer; `effects_tempo:` is
+  `:own` (each effect at its Score's tempo) or `:song` (every effect at the tempo of the song playing, the Score's
+  `on_tune_tempo:`); `tick_count_at_song_start:` is where a song's start sets the count. `effects_start:` is
+  `:at_once`, an effect's first note on the first wake after it is asked for, or `:on_next_tick`, on the first wake
+  whose count comes round, as a driver that keys its effects only on a tick does. `silent_music_stops_ticks: true`
+  skips the tick while the music is at volume 0, from `music_volume 0` or a fade out that has reached silence: the
+  count stands still and the effects wait until the music is heard again. `cuts_own_notes:` and `note_fade_out:`
+  are the Score settings of those names, for every effect and every Score. The Score forms still work; a wake
+  setting named on a Score and on the driver both is a friendly error, and so is describing the driver twice or
+  after the sound. **`sfx.play :step, sent_after_rows: 32` says the screen row a request is sent at**, counted from
+  the start of the vertical blank, where the pass asking for it begins; `play_song` and a song list's `play` take it
+  too. The driver picks the request up on its first wake past that row, and with `effects_start: :on_next_tick` on
+  the first such wake holding a tick; a song named at a row sets the count there. Two requests at rows that reach
+  the driver before one wake: the last sent is the one heard (effects share one, songs another). A row on
+  `fade_music_out` or `fade_music_in` is a friendly error, since a fade moves the volume a frame at a time, and so is
+  a row with `this_frame: true`. Rows are the Super Nintendo's for now; the other consoles refuse them.
 - `enable_sound`, `define_sound :name, frequency:, duty:, decay:, volume:`, `beep :tone` — SFX (channel 2).
   `enable_sound mix_rate: 13379` names how many samples a second recordings are mixed at (1000 to 65536), in
   place of the rate most of the game's recordings were made at (see `sample`); the mix still runs at the

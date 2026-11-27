@@ -28,8 +28,11 @@ module VBlank
       #   the game works out as it runs.
       # * `this_frame:` - true to start the effect here, its first frame played where it is asked
       #   for, rather than on the next frame.
-      def play(which, this_frame: false)
-        @builder.play_sound_effect(@name, entry_number(which), this_frame: this_frame)
+      # * `sent_after_rows:` - the screen row the request is sent at, counted from the start of the
+      #   vertical blank, in the pass that asks: the sound driver picks it up on its next wake, part way
+      #   through the frame (`sound_driver`).
+      def play(which, this_frame: false, sent_after_rows: nil)
+        @builder.play_sound_effect(@name, entry_number(which), this_frame: this_frame, sent_after_rows: sent_after_rows)
         self
       end
 

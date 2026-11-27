@@ -336,6 +336,8 @@ require_relative "guardrails/song_instrument_unknown"
 require_relative "guardrails/effect_timer_too_fast"
 require_relative "guardrails/effect_on_timer_this_frame"
 require_relative "guardrails/effect_tune_tempo_unknown"
+require_relative "guardrails/sound_driver_not_made_yet"
+require_relative "guardrails/row_without_wakes"
 require_relative "guardrails/song_too_many_parts"
 require_relative "guardrails/square_note_too_low"
 require_relative "guardrails/slide_off_first_square"
@@ -401,6 +403,8 @@ module VBlank
         Checks::EffectTimerTooFast.new,
         Checks::EffectOnTimerThisFrame.new,
         Checks::EffectTuneTempoUnknown.new,
+        Checks::SoundDriverNotMadeYet.new,
+        Checks::RowWithoutWakes.new,
         Checks::SongTooManyParts.new,
         Checks::SquareNoteTooLow.new,
         Checks::SlideOffFirstSquare.new,

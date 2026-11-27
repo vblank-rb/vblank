@@ -193,7 +193,7 @@ module VBlank
                               :face_fill_by_row_middles, :pixel_size, :shows_bigger_pixels, :bigger_pixels_fade_areas, :bigger_pixels_pixelate, :bigger_pixels_camera,
                               :pose_lists, :sprites_in_blocks, :voices_read_sound_memory, :big_background_tiles,
                               :shown_rows, :gives_up_rows, :save_memories, :sprite_rows_settled, :pool_layouts,
-                              :screen_of_its_own, :largest_list_bytes, :sound_unit_hz) do
+                              :screen_of_its_own, :largest_list_bytes, :sound_unit_hz, :cycles_a_line) do
       # +largest_list_bytes+ is the most one list can take, where the console keeps each list whole
       # in one part of its work memory and the parts differ in size: the Color's banked half, the
       # largest of its two. Nil is no limit but the memory itself (Checks::IwramBudget).
@@ -279,7 +279,8 @@ module VBlank
                      gives_up_rows: false, sprite_pieces_drawn_a_screen: nil, sprite_slivers_drawn_a_line: nil,
                      sprite_pixels_drawn_a_line: nil, sprite_piece_shape: :small, sprite_table_filled_from: :front,
                      save_memories: ADVANCE_SAVE_MEMORIES, layer_for_held_rows: false, cells_in_front: false, sprites_over_cells_in_front: false,
-                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, sound_unit_hz: nil, **rest) = super
+                     sprite_rows_settled: false, pool_layouts: %i[lists].freeze, screen_of_its_own: false, largest_list_bytes: nil, sound_unit_hz: nil,
+                     cycles_a_line: nil, **rest) = super
 
       # Whether one sprite can show poses drawn from different lists of colours (see +pose_lists+).
       def poses_keep_own_lists? = pose_lists != :one
@@ -562,6 +563,9 @@ module VBlank
                                      # 262 lines of 1364 cycles of the console's master clock, less
                                      # four cycles every other frame: sixty frames a second and a little.
                                      cycles_a_second: 21_477_270, cycles_a_frame: 357_366, samples_a_copy: nil,
+                                     # ...a screen row each, the vertical blank starting at row 225
+                                     # (fullsnes, "SNES Timing H/V Counters"); a sound request's row is counted from there.
+                                     cycles_a_line: 1364,
                                      # No timer hands the sound chip samples: its eight voices each
                                      # read a recording of their own, and loop it, pitch it and
                                      # scale it themselves.

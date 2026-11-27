@@ -679,10 +679,12 @@ module VBlank
         # written, since it is its timer's from power-on (see Nodes::OnTimer.of).
         def collect_definitions(node)
           @timer_handlers = Nodes::OnTimer.of(node)
-          @player.effect_clock_step = IR::Tunes.effect_clock_step(node, @console)
+          @player.effect_clock_step = @effect_clock_step = IR::Tunes.effect_clock_step(node, @console)
           @player.effect_tempo_step = IR::Tunes.effect_tempo_step(node)
           @player.set_effect_tempo_counting(at_song_start: IR::Tunes.effect_count_at_song_start(node),
                                             tune_steps: IR::Tunes.tune_tempo_steps_by_name(node))
+          @player.set_driver_habits(starts_on_tick: IR::Tunes.effects_start_on_tick?(node),
+                                    silent_stops_ticks: IR::Tunes.silent_music_stops_ticks?(node))
           node.walk do |n|
             case n.kind
             when :func
@@ -1341,6 +1343,8 @@ module VBlank
         def exec_play_song(node)
           # Names the tune; the player takes it up at the next frame (see Player#advance), or
           # here when the game set `this_frame: true`.
+          return @player.request_song_at_row(node.name, row_share(node.sent_after_rows)) if node.sent_after_rows
+
           @player.request_song(node.name)
           start_song_here if node.this_frame
         end
@@ -1348,6 +1352,8 @@ module VBlank
         def exec_play_from_list(node)
           # The number is worked out here and handed over: which song a game picks can be an
           # expression, and evaluating one is the interpreter's business, not the player's.
+          return @player.request_song_at_row_in_list(node.name, eval_value(node.which), row_share(node.sent_after_rows)) if node.sent_after_rows
+
           named = @player.request_song_at(node.name, eval_value(node.which))
           start_song_here if named && node.this_frame
         end
@@ -1355,8 +1361,13 @@ module VBlank
         def start_song_here = @player.start_song_here(level: @vars.fetch(IR::Tunes::LEVEL, nil))
 
         def exec_play_sound_effect(node)
+          return @player.request_effect_at_row(node.name, eval_value(node.which), row_share(node.sent_after_rows)) if node.sent_after_rows
+
           @player.request_effect(node.name, eval_value(node.which), this_frame: node.this_frame)
         end
+
+        # How far into the frame a request at +rows+ is, in the driver's wakes (IR::Tunes.row_share).
+        def row_share(rows) = IR::Tunes.row_share(rows, @effect_clock_step || 0, @console)
 
         def exec_stop_music(node)
           @player.stop

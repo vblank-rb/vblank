@@ -98,7 +98,8 @@ module VBlank
         # drawn. Stopping it here instead would fight a game that names its song every frame, which
         # a jukebox does: the old tune would start over the frame after it stopped.
         #++
-        def fade_music_out(frames: nil, duration: nil)
+        def fade_music_out(frames: nil, duration: nil, sent_after_rows: nil)
+          refuse_fade_at_row!(sent_after_rows)
           start_music_fade(0.0, frames, duration)
         end
 
@@ -115,7 +116,8 @@ module VBlank
         #
         # * `frames:` - how long it takes, in frames.
         # * `duration:` - how long it takes, in seconds.
-        def fade_music_in(frames: nil, duration: nil)
+        def fade_music_in(frames: nil, duration: nil, sent_after_rows: nil)
+          refuse_fade_at_row!(sent_after_rows)
           start_music_fade(FULL, frames, duration)
         end
 
@@ -183,6 +185,15 @@ module VBlank
         end
 
         private
+
+        # A fade moves the music's volume a frame at a time, and nothing of the sound driver's keeps time
+        # with when it is asked, so a row has nothing to move (Audio::SoundDriver).
+        def refuse_fade_at_row!(rows)
+          return if rows.nil?
+
+          raise ArgumentError, "A music fade has `sent_after_rows:`. A fade moves the music's volume one frame " \
+                               "at a time, so the row changes nothing. Remove `sent_after_rows:`."
+        end
 
         # Point the ramp at a new target and set it running. A fade that is not already running
         # starts from the volume the music is at now, which the game may have set by hand; one

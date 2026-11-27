@@ -107,19 +107,23 @@ module VBlank
       # * `name` - the song's name, from `song`.
       # * `this_frame:` - `true` to start it here, and play its second frame on the next frame,
       #   instead of starting on the next frame.
+      # * `sent_after_rows:` - the screen row the request is sent at, counted from the start of the
+      #   vertical blank, in the pass that asks. The sound driver picks it up on its next wake, and where
+      #   a song's start sets the effects' count, the count is set there (`sound_driver`).
       #--
       # The player runs as the screen finishes a picture, which is before the game's pass, so it
       # hears the name a frame on. With `this_frame: true` the song is taken up and its first
       # frame played right here.
       #++
-      def play_song(name, this_frame: false)
+      def play_song(name, this_frame: false, sent_after_rows: nil)
         raise ArgumentError, "Sound is off. Call enable_sound before play_song." unless @sound_enabled
         unless @songs.key?(name)
           raise ArgumentError, "The song :#{name} is not defined. Define it with `song :#{name} do ... end`."
         end
 
         refuse_unknown_this_frame!(this_frame)
-        record(Build.play_song(name, this_frame: this_frame))
+        refuse_bad_rows!(sent_after_rows, this_frame)
+        record(Build.play_song(name, this_frame: this_frame, sent_after_rows: sent_after_rows))
       end
 
       # Silences the music: no song is playing after this.
@@ -346,6 +350,27 @@ module VBlank
                              "Remove `this_frame:`."
       end
 
+      # Describes how the original's sound driver keeps time, once for the whole game, before its songs
+      # and sound effects (Audio::SoundDriver says what each setting is). A port reads these from its
+      # original, and every build then plays the effects and songs on the beats the original did. Every
+      # setting left out keeps VBlank's own way.
+      #
+      # ```ruby
+      # sound_driver interrupts_per_second: 8000 / 96r, effects_tempo: :song,
+      #              tick_count_at_song_start: 255 / 256r, effects_start: :on_next_tick,
+      #              silent_music_stops_ticks: true
+      # ```
+      def sound_driver(**settings)
+        raise ArgumentError, "The game describes its sound driver twice. Describe it once." if @sound_driver
+        unless @song_lists.empty?
+          raise ArgumentError, "The game describes its sound driver after its songs or sound effects. The " \
+                               "description is for all of them. Put `sound_driver` before them."
+        end
+
+        @sound_driver = VBlank::Audio::SoundDriver.new(**settings)
+        nil
+      end
+
       # Hands over sound effects as data, and returns a list to play them from.
       #
       # An effect is a short run of notes, the way a tune is, such as a sword hit, a door or a
@@ -378,21 +403,40 @@ module VBlank
       # The hook behind SoundEffectList#play: record that effect number +which+ of the list starts
       # now — a number already checked against the list when it was written, or a Value.
       # Hook behind SoundEffectList#play, documented on `sound_effects`.
-      def play_sound_effect(name, which, this_frame: false)  # :nodoc:
+      def play_sound_effect(name, which, this_frame: false, sent_after_rows: nil)  # :nodoc:
         refuse_unknown_this_frame!(this_frame)
         refuse_this_frame_on_timer!(name, this_frame)
-        record(Build.play_sound_effect(name, which: DSL::Value.node_for(which), this_frame: this_frame))
+        refuse_bad_rows!(sent_after_rows, this_frame)
+        record(Build.play_sound_effect(name, which: DSL::Value.node_for(which), this_frame: this_frame,
+                                                   sent_after_rows: sent_after_rows))
       end
 
       # The hook behind SongList#play: record that the tune playing now is number +which+ of
       # the list — a number already checked against the list when it was written, or a Value.
       # Hook behind SongList#play, documented on `songs`; a game writes `music.play track`.
-      def play_from_list(name, which, this_frame: false)  # :nodoc:
+      def play_from_list(name, which, this_frame: false, sent_after_rows: nil)  # :nodoc:
         refuse_unknown_this_frame!(this_frame)
-        record(Build.play_from_list(name, which: DSL::Value.node_for(which), this_frame: this_frame))
+        refuse_bad_rows!(sent_after_rows, this_frame)
+        record(Build.play_from_list(name, which: DSL::Value.node_for(which), this_frame: this_frame,
+                                                sent_after_rows: sent_after_rows))
       end
 
       private
+
+      # A row is a number the build knows, from nought, and a request sent at a row is sent in the pass
+      # that asks, which `this_frame:` says another way.
+      def refuse_bad_rows!(rows, this_frame)
+        return if rows.nil?
+
+        unless rows.is_a?(Numeric) && !rows.is_a?(Complex) && rows >= 0
+          raise ArgumentError, "`sent_after_rows: #{rows.inspect}` is not a row. It is the screen row the request is " \
+                               "sent at, counted from the start of the vertical blank: a number from 0."
+        end
+        return unless this_frame
+
+        raise ArgumentError, "A request has `sent_after_rows:` and `this_frame: true`. A request sent at a row is " \
+                             "sent in the pass that asks already. Remove `this_frame:`."
+      end
 
       def refuse_unknown_this_frame!(this_frame)
         return if [true, false].include?(this_frame)
@@ -416,6 +460,7 @@ module VBlank
                                  "VBlank::Audio::Score. Give `#{verb}` a list of Scores, or a Hash of them by name."
           end
 
+          score = score_under_driver(score, effect: verb == :sound_effects, entry: "#{entry} #{key.inspect} of :#{name}")
           yield key, score if block_given?
           record_score(member: :"#{name}.#{key}", score: score)
         end
@@ -427,8 +472,37 @@ module VBlank
         @songs[member] = score
         # A part that reads its notes from the data pack as the game starts keeps its handle until here (PackScores).
         reads_at_start = score.parts.any? { |part| part.notes.is_a?(DSL::PackNotes) }
-        record(Build.song(member, **(reads_at_start ? song_reading_notes_at_start(score) : score.to_song)))
+        song = reads_at_start ? song_reading_notes_at_start(score) : score.to_song
+        record(Build.song(member, **song, **driver_song_flags(score)))
         member
+      end
+
+      # +score+ with the sound driver's settings (Audio::SoundDriver#effect_settings, #song_settings), where
+      # the game describes one. A setting about the driver's wakes is named in one place: a Score that
+      # names one too is refused, naming both.
+      def score_under_driver(score, effect:, entry:)
+        return score unless @sound_driver
+
+        if effect && @sound_driver.interrupts_per_second
+          word = %i[interrupts_per_second on_tune_tempo tick_count_at_song_start].find do |name|
+            given = { interrupts_per_second: score.interrupts_per_second, on_tune_tempo: score.on_tune_tempo || nil,
+                      tick_count_at_song_start: score.tick_count_at_song_start }[name]
+            !given.nil?
+          end
+          if word
+            raise ArgumentError, "#{entry} has `#{word}:`, and the game describes its sound driver's wakes. Say it " \
+                                 "once, in `sound_driver`. Remove `#{word}:` from this Score."
+          end
+        end
+        score.with(**(effect ? @sound_driver.effect_settings(score) : @sound_driver.song_settings(score)))
+      end
+
+      # What the sound driver does that a Score cannot say, on a sound effect's song node: it keys the
+      # effect only on a tick, and it skips its tick while the music is silent (Audio::SoundDriver).
+      def driver_song_flags(score)
+        return {} unless @sound_driver && score.timer_rate
+
+        { starts_on_tick: @sound_driver.starts_on_tick?, silent_music_stops_ticks: @sound_driver.silent_music_stops_ticks }
       end
 
       # Refuse a Score a sound effect cannot play. An effect plays every voice a song does, sharing

@@ -14,6 +14,7 @@ require_relative "audio/pitch_shift"  # A part played higher or lower than writt
 # Must load before ir/: the backends size their music player from Music.
 require_relative "audio/music"        # Music written as a block
 require_relative "audio/score"        # Music handed over as data
+require_relative "audio/sound_driver" # How the original's sound driver keeps time
 require_relative "audio/envelope"     # How a note starts and ends, so an edge is not a click
 require_relative "audio/snes_envelope" # The Super Nintendo sound chip's own envelope bytes
 require_relative "audio/snes_recording" # A recording in the Super Nintendo sound chip's own format, BRR
