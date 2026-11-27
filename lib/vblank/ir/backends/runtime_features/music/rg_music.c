@@ -26,7 +26,7 @@
  * effects' timer adds a frame, 0 for effects that count frames (see step_effect_clock) — what the tempo
  * adds on each of a driver's own interrupts, 0 for none (see count_ticks_on_interrupts) — 1 where the
  * effects cut their own notes (rg_mix_start_music_note's +cuts+), else 0 — where a song's start sets the
- * tempo count, -1 for nowhere, and 1 where the count is the tune's tempo (see count_ticks_on_interrupts) — then five
+ * tempo count, -1 for nowhere, and the sound driver's habits as bits (see EFFECT_DRIVER_HABITS) — then five
  * numbers each, in the order they were declared — the song it plays (by
  * which the log names it), which entry of rg_game_music holds its notes, its rank
  * (IR::Tunes.effect_rank), its group (-1 for none, else which of the game's groups), and its
@@ -125,7 +125,11 @@
 #define EFFECT_TEMPO_STEP (rg_game_effects[3]) /* what the tempo adds on each interrupt, 0 for none */
 #define EFFECTS_CUT_NOTES (rg_game_effects[4]) /* 1 where an effect's note takes its part's own voice */
 #define EFFECT_COUNT_AT_SONG_START (rg_game_effects[5]) /* where a song's start sets the tempo count, -1 for nowhere */
-#define EFFECTS_ON_TUNE_TEMPO (rg_game_effects[6])      /* 1 where the count is the tune's tempo (see tune_tempo) */
+/* The sound driver's habits (Audio::SoundDriver), a bit each, none set for a game that names none. */
+#define EFFECT_DRIVER_HABITS (rg_game_effects[6])
+#define EFFECTS_ON_TUNE_TEMPO (EFFECT_DRIVER_HABITS & 1)    /* the count is the tune's tempo (see tune_tempo) */
+#define EFFECTS_START_ON_TICK (EFFECT_DRIVER_HABITS & 2)    /* an effect starts only on a wake holding a tick */
+#define SILENT_MUSIC_STOPS_TICKS (EFFECT_DRIVER_HABITS & 4) /* the count stands still while the music is at volume 0 */
 #define EFFECT_ROWS 7
 #define NUMBERS_PER_EFFECT 6
 /* Each effect's numbers in rg_game_effects, by where they are in its row. */
@@ -223,8 +227,15 @@ static int32_t level = -1;            /* the volume the notes sounding were set 
 static held_note holding[PARTS_MOST];
 static int32_t holding_count;
 
+/* A song named at a screen row this pass (`sent_after_rows:`), while it is still the one named last, and
+ * how far into the frame its request is, in 65536ths of a driver's wake (IR::Tunes.row_share); -1 for none
+ * (Reference::Player#request_song_at_row). */
+static int32_t song_at_row = -1;
+static int32_t song_at_row_share;
+
 void rg_music_request(int32_t number) {
   if (number < 0 || number >= SONG_COUNT) rg_fault("there is no song number %d", (int)number);
+  song_at_row = -1;
   wanted = number;
 }
 
@@ -232,7 +243,18 @@ void rg_music_request_one_of(const int32_t *songs, int32_t count, int32_t which)
   if (which >= 0 && which < count) rg_music_request(songs[which]);
 }
 
+void rg_music_request_at_row(int32_t number, int32_t share) {
+  rg_music_request(number);
+  song_at_row = number;
+  song_at_row_share = share;
+}
+
+void rg_music_row_request_one_of(const int32_t *songs, int32_t count, int32_t which, int32_t share) {
+  if (which >= 0 && which < count) rg_music_request_at_row(songs[which], share);
+}
+
 void rg_music_stop(void) {
+  song_at_row = -1;
   wanted = -1;
   stops++;
 }
@@ -836,6 +858,37 @@ void rg_effect_request_one_of(const int32_t *effects, int32_t count, int32_t whi
   if (which >= 0 && which < count) request_effect(effects[which]);
 }
 
+/* The sound effects asked for at a screen row this pass (`sent_after_rows:`), one for each wake of the
+ * driver a row comes before, in the order those wakes were first named: the effect (-1 for a number
+ * naming none) and how far into the frame it was sent, the latest kept. A wake is counted from 1 in the
+ * frame the pass's end takes them up in, whose clock starts where it stands now, as the frame's step
+ * moves it only then (Reference::Player#effect_starts_on_wakes). */
+#define ROW_WAKES_MOST 16
+static int32_t row_request_count;
+static int32_t row_request_wake[ROW_WAKES_MOST];
+static int32_t row_request_effect[ROW_WAKES_MOST];
+static int32_t row_request_share[ROW_WAKES_MOST];
+
+static int32_t effect_clock;
+static int32_t wake_after(int32_t clock, int32_t share) { return ((clock + share) >> 16) + 1; }
+
+/* Two requests reaching the port before one wake: the driver reads it once, and hears the last sent, the
+ * one at the later row (Reference::Player#effect_starts_on_wakes). */
+void rg_effect_row_request_one_of(const int32_t *effects, int32_t count, int32_t which, int32_t share) {
+  int32_t effect = which >= 0 && which < count ? effects[which] : -1;
+  int32_t wake = wake_after(effect_clock, share);
+  for (int32_t i = 0; i < row_request_count; i++) {
+    if (row_request_wake[i] != wake) continue;
+    if (share >= row_request_share[i]) row_request_effect[i] = effect, row_request_share[i] = share;
+    return;
+  }
+  if (row_request_count == ROW_WAKES_MOST) rg_fault("a pass asks for sound effects at more than %d wakes of the sound driver", ROW_WAKES_MOST);
+  row_request_wake[row_request_count] = wake;
+  row_request_effect[row_request_count] = effect;
+  row_request_share[row_request_count] = share;
+  row_request_count++;
+}
+
 /* An effect over (Reference::Player#finish_effect): every console voice it still holds goes quiet
  * and is free, in the order each was first written, and its notes on the mixer end, a shaped one
  * falling away as it would at a rest. */
@@ -961,41 +1014,50 @@ static void play_effect_frame(int32_t effect) {
 
 static void play_song_frame(void);
 
-/* The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step): a count
- * of 16 bits from power-on, to which each frame adds EFFECT_CLOCK_STEP. A frame has a tick when the
- * count comes round. An effect asked for starts at once whether or not its frame has one, and moves
- * on with each tick from there (Reference::Player#advance). */
-static int32_t effect_clock;
-
+/* The sound effects' timer, in a game whose effects are on one (IR::Tunes.effect_clock_step), is
+ * effect_clock (declared with the requests at a row, which read it): a count of 16 bits from power-on,
+ * to which each frame adds EFFECT_CLOCK_STEP. A frame has a tick when the count comes round. An effect
+ * asked for starts at once whether or not its frame has one, and moves on with each tick from there
+ * (Reference::Player#advance).
+ *
+ * On a driver's own interrupt (EFFECT_TEMPO_STEP), the clock's comings round are the driver's wakes
+ * instead, and each wake adds the tempo to a count of its own, effect_tempo, whose comings round are the
+ * ticks. The frame's wakes, and which of them held a tick, are kept for the frame's walk of the effects
+ * (play_effects_on_wakes). */
 static int32_t effect_tempo;
-static int32_t tick_on_first_interrupt;
-
 static int32_t effect_tempo_now; /* what the count adds until it next comes round after a song's start, 0 for the tempo */
 
-/* What the count adds an interrupt: the effects' own step, or on the tune's tempo the song playing's, after
- * the effects' rows and the effects by rank, a number a song (IR::Tunes.tune_tempo_steps), 0 for none. */
-static int32_t tune_tempo(void) {
+/* The guardrails hold a frame to Tunes::MOST_TICKS_A_FRAME wakes; this is room to spare. */
+#define WAKES_MOST 64
+static int32_t frame_clock_start;          /* the clock as this frame began */
+static int32_t frame_wakes;                /* this frame's wakes */
+static uint8_t frame_ticked[WAKES_MOST];   /* ...and whether each held a tick */
+static int32_t effect_start_wake[EFFECTS_MOST]; /* the wake each effect starts on this frame, from 1, or 0 for none */
+static int32_t count_before_switch[2];     /* the count and its share as the frame began, before a song's start set them */
+static int32_t song_count_owed;            /* a song named at a row past its frame's last wake sets the count before the next frame's first */
+
+/* What the count adds a wake while song number +song+ plays (-1 for none): the effects' own step, or on
+ * the tune's tempo the song's, after the effects' rows and the effects by rank, a number a song
+ * (IR::Tunes.tune_tempo_steps), 0 for none (Reference::Player#tune_tempo). */
+static int32_t tune_tempo(int32_t song) {
   if (!EFFECTS_ON_TUNE_TEMPO) return EFFECT_TEMPO_STEP;
-  if (playing < 0) return 0;
-  return rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT) + EFFECT_COUNT + playing];
+  if (song < 0) return 0;
+  return rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT) + EFFECT_COUNT + song];
 }
 
-/* With the tempo counted on a driver's own interrupt (EFFECT_TEMPO_STEP), the frame's +interrupts+ each
- * add the tempo's step, and those whose count comes round hold a tick (Reference::Player#count_ticks_on_interrupts). */
-static int32_t count_ticks_on_interrupts(int32_t interrupts) {
-  int32_t ticks = 0;
-  int32_t tempo = tune_tempo();
-  tick_on_first_interrupt = 0;
-  for (int32_t at = 0; at < interrupts; at++) {
-    effect_tempo += effect_tempo_now ? effect_tempo_now : tempo;
-    if (effect_tempo >> 16) {
-      effect_tempo_now = 0;
-      ticks++;
-      if (at == 0) tick_on_first_interrupt = 1;
-    }
+/* +wakes+ wakes of the count, from this frame's wake +from+ (counted from 0), each adding +tempo+, or the
+ * share a song's start set until the count comes round; each whose count comes round holds a tick. While
+ * the music is at volume 0, a driver that skips its tick then adds nothing (SILENT_MUSIC_STOPS_TICKS;
+ * Reference::Player#count_wakes). */
+static void count_wakes(int32_t from, int32_t wakes, int32_t tempo) {
+  int32_t silent = SILENT_MUSIC_STOPS_TICKS && level_variable && *level_variable == 0;
+  for (int32_t at = from; at < from + wakes; at++) {
+    int32_t step = silent ? 0 : effect_tempo_now ? effect_tempo_now : tempo;
+    effect_tempo += step;
+    frame_ticked[at] = (effect_tempo >> 16) && step > 0;
+    if (frame_ticked[at]) effect_tempo_now = 0;
     effect_tempo &= 0xFFFF;
   }
-  return ticks;
 }
 
 /* A song's start sets the tempo count, and what it adds until it next comes round, where the effects name
@@ -1004,16 +1066,95 @@ static void set_song_start_count(void) {
   if (EFFECT_COUNT && EFFECT_TEMPO_STEP && EFFECT_COUNT_AT_SONG_START >= 0) effect_tempo = effect_tempo_now = EFFECT_COUNT_AT_SONG_START;
 }
 
-static int32_t step_effect_clock(void) {
+/* The wake of this frame a song named at a row this pass is picked up on, or 0 for a frame whose song
+ * changed with no row, or not at all. A count the song's start still owes from the frame before is set
+ * first (Reference::Player#song_change_wake). */
+static int32_t song_change_wake(int32_t song_before) {
+  if (song_count_owed) {
+    song_count_owed = 0;
+    if (playing >= 0) set_song_start_count();
+  }
+  int32_t named = song_at_row;
+  song_at_row = -1;
+  if (named < 0 || named != playing || named == song_before) return 0;
+  return wake_after(frame_clock_start, song_at_row_share);
+}
+
+/* The frame's +interrupts+ wakes counted (Reference::Player#count_ticks_on_interrupts): how many held a
+ * tick. A song named at a row is picked up on the first wake past it: the wakes before count as the song
+ * before it had them, and the song's start sets the count on that wake; past the frame's last wake, it
+ * sets it before the next frame's first. */
+static int32_t count_ticks_on_interrupts(int32_t interrupts, int32_t song_before) {
+  if (interrupts > WAKES_MOST) rg_fault("the sound driver wakes %d times in one frame, and the most is %d", (int)interrupts, WAKES_MOST);
+  int32_t wake = song_change_wake(song_before);
+  int32_t counted = 0;
+  if (wake) {
+    effect_tempo = count_before_switch[0], effect_tempo_now = count_before_switch[1];
+    counted = wake - 1 < interrupts ? wake - 1 : interrupts;
+    count_wakes(0, counted, tune_tempo(song_before));
+    if (playing >= 0 && wake <= interrupts) set_song_start_count();
+    song_count_owed = wake > interrupts;
+  }
+  count_wakes(counted, interrupts - counted, tune_tempo(playing));
+  frame_wakes = interrupts;
+  int32_t ticks = 0;
+  for (int32_t at = 0; at < interrupts; at++) ticks += frame_ticked[at];
+  return ticks;
+}
+
+static int32_t step_effect_clock(int32_t song_before) {
   if (EFFECT_CLOCK_STEP == 0) return 1;
+  frame_clock_start = effect_clock;
   effect_clock += EFFECT_CLOCK_STEP;
   int32_t ticks = effect_clock >> 16;
   effect_clock &= 0xFFFF;
-  return EFFECT_TEMPO_STEP ? count_ticks_on_interrupts(ticks) : ticks;
+  return EFFECT_TEMPO_STEP ? count_ticks_on_interrupts(ticks, song_before) : ticks;
 }
 
-/* Whether the frame's first tick is too soon for an effect started on it (Reference::Player#skips_started_effects_first_tick?). */
-static int32_t skips_started_effects_first_tick(void) { return !EFFECT_TEMPO_STEP || tick_on_first_interrupt; }
+/* How many of this frame's ticks come on wakes before +wake+ (Reference::Player#ticks_before). */
+static int32_t ticks_before(int32_t wake) {
+  int32_t ticks = 0;
+  for (int32_t at = 0; at < wake - 1 && at < frame_wakes; at++) ticks += frame_ticked[at];
+  return ticks;
+}
+
+/* The wake an effect asked for from +wake+ starts on, or 0 to wait for the next frame. A driver that
+ * keys an effect only on a tick starts it on the first wake from there that holds one. One asked for
+ * with no row (+plain+) starts this frame even where the frame has no wake (Reference::Player#starting_wake). */
+static int32_t starting_wake(int32_t wake, int32_t plain) {
+  if (EFFECTS_START_ON_TICK) {
+    for (int32_t at = wake - 1; at < frame_wakes; at++) {
+      if (frame_ticked[at]) return at + 1;
+    }
+    return 0;
+  }
+  return wake <= frame_wakes || (plain && wake == 1) ? wake : 0;
+}
+
+/* The wake each sound effect asked for starts on this frame, into effect_start_wake
+ * (Reference::Player#effect_starts_on_wakes): one asked for with no row on the frame's first, one asked
+ * for at a row on the first wake past it, the last sent of those before one wake. One whose wake is past
+ * the frame's stays asked for, and waits for the next frame's first. */
+static void take_up_effect_starts(void) {
+  static uint8_t plain[EFFECTS_MOST];
+  static int32_t row_wake[EFFECTS_MOST];
+  for (int32_t effect = 0; effect < EFFECT_COUNT; effect++) plain[effect] = effect_asked[effect], row_wake[effect] = 0;
+  for (int32_t i = 0; i < row_request_count; i++) {
+    int32_t effect = row_request_effect[i];
+    if (effect < 0) continue;
+    request_effect(effect);
+    row_wake[effect] = row_request_wake[i];
+  }
+  row_request_count = 0;
+  for (int32_t effect = 0; effect < EFFECT_COUNT; effect++) {
+    effect_start_wake[effect] = 0;
+    if (!effect_asked[effect]) continue;
+    int32_t start = starting_wake(plain[effect] ? 1 : row_wake[effect], plain[effect]);
+    if (!start) continue;
+    effect_start_wake[effect] = start;
+    effect_asked[effect] = 0;
+  }
+}
 
 /* Each effect asked for since the last tick, taken up for the tick playing now. */
 static void move_asked_effects_to_tick(void) {
@@ -1039,7 +1180,69 @@ static void play_effects_first_pass(const int32_t *by_rank, int32_t from, int32_
     effect_asked_now[effect] = 0;
   }
   for (int32_t at = from; ticks > 0 && at < to; at++) {
-    if (!effect_started_now[by_rank[at]] || !skips_started_effects_first_tick()) play_effect_frame(by_rank[at]);
+    if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+  }
+}
+
+/* Effect +effect+ started here: its first frame played. */
+static void start_effect_now(int32_t effect) {
+  effect_asked_now[effect] = 1;
+  play_effect_frame(effect);
+  effect_asked_now[effect] = 0;
+}
+
+/* Does effect +effect+ start this frame with no tick before its wake? */
+static int32_t starts_before_ticks(int32_t effect) { return effect_start_wake[effect] && ticks_before(effect_start_wake[effect]) == 0; }
+
+/* One side of the tune in the frame's first walk on a driver's wakes, the effects by rank from +from+ up
+ * to +to+ (Reference::Player#play_side_on_wakes): what starts before the first tick, and what a group cuts
+ * off, and then, on a frame with a tick on wake +first_tick+, every effect moved on, but one started on
+ * that tick's own wake. */
+static void play_side_on_wakes(const int32_t *by_rank, int32_t from, int32_t to, int32_t first_tick) {
+  for (int32_t at = from; at < to; at++) {
+    int32_t effect = by_rank[at];
+    if (!starts_before_ticks(effect) && !effect_stopping[effect]) continue;
+    effect_asked_now[effect] = (uint8_t)starts_before_ticks(effect);
+    play_effect_frame(effect);
+    effect_asked_now[effect] = 0;
+  }
+  for (int32_t at = from; first_tick && at < to; at++) {
+    int32_t effect = by_rank[at];
+    if (!starts_before_ticks(effect) || effect_start_wake[effect] != first_tick) play_effect_frame(effect);
+  }
+}
+
+/* A frame of the sound effects on a driver's wakes (Reference::Player#play_effects_on_wakes). The frame's
+ * ticks are played in order, each a walk of every effect: the first around the song, by rank, as a frame
+ * of one tick is, and each later one after it. An effect starts just before the first tick on or after
+ * the wake it starts on: with what was asked for at the frame's start where no tick comes before its
+ * wake, else just before that tick's walk, or after the frame's last tick. A tick on the wake an effect
+ * starts on does not move it on; every tick after does. */
+static void play_effects_on_wakes(const int32_t *by_rank, int32_t above, int32_t ticks) {
+  int32_t tick_wakes[WAKES_MOST];
+  int32_t found = 0;
+  for (int32_t at = 0; at < frame_wakes; at++) {
+    if (frame_ticked[at]) tick_wakes[found++] = at + 1;
+  }
+  int32_t first_tick = ticks > 0 ? tick_wakes[0] : 0;
+  play_side_on_wakes(by_rank, 0, above, first_tick);
+  if (playing >= 0) play_song_frame();
+  play_side_on_wakes(by_rank, above, EFFECT_COUNT, first_tick);
+  for (int32_t ordinal = 1; ordinal < ticks; ordinal++) {
+    for (int32_t at = 0; at < EFFECT_COUNT; at++) {
+      int32_t effect = by_rank[at];
+      if (effect_start_wake[effect] && ticks_before(effect_start_wake[effect]) == ordinal) start_effect_now(effect);
+    }
+    for (int32_t at = 0; at < EFFECT_COUNT; at++) {
+      int32_t effect = by_rank[at];
+      int32_t joined_on_tick = effect_start_wake[effect] && ticks_before(effect_start_wake[effect]) == ordinal &&
+                               effect_start_wake[effect] == tick_wakes[ordinal];
+      if (!joined_on_tick) play_effect_frame(effect);
+    }
+  }
+  for (int32_t at = 0; ticks > 0 && at < EFFECT_COUNT; at++) {
+    int32_t effect = by_rank[at];
+    if (effect_start_wake[effect] && ticks_before(effect_start_wake[effect]) == ticks) start_effect_now(effect);
   }
 }
 
@@ -1051,20 +1254,27 @@ static void play_effects_first_pass(const int32_t *by_rank, int32_t from, int32_
 static void rg_music_sound_frame(void) {
   if (level < 0) level = FULL_LEVEL;
   refuse_too_many_effects();
+  int32_t song_before = playing;
+  count_before_switch[0] = effect_tempo, count_before_switch[1] = effect_tempo_now;
   switch_to_wanted_song();
-  int32_t ticks = step_effect_clock();
-  move_asked_effects_to_tick();
+  int32_t ticks = step_effect_clock(song_before);
   int32_t tune = playing >= 0 ? song[3] : -1;
   const int32_t *by_rank = &rg_game_effects[EFFECT_ROWS + (EFFECT_COUNT * NUMBERS_PER_EFFECT)];
   int32_t at = 0;
   while (at < EFFECT_COUNT && effect_row(by_rank[at])[EFFECT_RANK] > tune) at++;
-  play_effects_first_pass(by_rank, 0, at, ticks);
-  if (playing >= 0) play_song_frame();
-  play_effects_first_pass(by_rank, at, EFFECT_COUNT, ticks);
-  for (int32_t tick = 1; tick < ticks; tick++) {
+  if (EFFECT_TEMPO_STEP) {
+    take_up_effect_starts();
+    play_effects_on_wakes(by_rank, at, ticks);
+  } else {
     move_asked_effects_to_tick();
-    for (at = 0; at < EFFECT_COUNT; at++) {
-      if (!effect_started_now[by_rank[at]] || EFFECT_TEMPO_STEP) play_effect_frame(by_rank[at]);
+    play_effects_first_pass(by_rank, 0, at, ticks);
+    if (playing >= 0) play_song_frame();
+    play_effects_first_pass(by_rank, at, EFFECT_COUNT, ticks);
+    for (int32_t tick = 1; tick < ticks; tick++) {
+      move_asked_effects_to_tick();
+      for (at = 0; at < EFFECT_COUNT; at++) {
+        if (!effect_started_now[by_rank[at]]) play_effect_frame(by_rank[at]);
+      }
     }
   }
   step_swells();
@@ -1154,14 +1364,15 @@ static void rg_music_moment_printed(void) { printf("music_playing %d\n", (int)pl
 
 /* The music in "music": the tune wanted and playing, a tune ended, the stops asked and seen,
  * whether it is held, how far into the tune, the volume its notes were set at, how many notes
- * are held and voices have been held, and the sound effects' timer and tempo counts. Each part of the playing tune in "music.parts": whether it is
+ * are held and voices have been held, the sound effects' timer and tempo counts, and whether a song's
+ * start still owes the count it sets (song_count_owed). Each part of the playing tune in "music.parts": whether it is
  * walking its notes after the first time through, and which comes next; the rest of a part is the
  * song's, worked out again from it. */
 /* Where each number sits among the "music" field's. */
 enum {
   MUSIC_AT_WANTED, MUSIC_AT_PLAYING, MUSIC_AT_ENDED, MUSIC_AT_STOPS, MUSIC_AT_STOPS_SEEN, MUSIC_AT_HELD,
   MUSIC_AT_SONG_FRAME, MUSIC_AT_LEVEL, MUSIC_AT_HOLDING_COUNT, MUSIC_AT_HOLDER_COUNT, MUSIC_AT_EFFECT_CLOCK,
-  MUSIC_AT_EFFECT_TEMPO, MUSIC_AT_EFFECT_TEMPO_NOW, MUSIC_STATE_NUMBERS,
+  MUSIC_AT_EFFECT_TEMPO, MUSIC_AT_EFFECT_TEMPO_NOW, MUSIC_AT_SONG_COUNT_OWED, MUSIC_STATE_NUMBERS,
 };
 
 enum {
@@ -1177,7 +1388,7 @@ static void rg_music_visit_sound_state(void) {
   int reading = rg_state_reading();
   int64_t general[MUSIC_STATE_NUMBERS] = {wanted,     playing, ended, stops,         stops_seen,
                                           music_held, song_frame, level, holding_count, holder_count,
-                                          effect_clock, effect_tempo, effect_tempo_now};
+                                          effect_clock, effect_tempo, effect_tempo_now, song_count_owed};
   rg_state_numbers("music", general, MUSIC_STATE_NUMBERS);
   if (general[MUSIC_AT_WANTED] < -1 || general[MUSIC_AT_WANTED] >= SONG_COUNT || general[MUSIC_AT_PLAYING] < -1 || general[MUSIC_AT_PLAYING] >= SONG_COUNT || general[MUSIC_AT_ENDED] < -1 ||
       general[MUSIC_AT_ENDED] >= SONG_COUNT || general[MUSIC_AT_HOLDING_COUNT] < 0 || general[MUSIC_AT_HOLDING_COUNT] > PARTS_MOST || general[MUSIC_AT_HOLDER_COUNT] < 0 || general[MUSIC_AT_HOLDER_COUNT] > RG_NOISE_VOICE)
@@ -1187,6 +1398,7 @@ static void rg_music_visit_sound_state(void) {
   holding_count = (int32_t)general[MUSIC_AT_HOLDING_COUNT], holder_count = (int32_t)general[MUSIC_AT_HOLDER_COUNT];
   effect_clock = (int32_t)general[MUSIC_AT_EFFECT_CLOCK];
   effect_tempo = (int32_t)general[MUSIC_AT_EFFECT_TEMPO], effect_tempo_now = (int32_t)general[MUSIC_AT_EFFECT_TEMPO_NOW];
+  song_count_owed = general[MUSIC_AT_SONG_COUNT_OWED] != 0;
 
   /* The playing tune's parts, read again from the song, each from where the image says. */
   if (reading) {

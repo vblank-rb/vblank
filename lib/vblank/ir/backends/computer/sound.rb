@@ -81,8 +81,18 @@ module VBlank
           def lower_noise(node) = [eval_call("rg_sound_noise", Statements::Int.new(@sound_log.noise_number(node)))]
           # Named `this_frame: true`, the tune starts where it is named (rg_music_start_here).
           def lower_play_song(node)
-            [eval_call("rg_music_request", Statements::Int.new(@sound_log.song_number(node.name))),
-             *(eval_call("rg_music_start_here") if node.this_frame)]
+            number = Statements::Int.new(@sound_log.song_number(node.name))
+            return [eval_call("rg_music_request_at_row", number, row_share(node))] if node.sent_after_rows
+
+            [eval_call("rg_music_request", number), *(eval_call("rg_music_start_here") if node.this_frame)]
+          end
+
+          # How far into the frame a request sent at a screen row (`sent_after_rows:`) is, in 65536ths of a
+          # wake of the sound driver, worked out here, since the build knows its console
+          # (IR::Tunes.row_share, as Reference#row_share works it out).
+          def row_share(node)
+            console = @program.described_console
+            Statements::Int.new(Tunes.row_share(node.sent_after_rows, Tunes.effect_clock_step(@program, console) || 0, console))
           end
           def lower_stop_music(_node) = [eval_call("rg_music_stop")]
           def lower_hold_music(node) = [eval_call("rg_music_hold", Statements::Int.new(node.held ? 1 : 0))]
@@ -91,8 +101,10 @@ module VBlank
           # numbers of its songs, and the runtime picks one, or leaves the music alone for a
           # number naming none.
           def lower_play_from_list(node)
-            [eval_call(node.this_frame ? "rg_music_start_here_one_of" : "rg_music_request_one_of", song_list_name(node.name),
-                       Statements::Int.new(song_lists.fetch(node.name).songs.size), value(node.which))]
+            list = [song_list_name(node.name), Statements::Int.new(song_lists.fetch(node.name).songs.size), value(node.which)]
+            return [eval_call("rg_music_row_request_one_of", *list, row_share(node))] if node.sent_after_rows
+
+            [eval_call(node.this_frame ? "rg_music_start_here_one_of" : "rg_music_request_one_of", *list)]
           end
 
           def song_lists = @song_lists ||= @program.walk.select { |node| node.kind == :song_list }.to_h { |node| [node.name, node] }
@@ -101,8 +113,10 @@ module VBlank
           # A sound effect picked from a list by a number the game works out, the same way: the
           # list is written as the numbers of its effects (SoundLog#effect_number).
           def lower_play_sound_effect(node)
-            [eval_call(node.this_frame ? "rg_effect_start_here_one_of" : "rg_effect_request_one_of", effect_list_name(node.name),
-                       Statements::Int.new(effect_lists.fetch(node.name).effects.size), value(node.which))]
+            list = [effect_list_name(node.name), Statements::Int.new(effect_lists.fetch(node.name).effects.size), value(node.which)]
+            return [eval_call("rg_effect_row_request_one_of", *list, row_share(node))] if node.sent_after_rows
+
+            [eval_call(node.this_frame ? "rg_effect_start_here_one_of" : "rg_effect_request_one_of", *list)]
           end
 
           def effect_lists
@@ -544,8 +558,8 @@ module VBlank
           # (IR::Tunes.effect_clock_step); what the tempo adds on each of a driver's interrupts, nought for
           # none (IR::Tunes.effect_tempo_step); 1 where they cut their own notes, else nought
           # (IR::Tunes.effects_cut_notes?); where a song's start sets the tempo count, -1 for nowhere
-          # (IR::Tunes.effect_count_at_song_start); 1 where the count is the tune's tempo (IR::Tunes.tune_tempo_steps),
-          # else nought; then each one's song, where its notes are, rank, group,
+          # (IR::Tunes.effect_count_at_song_start); the sound driver's habits as bits (#driver_habit_bits);
+          # then each one's song, where its notes are, rank, group,
           # priority and whether it keeps its voices; and then the effects again, highest rank
           # first, which is the order a frame plays them in.
           def effects_table
@@ -565,10 +579,18 @@ module VBlank
             tempo_step = Tunes.effect_tempo_step(@program) || 0
             cuts = Tunes.effects_cut_notes?(@program) ? 1 : 0
             tune_steps = Tunes.tune_tempo_steps(@program) || []
-            counts = [Tunes.effect_count_at_song_start(@program) || -1, Tunes.effects_on_tune_tempo?(@program) ? 1 : 0]
+            counts = [Tunes.effect_count_at_song_start(@program) || -1, driver_habit_bits]
             # ...and what the count adds while each song plays, by the song's number (the order declared, as the log's).
             sound_table("effects", [rows.size, plays_wave ? 1 : 0, clock_step, tempo_step, cuts, *counts, *rows.flatten, *by_rank,
                                     *tune_steps])
+          end
+
+          # The sound driver's habits, a bit each (rg_music.c's EFFECT_DRIVER_HABITS): 1 where the count is the
+          # tune's tempo (IR::Tunes.effects_on_tune_tempo?), 2 where an effect starts only on a tick
+          # (IR::Tunes.effects_start_on_tick?), 4 where silent music stops the ticks (IR::Tunes.silent_music_stops_ticks?).
+          def driver_habit_bits
+            (Tunes.effects_on_tune_tempo?(@program) ? 1 : 0) | (Tunes.effects_start_on_tick?(@program) ? 2 : 0) |
+              (Tunes.silent_music_stops_ticks?(@program) ? 4 : 0)
           end
 
           # The player reads the music volume the game keeps, when it keeps one: a game that never

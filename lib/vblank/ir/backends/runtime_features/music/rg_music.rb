@@ -101,8 +101,16 @@ def rg_music_setup
   @rg_effect_cursors = Array.new(RG_EFFECTS_MOST)
   @rg_effect_clock = 0 # the effects' timer, from power-on (rg_step_effect_clock)
   @rg_effect_tempo = 0 # the tempo counted on a driver's interrupt, from power-on (rg_count_ticks_on_interrupts)
-  @rg_tick_on_first_interrupt = false
   @rg_effect_tempo_now = 0 # what the count adds until it next comes round after a song's start, 0 for the tempo
+  # The frame's wakes, on a driver's own interrupt, and what is asked for at a row (rg_music.c's)
+  @rg_frame_clock_start = 0
+  @rg_frame_ticked = []
+  @rg_effect_start_wake = Array.new(RG_EFFECTS_MOST, 0)
+  @rg_count_before_switch = [0, 0]
+  @rg_song_count_owed = false
+  @rg_row_requests = []
+  @rg_song_at_row = -1
+  @rg_song_at_row_share = 0
 end
 
 # The game's own beep, wave or stop_wave took +voice+: a note held there wobbles no more and steps
@@ -129,12 +137,16 @@ def rg_effect_clock_step = @rg_game_effects[2] # What the effects' timer adds a 
 def rg_effect_tempo_step = @rg_game_effects[3] # What the tempo adds on each of a driver's interrupts, 0 for none
 def rg_effects_cut_notes = @rg_game_effects[4] # 1 where an effect's note takes its part's own voice
 def rg_effect_count_at_song_start = @rg_game_effects[5] # Where a song's start sets the tempo count, -1 for nowhere
-def rg_effects_on_tune_tempo? = @rg_game_effects[6] == 1 # Whether the count is the tune's tempo
+# The sound driver's habits, a bit each (rg_music.c's EFFECT_DRIVER_HABITS)
+def rg_effects_on_tune_tempo? = @rg_game_effects[6].anybits?(1) # Whether the count is the tune's tempo
+def rg_effects_start_on_tick? = @rg_game_effects[6].anybits?(2) # Whether an effect starts only on a wake holding a tick
+def rg_silent_music_stops_ticks? = @rg_game_effects[6].anybits?(4) # Whether the count stands still while the music is at volume 0
 
 # --- the player ---
 
 def rg_music_request(number)
   rg_fault("there is no song number #{number}") if number < 0 || number >= rg_song_count
+  @rg_song_at_row = -1
   @rg_wanted = number
 end
 
@@ -142,7 +154,19 @@ def rg_music_request_one_of(songs, count, which)
   rg_music_request(songs[which]) if which >= 0 && which < count
 end
 
+# A song named at a screen row (rg_music.c's rg_music_request_at_row).
+def rg_music_request_at_row(number, share)
+  rg_music_request(number)
+  @rg_song_at_row = number
+  @rg_song_at_row_share = share
+end
+
+def rg_music_row_request_one_of(songs, count, which, share)
+  rg_music_request_at_row(songs[which], share) if which >= 0 && which < count
+end
+
 def rg_music_stop
+  @rg_song_at_row = -1
   @rg_wanted = -1
   @rg_stops += 1
 end
@@ -610,6 +634,29 @@ def rg_effect_request_one_of(effects, count, which)
   rg_request_effect(effects[which]) if which >= 0 && which < count
 end
 
+RG_ROW_WAKES_MOST = 16 # rg_music.c's ROW_WAKES_MOST
+
+# One sound effect asked for at a screen row this pass: the wake of the frame its row comes before, the
+# effect (-1 for none) and how far into the frame it was sent (rg_music.c's row_request_wake and the rest).
+RgRowRequest = Struct.new(:wake, :effect, :share)
+
+def rg_wake_after(clock, share) = ((clock + share) >> 16) + 1
+
+# rg_music.c's rg_effect_row_request_one_of: of two before one wake, the last sent is heard.
+def rg_effect_row_request_one_of(effects, count, which, share)
+  effect = which >= 0 && which < count ? effects[which] : -1
+  wake = rg_wake_after(@rg_effect_clock, share)
+  same = @rg_row_requests.find { |request| request.wake == wake }
+  if same
+    same.effect, same.share = effect, share if share >= same.share
+    return
+  end
+  if @rg_row_requests.length == RG_ROW_WAKES_MOST
+    rg_fault("a pass asks for sound effects at more than #{RG_ROW_WAKES_MOST} wakes of the sound driver")
+  end
+  @rg_row_requests << RgRowRequest.new(wake, effect, share)
+end
+
 def rg_drop_held_note(voice)
   @rg_holding = @rg_holding.reject { |note| note.voice == voice }
 end
@@ -741,42 +788,103 @@ def rg_set_song_start_count
   @rg_effect_tempo = @rg_effect_tempo_now = rg_effect_count_at_song_start
 end
 
-# rg_music.c's tune_tempo.
-def rg_tune_tempo
+# rg_music.c's tune_tempo: what the count adds a wake while song number +number+ plays.
+def rg_tune_tempo(number)
   return rg_effect_tempo_step unless rg_effects_on_tune_tempo?
-  return 0 if @rg_playing.negative?
+  return 0 if number.negative?
 
-  @rg_game_effects[rg_effects_by_rank + rg_effect_count + @rg_playing]
+  @rg_game_effects[rg_effects_by_rank + rg_effect_count + number]
+end
+
+RG_WAKES_MOST = 64 # rg_music.c's WAKES_MOST
+
+# rg_music.c's count_wakes.
+def rg_count_wakes(wakes, tempo)
+  silent = rg_silent_music_stops_ticks? && @rg_level_variable && @rg_level_variable.call.zero?
+  wakes.times do
+    step = if silent then 0
+           else
+             @rg_effect_tempo_now.zero? ? tempo : @rg_effect_tempo_now
+           end
+    @rg_effect_tempo += step
+    ticked = @rg_effect_tempo >= 0x10000 && step.positive?
+    @rg_effect_tempo_now = 0 if ticked
+    @rg_effect_tempo &= 0xFFFF
+    @rg_frame_ticked << ticked
+  end
+end
+
+# rg_music.c's song_change_wake.
+def rg_song_change_wake(song_before)
+  if @rg_song_count_owed
+    @rg_song_count_owed = false
+    rg_set_song_start_count if @rg_playing >= 0
+  end
+  named = @rg_song_at_row
+  @rg_song_at_row = -1
+  return 0 if named.negative? || named != @rg_playing || named == song_before
+
+  rg_wake_after(@rg_frame_clock_start, @rg_song_at_row_share)
 end
 
 # rg_music.c's count_ticks_on_interrupts.
-def rg_count_ticks_on_interrupts(interrupts)
-  ticks = 0
-  tempo = rg_tune_tempo
-  @rg_tick_on_first_interrupt = false
-  interrupts.times do |at|
-    @rg_effect_tempo += @rg_effect_tempo_now.zero? ? tempo : @rg_effect_tempo_now
-    if @rg_effect_tempo >= 0x10000
-      @rg_effect_tempo_now = 0
-      ticks += 1
-      @rg_tick_on_first_interrupt = true if at.zero?
-    end
-    @rg_effect_tempo &= 0xFFFF
+def rg_count_ticks_on_interrupts(interrupts, song_before)
+  rg_fault("the sound driver wakes #{interrupts} times in one frame, and the most is #{RG_WAKES_MOST}") if interrupts > RG_WAKES_MOST
+  wake = rg_song_change_wake(song_before)
+  @rg_frame_ticked = []
+  unless wake.zero?
+    @rg_effect_tempo, @rg_effect_tempo_now = @rg_count_before_switch
+    rg_count_wakes([wake - 1, interrupts].min, rg_tune_tempo(song_before))
+    rg_set_song_start_count if @rg_playing >= 0 && wake <= interrupts
+    @rg_song_count_owed = wake > interrupts
   end
-  ticks
+  rg_count_wakes(interrupts - @rg_frame_ticked.length, rg_tune_tempo(@rg_playing))
+  @rg_frame_ticked.count(true)
 end
 
-# rg_music.c's skips_started_effects_first_tick.
-def rg_skips_started_effects_first_tick? = rg_effect_tempo_step.zero? || @rg_tick_on_first_interrupt
-
 # The sound effects' timer (rg_music.c's step_effect_clock): how many ticks the frame has.
-def rg_step_effect_clock
+def rg_step_effect_clock(song_before)
   return 1 if rg_effect_clock_step.zero?
 
+  @rg_frame_clock_start = @rg_effect_clock
   @rg_effect_clock += rg_effect_clock_step
   ticks = @rg_effect_clock >> 16
   @rg_effect_clock &= 0xFFFF
-  rg_effect_tempo_step.zero? ? ticks : rg_count_ticks_on_interrupts(ticks)
+  rg_effect_tempo_step.zero? ? ticks : rg_count_ticks_on_interrupts(ticks, song_before)
+end
+
+# rg_music.c's ticks_before.
+def rg_ticks_before(wake) = @rg_frame_ticked.first(wake - 1).count(true)
+
+# rg_music.c's starting_wake.
+def rg_starting_wake(wake, plain)
+  return (@rg_frame_ticked.each_index.find { |at| at + 1 >= wake && @rg_frame_ticked[at] }&.+(1) || 0) if rg_effects_start_on_tick?
+  return wake if wake <= @rg_frame_ticked.length || (plain && wake == 1)
+
+  0
+end
+
+# rg_music.c's take_up_effect_starts.
+def rg_take_up_effect_starts
+  plain = @rg_effect_asked.first(rg_effect_count)
+  row_wake = Array.new(rg_effect_count, 0)
+  @rg_row_requests.each do |request|
+    next if request.effect.negative?
+
+    rg_request_effect(request.effect)
+    row_wake[request.effect] = request.wake
+  end
+  @rg_row_requests = []
+  rg_effect_count.times do |effect|
+    @rg_effect_start_wake[effect] = 0
+    next unless @rg_effect_asked[effect]
+
+    start = rg_starting_wake(plain[effect] ? 1 : row_wake[effect], plain[effect])
+    next if start.zero?
+
+    @rg_effect_start_wake[effect] = start
+    @rg_effect_asked[effect] = false
+  end
 end
 
 # Each effect asked for since the last tick, taken up for the tick playing now.
@@ -804,38 +912,109 @@ def rg_play_effects_first_pass(by_rank, from, to, ticks)
   at = from
   while at < to
     effect = @rg_game_effects[by_rank + at]
-    rg_play_effect_frame(effect) unless @rg_effect_started_now[effect] && rg_skips_started_effects_first_tick?
+    rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
     at += 1
+  end
+end
+
+# rg_music.c's start_effect_now.
+def rg_start_effect_now(effect)
+  @rg_effect_asked_now[effect] = true
+  rg_play_effect_frame(effect)
+  @rg_effect_asked_now[effect] = false
+end
+
+# rg_music.c's starts_before_ticks.
+def rg_starts_before_ticks?(effect) = rg_joins_at_tick?(effect, 0)
+
+# Does effect +effect+ join the frame at its tick +ordinal+ (counted from 0)?
+def rg_joins_at_tick?(effect, ordinal)
+  wake = @rg_effect_start_wake[effect]
+  !wake.zero? && rg_ticks_before(wake) == ordinal
+end
+
+# rg_music.c's play_side_on_wakes.
+def rg_play_side_on_wakes(by_rank, from, to, first_tick)
+  (from...to).each do |at|
+    effect = @rg_game_effects[by_rank + at]
+    starts = rg_starts_before_ticks?(effect)
+    next unless starts || @rg_effect_stopping[effect]
+
+    @rg_effect_asked_now[effect] = starts
+    rg_play_effect_frame(effect)
+    @rg_effect_asked_now[effect] = false
+  end
+  return if first_tick.zero?
+
+  (from...to).each do |at|
+    effect = @rg_game_effects[by_rank + at]
+    rg_play_effect_frame(effect) unless rg_starts_before_ticks?(effect) && @rg_effect_start_wake[effect] == first_tick
+  end
+end
+
+# rg_music.c's play_effects_on_wakes.
+def rg_play_effects_on_wakes(by_rank, above, ticks)
+  tick_wakes = @rg_frame_ticked.each_index.select { |at| @rg_frame_ticked[at] }.map { |at| at + 1 }
+  first_tick = tick_wakes.first || 0
+  rg_play_side_on_wakes(by_rank, 0, above, first_tick)
+  rg_play_song_frame if @rg_playing >= 0
+  rg_play_side_on_wakes(by_rank, above, rg_effect_count, first_tick)
+  (1...ticks).each do |ordinal|
+    effects = (0...rg_effect_count).map { |at| @rg_game_effects[by_rank + at] }
+    effects.each { |effect| rg_start_effect_now(effect) if rg_joins_at_tick?(effect, ordinal) }
+    effects.each do |effect|
+      rg_play_effect_frame(effect) unless rg_joins_at_tick?(effect, ordinal) && @rg_effect_start_wake[effect] == tick_wakes[ordinal]
+    end
+  end
+  return unless ticks.positive?
+
+  rg_effect_count.times do |at|
+    effect = @rg_game_effects[by_rank + at]
+    rg_start_effect_now(effect) if rg_joins_at_tick?(effect, ticks)
   end
 end
 
 # The player's frame: the tune caught up with, then every effect that outranks the tune, the tune,
 # and the effects below it. An effect asked for starts at once, and moves on with each tick of the
 # effects' timer from there; a frame of several ticks plays its later ones after the song
-# (IR::Tunes, "Several ticks in one frame").
+# (IR::Tunes, "Several ticks in one frame"). On a driver's own interrupt, the effects play on its wakes
+# (rg_play_effects_on_wakes).
 def rg_music_sound_frame
   @rg_level = rg_full_level if @rg_level < 0
   rg_refuse_too_many_effects
+  song_before = @rg_playing
+  @rg_count_before_switch = [@rg_effect_tempo, @rg_effect_tempo_now]
   rg_switch_to_wanted_song
-  ticks = rg_step_effect_clock
-  rg_move_asked_effects_to_tick
+  ticks = rg_step_effect_clock(song_before)
   tune = @rg_playing >= 0 ? @rg_game_music[@rg_song + 3] : -1
   by_rank = rg_effects_by_rank
   at = 0
   at += 1 while at < rg_effect_count && rg_effect_field(@rg_game_effects[by_rank + at], RG_EFFECT_RANK) > tune
-  rg_play_effects_first_pass(by_rank, 0, at, ticks)
-  rg_play_song_frame if @rg_playing >= 0
-  rg_play_effects_first_pass(by_rank, at, rg_effect_count, ticks)
-  (ticks - 1).times do
-    rg_move_asked_effects_to_tick
-    rg_effect_count.times do |place|
-      effect = @rg_game_effects[by_rank + place]
-      rg_play_effect_frame(effect) unless @rg_effect_started_now[effect] && rg_effect_tempo_step.zero?
-    end
+  if rg_effect_tempo_step.zero?
+    rg_play_effects_on_frames(by_rank, at, ticks)
+  else
+    rg_take_up_effect_starts
+    rg_play_effects_on_wakes(by_rank, at, ticks)
   end
   rg_step_swells
   rg_step_wobbles
   rg_step_shapes
+end
+
+# The effects counted in frames, or on their own timer: each effect asked for taken up, the first pass
+# around the song, and a frame of several ticks its later ones after it.
+def rg_play_effects_on_frames(by_rank, above, ticks)
+  rg_move_asked_effects_to_tick
+  rg_play_effects_first_pass(by_rank, 0, above, ticks)
+  rg_play_song_frame if @rg_playing >= 0
+  rg_play_effects_first_pass(by_rank, above, rg_effect_count, ticks)
+  (ticks - 1).times do
+    rg_move_asked_effects_to_tick
+    rg_effect_count.times do |place|
+      effect = @rg_game_effects[by_rank + place]
+      rg_play_effect_frame(effect) unless @rg_effect_started_now[effect]
+    end
+  end
 end
 
 def rg_music_start_here
@@ -906,10 +1085,10 @@ RG_SHAPE_NUMBERS = 3
 RG_EFFECT_STATE_NUMBERS = 5 + RG_PARTS_MOST
 
 # "music": the tune wanted, playing and ended, the stops asked and seen, whether it is held, how
-# far into the tune, the volume its notes were set at, how many notes and voices are held, and the
-# sound effects' timer and tempo counts.
+# far into the tune, the volume its notes were set at, how many notes and voices are held, the
+# sound effects' timer and tempo counts, and whether a song's start still owes the count it sets.
 RgMusicFields = Data.define(:wanted, :playing, :ended, :stops, :stops_seen, :held, :song_frame, :level, :held_notes,
-                           :held_voices, :effect_clock, :effect_tempo, :effect_tempo_now)
+                           :held_voices, :effect_clock, :effect_tempo, :effect_tempo_now, :song_count_owed)
 
 # "music.parts", one a part of the playing tune: whether it walks its notes after the first time
 # through, and which comes next. The rest of a part is the song's, read again from it.
@@ -922,7 +1101,8 @@ def rg_music_visit_sound_state
                                      stops_seen: @rg_stops_seen, held: rg_state_flag(@rg_music_held),
                                      song_frame: @rg_song_frame, level: @rg_level, held_notes: @rg_holding.length,
                                      held_voices: @rg_holder_order.length, effect_clock: @rg_effect_clock,
-                                     effect_tempo: @rg_effect_tempo, effect_tempo_now: @rg_effect_tempo_now
+                                     effect_tempo: @rg_effect_tempo, effect_tempo_now: @rg_effect_tempo_now,
+                                     song_count_owed: rg_state_flag(@rg_song_count_owed)
                                    ))
   songs = (-1...rg_song_count)
   unless [fields.wanted, fields.playing, fields.ended].all? { |song| songs.cover?(song) } &&
@@ -940,6 +1120,7 @@ def rg_music_visit_sound_state
   @rg_effect_clock = fields.effect_clock
   @rg_effect_tempo = fields.effect_tempo
   @rg_effect_tempo_now = fields.effect_tempo_now
+  @rg_song_count_owed = fields.song_count_owed != 0
   rg_visit_part_walks
   rg_visit_held_notes(fields.held_notes)
   rg_visit_music_voices(fields.held_voices)

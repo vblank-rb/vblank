@@ -14,7 +14,10 @@ require "test_helper"
 # takes the request up in, so a request sent at a row is that many rows into that frame: the driver
 # picks it up on the first wake past it. A driver that keys an effect only on a tick starts it on the
 # first wake from there that holds one.
-class TestSoundDriverInterpreter < Minitest::Test
+#
+# Each game is played by the run's own player, which holds it to the interpreter frame by frame, and
+# what was heard is read from the interpreter's log.
+class TestSoundDriverOnTheSuperNintendo < Minitest::Test
   Score = VBlank::Audio::Score
 
   WAKES = Rational(8000, 0x60) # the driver's wakes a second, as it names them
@@ -58,8 +61,15 @@ class TestSoundDriverInterpreter < Minitest::Test
     b.program.copy.tap { |program| program.console = :snes }
   end
 
-  # The frame of each effect's first note, as the log of +player+ has it: { name => [frames] }.
-  private def first_notes(player, program)
+  # +program+ played by the run's player, which fails at the first frame it and the interpreter differ.
+  private def play_checked(program)
+    skip_on_snes "the cartridge does not play a sound driver's habits or a request's row yet"
+    VBlank::Testing::BuildChecks.without_checks { game_player.run(program, frames: FRAMES) }
+  end
+
+  # The frame of each effect's first note, as the interpreter's log has it: { name => [frames] }.
+  private def first_notes(program)
+    player = Reference.new
     started = Hash.new { |hash, name| hash[name] = [] }
     logged = 0
     player.each_vblank do |frame|
@@ -74,8 +84,9 @@ class TestSoundDriverInterpreter < Minitest::Test
     started
   end
 
-  # The frame of each note effect :a sounds, as the log of +player+ has it.
-  private def note_frames(player, program)
+  # The frame of each note effect :a sounds, as the interpreter's log has it.
+  private def note_frames(program)
+    player = Reference.new
     frames = []
     logged = 0
     player.each_vblank do |frame|
@@ -86,7 +97,7 @@ class TestSoundDriverInterpreter < Minitest::Test
     frames
   end
 
-  # Every wake through FRAMES, as [frame, holds a tick], counted from 1: the key above.
+  # Every wake through FRAMES, as [time, frame, holds a tick], frames counted from 1: the key above.
   # With +reset_after+, [time, share], the count is set to the share on the first wake past that time, and
   # counted at it until it comes round, as a song's start sets it; with +silent_from+, no wake from that
   # time adds anything.
@@ -123,35 +134,56 @@ class TestSoundDriverInterpreter < Minitest::Test
   end
 
   def test_two_effects_at_different_rows_each_start_on_the_tick_their_row_predicts
-    asks = { 40 => [[:a, 10]], 80 => [[:b, 200]] }
-    program = game(asks, effects_start: :on_next_tick)
-    heard = first_notes(Reference.new, program)
+    program = game({ 40 => [[:a, 10]], 80 => [[:b, 200]] }, effects_start: :on_next_tick)
+    play_checked(program)
+    heard = first_notes(program)
 
     assert_equal [predicted(40, 10, on_tick: true)], heard[:"sfx.a"]
     assert_equal [predicted(80, 200, on_tick: true)], heard[:"sfx.b"]
   end
 
+  # A late row puts some starts on a later tick than the frame's first wake would. Each pass is
+  # checked against the key; the run's player plays the passes where the row moves the start.
   def test_a_row_moves_the_start_off_the_frames_first_wake
     starts = (30..70).map do |on|
-      heard = first_notes(Reference.new, game({ on => [[:a, 200]] }, effects_start: :on_next_tick))
-      [heard[:"sfx.a"].first, predicted(on, 200, on_tick: true), predicted(on, 0, on_tick: true)]
+      program = game({ on => [[:a, 200]] }, effects_start: :on_next_tick)
+      at_row = predicted(on, 200, on_tick: true)
+      at_once = predicted(on, 0, on_tick: true)
+      [program, first_notes(program)[:"sfx.a"].first, at_row, at_once]
     end
 
-    starts.each { |heard, at_row, _| assert_equal at_row, heard }
-    refute(starts.all? { |_, at_row, at_once| at_row == at_once }, "a late row puts some start on a later tick")
+    starts.each { |_, heard, at_row, _| assert_equal at_row, heard }
+    moved = starts.reject { |_, _, at_row, at_once| at_row == at_once }
+    refute_empty moved, "a late row puts some start on a later tick"
+    moved.first(2).each { |program, *| play_checked(program) }
+  end
+
+  # An effect not keyed on a tick starts on the first wake past its row, part way through the frame:
+  # the frame's later wakes hold its first notes where the frame's first would have held them all.
+  def test_a_row_starts_an_effect_on_the_wake_past_it
+    program = game({ 40 => [[:a, 200]], 80 => [[:b, 10]] })
+    play_checked(program)
+    heard = first_notes(program)
+
+    assert_equal [predicted(40, 200, on_tick: false)], heard[:"sfx.a"]
+    assert_equal [predicted(80, 10, on_tick: false)], heard[:"sfx.b"]
   end
 
   # Two requests sent before one wake: the driver reads the port once, and hears the last.
   def test_of_two_requests_before_one_wake_the_last_sent_is_heard
-    heard = first_notes(Reference.new, game({ 40 => [[:a, 4], [:b, 6]] }))
+    program = game({ 40 => [[:a, 4], [:b, 6]] })
+    play_checked(program)
+    heard = first_notes(program)
 
     assert_empty heard[:"sfx.a"]
     assert_equal 1, heard[:"sfx.b"].size
   end
 
   # A song named at a row sets the count on the first wake past the row (`tick_count_at_song_start:`), and
-  # an effect keyed on a tick starts on the beat that count gives.
+  # an effect keyed on a tick starts on the beat that count gives. The run's player plays a row of each
+  # beat the row gives.
   def test_a_song_named_at_a_row_sets_the_count_on_the_wake_past_it
+    played = {}
     moved = (30..37).map do |song_on|
       keys = SONG_ROWS.map do |row|
         program = game({ song_on + 10 => [[:a, nil]] }, song_on: [song_on, row], effects_start: :on_next_tick,
@@ -159,21 +191,25 @@ class TestSoundDriverInterpreter < Minitest::Test
         ticks = wakes(reset_after: [sent_at(song_on, row), 0xFF00]).select { |time, _, ticked| ticked && time > sent_at(song_on + 10, 0) }
         key = ticks.first(3).map { |_, frame, _| frame }
 
-        assert_equal key, note_frames(Reference.new, program), "song on #{song_on}, row #{row}"
+        assert_equal key, note_frames(program), "song on #{song_on}, row #{row}"
+        played[key] ||= program
         key
       end
       keys.uniq.size > 1
     end
     assert moved.any?, "where the song is named moves the beat"
+    played.values.first(3).each { |program| play_checked(program) }
   end
 
   # While the music is silent the driver skips its tick, so an effect keyed on one waits for the music.
   def test_silent_music_stops_the_ticks
     asks = { 60 => [[:a, nil]] }
-    heard = first_notes(Reference.new, game(asks, silent_on: 10, effects_start: :on_next_tick, silent_music_stops_ticks: true))
-    plain = first_notes(Reference.new, game(asks, silent_on: 10, effects_start: :on_next_tick))
+    silent = game(asks, silent_on: 10, effects_start: :on_next_tick, silent_music_stops_ticks: true)
+    plain = game(asks, silent_on: 10, effects_start: :on_next_tick)
+    play_checked(silent)
+    play_checked(plain)
 
-    assert_empty heard[:"sfx.a"]
-    assert_equal 1, plain[:"sfx.a"].size
+    assert_empty first_notes(silent)[:"sfx.a"]
+    assert_equal 1, first_notes(plain)[:"sfx.a"].size
   end
 end

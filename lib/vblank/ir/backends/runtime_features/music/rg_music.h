@@ -33,6 +33,11 @@ void rg_music_request(int32_t song);
 /* ...or the song number +which+ of a list (`songs`) names, from the +count+ song numbers the list
  * holds. A number naming no song in the list leaves the music as it is. */
 void rg_music_request_one_of(const int32_t *songs, int32_t count, int32_t which);
+/* ...either one sent at a screen row (`sent_after_rows:`), +share+ 65536ths of a wake of the sound driver
+ * into the frame (IR::Tunes.row_share): where the song's start sets the effects' count, it is set on the
+ * first wake past the row. */
+void rg_music_request_at_row(int32_t song, int32_t share);
+void rg_music_row_request_one_of(const int32_t *songs, int32_t count, int32_t which, int32_t share);
 /* `this_frame: true`: the tune named starts here and its first frame is played, so the next frame
  * plays its second. After rg_music_request; the list's own does both, for a number naming a song,
  * and nothing otherwise. */
@@ -42,6 +47,9 @@ void rg_music_start_here_one_of(const int32_t *songs, int32_t count, int32_t whi
  * numbers the list holds, at the next frame and from its first note. A number naming no effect in
  * the list plays nothing. */
 void rg_effect_request_one_of(const int32_t *effects, int32_t count, int32_t which);
+/* ...sent at a screen row (`sent_after_rows:`), +share+ 65536ths of a wake of the sound driver into the
+ * frame (IR::Tunes.row_share): the driver picks it up on the first wake past the row. */
+void rg_effect_row_request_one_of(const int32_t *effects, int32_t count, int32_t which, int32_t share);
 /* ...or asked for `this_frame: true`: started here, its first frame played, so the next frame
  * plays its second — and any effect of a group waiting to be cut off cut off here too. */
 void rg_effect_start_here_one_of(const int32_t *effects, int32_t count, int32_t which);
