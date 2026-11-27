@@ -3,8 +3,7 @@
  * class after rg_screen.hx for a game that declares a sprite. This is rg_sprites.js written again, function for
  * function. It reads the screen's own state and painters as if it were written there.
  *
- * Left out: the state image (rg_sprites_visit_state stops the game in plain words), and the pieces of an image a
- * start file lists.
+ * Left out: the pieces of an image a start file lists.
  */
 
 static inline var RG_SIZE_SPRITES_OVER_PICTURE:Int = 10;
@@ -564,5 +563,107 @@ static function rg_sprites_any_sprite_kept():Bool { return sprite_layer.length >
 /* Framebuffer#shown and #pixel, with sprites over a painted screen: the layer in front, while any sprite is in it. */
 static function rg_sprites_front_layer():Vector<Int> { return over_picture_up ? over_picture : null; }
 
-/* The state image is not written in Flash yet. */
-static function rg_sprites_visit_state():Void { rg_state_refuse(); }
+/* --- the state image (rg_sprites.c says what each field holds) --- */
+
+static inline var PLACED_STATE_NUMBERS:Int = 12;
+static inline var PLACED_SPRITE:Int = 0;
+static inline var PLACED_IMAGE:Int = 1;
+static inline var PLACED_X:Int = 2;
+static inline var PLACED_Y:Int = 3;
+static inline var PLACED_LEVEL:Int = 4;
+static inline var PLACED_TURNED:Int = 5;
+static inline var PLACED_ANGLE:Int = 6;
+static inline var PLACED_SIZE:Int = 7;
+static inline var PLACED_RESIZES:Int = 8;
+static inline var PLACED_CUT_COUNT:Int = 9;
+static inline var PLACED_SEE_THROUGH:Int = 10;
+static inline var PLACED_FADE_PLACE:Int = 11;
+static inline var CUT_NUMBERS:Int = 3;
+static inline var DRAWN_PLACE_NUMBERS:Int = 3;
+static inline var MOST_SLICES_LEFT_OUT:Int = 16384; /* rg_sprites.c's MAX_LEFT_OUT */
+
+/* The +count+ sprites of +placed+ as field +name+, and the slices left out of them as +cuts_name+; gives back the sprites
+ * read, or +placed+ as it was when writing. +cuts_before+ slices were read already for the other list. */
+static function visit_placed_objects(name:String, cuts_name:String, placed:Array<RgPlaced>, count:Int, cuts_before:Int):Array<RgPlaced> {
+  var reading = rg_state_reading();
+  var numbers:Array<Int> = [];
+  if (reading) {
+    for (i in 0...count * PLACED_STATE_NUMBERS) numbers.push(0);
+  } else {
+    for (p in placed) {
+      for (number in [p.sprite, p.image, p.x, p.y, p.level, p.turned != 0 ? 1 : 0, p.angle, p.size, p.resizes != 0 ? 1 : 0,
+                      p.cuts != null ? p.cuts.length : 0, p.see_through, p.fade_place]) numbers.push(number);
+    }
+  }
+  rg_state_numbers(name, numbers);
+  var cut_total = 0;
+  for (i in 0...count) {
+    var at = i * PLACED_STATE_NUMBERS;
+    if (numbers[at + PLACED_SPRITE] < 0 || numbers[at + PLACED_SPRITE] >= RG_MAX_SPRITES || numbers[at + PLACED_IMAGE] < 0 ||
+        numbers[at + PLACED_IMAGE] >= rg_game_picture_sizes[RG_SIZE_IMAGES] || numbers[at + PLACED_CUT_COUNT] < 0) {
+      rg_state_refuse_damaged("a sprite names a sprite or a picture the game does not have");
+    }
+    cut_total += numbers[at + PLACED_CUT_COUNT];
+  }
+  if (cut_total > MOST_SLICES_LEFT_OUT - cuts_before) rg_state_refuse_damaged("more slices of sprites are left out than can be");
+  var cuts:Array<Int> = [];
+  if (reading) {
+    for (i in 0...cut_total * CUT_NUMBERS) cuts.push(0);
+  } else {
+    for (p in placed) {
+      if (p.cuts == null) continue;
+      for (cut in p.cuts) {
+        for (number in cut) cuts.push(number);
+      }
+    }
+  }
+  rg_state_numbers(cuts_name, cuts);
+  if (!reading) return placed;
+  var at = 0;
+  var made:Array<RgPlaced> = [];
+  for (i in 0...count) {
+    var base = i * PLACED_STATE_NUMBERS;
+    var sprite = new RgPlaced(numbers[base + PLACED_SPRITE], numbers[base + PLACED_IMAGE], numbers[base + PLACED_X], numbers[base + PLACED_Y],
+                              numbers[base + PLACED_LEVEL], numbers[base + PLACED_SEE_THROUGH], numbers[base + PLACED_FADE_PLACE],
+                              numbers[base + PLACED_TURNED], numbers[base + PLACED_ANGLE], numbers[base + PLACED_SIZE], numbers[base + PLACED_RESIZES]);
+    var these:Array<Array<Int>> = [];
+    for (k in 0...numbers[base + PLACED_CUT_COUNT]) {
+      these.push([cuts[at], cuts[at + 1], cuts[at + 2]]);
+      at += CUT_NUMBERS;
+    }
+    sprite.cuts = these.length > 0 ? these : null;
+    made.push(sprite);
+  }
+  return made;
+}
+
+/* rg_hook_visit_state (rg_sprites.c's rg_sprites_visit_state). */
+static function rg_sprites_visit_state():Void {
+  var counts:Array<Int> = [drawing.length, sprite_layer.length, over_picture_up ? 1 : 0];
+  rg_state_numbers("sprites", counts);
+  if (counts[0] < 0 || counts[0] > RG_MAX_SPRITES || counts[1] < 0 || counts[1] > RG_MAX_SPRITES) {
+    rg_state_refuse_damaged("more sprites are on screen than there is room for");
+  }
+  over_picture_up = counts[2] != 0;
+  drawing = visit_placed_objects("sprites.drawing", "sprites.drawing.cuts", drawing, counts[0], 0);
+  var drawing_cuts = 0;
+  for (p in drawing) drawing_cuts += p.cuts != null ? p.cuts.length : 0;
+  sprite_layer = visit_placed_objects("sprites.kept", "sprites.kept.cuts", sprite_layer, counts[1], drawing_cuts);
+
+  var places:Array<Int> = [];
+  for (place in last_drawn) {
+    places.push(place.drawn != 0 ? 1 : 0);
+    places.push(place.drawn != 0 ? place.x : 0);
+    places.push(place.drawn != 0 ? place.y : 0);
+  }
+  rg_state_numbers("sprites.drawn_places", places);
+  for (i in 0...last_drawn.length) {
+    last_drawn[i].drawn = places[DRAWN_PLACE_NUMBERS * i] != 0 ? 1 : 0;
+    last_drawn[i].x = places[DRAWN_PLACE_NUMBERS * i + 1];
+    last_drawn[i].y = places[DRAWN_PLACE_NUMBERS * i + 2];
+  }
+
+  var front:Array<Int> = [for (i in 0...over_picture.length) over_picture_up ? over_picture[i] : RG_NOTHING_IN_FRONT];
+  rg_state_numbers("sprites.over_picture", front);
+  for (i in 0...over_picture.length) over_picture[i] = front[i];
+}

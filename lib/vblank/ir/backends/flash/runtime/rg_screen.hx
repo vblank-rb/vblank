@@ -20,6 +20,7 @@ static inline var RG_SIZE_DEPTHS:Int = 1;
 static inline var RG_SIZE_SEE_THROUGH:Int = 4;
 static inline var RG_SIZE_SCREEN_KINDS_CHANGE:Int = 5;
 static inline var RG_SIZE_LARGEST_BLOCK:Int = 6;
+static inline var RG_SIZE_IMAGES:Int = 9;
 static inline var RG_ST_AMOUNTS_WRITTEN:Int = 0;
 static inline var RG_ST_ONE_AMOUNT:Int = 1;
 static inline var RG_ST_HOLDS_A_SPRITE:Int = 2;
