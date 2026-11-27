@@ -66,6 +66,47 @@ class TestSNESSongBanks < Minitest::Test
     end
   end
 
+  # LONG's song beside numbers enough to fill the direct page, each stepped on every pass, and a
+  # bar as long as a sum of them showing what the game worked out. The notes apart are read
+  # through a pointer on the direct page, so the build holds its room before the numbers take it.
+  # A method, not a constant: the game's block holds game code.
+  private def crowded_long_song
+    lead = Array.new(2000) { |tick| Note.new(at: tick, key: KEYS[tick % 8], length: 1) }
+    second = Array.new(100) { |tick| Note.new(at: tick, key: KEYS[(tick / 3) % 8], length: 1) }
+    tune = Score.new(tempo: 150, parts: [Part.new(notes: lead), Part.new(notes: second)])
+    VBlank.game("CROWDED SONG", consoles: %i[gba snes]) do
+      enable_sound
+      music = songs :music, [tune]
+      many = Array.new(80) { |i| var :"number#{i}", i * 1000 }
+      total = var :total, 0
+      game_loop do
+        music.play 0
+        many.each { |number| number.store!(number + 1) }
+        total = many[0] + many[79]
+        fill_rect 0, 0, 64, 8, :black
+        draw_rect_at 0, 0, (total & 63) + 1, 8, :green
+      end
+    end
+  end
+
+  def test_a_song_bigger_than_a_bank_plays_beside_variables_that_fill_the_direct_page
+    game = crowded_long_song
+    assert_notes_apart(game)
+    run = SNES::CheckedRun.new.run(game.program(console: :snes), frames: 130)
+
+    assert_operator run.audio.count { |entry| entry.first == :note }, :>=, 200
+  end
+
+  # A try that held the notes' places apart, but whose songs were laid out with their notes in the
+  # table, would read every note from the wrong place, so it stops instead.
+  def test_notes_held_apart_but_laid_out_in_the_table_stop_the_build
+    memory = SNES::Memory.new
+    SNES::Runtime::Music.reserve_notes_apart(memory)
+
+    error = assert_raises(SNES::LoweringError) { SNES::Runtime::Music.refuse_notes_held_apart_in_table!(memory) }
+    assert_match(/held apart/, error.message)
+  end
+
   def test_a_song_bigger_than_a_bank_plays_as_the_interpreter_plays_it
     assert_notes_apart(LONG)
     run = SNES::CheckedRun.new.run(LONG.program(console: :snes), frames: 130)

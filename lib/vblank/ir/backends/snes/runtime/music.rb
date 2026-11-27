@@ -174,7 +174,8 @@ module VBlank
               effect_tempo_step = :tune if tune_tempo_steps && effect_tempo_step # the song playing's (#emit_step_effect_tempo)
               at = ->(name, plus = 0) { asm.abs(memory[name], plus) }
               sharing = effects.positive?
-              reserve_notes_apart(memory) if notes_apart
+              refuse_notes_held_apart_in_table!(memory) unless notes_apart
+              reserve_notes_apart_unheld!(memory) if notes_apart && !notes_apart?(memory)
               emit_game_side(asm, at, memory)
               emit_tune_hold(asm, at) if holds?(memory)
               if DriverWakes.on_wakes?(memory)
@@ -208,13 +209,51 @@ module VBlank
             # alike: an effect's notes stay in the table, and its note is copied from there
             # (rt_music_note_from_table) before the routines a tune's and an effect's notes share. A
             # game whose songs fit reads its notes in the table as it always did, and has neither place.
+            #
+            # Why the pointer's room is held. The 65816 reads through a 24-bit pointer only where the
+            # pointer itself is on the direct page, `LDA [dp],Y` (the WDC 65816 data sheet, "Direct
+            # Indirect Long Indexed"; the SNESdev wiki's 65c816 pages). That page is small, and the
+            # game's busiest variables take what the runtime leaves of it. Whether the notes go apart
+            # is known only once the songs are laid out, after the variables have their places
+            # (SongBanks.lay_out). So a build first tries without holding the room: a try whose notes
+            # went apart takes the pointer from what the variables left, and where they left too
+            # little it stops (NotesApartUnheld). The next try holds the room before the variables
+            # are placed (#reserve_notes_apart, from Runtime#reserve_music, given SNES's
+            # +notes_apart+ setting). A game whose songs fit one bank never holds it, and builds the
+            # bytes it always did.
             NOTE_COPY = "rt music note copy"
             NOTE_POINTER = "rt music note pointer"
             NOTE_POINTER_BYTES = 4 # Three of address, and the nought the 16-bit store of its bank writes
 
+            # Raised where the songs' notes went apart but the direct page has no room left for their
+            # pointer, because no room was held for it before the variables were placed. The build
+            # tries again with the room held (SNES#settings_after).
+            class NotesApartUnheld < Memory::Full; end
+
             def reserve_notes_apart(memory)
               memory.reserve(NOTE_COPY, SNES::Music::NOTE_BYTES)
               memory.reserve_scratch(NOTE_POINTER, NOTE_POINTER_BYTES)
+            end
+
+            # The notes' places, taken once the songs are laid out with their notes apart, where
+            # #reserve_notes_apart did not hold them first: raises NotesApartUnheld where the
+            # variables left the direct page too little room for the pointer.
+            def reserve_notes_apart_unheld!(memory)
+              memory.reserve(NOTE_COPY, SNES::Music::NOTE_BYTES)
+              if memory.scratch_free < NOTE_POINTER_BYTES
+                raise NotesApartUnheld, "the runtime's direct page has no room for the pointer to the songs' notes"
+              end
+
+              memory.reserve_scratch(NOTE_POINTER, NOTE_POINTER_BYTES)
+            end
+
+            # Raises where the notes' places were held (#reserve_notes_apart) but the songs were laid
+            # out with their notes in the table. The player reads a note from NOTE_COPY wherever
+            # those places are, so it would read every note from the wrong place.
+            def refuse_notes_held_apart_in_table!(memory)
+              return unless notes_apart?(memory)
+
+              raise LoweringError, "the songs' notes were held apart, but they were laid out in the table"
             end
 
             # Whether the song parts' notes are apart from the table (NOTE_COPY).

@@ -53,7 +53,9 @@ module VBlank
           # The runtime's own places in work RAM, asked for before the game's, for a cartridge that
           # carries +carries+ (Carries). A cartridge with a Super FX keeps the chip's waiting loop and
           # the copy of the screen's interrupt it runs meanwhile after the rest, so a plain cartridge's places do not move.
-          def reserve(memory, carries)
+          # +notes_apart+ holds the places the songs' notes apart are read through (Music, "A song's
+          # notes apart"), for a try that knows they go apart.
+          def reserve(memory, carries, notes_apart: false)
             c = carries
             if c.doubled
               PaintDoubled.reserve(memory, band: c.shown_band,
@@ -73,18 +75,19 @@ module VBlank
             Letterbox.reserve(memory, band: c.shown_band) if c.screen_off_round_picture?
             Sound.reserve(memory, queued: c.songs, effects: c.effects.positive?, strikes: !c.effect_clock_step.nil?,
                                   interrupts: !c.effect_tempo_step.nil?) if c.sound
-            reserve_music(memory, c) if c.songs
+            reserve_music(memory, c, notes_apart: notes_apart) if c.songs
             Recordings.reserve(memory, glides: c.glides, chip_envelopes: c.chip_envelopes, sides: c.recorded_pans) if c.samples
             Mosaic.reserve(memory) if c.mosaic
           end
 
-          def reserve_music(memory, carries)
+          def reserve_music(memory, carries, notes_apart: false)
             c = carries
             Music.reserve(memory, follows_level: c.follows_level, effects: c.effects, holds: c.holds_music, wobbles: c.wobbles,
                                   steps_shapes: c.steps_shapes, swells: c.swells, slides: c.slides, sides: c.sides,
                                   effect_clock_step: c.effect_clock_step, effect_tempo_step: c.effect_tempo_step,
                                   counts_tempo_now: !c.effect_count_at_song_start.nil? || !c.tune_tempo_steps.nil?,
                                   driver_habits: c.driver_habits, count_at_song_start: c.effect_count_at_song_start)
+            Music.reserve_notes_apart(memory) if notes_apart
           end
 
           # The runtime's sections (a Made, with how much of the sound chip's memory the game uses):

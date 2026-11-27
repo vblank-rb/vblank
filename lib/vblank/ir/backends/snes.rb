@@ -113,17 +113,17 @@ module VBlank
         GameRoutine = Data.define(:addresses, :routine)
 
         # The settings of one try (#build, BuildTries), each the Lowering's setting of the same name
-        # (Art says what each does), and +far_tables+ Memory's. +one_sprite_tile_set+ and
-        # +shared_pose_tiles+ are each false, true, or :failed for a game that tried it and did not fit,
-        # which is not tried again.
+        # (Art says what each does), +far_tables+ Memory's, and +notes_apart+ the runtime's
+        # (Runtime#reserve). +one_sprite_tile_set+ and +shared_pose_tiles+ are each false, true, or
+        # :failed for a game that tried it and did not fit, which is not tried again.
         Tried = Data.define(:sprite_squares, :screen_colors, :sprite_colors, :sprite_tiles, :background_tiles,
                             :lean_square_scenes, :small_sprite_scenes, :one_sprite_tile_set, :scene_recordings,
-                            :shared_held_lists, :far_tables, :shared_pose_tiles) do
+                            :shared_held_lists, :far_tables, :shared_pose_tiles, :notes_apart) do
           # Everything the simple way: a game that fits so builds the bytes it always has.
           def self.first = new(sprite_squares: true, screen_colors: false, sprite_colors: false, sprite_tiles: false,
                                background_tiles: false, lean_square_scenes: {}, small_sprite_scenes: [],
                                one_sprite_tile_set: false, scene_recordings: false, shared_held_lists: false,
-                               far_tables: false, shared_pose_tiles: false)
+                               far_tables: false, shared_pose_tiles: false, notes_apart: false)
         end
 
         # A try that fit: the cartridge, the settings and lowering it was made with, what the
@@ -197,6 +197,11 @@ module VBlank
         # variables it names least past it (Lowering#place_variables), is built again with the
         # runtime's tables past it too (+far_tables+, Memory#reserve_table).
         #
+        # A game whose songs' notes go in banks of their own reads them through a pointer on the
+        # direct page, which only laying out the songs finds out, after the variables have their
+        # places. Where the variables left no room for it, the game is built again with that room
+        # held before they are placed (+notes_apart+, Runtime::Music, "A song's notes apart").
+        #
         # What every try works out from the program alone is worked out once, in +cache+
         # (BuildCache), made for this build and handed to each try.
         def build(program, title: "VBLANK", cache: BuildCache.for(SNES, program))
@@ -244,7 +249,7 @@ module VBlank
           memory = Memory.new(far_tables: settings.far_tables)
           carries = cache.facts.carries(board, screen_colors: settings.screen_colors, sprite_colors: settings.sprite_colors,
                                                sprite_tiles: settings.sprite_tiles, background_tiles: settings.background_tiles)
-          Runtime.reserve(memory, carries)
+          Runtime.reserve(memory, carries, notes_apart: settings.notes_apart)
           Runtime::Frame.reserve_last_pass(memory) if cache.plan.keeps_last_pass_number?
           memory.keep_scratch_room(Runtime.scratch_bytes(carries, fractions: Lowering.fractions_named?(program)))
           lowering = try.made = Lowering.new(program, memory: memory, sprite_squares: settings.sprite_squares,
@@ -309,6 +314,7 @@ module VBlank
           # so many variables, so the tries end (Lowering#place_of).
           when Lowering::VariableHandedOver then settings
           when Memory::NearFull then settings.with(far_tables: true) unless settings.far_tables
+          when Runtime::Music::NotesApartUnheld then settings.with(notes_apart: true) unless settings.notes_apart
           when Runtime::Sound::TooBig
             settings.with(scene_recordings: true) unless settings.scene_recordings || !lowering.recordings_of_one_scene?
           when Art::TooManyHeldBackgroundLists then settings.with(shared_held_lists: true)
