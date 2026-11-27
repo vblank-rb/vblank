@@ -84,7 +84,10 @@ module VBlank
             ROW_END = "rt sfx row end"
             ROW_AT = "rt sfx row at"
             ROW_BYTES = 12
-            ROWS_MOST = 16 # One more, at another wake, is not heard: no pass asks at so many
+            # A row is held to the frame (Guardrails::Checks::RowPastFrame), so a pass reaches at most one wake
+            # past the frame's last, Tunes::MOST_TICKS_A_FRAME + 1 of them in all. The list has room to spare,
+            # and a request past it, which no game a build takes can make, is not kept.
+            ROWS_MOST = 16
             # A song named at a row: the song, nought for none, and its share; the song, the count and
             # its share as the frame began; the clock then; the wake the song is picked up on, nought
             # for none this frame; and whether its start still owes the count it sets, past the frame.

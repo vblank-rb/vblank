@@ -634,7 +634,7 @@ def rg_effect_request_one_of(effects, count, which)
   rg_request_effect(effects[which]) if which >= 0 && which < count
 end
 
-RG_ROW_WAKES_MOST = 16 # rg_music.c's ROW_WAKES_MOST
+RG_ROW_WAKES_MOST = 16 # rg_music.c's ROW_WAKES_MOST, never reached by a game a build takes
 
 # One sound effect asked for at a screen row this pass: the wake of the frame its row comes before, the
 # effect (-1 for none) and how far into the frame it was sent (rg_music.c's row_request_wake and the rest).

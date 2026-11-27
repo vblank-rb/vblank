@@ -863,6 +863,9 @@ void rg_effect_request_one_of(const int32_t *effects, int32_t count, int32_t whi
  * naming none) and how far into the frame it was sent, the latest kept. A wake is counted from 1 in the
  * frame the pass's end takes them up in, whose clock starts where it stands now, as the frame's step
  * moves it only then (Reference::Player#effect_starts_on_wakes). */
+/* A row is held to the frame (Guardrails::Checks::RowPastFrame), so a pass reaches at most one wake past the
+ * frame's last, Tunes::MOST_TICKS_A_FRAME + 1 of them in all: the fault below is never reached by a game a
+ * build takes. */
 #define ROW_WAKES_MOST 16
 static int32_t row_request_count;
 static int32_t row_request_wake[ROW_WAKES_MOST];
