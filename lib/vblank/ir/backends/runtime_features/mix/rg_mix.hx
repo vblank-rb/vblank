@@ -398,5 +398,61 @@ static function rg_mix_moment_printed():Void {
   headless_print(mixing_line + "\nmix_peak " + peak + "\nmix_drops " + drops + " " + drops_music);
 }
 
-/* The state image is not written in Flash yet. */
-static function rg_mix_visit_sound_state():Void { rg_state_refuse(); }
+/* --- the state image (rg_mix.c says what each field holds) --- */
+
+static inline var MIX_VOICE_FIELDS:Int = 22; /* a voice's numbers, in the order of RgMixVoice's fields */
+
+/* rg_hook_visit_sound_state (rg_mix.c's rg_mix_visit_sound_state). */
+static function rg_mix_visit_sound_state():Void {
+  var counts:Array<Int> = [slices_made, peak, drops, drops_music, tickets];
+  rg_state_numbers("mix", counts);
+  slices_made = counts[0];
+  peak = counts[1];
+  drops = counts[2];
+  drops_music = counts[3];
+  tickets = counts[4];
+  slices_printed = slices_made; // the writer's run printed the newest already
+
+  if (VOICES() > VOICES_MOST) rg_fault("the mixer has " + VOICES() + " voices, and the most is " + VOICES_MOST);
+  var numbers:Array<Int> = [];
+  for (i in 0...VOICES()) {
+    var v = mix_voices[i];
+    for (number in [v.sounding, v.owner, v.effect, v.lane, v.rank, v.loops, v.ticket, v.recording, v.position, v.fraction, v.step, v.back,
+                    v.loudness, v.gain, v.ramp, v.shaped, v.level, v.phase, v.attack, v.decay, v.sustain, v.release]) numbers.push(number);
+  }
+  rg_state_numbers("mix.voices", numbers);
+  for (i in 0...VOICES()) {
+    var at = i * MIX_VOICE_FIELDS;
+    var voice = new RgMixVoice();
+    voice.sounding = numbers[at];
+    voice.owner = numbers[at + 1];
+    voice.effect = numbers[at + 2];
+    voice.lane = numbers[at + 3];
+    voice.rank = numbers[at + 4];
+    voice.loops = numbers[at + 5];
+    voice.ticket = numbers[at + 6];
+    voice.recording = numbers[at + 7];
+    voice.position = numbers[at + 8];
+    voice.fraction = numbers[at + 9];
+    voice.step = numbers[at + 10];
+    voice.back = numbers[at + 11];
+    voice.loudness = numbers[at + 12];
+    voice.gain = numbers[at + 13];
+    voice.ramp = numbers[at + 14];
+    voice.shaped = numbers[at + 15];
+    voice.level = numbers[at + 16];
+    voice.phase = numbers[at + 17];
+    voice.attack = numbers[at + 18];
+    voice.decay = numbers[at + 19];
+    voice.sustain = numbers[at + 20];
+    voice.release = numbers[at + 21];
+    if (voice.sounding != 0 && (voice.recording < 0 || voice.recording >= rg_game_recordings[0] || voice.position < 0)) {
+      rg_state_refuse_damaged("the mixer plays a recording the game does not have");
+    }
+    mix_voices[i] = voice;
+  }
+
+  var samples = MIXES() != 0 ? SLICE_SAMPLES() : 0;
+  if (slice == null) slice = new Vector<Int>(samples > 1 ? samples : 1);
+  rg_state_cells("mix.slice", slice, samples);
+}

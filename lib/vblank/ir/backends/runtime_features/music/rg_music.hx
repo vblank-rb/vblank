@@ -12,7 +12,7 @@
  * exist in a game that has it, so a game with music and no recordings builds without the mixer, and these hooks then
  * answer that nothing is sounding.
  *
- * Left out: a part that reads its notes from the start file (rg_music_fill_*), and the state image.
+ * Left out: a part that reads its notes from the start file (rg_music_fill_*).
  */
 
 static inline var PARTS_MOST:Int = 20;
@@ -822,4 +822,160 @@ static function rg_music_moment_printed():Void {
   headless_print("music_playing " + playing);
 }
 
-static function rg_music_visit_sound_state():Void { rg_state_refuse(); }
+/* --- the state image (rg_music.c says what each field holds) --- */
+
+// Where each number sits among the "music" field's.
+static inline var MUSIC_AT_ENDED:Int = 2;
+static inline var MUSIC_AT_HELD:Int = 5;
+static inline var MUSIC_AT_SONG_FRAME:Int = 6;
+static inline var MUSIC_AT_LEVEL:Int = 7;
+static inline var MUSIC_AT_HOLDING_COUNT:Int = 8;
+static inline var MUSIC_AT_HOLDER_COUNT:Int = 9;
+static inline var MUSIC_AT_EFFECT_CLOCK:Int = 10;
+
+static inline var PART_STATE_NUMBERS:Int = 2;
+static inline var HELD_NOTE_NUMBERS:Int = 6;
+static inline var EFFECT_STATE_NUMBERS:Int = 5 + PARTS_MOST;
+
+/* rg_hook_visit_sound_state (rg_music.c's rg_music_visit_sound_state). */
+static function rg_music_visit_sound_state():Void {
+  var reading = rg_state_reading();
+  var general:Array<Int> = [wanted, playing, ended, stops, stops_seen, music_held ? 1 : 0, song_frame, level, holding.length,
+    holder_order.length, effect_clock];
+  rg_state_numbers("music", general);
+  if (general[0] < -1 || general[0] >= SONG_COUNT() || general[1] < -1 || general[1] >= SONG_COUNT() || general[MUSIC_AT_ENDED] < -1 ||
+      general[MUSIC_AT_ENDED] >= SONG_COUNT() || general[MUSIC_AT_HOLDING_COUNT] < 0 || general[MUSIC_AT_HOLDING_COUNT] > PARTS_MOST ||
+      general[MUSIC_AT_HOLDER_COUNT] < 0 || general[MUSIC_AT_HOLDER_COUNT] > RG_NOISE_VOICE) {
+    rg_state_refuse_damaged("the music holds more than it can");
+  }
+  wanted = general[0];
+  playing = general[1];
+  ended = general[2];
+  stops = general[3];
+  stops_seen = general[4];
+  music_held = general[MUSIC_AT_HELD] != 0;
+  song_frame = general[MUSIC_AT_SONG_FRAME];
+  level = general[MUSIC_AT_LEVEL];
+  effect_clock = general[MUSIC_AT_EFFECT_CLOCK];
+
+  if (reading) {
+    song = playing >= 0 ? song_numbers(playing) : 0;
+    part_count = playing >= 0 ? rg_game_music[song + 4] : 0;
+    if (part_count > PARTS_MOST) rg_state_refuse_damaged("the song has more parts than a song can");
+  }
+  var walks:Array<Int> = [];
+  if (reading) {
+    for (i in 0...part_count * PART_STATE_NUMBERS) walks.push(0);
+  } else {
+    squares_met = 0;
+    var written = song + NUMBERS_PER_SONG;
+    for (i in 0...part_count) {
+      var first = read_part(playing, written, false);
+      written = next_part;
+      walks.push(parts[i].notes != first.notes || parts[i].count != first.count ? 1 : 0);
+      walks.push(parts[i].next);
+    }
+  }
+  rg_state_numbers("music.parts", walks);
+  if (reading) {
+    squares_met = 0;
+    var written = song + NUMBERS_PER_SONG;
+    for (i in 0...part_count) {
+      var walk = read_part(playing, written, walks[i * PART_STATE_NUMBERS] != 0);
+      written = next_part;
+      var at = walks[i * PART_STATE_NUMBERS + 1];
+      if (at < 0 || at > walk.count) rg_state_refuse_damaged("a part of the song is past its last note");
+      walk.next = at;
+      parts[i] = walk;
+    }
+  }
+
+  var held:Array<Int> = [];
+  if (reading) {
+    for (i in 0...general[MUSIC_AT_HOLDING_COUNT] * HELD_NOTE_NUMBERS) held.push(0);
+  } else {
+    for (note in holding) {
+      for (number in [note.voice, note.lane, note.volume, note.wave_ticks, note.eighths_high, note.fade]) held.push(number);
+    }
+  }
+  rg_state_numbers("music.holding", held);
+  holding = [];
+  for (i in 0...general[MUSIC_AT_HOLDING_COUNT]) {
+    var at = i * HELD_NOTE_NUMBERS;
+    if (held[at] < 0 || held[at] > RG_NOISE_VOICE) rg_state_refuse_damaged("a held note is on a voice there is not");
+    holding.push(new RgHeldNote(held[at], held[at + 1], held[at + 2], held[at + 3], held[at + 4], held[at + 5]));
+  }
+
+  var voices:Array<Int> = [];
+  for (v in 1...RG_WAVE_VOICE + 1) {
+    var w = wobbles[v];
+    for (number in [w.vibrato, w.wait, w.left, w.rising, w.steps, w.ticks]) voices.push(number);
+  }
+  for (v in 1...RG_NOISE_VOICE + 1) {
+    var s = swells[v];
+    for (number in [s.active, s.step, s.volume, s.counted, s.swelling, s.wave_ticks, s.eighths_high]) voices.push(number);
+  }
+  for (v in 1...RG_SQUARE_VOICES + 1) {
+    for (number in [shapes[v].bits, shapes[v].frame, shapes[v].steps]) voices.push(number);
+  }
+  for (v in 1...RG_NOISE_VOICE + 1) voices.push(holders[v]);
+  for (i in 0...RG_NOISE_VOICE) voices.push(i < holder_order.length ? holder_order[i] : 0);
+  rg_state_numbers("music.voices", voices);
+  var at = 0;
+  for (v in 1...RG_WAVE_VOICE + 1) {
+    var w = new RgWobble();
+    w.vibrato = voices[at];
+    w.wait = voices[at + 1];
+    w.left = voices[at + 2];
+    w.rising = voices[at + 3];
+    w.steps = voices[at + 4];
+    w.ticks = voices[at + 5];
+    wobbles[v] = w;
+    at += 6;
+  }
+  for (v in 1...RG_NOISE_VOICE + 1) {
+    var s = new RgSwell();
+    s.active = voices[at];
+    s.step = voices[at + 1];
+    s.volume = voices[at + 2];
+    s.counted = voices[at + 3];
+    s.swelling = voices[at + 4];
+    s.wave_ticks = voices[at + 5];
+    s.eighths_high = voices[at + 6];
+    swells[v] = s;
+    at += 7;
+  }
+  for (v in 1...RG_SQUARE_VOICES + 1) {
+    var shape = new RgShapeWalk();
+    shape.bits = voices[at];
+    shape.frame = voices[at + 1];
+    shape.steps = voices[at + 2];
+    shapes[v] = shape;
+    at += 3;
+  }
+  for (v in 1...RG_NOISE_VOICE + 1) holders[v] = voices[at + v - 1];
+  holder_order = [];
+  for (i in 0...general[MUSIC_AT_HOLDER_COUNT]) {
+    var voice = voices[at + RG_NOISE_VOICE + i];
+    if (voice < 1 || voice > RG_NOISE_VOICE) rg_state_refuse_damaged("a voice is held that there is not");
+    holder_order.push(voice);
+  }
+
+  var effects:Array<Int> = [];
+  for (e in 0...EFFECT_COUNT()) {
+    for (number in [effect_asked[e], effect_asked_now[e], effect_stopping[e], effect_running[e], effect_frame[e]]) effects.push(number);
+    for (p in 0...PARTS_MOST) effects.push(effect_cursors[e] != null ? effect_cursors[e][p] : 0);
+  }
+  rg_state_numbers("music.effects", effects);
+  for (e in 0...EFFECT_COUNT()) {
+    var base = e * EFFECT_STATE_NUMBERS;
+    effect_asked[e] = effects[base] != 0 ? 1 : 0;
+    effect_asked_now[e] = effects[base + 1] != 0 ? 1 : 0;
+    effect_stopping[e] = effects[base + 2] != 0 ? 1 : 0;
+    effect_running[e] = effects[base + 3] != 0 ? 1 : 0;
+    effect_frame[e] = effects[base + 4];
+    var cursors = new Vector<Int>(PARTS_MOST);
+    for (p in 0...PARTS_MOST) cursors[p] = effects[base + 5 + p];
+    effect_cursors[e] = cursors;
+  }
+}

@@ -207,8 +207,3 @@ static function rg_state_list(name:String, list:RgList):Void {
   /* A narrow list keeps each number's low bits itself (rg_list.hx). */
   for (i in 0...list.capacity) list.items[i] = rg_list_slot_value(list, values[i + 2]);
 }
-
-/* What is not kept in a state image yet: stops the game in plain words if anything reaches it. */
-static function rg_state_refuse():Void {
-  rg_fault("the Flash build does not write or read this part of a state image yet");
-}
