@@ -5,8 +5,7 @@
  * class after rg_screen.hx for a game that declares a background, so it reads the screen's own state and painters
  * as if it were written there. This is rg_tiled.js written again, function for function.
  *
- * Left out, because the Flash build has neither yet: a tile as drawn of a background read from the start file,
- * and the state image (rg_tiled_visit_state stops the game in plain words).
+ * Left out, because the Flash build has no start file yet: a tile as drawn of a background read from it.
  */
 
 static inline var RG_EVERY_SCENE:Int = -1;
@@ -958,5 +957,169 @@ static function rg_tiled_scene_take_down(brings_scenery:Int):Bool {
   return true;
 }
 
-/* The state image is not written in Flash yet. */
-static function rg_tiled_visit_state():Void { rg_state_refuse(); }
+/* --- the state image --- */
+
+/* How many numbers "tiled.backgrounds" holds for each background (rg_tiled.c's BACKGROUND_STATE_NUMBERS), and where in
+ * them its own cells and its bends are marked. */
+static inline var STATE_HAS_OWN_CELLS:Int = 0;
+static inline var STATE_MAP_WHICH:Int = 1;
+static inline var STATE_MAP_OF:Int = 2;
+static inline var STATE_BENDS_KEPT:Int = 20;
+static inline var BACKGROUND_STATE_NUMBERS:Int = 21;
+static inline var HELD_TILE_NUMBERS:Int = 4; /* background, column, row, tile */
+static inline var MOST_SCENERY_PUT_UP:Int = 1 << 28; /* rg_tiled.c's remember_put_up's limit */
+static inline var HELD_TILES_ROOM:Int = 1024; /* rg_tiled.h's RG_HELD_TILES_ROOM */
+
+/* How many cells a copy of map +which+ of entry +of+ holds. */
+static function map_copy_cell_count(of:Int, which:Int):Int {
+  var map = map_entry(of, which);
+  return rg_game_maps[map + RG_MAP_COLS] * rg_game_maps[map + RG_MAP_ROWS];
+}
+
+/* A background's numbers, as "tiled.backgrounds" holds them (rg_tiled.c's background_state_numbers). */
+static function background_state_numbers(background:Int):Array<Int> {
+  var cells = cells_now[background];
+  var box = boxes[background];
+  var turn = turns[background];
+  var held = box.held != 0 ? 1 : 0;
+  return [
+    cells.cells != null ? 1 : 0, cells.which, cells.of, scrolls[background].x, scrolls[background].y,
+    from_corner[background] != 0 ? 1 : 0, colors_told[background],
+    held, held != 0 ? box.left : 0, held != 0 ? box.top : 0, held != 0 ? box.right : 0, held != 0 ? box.bottom : 0,
+    turn.turned != 0 ? 1 : 0, turn.angle, turn.size, turn.pivot_x, turn.pivot_y,
+    bar_tops[background], bar_placed[background] != 0 ? 1 : 0, bar_covers[background] != 0 ? 1 : 0, bend_lines_kept[background] != 0 ? 1 : 0];
+}
+
+/* A background's numbers read from the image, all but its cells and its bends. */
+static function read_background_state(background:Int, n:Array<Int>):Void {
+  var which = n[STATE_MAP_WHICH];
+  var of = n[STATE_MAP_OF];
+  if (n[STATE_HAS_OWN_CELLS] != 0 && (of < 0 || of >= rg_game_picture_sizes[RG_SIZE_BACKGROUNDS] || which < 0 ||
+                                      (which > 0 && which >= background_field(of, RG_BG_SHOWABLE_MAPS)))) {
+    rg_state_refuse_damaged("a background holds a map it does not have");
+  }
+  var now = new RgCells();
+  now.which = which;
+  now.of = of;
+  cells_now[background] = now;
+  scrolls[background] = new RgScroll(n[3], n[4]);
+  from_corner[background] = n[5] != 0 ? 1 : 0;
+  colors_told[background] = n[6];
+  var box = new RgBox();
+  box.held = n[7] != 0 ? 1 : 0;
+  box.left = n[8];
+  box.top = n[9];
+  box.right = n[10];
+  box.bottom = n[11];
+  boxes[background] = box;
+  var turn = new RgTurn();
+  turn.turned = n[12] != 0 ? 1 : 0;
+  turn.angle = n[13];
+  turn.size = n[14];
+  turn.pivot_x = n[15];
+  turn.pivot_y = n[16];
+  turns[background] = turn;
+  bar_tops[background] = n[17];
+  bar_placed[background] = n[18] != 0 ? 1 : 0;
+  bar_covers[background] = n[19] != 0 ? 1 : 0;
+  bend_lines_kept[background] = n[STATE_BENDS_KEPT] != 0 ? 1 : 0;
+}
+
+/* rg_hook_visit_state (rg_tiled.c's rg_tiled_visit_state): the scenery up and the changes waiting, then what each
+ * background's name keeps, the cells of its own copy, and the lines of its bends. */
+static function rg_tiled_visit_state():Void {
+  var reading = rg_state_reading();
+  var backgrounds = rg_game_picture_sizes[RG_SIZE_BACKGROUNDS];
+  var counts:Array<Int> = [any_from_corner != 0 ? 1 : 0, corners_expired != 0 ? 1 : 0, shown_backgrounds.length, held_tiles.length];
+  rg_state_numbers("tiled", counts);
+  if (counts[2] < 0 || counts[2] >= MOST_SCENERY_PUT_UP || counts[3] < 0 || counts[3] > HELD_TILES_ROOM) {
+    rg_state_refuse_damaged("the scenery holds more than it can");
+  }
+  any_from_corner = counts[0] != 0 ? 1 : 0;
+  corners_expired = counts[1] != 0 ? 1 : 0;
+
+  var shown:Array<Int> = reading ? [for (i in 0...counts[2]) 0] : shown_backgrounds.copy();
+  rg_state_numbers("tiled.shown", shown);
+  for (background in shown) {
+    if (background < 0 || background >= backgrounds) rg_state_refuse_damaged("the scenery up names a background the game does not have");
+  }
+  shown_backgrounds = shown;
+
+  var held:Array<Int> = [];
+  if (reading) {
+    for (i in 0...HELD_TILE_NUMBERS * counts[3]) held.push(0);
+  } else {
+    for (change in held_tiles) {
+      held.push(change.background);
+      held.push(change.col);
+      held.push(change.row);
+      held.push(change.tile);
+    }
+  }
+  rg_state_numbers("tiled.held", held);
+  held_tiles = [];
+  var i = 0;
+  while (i < held.length) {
+    if (held[i] < 0 || held[i] >= backgrounds) rg_state_refuse_damaged("a tile change waits for a background the game does not have");
+    held_tiles.push(new RgHeldTile(held[i], held[i + 1], held[i + 2], held[i + 3]));
+    i += HELD_TILE_NUMBERS;
+  }
+
+  var per_background:Array<Int> = [];
+  if (reading) {
+    for (k in 0...backgrounds * BACKGROUND_STATE_NUMBERS) per_background.push(0);
+  } else {
+    for (background in 0...backgrounds) {
+      for (number in background_state_numbers(background)) per_background.push(number);
+    }
+  }
+  rg_state_numbers("tiled.backgrounds", per_background);
+  var numbers_of = function(background:Int):Array<Int> return per_background.slice(background * BACKGROUND_STATE_NUMBERS, (background + 1) * BACKGROUND_STATE_NUMBERS);
+  if (reading) {
+    for (background in 0...backgrounds) read_background_state(background, numbers_of(background));
+  }
+
+  var owners:Array<Int> = [];
+  var bent_backgrounds:Array<Int> = [];
+  for (background in 0...backgrounds) {
+    if (numbers_of(background)[STATE_HAS_OWN_CELLS] != 0) owners.push(background);
+    if (numbers_of(background)[STATE_BENDS_KEPT] != 0) bent_backgrounds.push(background);
+  }
+  var sizes = [for (background in owners) map_copy_cell_count(numbers_of(background)[STATE_MAP_OF], numbers_of(background)[STATE_MAP_WHICH])];
+  var cells:Array<Int> = [];
+  if (reading) {
+    var total = 0;
+    for (size in sizes) total += size;
+    for (k in 0...total) cells.push(0);
+  } else {
+    for (background in owners) {
+      var own = cells_now[background].cells;
+      for (k in 0...own.length) cells.push(own[k]);
+    }
+  }
+  rg_state_numbers("tiled.cells", cells);
+  if (reading) {
+    var at = 0;
+    for (k in 0...owners.length) {
+      var own = new Vector<Int>(sizes[k] > 1 ? sizes[k] : 1);
+      for (cell in 0...sizes[k]) own[cell] = rg_to_half(cells[at + cell]);
+      cells_now[owners[k]].cells = own;
+      at += sizes[k];
+    }
+  }
+
+  var lines:Array<Int> = [];
+  if (reading) {
+    for (k in 0...bent_backgrounds.length * RG_SCREEN_HEIGHT) lines.push(0);
+  } else {
+    for (background in bent_backgrounds) {
+      for (y in 0...RG_SCREEN_HEIGHT) lines.push(bend_lines[background][y]);
+    }
+  }
+  rg_state_numbers("tiled.bends", lines);
+  if (reading) {
+    for (k in 0...bent_backgrounds.length) {
+      for (y in 0...RG_SCREEN_HEIGHT) bend_lines[bent_backgrounds[k]][y] = lines[k * RG_SCREEN_HEIGHT + y];
+    }
+  }
+}
