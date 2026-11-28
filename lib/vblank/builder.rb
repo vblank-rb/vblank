@@ -1629,14 +1629,39 @@ module VBlank
     # The class name of the part made every pass whose `||=` is making a part now, if one is.
     attr_reader :keeper_made_every_pass # :nodoc:
 
-    # Runs the block, a line of game code that keeps the part it makes (`@part ||= Part.new`), so
-    # that part and the parts its `initialize` makes are made one time (#made_every_pass?).
-    def keeping_part # :nodoc:
+    # Runs the block, the right side of a line of game code that keeps what it gives with `||=`
+    # (`@part ||= Part.new`, `@loads ||= Loads.fill(queue)`), so the parts it makes, and the parts
+    # their `initialize` makes, are made one time (#made_every_pass?). Ruby runs the right side
+    # once, so its straight-line code is set-up as a kept part's `initialize` is
+    # (#recording_kept_part_start?), and a change it makes to a plain Ruby Array happens once.
+    # Each such change is noted on +changes+, since a right side that gives nil or false runs
+    # again on the next pass and its changes are then made every pass
+    # (DSL::PlainRuby::InstanceVariables.keeping_part refuses them).
+    def keeping_part(changes = []) # :nodoc:
       @keeping_parts = (@keeping_parts || 0) + 1
+      (@kept_right_sides ||= []).push(KeptRightSide.new(depth: @container_stack.length,
+                                                        part_starts: (@part_starts || []).length, changes: changes))
       yield
     ensure
+      @kept_right_sides.pop
       @keeping_parts -= 1
     end
+
+    # A right side of `||=` being run (#keeping_part): where its code records, how many parts were
+    # being made around it, and the changes to plain Ruby Arrays it made.
+    KeptRightSide = Data.define(:depth, :part_starts, :changes)
+
+    # The changes to plain Ruby Arrays the right side of `||=` being run now has made, which a
+    # change let through as set-up (#recording_kept_part_start?) is added to; nil where the
+    # set-up is a kept part's `initialize`.
+    def kept_right_side_changes = innermost_kept_right_side&.changes # :nodoc:
+
+    # The right side of `||=` being run now, where no part started inside it is being made.
+    def innermost_kept_right_side
+      side = @kept_right_sides&.last
+      side if side && (@part_starts || []).length == side.part_starts
+    end
+    private :innermost_kept_right_side
 
     def keeping_parts? = (@keeping_parts || 0).positive?
     private :keeping_parts?
@@ -1751,7 +1776,13 @@ module VBlank
     # game is built, as in Ruby. Not under a test there: Ruby would run both sides of it while
     # building, where the game runs one. DSL::PlainRuby::InstanceVariables.refuse_unkept_change!
     # asks.
+    #
+    # So is the straight-line code of a right side of `||=` being run (#keeping_part), however
+    # many calls down: Ruby runs it once too.
     def recording_kept_part_start? # :nodoc:
+      side = innermost_kept_right_side
+      return @container_stack.length == side.depth if side
+
       start = @part_starts&.last
       !start.nil? && start.kept && @container_stack.length == start.depth
     end

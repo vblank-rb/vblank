@@ -2242,6 +2242,44 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # Ruby runs the right side of `||=` once, so a method there that adds to another part's plain
+  # Array adds to it once, while building, as a kept part's `initialize` would.
+  def test_a_method_kept_with_or_equals_adds_to_another_objects_array_once
+    agrees("@loaded ||= AnswerQueueing.load_two(queue) in a scene", reads: %i[m n], passes: 3) do
+      queue = AnswerQueue.new
+      m = n = 0
+      mode = :answer_kept_loads
+      scene(:answer_kept_loads) do
+        @loaded ||= AnswerQueueing.load_two(queue)
+        m = queue.size
+        n = @loaded
+        mode = :answer_kept_loads
+      end
+      game_loop { call mode }
+    end
+  end
+
+  # Not kept, the same method adds to the Array again on every pass in Ruby.
+  def test_a_method_adding_to_another_objects_array_on_every_pass_is_refused
+    refused("AnswerQueueing.load_two(queue) in a scene", /still a plain Ruby Array/) do
+      queue = AnswerQueue.new
+      m = 0
+      scene(:answer_unkept_loads) { m = AnswerQueueing.load_two(queue) }
+      mode = :answer_unkept_loads
+      game_loop { call mode }
+    end
+  end
+
+  # Handed back nil, `||=` keeps nothing, and Ruby runs the right side again on the next pass.
+  def test_a_method_under_or_equals_handing_back_nil_after_adding_to_an_array_is_refused
+    refused("@lost_loads ||= AnswerQueueing.load_lost(queue) in a scene", /still a plain Ruby Array/) do
+      queue = AnswerQueue.new
+      scene(:answer_lost_loads) { @lost_loads ||= AnswerQueueing.load_lost(queue) }
+      mode = :answer_lost_loads
+      game_loop { call mode }
+    end
+  end
+
   def test_an_object_that_never_changes_made_in_the_game_loop
     agrees("AnswerSpot.new(8).left in game_loop", reads: %i[m], passes: 2) do
       m = 0

@@ -813,9 +813,11 @@ module VBlank
           return builder.keeping_in_part_made_every_pass(owner.class.name || "this class", &) if uses.made_every_pass?(owner)
 
           count = uses.objects_made_count
-          kept = builder.keeping_part(&)
+          changes = []
+          kept = builder.keeping_part(changes, &)
           made = uses.objects_made_since(count)
           refuse_nothing_kept!(label, made, uses) unless kept
+          refuse_unkept_changes!(changes) unless kept
           uses.note_kept_site_made_part(owner, label) if label && made.any? { |object| kept_part_changes?(object, uses) }
           # A Struct handed back that the block did not make was made elsewhere, and stays as it was.
           made.any? { |object| object.equal?(kept) } ? uses.note_kept(kept) : kept
@@ -837,6 +839,13 @@ module VBlank
                          "a new `#{name}`. While `#{label}` is nil, Ruby runs the right side again on every pass, " \
                          "so it makes a new `#{name}` every pass. To fix this, give back the part from the right " \
                          "side, or make it above the game loop.#{Messages::AuthorSource.at_author_line}"
+        end
+
+        # The right side of `||=` gave nil or false, so Ruby runs it again on the next pass, and the
+        # +changes+ it made to plain Ruby Arrays (#refuse_unkept_change!, each its refusal's words)
+        # are made every pass: the first is refused.
+        def refuse_unkept_changes!(changes)
+          raise Refused, changes.first if Builder::Session.recording? && changes.any?
         end
 
         # Runs before every `||=` that keeps a part (Rewriter#kept_part_text), even one Ruby skips
@@ -950,19 +959,30 @@ module VBlank
         # So is a change made while a part game code keeps with `||=` is being made
         # (Builder#recording_kept_part_start?): Ruby runs that `initialize` once, so a block or a
         # name it hands another part (`hooks.after { ... }`, `costume.wear(names)`) goes into that
-        # part's Array once, while building, which is Ruby's own answer.
+        # part's Array once, while building, which is Ruby's own answer. The same is true of any
+        # right side of `||=` (`@loads ||= Loads.fill(queue)`, Builder#keeping_part): Ruby runs it
+        # once, unless it gives nil or false, and #keeping_part refuses the change then.
         #
         # +owner+ is the object the line runs on. One made outside this build has its own refusal
         # (#refuse_part_made_outside!): its class did show what the Array keeps, but too late.
         def refuse_unkept_change!(array, verb, label, owner)
           return array unless Builder::Session.recording? && array.instance_of?(Array)
-          return array if Builder::Session.builder.recording_kept_part_start?
+
+          builder = Builder::Session.builder
+          if builder.recording_kept_part_start?
+            builder.kept_right_side_changes&.push(unkept_change_message(array, verb, label))
+            return array
+          end
 
           refuse_part_made_outside!(owner, label)
-          raise Refused, "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \
-                         "plain Ruby Array. So it changes one time, while VBlank builds the game. The game keeps the " \
-                         "Array when the class body that makes it also adds to it. #{kept_array_fix(label, array)}" \
-                         "#{Messages::AuthorSource.at_author_line}"
+          raise Refused, unkept_change_message(array, verb, label)
+        end
+
+        def unkept_change_message(array, verb, label)
+          "This line changes `#{label}` with `#{verb}` while the game plays, and `#{label}` is still a " \
+            "plain Ruby Array. So it changes one time, while VBlank builds the game. The game keeps the " \
+            "Array when the class body that makes it also adds to it. #{kept_array_fix(label, array)}" \
+            "#{Messages::AuthorSource.at_author_line}"
         end
 
         # +value+, refused where it is a named Array (KeyedArray) that a new Array would copy:

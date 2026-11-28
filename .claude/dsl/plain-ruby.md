@@ -165,7 +165,10 @@ instance variables.
   it, where the same line run from game code on every pass is refused
   (`Builder#recording_kept_part_start?`, `InstanceVariables.refuse_unkept_change!`). Under a game
   test in that `initialize` it stays refused: Ruby would make it while building whichever way the
-  test goes.
+  test goes. Any right side of `||=` is the same, however many calls down
+  (`@loads ||= Loads.fill(queue)`, `Builder#keeping_part`): Ruby runs it once, so its changes are
+  made once. A right side that gives back nil or false runs again on the next pass in Ruby, so its
+  change is refused after it runs (`InstanceVariables.refuse_unkept_changes!`).
 - Setting-up code that works with a game one works with the game variable, so `@busy.times` while
   setting up is refused as any game number is: keep a number only the build uses out of game code.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as

@@ -408,6 +408,28 @@ class AnswerCounterShop
   end
 end
 
+# Numbers queued in a plain Ruby Array, added to by whoever loads it.
+class AnswerQueue
+  def initialize = @cells = []
+
+  def add(cells)
+    @cells.concat(cells)
+    cells.size
+  end
+
+  def size = @cells.size
+end
+
+# Loads an AnswerQueue from class methods: handing back how many went in, or nil.
+module AnswerQueueing
+  def self.load_two(queue) = queue.add([3, 4])
+
+  def self.load_lost(queue)
+    queue.add([5])
+    nil
+  end
+end
+
 # Blocks to run on each pass, kept in a plain Ruby Array.
 class AnswerHooks
   def initialize

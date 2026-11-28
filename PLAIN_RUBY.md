@@ -147,7 +147,7 @@ Limits: see [Refused › Parts and instance variables](#parts-and-instance-varia
 
 ## Parts made in game code
 
-A `game_loop`, a scene and a `func` run every frame, so a line there that makes a part makes a new one on every pass. Keep the part with `||=`: it is made the first time the line runs, and the same part is used after, in Ruby and in the game. The right side can be any method that makes the part, however many calls down (`@field ||= Field.sprites(art)`), since Ruby runs it once and keeps what it gives back. If it gives back `nil`, Ruby runs it again on the next pass, so a part it makes that changes is refused. A local works too: `counter = nil` above the game loop, then `counter ||= Counter.new` in it.
+A `game_loop`, a scene and a `func` run every frame, so a line there that makes a part makes a new one on every pass. Keep the part with `||=`: it is made the first time the line runs, and the same part is used after, in Ruby and in the game. The right side can be any method that makes the part, however many calls down (`@field ||= Field.sprites(art)`), since Ruby runs it once and keeps what it gives back. What the right side adds to a plain Ruby Array is added once too, as Ruby does. If it gives back `nil`, Ruby runs it again on the next pass, so a part it makes that changes is refused, and so is a change it makes to a plain Ruby Array. A local works too: `counter = nil` above the game loop, then `counter ||= Counter.new` in it.
 
 ```ruby
 # A ship kept with ||=: made the first time the line runs, and the same ship after
