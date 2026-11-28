@@ -501,6 +501,12 @@ module VBlank
           uses = builder.instance_variable_uses
           hand_out = uses.take_array_hand_out(array)
           return array unless hand_out && Builder::Session.recording?
+          # A kept run is set-up, as the lines above the game loop are: Ruby changes the slot at a
+          # known index once. At an index the game works out, only a list can answer.
+          if kept_run? && !worked_out
+            note_kept_run_change(unkept_change_message(array, "[]=", hand_out.label)) if changed
+            return array
+          end
           return uses.note_array_read_in_game_code(array, hand_out) unless worked_out || changed
 
           uses.refuse_array_handed_before!(array, hand_out)
@@ -546,8 +552,11 @@ module VBlank
         # the write then sets to that number (`@held = @states[0]`, `@phase = start_phase`).
         def write_target(owner, current, value, label, starting: false)
           current = current_or_ruby_number(current) {}
-          uses = uses_while_recording(owner)
-          return own_variable_while_setting_up(owner, current, value, label) unless uses
+          uses = uses_while_recording(owner) || kept_run_uses_for_game_number(owner, value)
+          unless uses
+            note_kept_run_number_change(owner, label, current, value) unless starting
+            return own_variable_while_setting_up(owner, current, value, label)
+          end
 
           unless uses.followed?(owner, label, current) || game_number_given?(current, value, starting)
             refuse_names_changed!(owner, label) if !starting && uses.names_kept_as_ruby?(owner, label, current)
@@ -571,6 +580,15 @@ module VBlank
           current.nil? || STARTS.any? { |kind| current.is_a?(kind) }
         end
 
+        # The builder's record, where a kept run (#kept_run?) gives +owner+ a game number: Ruby copies
+        # the number where the line runs, which the game does with a variable of its own, set
+        # there (#game_number_given?), as in the code Ruby runs on every pass. Nil for anything else.
+        def kept_run_uses_for_game_number(owner, value)
+          return unless kept_run? && !owner.is_a?(Module) && (value.is_a?(Value) || value.is_a?(Condition))
+
+          Builder::Session.builder.instance_variable_uses
+        end
+
         def own_variable_while_setting_up(owner, current, value, label)
           builder = Builder::Session.builder
           return current unless current.nil? && (value.is_a?(Value) || value.is_a?(Condition))
@@ -583,7 +601,10 @@ module VBlank
         def change_target(owner, current, label, starting: false)
           current = current_or_ruby_number(current) {}
           uses = uses_while_recording(owner)
-          return current unless uses
+          unless uses
+            note_kept_run_number_change(owner, label, current, current) unless starting
+            return current
+          end
           return game_variable_of(owner, current, label) if uses.followed?(owner, label, current)
 
           refuse_nil_changed!(label) if current.nil?
@@ -594,21 +615,27 @@ module VBlank
 
         # A line of game code changes +owner+'s +label+, an Array or a Hash of names that stays Ruby's
         # (Uses#names_kept_as_ruby?): Ruby would change it on a pass, and the game would not see it.
-        def refuse_names_changed!(owner, label)
+        def refuse_names_changed!(owner, label) = raise(Refused, names_changed_message(owner, label))
+
+        def names_changed_message(owner, label)
           name = label.to_s.delete_prefix("@")
           where = owner.is_a?(Builder) ? "the game block" : "`#{owner.class.name || 'its class'}`"
-          raise Refused, "This line changes `#{label}` while the game plays. `#{label}` holds only names, so it " \
-                         "stays a plain Ruby value, and the game does not see the change. To fix this, add " \
-                         "`game_variables :#{name}` to #{where}.#{Messages::AuthorSource.at_author_line}"
+          "This line changes `#{label}` while the game plays. `#{label}` holds only names, so it " \
+            "stays a plain Ruby value, and the game does not see the change. To fix this, add " \
+            "`game_variables :#{name}` to #{where}.#{Messages::AuthorSource.at_author_line}"
         end
 
         # A slot of +collection+ is written by a line of game code. Refused where it holds names that game
-        # code read from an instance variable, kept as Ruby's (#refuse_names_changed!).
+        # code read from an instance variable, kept as Ruby's (#refuse_names_changed!), unless a kept
+        # run makes the change (#kept_run?), which Ruby makes once.
         def refuse_names_slot_changed!(collection)
           return unless Builder::Session.recording? && names_collection?(collection)
 
           holder = Builder::Session.builder.instance_variable_uses.instance_variable_holding(collection)
-          refuse_names_changed!(holder.owner, holder.label) if holder
+          return unless holder
+          return note_kept_run_change(names_changed_message(holder.owner, holder.label)) if kept_run?
+
+          refuse_names_changed!(holder.owner, holder.label)
         end
 
         # `@lives -= 1` in game code while `@lives` holds nil. Ruby would stop here with its own
@@ -628,7 +655,7 @@ module VBlank
           case answer.reason
           when :named_instance_variable then game_variable_of(owner, current, label)
           when :not_named
-            uses_while_recording(owner).note_change(owner, label, current, current, operator: false) if test.game?
+            uses_while_recording(owner)&.note_change(owner, label, current, current, operator: false) if test.game?
             current
           else current
           end
@@ -645,12 +672,48 @@ module VBlank
           refuse_named_object!(label, current)
         end
 
-        # The builder's record of instance variables, while it records game code.
+        # The builder's record of instance variables, while it records game code that Ruby runs on
+        # every pass (#recording_every_pass?). Nil while the game is set up, so a number read or
+        # changed there stays Ruby's.
         def uses_while_recording(owner)
           builder = Builder::Session.builder
-          return unless Builder::Session.recording? && !owner.is_a?(Module)
+          return unless recording_every_pass? && !owner.is_a?(Module)
 
           builder.instance_variable_uses
+        end
+
+        # Is the builder recording game code that Ruby runs on every pass? Not the straight-line code
+        # of a kept part's `initialize` or of a right side of `||=` (#kept_run?): Ruby runs that once,
+        # as it runs the lines above the game loop. Each line that decides whether a plain Ruby
+        # value changes as the game plays asks this, from what runs, never from how the line is
+        # written.
+        def recording_every_pass? = Builder::Session.recording? && !kept_run?
+
+        # Is the builder recording the straight-line code of a kept part's `initialize` or of a
+        # right side of `||=`, however many calls down (Builder#recording_kept_part_start?)?
+        def kept_run? = Builder::Session.recording? && Builder::Session.builder.recording_kept_part_start?
+
+        # A line of a kept run (#kept_run?) changes a plain Ruby value, once, as Ruby does. Where the
+        # right side of `||=` gives nil or false, Ruby runs it again on the next pass, so the change
+        # is made every pass: +message+ is noted on the run, and #keeping_part refuses the first.
+        def note_kept_run_change(message) = Builder::Session.builder.kept_right_side_changes&.push(message)
+
+        # A line of a kept run gives +owner+'s +label+, a plain number, a new number (#note_kept_run_change).
+        def note_kept_run_number_change(owner, label, current, value)
+          return unless kept_run? && !owner.is_a?(Module)
+          return unless (current.nil? || Uses::TRACKED.any? { |kind| current.is_a?(kind) }) &&
+                        Uses::TRACKED.any? { |kind| value.is_a?(kind) }
+
+          note_kept_run_change(kept_run_number_change_message(owner, label))
+        end
+
+        def kept_run_number_change_message(owner, label)
+          name = label.to_s.delete_prefix("@")
+          where = owner.is_a?(Builder) ? "the game block" : owner.class.name || "its class"
+          "This line changes `#{label}`, a plain Ruby number. The right side of `||=` that runs it gives nil or " \
+            "false, so Ruby runs the right side again on every pass, and `#{label}` changes as the game plays. " \
+            "The game does not see the change. To fix this, give back what the right side makes, or add " \
+            "`game_variables :#{name}` to #{where}.#{Messages::AuthorSource.at_author_line}"
         end
 
         # The builder, where a test of +owner+'s +label+, holding +current+, is a test in game code of
@@ -733,7 +796,8 @@ module VBlank
         # where `initialize` gives it (+starting+): that part is made once, as its routine is recorded
         # (`screen = FadedScreen.new(...)` in `scene :copyright do`), and its number is the start.
         # Anywhere else in game code the line runs on every pass, as Ruby's would.
-        def first_number_set_where_reached?(starting) = Builder::Session.recording? && !starting
+        # A kept run (#kept_run?) is set-up too: Ruby runs it once, so its first number is the start.
+        def first_number_set_where_reached?(starting) = recording_every_pass? && !starting
 
         # The body of an object's `initialize` in a game file, as the rewrite runs it: a part game
         # code makes puts things into its Arrays once, as its numbers start once (Builder#making_part).
@@ -930,11 +994,19 @@ module VBlank
           holder = uses && (array.instance_of?(Array) || array.is_a?(KeyedArray)) && uses.instance_variable_holding(array)
           return array unless holder
 
-          raise Refused, "This line changes #{uses.kept_array_words(holder.owner, holder.label)} with `#{verb}`, " \
-                         "from outside its class. VBlank makes the game keep a part's Array only where code in its " \
-                         "class changes it. Here it is still a plain Ruby Array, so this line changes it one time, " \
-                         "while VBlank builds the game. #{kept_array_fix(holder.label, array)} Then call that method " \
-                         "here.#{Messages::AuthorSource.at_author_line}"
+          message = changed_from_outside_message(array, verb, uses, holder)
+          # Ruby runs a kept run once, as the lines above the game loop, so the change is made once.
+          return array.tap { note_kept_run_change(message) } if kept_run?
+
+          raise Refused, message
+        end
+
+        def changed_from_outside_message(array, verb, uses, holder)
+          "This line changes #{uses.kept_array_words(holder.owner, holder.label)} with `#{verb}`, " \
+            "from outside its class. VBlank makes the game keep a part's Array only where code in its " \
+            "class changes it. Here it is still a plain Ruby Array, so this line changes it one time, " \
+            "while VBlank builds the game. #{kept_array_fix(holder.label, array)} Then call that method " \
+            "here.#{Messages::AuthorSource.at_author_line}"
         end
 
         # How a class makes its instance variable +label+ an Array the game keeps, which +array+ is
@@ -968,9 +1040,8 @@ module VBlank
         def refuse_unkept_change!(array, verb, label, owner)
           return array unless Builder::Session.recording? && array.instance_of?(Array)
 
-          builder = Builder::Session.builder
-          if builder.recording_kept_part_start?
-            builder.kept_right_side_changes&.push(unkept_change_message(array, verb, label))
+          if kept_run?
+            note_kept_run_change(unkept_change_message(array, verb, label))
             return array
           end
 

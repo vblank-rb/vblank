@@ -169,6 +169,12 @@ instance variables.
   (`@loads ||= Loads.fill(queue)`, `Builder#keeping_part`): Ruby runs it once, so its changes are
   made once. A right side that gives back nil or false runs again on the next pass in Ruby, so its
   change is refused after it runs (`InstanceVariables.refuse_unkept_changes!`).
+  A plain number of any object (an instance variable or a Struct's field) read or changed there is
+  set-up too, as above the game loop (`InstanceVariables.recording_every_pass?`, `#kept_run?`): a
+  counter that only a kept part's `initialize` bumps (`@drains += 1` in a queue made above the
+  loop) stays Ruby's, so it can name routines (`:"drain#{@drains}"`) and reads as the number it
+  reached. Changed in game code that runs every pass too, it is a game number as before. A game
+  number given there (`@shown = @ticks`) still gets a variable of its own.
 - Setting-up code that works with a game one works with the game variable, so `@busy.times` while
   setting up is refused as any game number is: keep a number only the build uses out of game code.
 - **Each object keeps its own.** A profile and a test read the variable of `@busy` in a `Tilt` as

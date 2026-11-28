@@ -2280,6 +2280,80 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A part made above the game loop counts, in a number, the screens kept with `||=` in a scene.
+  # Ruby makes each screen once, so the count goes up once, while building, as it would above
+  # the loop: it names a routine, and reads as the number it reached.
+  def test_a_number_another_part_changes_while_a_kept_part_is_made_stays_ruby_s
+    agrees("@screen ||= AnswerDrainedScreen.new(drains) in a scene", reads: %i[m n], passes: 3) do
+      drains = AnswerDrains.new
+      m = n = 0
+      func(:answer_drain1) { m += 1 }
+      mode = :answer_kept_drain
+      scene(:answer_kept_drain) do
+        @screen ||= AnswerDrainedScreen.new(drains)
+        call @screen.routine
+        n = drains.drains
+        mode = :answer_kept_drain
+      end
+      game_loop { call mode }
+    end
+  end
+
+  # The same count kept by the right side of `||=` from a class method, any calls down.
+  def test_a_number_another_part_changes_in_a_kept_right_side_stays_ruby_s
+    agrees("@routine ||= drains.declare in a scene", reads: %i[m n], passes: 3) do
+      drains = AnswerDrains.new
+      m = n = 0
+      func(:answer_drain1) { m += 2 }
+      mode = :answer_kept_declare
+      scene(:answer_kept_declare) do
+        @routine ||= drains.declare
+        call @routine
+        n = drains.drains
+        mode = :answer_kept_declare
+      end
+      game_loop { call mode }
+    end
+  end
+
+  # The same count kept in a Struct's field made above the game loop.
+  def test_a_field_changed_while_a_kept_part_is_made_stays_ruby_s
+    agrees("@screen ||= AnswerPointCountedScreen.new(point) in a scene", reads: %i[m n], passes: 3) do
+      point = AnswerPoint.new(0, 0, 0)
+      m = n = 0
+      func(:answer_drain1) { m += 3 }
+      mode = :answer_kept_point_drain
+      scene(:answer_kept_point_drain) do
+        @screen ||= AnswerPointCountedScreen.new(point)
+        call @screen.routine
+        n = point.x
+        mode = :answer_kept_point_drain
+      end
+      game_loop { call mode }
+    end
+  end
+
+  # Not kept, the count goes up on every pass in Ruby, so it is a game number, and a routine's
+  # name cannot be made from it.
+  def test_a_number_another_part_changes_on_every_pass_names_no_routine
+    refused("AnswerDrainedScreen.new(drains) in a scene", /changes as the game plays/) do
+      drains = AnswerDrains.new
+      scene(:answer_unkept_drain) { AnswerDrainedScreen.new(drains) }
+      mode = :answer_unkept_drain
+      game_loop { call mode }
+    end
+  end
+
+  # Handed back nil, `||=` keeps nothing, and Ruby makes a screen again on the next pass.
+  def test_a_number_changed_in_a_right_side_handing_back_nil_names_no_routine
+    refused("@lost_screen ||= AnswerDrainedScreen.lost(drains) in a scene", /gives nil or false.*`@drains` changes/) do
+      drains = AnswerDrains.new
+      scene(:answer_lost_drain) { @lost_screen ||= AnswerDrainedScreen.lost(drains) }
+      mode = :answer_lost_drain
+      game_loop { call mode }
+    end
+  end
+
   def test_an_object_that_never_changes_made_in_the_game_loop
     agrees("AnswerSpot.new(8).left in game_loop", reads: %i[m], passes: 2) do
       m = 0

@@ -430,6 +430,41 @@ module AnswerQueueing
   end
 end
 
+# Counts the screens that name a routine of their own, each named from the count so far.
+class AnswerDrains
+  def initialize = @drains = 0
+
+  def declare
+    @drains += 1
+    :"answer_drain#{@drains}"
+  end
+
+  attr_reader :drains
+end
+
+# A screen that takes its routine's name from an AnswerDrains as it is made.
+class AnswerDrainedScreen
+  def initialize(drains) = @routine = drains.declare
+  attr_reader :routine
+
+  # Makes a screen and keeps nothing, so `||=` runs this again on every pass.
+  def self.lost(drains)
+    new(drains)
+    nil
+  end
+end
+
+# A screen that counts itself in a field of an AnswerPoint as it is made, naming its routine
+# from the count.
+class AnswerPointCountedScreen
+  def initialize(point)
+    point.x += 1
+    @routine = :"answer_drain#{point.x}"
+  end
+
+  attr_reader :routine
+end
+
 # Blocks to run on each pass, kept in a plain Ruby Array.
 class AnswerHooks
   def initialize
