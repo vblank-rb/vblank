@@ -87,6 +87,14 @@ is the build machine's Ruby: `Time.now` there is the time the game was built, an
 number picked once, while building. Both are fine for what setup does (a build stamp, a level laid
 out once) and neither ever reaches the console.
 
+Setup is real Ruby, so a setup loop that never ends hangs the build, as Ruby would. A watchdog says
+so: a thread that wakes when setup has run for about ten seconds reads the main thread's backtrace
+and prints where it is, `Still building after 10 s, at game.rb:12 (n -= 1 while n)`, again while it
+runs. Where that line is a `while` or `until` whose test is a bare local holding a number, it adds
+the teaching line: every number is true in Ruby, 0 too, so compare it. It is a notice, never a
+stop, since heavy setup (unpacking a game's data) can rightly take longer; it costs nothing while
+setup runs, with no TracePoint.
+
 ## Known and played values
 
 The compiler walks per-frame code with an abstract interpreter. Every expression gives one of two
@@ -116,28 +124,33 @@ Ruby object while building.
 
 ## Constants in per-frame code
 
-"Plain Ruby" means Ruby's syntax and its core, not the standard library. So a constant named in
-per-frame code is refused at its line unless it is one of these: a constant defined in the game's
-own files (defined under the folder of the file that declares the game, as today's rule finds by `const_source_location`), VBlank's own, Ruby's core that the subset covers (the values and error classes today's
-`PlainRuby::BlockChecks::RUBY_BASICS` lists, with `Math` from the prelude), a stand-in (below), or
-one the game names with `allow:`. There is no list of what is refused: one rule catches every
-other constant, and a value of such a class that setup made and per-frame code calls a method on is
-refused the same way.
+"Plain Ruby" means Ruby's syntax and its core, not the standard library. The rule for a constant
+in per-frame code goes by what per-frame code needs of it, never by where its file sits on disk,
+and it is the same in the game's own methods and in a gem's Ruby methods that per-frame code
+reaches:
 
-The rule and its message are today's (`BlockChecks.refuse_outside_constant!`), kept as the
-constant form of the one compiler error, with its `allow:` way out for a library the author knows
-is safe in game code:
+- A constant whose value the subset holds (a number, a symbol, a frozen String, a frozen Array or
+  Hash of those, a Struct or Data class) is allowed.
+- A constant naming a class or module is allowed when every method per-frame code reaches through
+  it has Ruby source the walk can read, or is a primitive, in `CoreEffects` or a stand-in. So a
+  shared gem's `Vec`, written in Ruby, builds in a scene and inside the gem's own `Vec#+` alike.
+- A constant naming a class or module whose method per-frame code reaches has no Ruby source and is
+  none of those (a C method of the standard library or of a gem) is refused at the line that
+  names the constant, unless the game names it with `allow:`, which vouches that its methods are
+  pure: they are then run for real with known inputs, and refused with played ones.
+
+A value of such a class that setup made and per-frame code calls a method on is refused the same
+way. There is no list of what is refused: one rule catches every constant, and a constant nobody
+thought of is refused with a reason rather than called for real with a wrong answer.
+
+The message is today's (`BlockChecks.refuse_outside_constant!`), kept as the constant form of the
+one compiler error, with its `allow:` way out:
 
 ```
 `JSON` is not part of your game, so this block cannot use it. This block describes what the game
 does as it plays. If you need `JSON` while building, use it above the block and keep the result in
 a constant. If this library is safe here, add it with `allow:`. (at game.rb:42)
 ```
-
-Decision: one rule for every constant, not a list of modules, so a constant nobody thought of is
-refused with a reason rather than called for real with a wrong answer. A constant that `allow:`
-names is called as any other code is: walked where it has Ruby source, and refused where it has
-none and is not in `CoreEffects`.
 
 A handful of constants get a message of their own, because a plain hint helps:
 
@@ -326,11 +339,20 @@ Ruby runs a `once` block on the pass it is first reached, and setup runs it whil
 two give the same answer unless the block reads a played value, at any depth. So the block is run
 with a **probe** in every place the build knows is played: an object that stands for "a value the
 game has not worked out yet", and that signals the build the moment anything asks it a question.
-If a probe is asked, or is left inside what the block made, the block read a played value, and that
-`once` is **made as the game plays**: the part's object is set aside while building, and the first
-pass that reaches the line runs its `initialize` as per-frame code, with a flag that remembers it
-ran. The build warns, naming the line and the value read, since the part's declarations (sprites,
-screens) are then made for it without knowing those numbers.
+A probe answers nothing. Asked anything (`probe > 3`, `probe.to_i`, a method on it), it raises a
+signal of the build's own, an `Exception` outside `StandardError`, so no `rescue` in the game
+catches it. An error raised by a C method that was handed a probe (`Integer#+` given one raises
+`TypeError`) counts as a read too. So does a probe left inside what the block made.
+
+If the block read a played value, that `once` is **made as the game plays**, and the build runs
+again from the start with that `once`, by its key, marked so. Starting again is what undoes the
+half-run block: the sprites, screens and routines it declared before the signal, and anything it
+changed on setup's objects, are gone with the build they were made in, so no verb needs a way to
+take a declaration back. In the build that follows, the block is not run while building. The first
+pass that reaches the line runs the block as written as per-frame code, whatever it holds, and a
+flag remembers it ran. Its verbs keep their meaning there as anywhere in per-frame code: a declaring
+verb (`sprite`, `screen`) declares while building, and a verb the game may not call in per-frame
+code is refused, naming the verb. The build warns, naming the line and the value read.
 
 Places are found as the walk goes, so a `once` may run before a place it reads is known to be
 played. When the walk ends with played places that a `once` run earlier had no probe for, the
@@ -604,13 +626,13 @@ probe, **K** the `stop` kind, **L** the `log` kind.
 
 The guess that about three quarters go away or become warnings holds: 86 of 94 do, and 66 of the 71
 refusals. It rests on pieces that are not built. The three riskiest are making sites with rooms,
-choices and tagged values: 16 rows rest on one of them. If every one of those 16 ended up refused,
-70 of 94 would still build, which is still about three quarters.
+choices and tagged values: 17 rows rest on one of them. If every one of those 17 ended up refused,
+69 of 94 would still build, which is still about three quarters.
 
 | Case (PLAIN_RUBY.md's summary) | On the compiler | Task | Rests on | Why |
 |---|---|---|---|---|
 | `while left` on a bare number | Stays | 3 | | Ruby's loop never stops; a frozen game stays a teaching error (the guardrail on a loop whose test is always true) |
-| A loop on plain numbers that never ends | Stays | 3 | | Setup is real Ruby, so it hangs as Ruby does; Ctrl-C names the line. Today's teaching error is lost |
+| A loop on plain numbers that never ends | Stays | 3 | | Setup is real Ruby, so it hangs as Ruby does; the watchdog prints where, with the teaching line, as a notice |
 | `hp + 1` on its own line | Warns | 3 | | Ruby does nothing with it; warned, not refused |
 | `lives.nonzero? \|\| 1` | Ruby | 3 | T | A tagged answer used at once |
 | `alive = hp` when `alive` started as `true` | Warns | 3 | T | A tagged value kept |
