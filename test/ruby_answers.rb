@@ -50,6 +50,7 @@ module RubyAnswers
     def draw_text(*, **) = nil
     def var(_name, start, **) = start
     def func(name, &body) = @funcs[name] = body
+    def scene(name, &body) = @funcs[name] = body
     def call(name) = @funcs.fetch(name).call
   end
 

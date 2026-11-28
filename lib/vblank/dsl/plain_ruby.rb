@@ -1317,7 +1317,7 @@ module VBlank
         # `@x ||= var :x, 0`, the same as `@x = var :x, 0` the first time.
         def instance_variable_or_text(node)
           return kept_part_text(node, "self") if @follows_instance_variables && part_made?(node.value)
-          return instance_variable_logic_text(node, "join_either") unless LocalNames.makes_variable?(node.value)
+          return instance_variable_logic_text(node, "join_either", plain: kept_right_side_text(node)) unless LocalNames.makes_variable?(node.value)
 
           "#{node.name} ||= #{WRITES}.keep_as_own((#{value_text(node.value)}), self, :#{node.name})"
         end
@@ -1331,6 +1331,18 @@ module VBlank
         def kept_part_text(node, owner)
           "(#{INSTANCE_VARIABLES}.note_kept_part(#{owner}, :#{node.name}, #{node.value.slice.inspect}); " \
             "#{node.name} ||= #{INSTANCE_VARIABLES}.keeping_part(#{owner}) { #{rewritten_text(node.value)} })"
+        end
+
+        # `@field ||= Field.sprites(...)`, or any right side but a `.new` of its own: Ruby runs it the
+        # first time the line runs and keeps what it gives, so the parts it makes as it runs, however
+        # many calls down, are kept as a `.new` is (InstanceVariables.keeping_part). Which parts those
+        # are is known only as it runs, never from the line. A right side that jumps (`@x ||= (y or
+        # next)`) is left as written, since a block would end at its `next`.
+        def kept_right_side_text(node)
+          return copied_text(node) if !@follows_instance_variables || jump_in(node.value)
+
+          "(#{INSTANCE_VARIABLES}.note_kept_part(self, :#{node.name}, #{node.value.slice.inspect}, written_new: false); " \
+            "#{node.name} ||= #{INSTANCE_VARIABLES}.keeping_part(self, :#{node.name}) { #{rewritten_text(node.value)} })"
         end
 
         # `c ||= Counter.new` in a block of the game's, where `c` is a local of the game's own block,
@@ -1372,8 +1384,8 @@ module VBlank
         # `@x ||= value` and `@x &&= value`. On an instance variable the game names, in game code,
         # it is `@x = @x || value`, so a yes or no is set as the game plays. Anything else is Ruby's
         # own, which leaves the instance variable alone where it holds something already.
-        def instance_variable_logic_text(node, step)
-          plain = copied_text(node)
+        # +plain+ is the line as it runs where the instance variable holds no game variable.
+        def instance_variable_logic_text(node, step, plain: copied_text(node))
           return plain unless @follows_instance_variables
 
           joined = "#{STEPS}.#{step}(#{instance_variable_read_call(node.name)}) { #{rewritten_text(node.value)} }"

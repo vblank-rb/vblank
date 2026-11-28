@@ -796,30 +796,58 @@ module VBlank
             "#{Messages::AuthorSource.at_author_line}"
         end
 
-        # `@counter ||= Counter.new` (Rewriter#kept_part_text): the part made in the block, and
-        # every part its `initialize` makes, is kept after its first pass (Builder#keeping_part).
+        # `@counter ||= Counter.new`, or `@field ||= Field.sprites(...)` (Rewriter#kept_part_text):
+        # Ruby runs the right side the first time the line runs and keeps what it gives, so every
+        # part made while the block runs, however many calls down, and every part their
+        # `initialize` makes, is kept after its first pass (Builder#keeping_part). The block runs
+        # only where Ruby's `||=` runs it, so what it makes is what Ruby makes.
         #
-        # +owner+ is the object whose instance variable keeps it, or nil for a local. An owner made
-        # again on every pass (Uses#made_every_pass?) is new in Ruby on every pass, and so is what
-        # its `||=` keeps: that part is made every pass too, and refused if it changes.
-        def keeping_part(owner, &)
+        # +owner+ is the object whose instance variable +label+ keeps it, or nil for a local. An
+        # owner made again on every pass (Uses#made_every_pass?) is new in Ruby on every pass, and
+        # so is what its `||=` keeps: that part is made every pass too, and refused if it changes.
+        def keeping_part(owner, label = nil, &)
           builder = Builder::Session.builder
           return yield unless builder
 
           uses = builder.instance_variable_uses
-          return uses.note_kept(builder.keeping_part(&)) unless uses.made_every_pass?(owner)
+          return builder.keeping_in_part_made_every_pass(owner.class.name || "this class", &) if uses.made_every_pass?(owner)
 
-          builder.keeping_in_part_made_every_pass(owner.class.name || "this class", &)
+          count = uses.objects_made_count
+          kept = builder.keeping_part(&)
+          made = uses.objects_made_since(count)
+          refuse_nothing_kept!(label, made, uses) unless kept
+          uses.note_kept_site_made_part(owner, label) if label && made.any? { |object| kept_part_changes?(object, uses) }
+          # A Struct handed back that the block did not make was made elsewhere, and stays as it was.
+          made.any? { |object| object.equal?(kept) } ? uses.note_kept(kept) : kept
+        end
+
+        # A part, or a Struct, whose numbers change after it is made.
+        def kept_part_changes?(object, uses) = object.is_a?(Struct) || uses.changing_part?(object)
+
+        # The right side of `||=` gave nil or false, so Ruby keeps nothing in +label+ and runs the
+        # right side again on the next pass: what it +made+ that changes is new on every pass.
+        def refuse_nothing_kept!(label, made, uses)
+          return unless Builder::Session.recording?
+
+          changing = made.find { |object| kept_part_changes?(object, uses) }
+          return unless changing
+
+          name = changing.class.name || "this class"
+          raise Refused, "This line keeps nothing in `#{label}`. The right side of `||=` gives nil or false, and it makes " \
+                         "a new `#{name}`. While `#{label}` is nil, Ruby runs the right side again on every pass, " \
+                         "so it makes a new `#{name}` every pass. To fix this, give back the part from the right " \
+                         "side, or make it above the game loop.#{Messages::AuthorSource.at_author_line}"
         end
 
         # Runs before every `||=` that keeps a part (Rewriter#kept_part_text), even one Ruby skips
         # since +label+ holds something already: two lines in game code that keep different
-        # things in one name are refused (Uses#refuse_kept_as_another!).
-        def note_kept_part(owner, label, made)
+        # things in one name are refused (Uses#refuse_kept_as_another!). +written_new+ is false
+        # where the line's right side is not a `.new` of its own.
+        def note_kept_part(owner, label, made, written_new: true)
           builder = Builder::Session.builder
           return unless Builder::Session.recording?
 
-          builder.instance_variable_uses.refuse_kept_as_another!(owner, label, made)
+          builder.instance_variable_uses.refuse_kept_as_another!(owner, label, made, written_new: written_new)
         end
 
         def refuse_part_made_every_pass!(owner, keeper)
@@ -2250,23 +2278,40 @@ module VBlank
 
           def keep_data_field_copy(holder, field, copy) = (@data_field_copies[holder] ||= {})[field] = copy
 
-          # One line of game code that keeps a part with `||=`: what it makes, as written, and where.
-          KeptSite = Data.define(:made, :at)
+          # One line of game code that keeps a part with `||=`: what its right side is, as written,
+          # where, and whether it is known to make a part that changes. A `.new` is taken to; any
+          # other right side is known to once it has run (#note_kept_site_made_part).
+          KeptSite = Data.define(:made, :at, :makes_part)
 
           # +owner+'s +label+ (a local's name where +owner+ is nil) is kept with `||=` as +made+ on
-          # the line game code is at. Ruby keeps what the line that runs first makes, which may be
-          # another line than the one the build met first, so two lines that make different things
-          # are refused.
-          def refuse_kept_as_another!(owner, label, made)
+          # the line game code is at, +written_new+ where the line writes `.new` itself. Ruby keeps
+          # what the line that runs first makes, which may be another line than the one the build
+          # met first, so two lines that make different things are refused. A right side that is
+          # not a `.new` may make nothing that changes (`@font ||= fonts.first`), and the lines are
+          # refused only once the first is known to make a part that changes.
+          def refuse_kept_as_another!(owner, label, made, written_new: true)
             sites = @kept_sites[owner] ||= {}
-            first = sites[label] ||= KeptSite.new(made: made, at: Messages::AuthorSource.at_author_line)
-            return if first.made == made
+            first = sites[label] ||= KeptSite.new(made: made, at: Messages::AuthorSource.at_author_line, makes_part: written_new)
+            return if first.made == made || !first.makes_part
 
             raise Refused, "`#{label}` keeps `#{first.made}` on one line#{first.at}, and `#{made}` on this line. " \
                            "In Ruby, `#{label}` keeps what the line that runs first makes as the game plays, and " \
                            "VBlank cannot know which line that is. To fix this, keep each one in a name of its " \
                            "own, or make `#{label}` above the game loop.#{Messages::AuthorSource.at_author_line}"
           end
+
+          # The first line keeping +owner+'s +label+ made a part that changes as its right side ran
+          # (InstanceVariables.keeping_part), so a line keeping something else there is refused.
+          def note_kept_site_made_part(owner, label)
+            first = @kept_sites[owner]&.[](label)
+            @kept_sites[owner][label] = first.with(makes_part: true) if first
+          end
+
+          # How many objects were made so far (#note_object_made): handed back to
+          # #objects_made_since, which names the ones made after.
+          def objects_made_count = @made_order.size
+
+          def objects_made_since(count) = @made_order.keys.drop(count)
 
           # The variable name for +owner+'s +label+, from +name+ (InstanceVariables.free_name_for):
           # for one followed only because its code may change it, +name+ for the first object of

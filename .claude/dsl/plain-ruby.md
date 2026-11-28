@@ -138,7 +138,13 @@ instance variables.
   `InstanceVariables.keeping_part`, `Builder#keeping_part`): made the first time the line runs, in
   Ruby and in the game, and the same part after, its scene's re-entries included, which is how
   `examples/dive.rb` and `examples/shmup.rb` make their scene's parts so what they show belongs to
-  the scene. Every part its `initialize` makes is kept with it. A local of the game's own block,
+  the scene. Every part its `initialize` makes is kept with it. Any other right side on an
+  instance variable keeps every part it makes as it runs, however many calls down
+  (`@field ||= Field.sprites(art)`, `Rewriter#kept_right_side_text`): which parts those are is
+  known only by running it, as Ruby does once. A right side that gives back nil or false is run
+  again by Ruby on the next pass, so a changing part it made is refused
+  (`InstanceVariables.refuse_nothing_kept!`); and two lines keeping different right sides in one
+  name are refused once the first is known to make a changing part. A local of the game's own block,
   given nothing in another block, keeps one the same way (`c = nil` above the loop, `c ||=
   Counter.new` in it; `Rewriter#kept_local?`). A `||=` on a part that is itself made every pass
   (`Uses#made_every_pass?`) keeps nothing, since Ruby's is new on every pass with it: a changing

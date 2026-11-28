@@ -2150,6 +2150,98 @@ class TestPlainRubyAnswers < Minitest::Test
     end
   end
 
+  # A method that makes the part, under `||=`: Ruby runs the right side once and keeps what it
+  # hands back, as for `.new`, however many calls down the part is made.
+  def test_a_changing_object_kept_from_a_class_method_in_a_scene
+    agrees("@counter ||= AnswerCounters.make in a scene", reads: %i[m n], passes: 3) do
+      m = n = 0
+      mode = :answer_kept_made
+      scene(:answer_kept_made) do
+        @counter ||= AnswerCounters.make
+        @deep ||= AnswerCounters.make_deep
+        m = @counter.bump
+        n = @deep.bump
+        mode = :answer_kept_made
+      end
+      game_loop { call mode }
+    end
+  end
+
+  def test_a_changing_object_kept_from_another_objects_method_in_a_scene
+    agrees("@bought ||= shop.fresh in a scene", reads: %i[m], passes: 3) do
+      shop = AnswerCounterShop.new(AnswerCounter.new)
+      m = 0
+      mode = :answer_kept_bought
+      scene(:answer_kept_bought) do
+        @bought ||= shop.fresh
+        m = @bought.bump
+        mode = :answer_kept_bought
+      end
+      game_loop { call mode }
+    end
+  end
+
+  # Handed back a counter made above the game loop, `@held` is that counter: a bump through
+  # either is a bump of the one counter.
+  def test_an_object_kept_from_a_method_handing_back_one_made_above
+    agrees("@held ||= shop.shared in a scene", reads: %i[m n], passes: 3) do
+      shared = AnswerCounter.new
+      shop = AnswerCounterShop.new(shared)
+      m = n = 0
+      mode = :answer_kept_shared
+      scene(:answer_kept_shared) do
+        @held ||= shop.shared
+        @held.bump
+        shared.bump
+        m = shared.n
+        n = @held.n
+        mode = :answer_kept_shared
+      end
+      game_loop { call mode }
+    end
+  end
+
+  def test_a_changing_object_a_method_makes_in_a_scene_is_refused
+    refused("c = AnswerCounters.make in a scene", /above the game loop/) do
+      m = 0
+      scene(:answer_made_unkept) do
+        c = AnswerCounters.make
+        m = c.bump
+      end
+      mode = :answer_made_unkept
+      game_loop { call mode }
+    end
+  end
+
+  # Handed back nil, `||=` keeps nothing, so Ruby runs the right side again on the next pass,
+  # making a new counter each time.
+  def test_an_object_made_under_or_equals_handing_back_nil_is_refused
+    refused("@lost ||= shop.lost in a scene", /`@lost`.*nil.*every pass/m) do
+      shop = AnswerCounterShop.new(AnswerCounter.new)
+      scene(:answer_kept_nothing) { @lost ||= shop.lost }
+      mode = :answer_kept_nothing
+      game_loop { call mode }
+    end
+  end
+
+  # Two lines keeping different parts in one name: which runs first decides what Ruby keeps.
+  def test_two_methods_kept_in_one_name_are_refused
+    refused("@either ||= AnswerCounters.make or shop.fresh", /`@either` keeps/) do
+      shop = AnswerCounterShop.new(AnswerCounter.new)
+      m = 0
+      scene(:answer_kept_twice) do
+        if pressed(:a)
+          @either ||= AnswerCounters.make
+        else
+          @either ||= shop.fresh
+        end
+        m = @either.bump
+      end
+      mode = :answer_kept_twice
+      game_loop { call mode }
+    end
+  end
+
   def test_an_object_that_never_changes_made_in_the_game_loop
     agrees("AnswerSpot.new(8).left in game_loop", reads: %i[m], passes: 2) do
       m = 0

@@ -388,6 +388,26 @@ class AnswerLazyKeeper
   def counter = @counter ||= AnswerCounter.new
 end
 
+# Makes counters from class methods: one at once, or one a few calls down.
+module AnswerCounters
+  def self.make = AnswerCounter.new
+  def self.make_deep = handed(make)
+  def self.handed(counter) = counter
+end
+
+# Hands out counters from methods of its own: a new one, the one it was given, or none at all
+# after making one it keeps nowhere.
+class AnswerCounterShop
+  def initialize(shared) = @shared = shared
+  def fresh = AnswerCounters.make_deep
+  def shared = @shared
+
+  def lost
+    AnswerCounters.make
+    nil
+  end
+end
+
 # Blocks to run on each pass, kept in a plain Ruby Array.
 class AnswerHooks
   def initialize
