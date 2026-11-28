@@ -447,6 +447,26 @@ writing Ruby that `test/ruby_answers.rb` checks against Ruby itself, and every l
 method for nothing. A core method neither in the prelude nor a primitive is refused by name until
 someone writes it, which is a line of Ruby, not a change to the compiler.
 
+### Fast paths come from what games write
+
+The compiler makes the Ruby that VBlank's games already write fast; it does not invent types for
+them to adopt. A game's own small value class (a `Vec` Struct with a `+`) is copied as its numbers,
+so it costs what the same arithmetic written by hand costs, and VBlank ships no vector, rectangle or
+colour class of its own. A fast path is added for a construct only when VBlank's own games use it
+today, and it lowers core Ruby rather than adding a class. Each one carries a cost test.
+
+The ones the games use now:
+
+- `clamp` and `between?` on a number: two compares, no call.
+- `&` by a mask and `%` by a power of two: one AND.
+- `times`, `upto`, `step`, `each_with_index`: a counted loop.
+- `each` over an Array of Structs: a walk of the pool, a list per field.
+- `case` over a state: a jump table. A Symbol in per-frame code (`@state = :falling`) is numbered
+  at build time and kept in a byte, so a state named by a Symbol costs what an integer constant
+  does.
+- `anybits?` and `allbits?`: one AND and a test.
+- `<`, `>`, `==` on a game's Struct that includes `Comparable`: the compares its `<=>` makes.
+
 ## Costs
 
 Correct and slow comes before refused. A construct that is costly on a small console builds as
