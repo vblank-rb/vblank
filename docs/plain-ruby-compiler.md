@@ -7,7 +7,7 @@ something else, the page says so.
 
 The short version: **setup code runs as Ruby; per-frame code is compiled from its tree, with the
 real objects setup made in hand; a place per-frame code writes lives on the console, and anything
-else stays Ruby.** No answer comes from how a line is spelled.
+else stays Ruby.** No answer comes from how a line is spelled or how its file was loaded.
 
 ## Why a compiler
 
@@ -21,7 +21,8 @@ scene.
 
 A compiler answers those questions from what the program does: which places per-frame code writes,
 found on the real objects, and what kind of value reaches each one. The verbs stay as they are;
-they are what the compiler emits into. The lowerings do not change.
+they are what the compiler emits into. The lowerings learn two new IR kinds, `stop` and `log`
+(below), and nothing else.
 
 ## Turning it on
 
@@ -45,29 +46,46 @@ both and compare.
 
 ## Setup and per-frame code
 
-**Setup code** runs as real Ruby, once, while the game is built. It is:
+**Per-frame code** is compiled. It is the blocks of the game verbs (`game_loop`, `scene`, `func`,
+`once_a_frame`, `every`, `after`, `repeat`, `each_pass`, a timer's `on_tick`, a menu's `item`, a
+data pack's `fill_from_copy`), and every method, block and lambda they reach, however many calls
+down, in whatever file it is written and however that file was loaded.
 
-- the `VBlank.game` block outside every game block (below);
-- class and module bodies, and every method that setup code calls;
-- the block of `once { }`, and the right side of a make-once `||=` (see "Making parts once");
-- every file loaded with plain `require`, and every gem.
+**Setup code** runs as real Ruby, once, while the game is built. It is everything else: the
+`VBlank.game` block outside the game verbs' blocks, class and module bodies, every method setup
+code calls, every `once { }` block and make-once right side (see "Making parts once"), and the
+files and gems the game loads.
 
-**Per-frame code** is compiled. It is:
-
-- the blocks of the game verbs: `game_loop`, `scene`, `func`, `once_a_frame`, `every`, `after`,
-  `repeat`, `each_pass`, a timer's `on_tick`, a menu's `item`, a data pack's `fill_from_copy`;
-- every method of a game file that per-frame code calls, however many calls down, and every block
-  or lambda written in a game file that per-frame code calls, whether per-frame code or setup
-  made it.
-
-A game file is one loaded with `VBlank.require_game_file`, or the file holding `VBlank.game`. A
-method is per-frame code because of where it is reached from, not because of what its lines say:
-`FadedScreen#step` called from `initialize` runs as Ruby, and called from a scene is compiled.
+A method is per-frame code because of where it is reached from, not because of what its lines
+say: `FadedScreen#step` called from `initialize` runs as Ruby, and called from a scene is compiled.
 Decision: the split follows the call, because the same method is often both (a part's `restart`
 is called while setting up and by a scene), and Ruby gives it one meaning wherever it is called.
 
-Setup code sees every game number at its start. A game number never changes while the game is
-built, because nothing plays while it is built.
+Decision: how a file was loaded decides nothing, and game files load with plain `require` and
+`require_relative`. A file loads as ordinary Ruby. When per-frame code calls a method, the
+compiler takes the real `Method` from the receiver's real class, reads its `source_location`,
+parses that file with Prism (once per file) and finds the `def` or block at that line. So what is
+compiled is what per-frame code reaches, never what a file was loaded as. A gem's Ruby method
+reached from per-frame code is compiled like the game's own, inside the subset.
+`VBlank.require_game_file` exists only because the rewrite must rewrite a file's text before Ruby
+loads it; it stays for the rewrite and goes with it. Under the rewrite, the way a file was loaded
+chose whether its lines were read as game code, which gave a silent wrong answer whenever the
+author picked the other one.
+
+The limits are those of reading the source back. A method with no Ruby source (made by `eval` or a
+string `class_eval`, or written in C, as a gem's native method is) reached from per-frame code is
+refused with the one error, naming the method and where it was defined. A file changed on disk after
+it loaded no longer matches the methods Ruby holds, so the lines `source_location` gives point at
+other code. The compiler refuses such a file rather than reading it again: `VBlank.game` notes the
+time the game was declared, and a file whose modified time is later, or whose line holds no `def`
+or block of that method's name, stops the build with "`hud.rb` changed after it was loaded. To fix
+this, build again." Reading it again cannot help, since the classes in memory are the old code and
+the compiled code would not match what setup ran.
+
+Setup code sees every game number at its start, since nothing plays while the game is built. Setup
+is the build machine's Ruby: `Time.now` there is the time the game was built, and `rand` there is a
+number picked once, while building. Both are fine for what setup does (a build stamp, a level laid
+out once) and neither ever reaches the console.
 
 ## Known and played values
 
@@ -75,10 +93,11 @@ The compiler walks per-frame code with an abstract interpreter. Every expression
 things:
 
 - **known**: a real Ruby object, the same one Ruby would have at that line on every pass. A
-  constant, a literal, a part setup made, a sum of knowns, a known method's answer.
+  literal, an allowed constant (below), a part setup made, or the answer of a pure call (below) on
+  known inputs.
 - **played**: a value that lives on the console, given as an IR expression of a kind (below).
-  Reading a played place, or a verb that answers the console's state (`pressed(:a)`, `rand`), gives
-  one, and so does any working-out that uses one.
+  Reading a played place gives one, and so does a verb that answers the console's state
+  (`pressed(:a)`, `rand`), a call that is not pure, and any working-out that uses one.
 
 What is known is worked out while building and costs the console nothing: `size = 8 * 2` in a
 game loop is 16 in the cartridge. A test on a known value is decided while building, and only the
@@ -90,12 +109,145 @@ is known, after `x = hp` it is played. Where two paths meet with different value
 `if` on a played test, round a loop the game runs) it becomes a console variable that holds
 whichever the game took. Its start is fresh on each pass, as Ruby's block locals are.
 
+**The walk changes nothing setup made.** It reads real objects and never writes them, never calls
+a method that changes one, and never runs code that is not pure (below). A change per-frame code
+makes to a setup object is a write of a place, which makes that place played; it is not made to the
+Ruby object while building.
+
+## Constants in per-frame code
+
+"Plain Ruby" means Ruby's syntax and its core, not the standard library. So a constant named in
+per-frame code is refused at its line unless it is one of these: a constant defined in the game's
+own files (defined under the folder of the file that declares the game, as today's rule finds by `const_source_location`), VBlank's own, Ruby's core that the subset covers (the values and error classes today's
+`PlainRuby::BlockChecks::RUBY_BASICS` lists, with `Math` from the prelude), a stand-in (below), or
+one the game names with `allow:`. There is no list of what is refused: one rule catches every
+other constant, and a value of such a class that setup made and per-frame code calls a method on is
+refused the same way.
+
+The rule and its message are today's (`BlockChecks.refuse_outside_constant!`), kept as the
+constant form of the one compiler error, with its `allow:` way out for a library the author knows
+is safe in game code:
+
+```
+`JSON` is not part of your game, so this block cannot use it. This block describes what the game
+does as it plays. If you need `JSON` while building, use it above the block and keep the result in
+a constant. If this library is safe here, add it with `allow:`. (at game.rb:42)
+```
+
+Decision: one rule for every constant, not a list of modules, so a constant nobody thought of is
+refused with a reason rather than called for real with a wrong answer. A constant that `allow:`
+names is called as any other code is: walked where it has Ruby source, and refused where it has
+none and is not in `CoreEffects`.
+
+A handful of constants get a message of their own, because a plain hint helps:
+
+| Constant | Its message says |
+|---|---|
+| `Time`, `Date`, `DateTime`, on a lowering with no clock that gives a date | the console has no clock with a date, and names `clock` (`.claude/dsl/clock.md`) where the console has one |
+| `Random` with no seed | per-frame code cannot seed from the machine; give a seed, or use `rand`, `roll` or `chance` |
+| `File`, `Dir`, `IO` | the console has no files; read it above the block, or in a `once` block |
+| `Thread`, `Ractor`, `Fiber` | a game runs one thing at a time; use `every`, `after` or `each_pass` for work spread over frames |
+
+### Stand-ins
+
+A few standard classes are stood in by VBlank's own where their meaning holds on a console. A
+stand-in is reached only from per-frame code; in setup the class is Ruby's own.
+
+| Stand-in | What it answers | What it refuses |
+|---|---|---|
+| `Random` | `Random.new(seed)` is a generator of the game's own random numbers (the `rand`, `roll` and `chance` verbs, `.claude/dsl/randomness.md`), its state a played place seeded from `seed`; it answers `rand`, `rand(n)`, `rand(range)`, `rand(float)` and `seed`, and is what `Array#sample` and `shuffle` take as `random:` | `Random.new` with no seed in per-frame code (Ruby seeds it from the machine), `bytes`, `Random::DEFAULT`, `Random.urandom` |
+| `Time` | `Time.now` reads the console's clock (the `clock` verb, `.claude/dsl/clock.md`); `Time.new(year, month, day, hour, min, sec)` makes a time; a time answers `year`, `month`, `day`, `hour`, `min`, `sec`, `wday`, `yday`, `to_i`, `+` and `-` with whole seconds, `-` of two times, and the comparisons | `zone`, `utc_offset`, `utc`, `localtime`, `usec`, `nsec`, `strftime`, `to_f`, `round` and every method not in the list |
+| `Date`, `DateTime` | `Date.today`, `Date.new(year, month, day)`, and a date's `year`, `month`, `day`, `wday`, `yday`, `+` and `-` with whole days, `-` of two dates, `leap?`, the comparisons; `DateTime` as `Time` | `strftime`, `parse`, calendar reforms, and every method not in the list |
+
+The clock's stand-ins build only on a lowering whose `clock` gives a date: the Advance's
+cartridge, and the C, JavaScript and Ruby builds. On the Color, the Super Nintendo, the Genesis and
+the PlayStation the build refuses them in plain words, naming `clock` where the console has one. On
+a cartridge whose clock is not there or was never set as the game plays, `Time.now` stops the game
+in plain words saying so, since Ruby's `Time.now` always has an answer and a time of zeros is not
+it; a game that may run with no clock asks `clock.present?` first.
+
+The numbers a stood-in `Random` draws are the game's own sequence, not Ruby's Mersenne Twister, so
+a seed gives the same numbers on every lowering but not the ones Ruby gives. What Ruby promises
+of them holds: their range, their kind, and the same sequence for the same seed. A RubyAnswers case
+that draws compares those, never the numbers.
+
+The rule for adding a stand-in: only where it gives Ruby's answer for every method it accepts, and
+refuses every other method by name. A method whose answer the console cannot give (a time zone, a
+nanosecond from a clock that counts seconds) is refused, never answered with something near.
+
+## Calls
+
+A call in per-frame code goes one of five ways, chosen by the receiver's real class and the method
+it reaches, never by the file it is in:
+
+1. **A method with Ruby source** (a `def`, a `define_method` block, a lambda, a block): walked.
+   Its body is per-frame code with `self` the real receiver. The tree comes from the method's
+   `source_location` parsed by Prism, cached per file. `attr_reader`, `attr_writer`,
+   `attr_accessor`, Struct and Data members, `Forwardable`'s `def_delegator(s)`, `Comparable`'s
+   operators and `Struct#==` have no Ruby source and are primitives the compiler knows. A method made
+   by `eval` of a string, or by `class_eval` with a string, has no source to read and is refused in
+   per-frame code with the one error; `define_method` with a block, in setup, is fine.
+2. **A verb or a handle's method** (Builder, `DSL::Value`, a sprite, a list): called for real while
+   building, handed played values as the IR handles the verbs already take. This is how IR is made.
+3. **A pure core method on known inputs**: called for real while building, and its answer is
+   known. `RubyCompiler::CoreEffects` is the table that says which core methods are pure (`+`,
+   `Integer#abs`, `Array#size`, `Array#map` with a pure block, `Hash#fetch`, `String#upcase`,
+   `Comparable#clamp`, `Math.sqrt` ...). A block handed to one must be pure too, which the walk
+   checks.
+4. **Any other core method**: compiled, from the prelude (below). This covers a pure method with a
+   played input, a method that changes its receiver (`push`, `<<`, `[]=`, `sort!`, `clear`,
+   `delete`, `String#<<`, `upcase!`), which is a write of the receiver's place whatever its
+   arguments, and a method that draws a random number (`Array#sample`, `shuffle`, `Kernel#rand`, a stood-in
+   `Random#rand`), which draws from the game's own random numbers, as `rand` does,
+   on every pass.
+5. **A method with no Ruby source outside the core** (a gem's C extension): refused with the one
+   error, which says to do that work in setup or in a `once` block.
+
+`CoreEffects` takes the place of today's `CallChanges` and `ItemQuestions`: one table, keyed by
+class and method, of pure, changes-its-receiver, or draws-a-random-number.
+
+**Tests and loops** mean what Ruby says, with Ruby's truth (only nil and false are false). A test
+on a known value compiles one branch; on a played value both, as the game's branch. `while`,
+`until`, `loop`, `times`, `upto`, `step`, `each`, `for` over played bounds or a played collection
+are loops the game runs; over known ones the build chooses to unroll or count, and the profile says
+which (`rom.profile`). `break`, `break value`, `next`, `redo`, `return` from a method or a routine,
+and `next` and `break` in `game_loop` mean Ruby's jumps. `begin`, `rescue`, `ensure` and `retry`
+are compiled for the errors the game raises and for the errors Ruby raises as the game plays (below).
+
+**Errors.** Ruby raises an error as a line runs, and so does the game. A `raise`, and an error
+Ruby itself would raise (a method on nil, `sort!` on Structs with no `<=>`, a write to a frozen
+Struct, a `Rational` from a negative power), is compiled as a **stop**: on the pass the line runs,
+the game stops with the error's message and line, on every lowering. The build stops instead only
+when the error is on every path from power-on (it is in setup, or it runs on the first pass under
+no test the game makes), since then no play of the game avoids it. An error on a path that may run
+is a build warning naming the line, so it is not first met on a console.
+
+`stop` is a new IR kind: a message number, which the build keeps the text for, the way a `log`
+line's is kept. Each lowering ends the game there and makes the message readable (the
+interpreter raises `IR::ProgramError` with it; the C, JavaScript and Ruby builds print it; each
+console halts with the number where its reader finds it). It is added by the epic's third task, on
+every lowering, and goes in the conformance fixture. The existing `stop_full` (a full list) becomes
+one use of it.
+
+**Pattern matching**, multiple assignment, splats, keyword arguments, `defined?`, `__method__`,
+`instance_variable_get` and `send` with a known name mean what Ruby says. Reflection with a played
+name is refused.
+
 ## Which places are played
 
-**A place is played when per-frame code writes it.** A place is a setup local (a local of the
-`VBlank.game` block, or of a scope outside it, that per-frame code can see), an instance variable of
-a real object, a field of a real Struct, an item of a real Array, or a value of a real Hash at a
-key. Anything else setup made stays Ruby, and per-frame code reads it as known.
+**A place is played when per-frame code writes it.** The places are:
+
+- a setup local per-frame code can see: a local of the `VBlank.game` block or of a scope outside it;
+- a local a lambda or block made in setup captured, keyed by the real binding it closed over, so
+  two calls of `def counter = (n = 0; -> { n += 1 })` give two places;
+- an instance variable of a real object, a class's instance variable, and a class variable
+  (`@@count`), keyed by the class that holds it;
+- a field of a real Struct, an item of a real Array, a value of a real Hash at a key, and the
+  characters of a real String (`label << "!"`, `upcase!`);
+- a global variable the game defines (`$level`): one fixed place. Ruby's own globals (`$stdout`,
+  `$0`, `$~`, `$;`) are refused.
+
+Anything else setup made stays Ruby, and per-frame code reads it as known.
 
 Places are keyed by the real object, never by a name in the source: `@frames` of one
 `FadedScreen` is a different place from `@frames` of another, and a writer `dial.level += 3`
@@ -103,7 +255,12 @@ makes `level` played on that dial alone. The compiler finds the played places by
 per-frame code from every game block, writing nothing, and noting every place written; then it
 walks again with those places played, since a test that was known may now be played and reach more
 code. It stops when a round finds no new place. The set only grows and the places are finite, so it
-always stops, and in practice the second round finds nothing new.
+always stops.
+
+A place also has a **path**: how setup reaches it from the game block's locals, such as
+`copyright.@screen.@frames`. The path names the place's game variable (`player[:name]` in a test,
+the profile, a save's layout) as today's names do, and it stays the same when the build runs again,
+which "Making parts once" needs.
 
 A throwaway prototype of the walk, run on Pokemon Pinball's copyright screen copied out of the
 game, with a stub builder, found exactly the instance variables the game names with
@@ -113,8 +270,8 @@ branch that writes it is decided known and never taken. That is the gain of keyi
 place is played on the parts whose code writes it.
 
 A played place starts at power-on from the value it holds when the build reaches the game: its
-setup value. That value is read from the real object and never written back, so the object a game
-made stays as setup left it. Two builds of one game (one per console) start from the same objects.
+setup value. Two builds of one game (one per console) start from the same objects, since the build
+never changes them.
 
 A place setup gives a `var` handle (`showing = var :showing, 0`, `@phase = builder.var(...)`) is
 that variable: per-frame writes go into it, and it keeps the name, width and save setting the
@@ -125,13 +282,13 @@ changes is what Ruby sees too.
 
 | Today (rewrite) | What it guesses from the text | The compiler's rule |
 |---|---|---|
-| `Builder::Session` (`recording?`) | Whether a line runs as game code is a flag set while a game verb's block runs, so a method behaves differently depending on who is recording | Per-frame code is what game blocks reach by calls; the walk knows, and no flag exists while real Ruby runs |
-| `LocalNames` (`game_array?`, `GAME_VERBS`, `RUBY_ITERATORS`) | Which local names are game state, from the verbs written near them; whether a `.each` is Ruby's or the game's from whether the receiver is spelt as a literal | A setup local is played when per-frame code writes it (Prism resolves which scope a local is in); a walk over a known collection is unrolled and one over a played one is a loop, by the value |
-| `InstanceVariables` (`mark_changing`, `game_variables`) | Which instance variables are game state, from spellings such as `@x = 1 - @x`, or the author's own marks | Played when per-frame code writes it, on that object; `game_variables` is still read for a chosen name and `saved: false`, and asks for nothing else |
-| `Writes.write` | Whether a write replaces a value or goes into the variable a name holds, and what to do under a game test, from the place's spelling | Ruby's write, always: a played place takes the value; a known place written under a played test is played, since per-frame code writes it |
+| `Builder::Session` (`recording?`) | Whether a line runs as game code is a flag set while a game verb's block runs | Per-frame code is what game blocks reach by calls; the walk knows, and no flag exists while real Ruby runs |
+| `LocalNames` (`game_array?`, `GAME_VERBS`, `RUBY_ITERATORS`) | Which local names are game state, from the verbs written near them; whether an `.each` is Ruby's or the game's from the receiver's spelling | A local is played when per-frame code writes it, keyed by its binding; a walk over a known collection is unrolled and one over a played one is a loop, by the value |
+| `InstanceVariables` (`mark_changing`, `game_variables`), `library_file?` | Which instance variables are game state, from spellings such as `@x = 1 - @x`, the author's marks, or the file's way of loading | Played when per-frame code writes it, on that object, whatever the file; `game_variables` is read only for a chosen name and `saved: false` |
+| `Writes.write` | Whether a write replaces a value or goes into the variable a name holds, from the place's spelling | Ruby's write, always: a played place takes the value; a known place written under a played test is played, since per-frame code writes it |
 | `Steps` (`game_test?`, `equal_test`) | At run of the rewritten code, whether a value is the game's, and fixes for Ruby asking the wrong side (`3 == hp`) | Known or played is decided by the walk before any IR is made; an operator on a played value is compiled whichever side it is on |
 | `Promotion` | When a plain value must become a game variable, from tests open around a line | A per-frame local becomes a console variable where paths with different values meet; a setup place by the written rule |
-| `CallChanges`, `ItemQuestions`, `KnownRounds` | Which calls change their receiver, which loops are counted while building | The receiver's real class (a game method is walked, a core method is in the prelude's table) and known or played bounds |
+| `CallChanges`, `ItemQuestions`, `KnownRounds` | Which calls change their receiver, which loops are counted while building | `CoreEffects`, and known or played bounds |
 
 ## Making parts once
 
@@ -152,41 +309,67 @@ end
 
 `once { ... }` is a verb: its block is setup code, run as real Ruby the first time the build reaches
 that line, inside the scene, so what the block declares (a screen, sprites, routines) belongs to
-the scene as it does today. Every pass after gets the same object back. In plain Ruby, `once` is
-`@once[site] ||= yield`, so it means what Ruby means, nil kept as well.
+the scene as it does today. Every pass after gets the same object back. A `once` is keyed by its
+line and by `self`: in a method that two parts run, each part has its own. In plain Ruby, `once` is
+`@once[site] ||= yield` on `self`, so it means what Ruby means, nil kept as well.
 
 Decision: a verb, not a new kind of block, because the parts must be locals of the scene body
 (Ruby blocks do not leak locals out, so a `setup do ... end` inside a scene would force instance
 variables again) and because a verb is plain Ruby to read: it is a call with a block.
 
-`@x ||= rhs` in per-frame code is the same thing when `@x` is nil or false as the build reaches it,
-nothing else in per-frame code writes `@x`, and `rhs` reads no played value: the right side runs
-once, as setup code, and the line costs nothing. Where `rhs` reads a played value
-(`@ship ||= Ship.new(hero_x, 0)`), the part is made the first time the line runs, as the game
-plays: its fields are set from the played values on that pass, and a flag remembers it is made.
+`@x ||= rhs` in per-frame code is the same thing when `@x` is nil or false as the build reaches it
+and nothing else in per-frame code writes `@x`: the right side runs once, as setup code.
 
-A `once` block or a make-once right side that reads a played value of the scope around it is
-refused, naming the value, since setup sees only starts. A played value read deeper down, in a
-method the right side calls, reads its start: written down as the one place this design differs
-from Ruby's timing.
+### A played value read inside a `once`
 
-### Parts made as the game plays
+Ruby runs a `once` block on the pass it is first reached, and setup runs it while building. The
+two give the same answer unless the block reads a played value, at any depth. So the block is run
+with a **probe** in every place the build knows is played: an object that stands for "a value the
+game has not worked out yet", and that signals the build the moment anything asks it a question.
+If a probe is asked, or is left inside what the block made, the block read a played value, and that
+`once` is **made as the game plays**: the part's object is set aside while building, and the first
+pass that reaches the line runs its `initialize` as per-frame code, with a flag that remembers it
+ran. The build warns, naming the line and the value read, since the part's declarations (sprites,
+screens) are then made for it without knowing those numbers.
 
-`Thing.new(...)` with a game class, reached in per-frame code with any played argument, is a
-**making site**. Each site has one place for its object; making it again sets that place up again
-from `initialize`, compiled. That is Ruby's answer whenever only one object from the site is in use
-at a time, which is what a part made in a loop and used in that pass is. An object from a site put
-into an Array with room is one of that Array's things (a pool). A second object from one site kept
-alive beside the first (`old = @x; @x = Thing.new`, then both read) is refused as a memory limit:
-the console keeps no heap.
+Places are found as the walk goes, so a `once` may run before a place it reads is known to be
+played. When the walk ends with played places that a `once` run earlier had no probe for, the
+build runs again from the start, with the played places carried in by their paths, until no new
+place appears. Setup is plain Ruby and runs the same way each time. Today's rewrite already builds a
+game again when game code read an instance variable before changing it, so this is no new cost in
+kind. The start of a played value is never read silently.
+
+### Parts made as the game plays: making sites
+
+Every `new` of a class with instance variables or fields, and every `dup`, `clone` and `Data#with`,
+reached in per-frame code is a **making site**, whatever its arguments, except inside `once` and a
+make-once `||=`. Ruby makes a new object each time the line runs, and so does the game.
+
+Each site has a **room**: a fixed number of objects of its class, set aside before the game
+starts. A reference to one is its slot in the room. An object no place outlives the pass with (a
+`Vec` made by `pos + vel + wind` and dropped once the sum is kept) gives its slot back when the
+pass ends. An object kept in a place that outlives the pass keeps its slot until no place holds it,
+which the game counts for that site's objects only. The room is the most the build can see live at
+once: the objects one pass makes where every loop is known; otherwise the site's setting,
+`VBlank.game ..., rooms: { Vec => 16 }`, or a default of 8. A site with no room the build could see
+warns, naming the room and what it costs in memory. Making an object in a full room stops the game
+in plain words, naming the class and the room, as a full Array does.
+
+An object whose fields only `initialize` sets, and that nothing asks `equal?` or `object_id` of (a
+frozen Struct, a Data, most value classes such as `Vec`), is kept by value instead: its fields
+travel with it, and it needs no room and no counting.
+
+So `spots << Spot.new(1, 2)` eight times holds eight Spots, `@point = Point.new(1, 1)` sets a new
+point, and `pos = pos + vel + wind` builds, as Ruby says.
 
 ### Several known objects in one place
 
-A played place that holds one of several known objects (a Struct made under an `if`, two parts
-kept in one name, `pick = big ? sprite_a : sprite_b`) is a **choice**: a small number saying which.
-A call on it is a `case` over the objects, each arm compiled with that object known. nil is one of
-the choices, so `@point` read before the routine that sets it gives Ruby's `NoMethodError`, said
-in plain words, on the pass it happens.
+A played place that holds one of several objects (a Struct made under an `if`, two parts kept in
+one name, `pick = big ? sprite_a : sprite_b`) is a **choice**: a small number saying which. A call
+on it is a `case` over the objects, each arm compiled with that object known. nil is one of the
+choices, so `@point` read before the routine that sets it gives Ruby's `NoMethodError` as a stop,
+on the pass it happens. A choice among the things of one Array (`@target = enemies[i]`) is an index
+into that Array, one arm whatever the count, since the things share a class.
 
 ## The kinds of value
 
@@ -197,56 +380,39 @@ in plain words, on the pass it happens.
 | true, false | a flag | |
 | nil | a flag or a choice member | |
 | Symbol | a state: a number per name | Compared with `==`, called with `call`; `:"level#{n}"` is a state worked out from a number, matched against the routines declared |
-| Mixed (a place given values of two kinds) | a **tagged value**: a number and a byte saying its kind | `alive = hp` after `alive = true`; `[0, 1.5]`; `Array.new(8)` of nils. Every operation checks the tag, as Ruby does; warned as a cost |
-| Part, Struct, Data | known object; its played fields are console variables | Methods walked; `<=>` and `Comparable` compiled |
-| Choice | a number over known objects | See above |
-| Array of numbers | a list with room | Room from `capacity:`, or the most items the compiler can see; see "Costs" |
+| Mixed (a place given values of two kinds) | a **tagged value**: a number and a byte saying its kind | `alive = hp` after `alive = true`; `[0, 1.5]`; `Array.new(8)` of nils. Every operation checks the tag, as Ruby does. Kept in a place, it warns as a cost; a tagged answer used at once (`lives.nonzero? \|\| 1`) is a test and costs nothing more |
+| Part, Struct, Data | a setup object, or a making site's object; its played fields are console variables | Methods walked; `<=>` and `Comparable` compiled |
+| Choice | a number over known objects, or an index into one Array | See above |
+| Array of numbers | a list with room | Room below |
 | Array of Arrays | a list of lists | Rows of one known size are one block of memory |
-| Array of Structs | a pool | As today, with Ruby's order of a walk while it changes |
+| Array of Structs, or of parts | a pool | As today, with Ruby's order of a walk while it changes; an Array of a game class's objects is a pool of their played fields |
 | Hash | keyed slots, with room for keys added | Known keys are slots; a played key is looked up |
-| String | known text, or played text: known pieces and played numbers, with a most length | Drawn, compared, padded, logged; see below |
+| String | known text, or played text with a room | Drawn, compared, padded, formatted, logged; see below |
 | Range | known, or two played ends | |
 | Proc, lambda, Method | known; its body walked where it is called | |
 | Enumerator | a known collection and a played position | `steps.next` in a loop the game runs |
 | table | as today | |
 
-Played text has a most length known while building (a 32-bit number is at most 11 characters),
-so it needs no heap. It answers `size`, `+`, `*` by a known count, `==`, `center`, `ljust`,
-`rjust`, `to_s`, `to_i`, and drawing and logging. A String method with no meaning on the console's
-text (`encode`, `unpack1`, a Regexp) on played text is refused.
+**Room.** A console sets memory aside before the game starts, so every played collection has a
+room. It is, in order: the `capacity:` the game gave; the most items the build can see the
+collection hold (its start, and what known loops add); otherwise the `rooms:` setting for that line,
+or a default of 16 with a warning naming it. A copy (`sort`, `map`, `select`, `dup`, `first(2)`,
+`uniq`, `+`) has a scratch room the size of its source's. Growing past a room stops the game in
+plain words. The build has no range analysis, so `Array.new(n, 0)` and `(0...n).map` with a played
+`n` take the setting or the default.
 
-## What each line means
+**`capacity:`, `width:` and `fast:` in setup.** Setup is real Ruby, and Ruby's `Array.new` refuses
+these keywords. While a game builds on the compiler, `Array.new` takes them: VBlank prepends a
+method to `Array.new` that, on a thread that is building, takes the three keywords off, makes Ruby's
+Array, and keeps the settings in a table keyed by that Array. A call without them is Ruby's own, so
+a gem sees no change; a call with them would have raised in Ruby, so nothing that worked changes.
 
-**Calls.** A call in per-frame code goes one of four ways, chosen by the receiver's real class and
-whether anything given is played:
-
-1. A method of a game file: walked. Its body is per-frame code with `self` the real receiver.
-2. A verb or a handle's method (Builder, `DSL::Value`, a sprite, a list): called for real while
-   building, handed played values as the IR handles the verbs already take. This is how IR is made.
-3. A core method (Integer, Float, Array, Hash, String, Range, Comparable, Enumerable, Kernel) on a
-   played value, or with played arguments: compiled from the **prelude**, below.
-4. Anything else with every input known: called for real, and its answer is known. This is how
-   `JSON.parse(LEVELS)` or `Facts.of(...)` in a scene costs nothing. With a played input it is
-   refused as a library the console cannot run.
-
-**Tests and loops** mean what Ruby says, with Ruby's truth (only nil and false are false). A test
-on a known value compiles one branch; on a played value both, as the game's branch. `while`,
-`until`, `loop`, `times`, `upto`, `step`, `each`, `for` over played bounds or a played collection
-are loops the game runs; over known ones the build chooses to unroll or count, and the profile says
-which (`rom.profile`). `break`, `break value`, `next`, `redo`, `return` from a method or a routine,
-and `next` and `break` in `game_loop` mean Ruby's jumps. `begin`, `rescue`, `ensure` and `retry`
-are compiled for the errors the game itself raises; a rescue of an error only Ruby's runtime raises
-(`NoMethodError` on a played nil) catches it as Ruby does.
-
-**`raise`** in per-frame code is Ruby's: the game stops where the line runs, with the message, on
-every lowering. A `raise` under a known test is decided while building, so it stops the build.
-Games written for the rewrite sometimes test a value's class to check their own wiring (a Pokemon
-Pinball part raises unless a block gave back a Condition); under the compiler that line means
-Ruby's raise, so each game's move removes such checks.
-
-**Pattern matching**, multiple assignment, splats, keyword arguments, `defined?`, `__method__`,
-`instance_variable_get` and `send` with a known name mean what Ruby says. Reflection with a played
-name is refused.
+**Played text** is known pieces, played numbers and played characters, with a room (the most
+characters the build can see: a 32-bit number is at most 11; otherwise the setting or a default). It
+answers `size`, `+`, `<<`, `*` by a known count, `==`, `center`, `ljust`, `rjust`, `upcase`,
+`downcase`, `to_s`, `to_i`, `format` and `String#%` with `%d`, `%s`, `%x` and their widths and
+padding, and drawing and logging. A String method with no meaning on the console's text
+(`encode`, `unpack1`, a Regexp) on played text is refused.
 
 ## The prelude: Ruby's core, written in Ruby
 
@@ -274,24 +440,24 @@ Each warning says the line and the construct, what it costs in the units the pro
 cheaper way. `warnings: :quiet` on a line's verb or the game turns a named warning off; the profile
 line stays. What warns:
 
-- Copies of a played collection (`sort`, `map`, `select`, `dup`, `first(2)`, `+`, `uniq`, `tally`,
-  `h.merge`, `h.values` kept). Each has a scratch place sized by the most items the source can
-  hold, so no heap is needed; its cost is the copy.
-- A played Array or Hash with no `capacity:` that grows (`trail = []`, then `trail << x`;
-  `Array.new(n, 0)` with a played `n`; a Hash given a key it did not start with). It gets a room the
-  warning names, and a push past that room stops the game in plain words.
-- A tagged value, a choice of more than a few objects, a played key looked up in a Hash, a dispatch
-  over routine names worked out from a number, Arrays inside Arrays.
+- A copy of a played collection, and a tagged value or a choice of more than a few objects kept in
+  a place.
+- A collection, text or making site whose room the build could not see, and Arrays inside Arrays.
+- A played key looked up in a Hash, and a dispatch over routine names worked out from a number.
 - A line that works out a number and drops it (`hp + 1` alone).
-- What PLAIN_RUBY.md lists under "What costs more" today: a running total kept by hand, a sort on
-  every pass, a copy far from its read.
+- A `once` made as the game plays, and an error on a path that may run.
+
+What PLAIN_RUBY.md lists under "What costs more" today (a running total kept by hand, a sort on
+every pass, a copy far from its read) is advice about how often a line runs, which the build cannot
+judge; on the compiler those are profile lines, not warnings.
 
 **Division.** `/` and `%` are Ruby's, rounding down, on negative numbers too. By a power of two
 that is a shift and a mask, cheaper than rounding toward zero; by anything else it is the console's
 divide and a two-instruction correction. `remainder` is Ruby's own truncating remainder, and costs
 nothing extra. `VBlank.game ..., division: :toward_zero` makes every `/` and `%` round toward zero,
-as C does: faster on a divisor the compiler cannot see, and not Ruby, so the setting says so in its
-name. Where the compiler can see both sides are never negative, the correction is left out.
+as C does and as today's rewrite does: faster on a divisor the compiler cannot see, and not Ruby,
+so the setting says so in its name. Where the compiler can see both sides are never negative, the
+correction is left out.
 
 ## The one compiler error
 
@@ -305,17 +471,15 @@ To fix this, do this work above the game block, or write the code out.
 ```
 
 Line one: the file and line, the construct in backticks, and "cannot run on the console". Line
-two: why, in one sentence about the console. Line three: what to do, starting "To fix this". The
-same shape covers every refusal: `eval` and its relatives, `system`, backticks, `exec`, `fork`,
-`spawn`, `require` and `load` in per-frame code, a library called with a played value, `IO`,
-`File`, `Dir`, `STDIN`, threads, Ractors, fibers, `ObjectSpace`, `method_missing` and
-`respond_to_missing?` reached with a played name, `define_method`, `class_eval`, `alias` and
-`undef` in per-frame code, `BEGIN` and `END`, a global variable written in per-frame code,
-reflection with a played name, flip-flops, and a second live object from one making site. The class
-is `RubyCompiler::Refused`, a `BuildError`.
-
-Ruby's own errors that the build can see (sort on Structs with no `<=>`, a write to a frozen
-Struct, a method no class has) are said as Ruby says them, at build time, in the same shape.
+two: why, in one sentence about the console. Line three: what to do, starting "To fix this", naming
+a verb where VBlank has one for the job. The same shape covers every refusal but a constant outside the subset, which keeps today's words (above): a
+value of a class outside the subset, `eval` and its relatives, `system`, backticks, `exec`, `fork`,
+`spawn`, `require` and `load` in per-frame code, a method with no Ruby source outside the core,
+a method made by a string `eval`, `method_missing` and `respond_to_missing?` reached with a played
+name, `define_method`, `class_eval`, `Struct.new`, `Class.new`, `alias` and `undef` in per-frame
+code (making a class while the game plays), `BEGIN` and `END`, Ruby's own globals, reflection with
+a played name, flip-flops, and a core method the prelude does not have yet. The class is
+`RubyCompiler::Refused`, a `BuildError`.
 
 ## The debug log
 
@@ -335,22 +499,25 @@ never as text: the text is made on the computer reading the log, by Ruby's own `
 
 A full ring drops the oldest line and counts what it dropped. `VBlank.game ..., debug_log: false`
 leaves every `puts` out of the cartridge, for a shipped build, and the build says how many it left
-out. The log is a new IR kind (`log`), so it goes in the conformance fixture and every lowering
-learns it.
+out. The log is a new IR kind (`log`), added by the epic's fifth task; it goes in the conformance
+fixture and every lowering learns it.
 
 ## Every Prism node is decided
 
 The compiler keeps a table with one row for each node class of the Prism that VBlank loads
 (`Prism::Node`'s subclasses, read at load; Prism 1.9.0's `config.yml` lists 151 and Ruby 4.0's
-loaded Prism has 152), each marked compiled, setup only, or refused with the one error. A test
-fails on a node class with no row, so a new Prism with a new kind fails until somebody decides.
-Decision: the loaded classes, not a path into the gem's install, since they are what parses the
-game. The refused rows are: `XStringNode`, `InterpolatedXStringNode`, `PreExecutionNode`,
-`PostExecutionNode`, `FlipFlopNode`, `MatchLastLineNode`, `InterpolatedMatchLastLineNode`,
-`BackReferenceReadNode`, `NumberedReferenceReadNode`, the global variable write kinds, `UndefNode`,
-`AliasGlobalVariableNode`, and in per-frame code `AliasMethodNode`, `ClassNode`, `ModuleNode`,
-`SingletonClassNode` and `DefNode` (a method defined while the game plays). `ImaginaryNode` and
-`RationalNode` are setup only.
+loaded Prism has 152). Each row has two marks, one for per-frame code and one for setup: compiled,
+runs as Ruby, or refused with the one error. A test fails on a node class with no row, so a new
+Prism with a new kind fails until somebody decides. Decision: the loaded classes, not a path into
+the gem's install, since they are what parses the game.
+
+Setup runs as Ruby, so in setup every row is "runs as Ruby". In per-frame code the refused rows
+are: `XStringNode`, `InterpolatedXStringNode`, `PreExecutionNode`, `PostExecutionNode`,
+`FlipFlopNode`, `MatchLastLineNode`, `InterpolatedMatchLastLineNode`, `UndefNode`,
+`AliasGlobalVariableNode`, `AliasMethodNode`, `ClassNode`, `ModuleNode`, `SingletonClassNode` and
+`DefNode` (a class or a method made while the game plays). `ImaginaryNode` and `RationalNode` are
+refused there too, since the console has no complex or rational numbers. `BackReferenceReadNode` and
+`NumberedReferenceReadNode` go with Regexp, refused on played text and known on known text.
 
 ## Where it sits
 
@@ -359,9 +526,10 @@ game. The refused rows are: `XStringNode`, `InterpolatedXStringNode`, `PreExecut
 compiler from Ruby to the IR) is not a thing a game names, and the old files there go when it is
 done. Its interface is one method, `RubyCompiler.game_block(block, settings)`, the same shape as
 `DSL::PlainRuby.game_block`; everything else is inside: the walk (`Walk`), the fixed point over
-written places (`Places`), the kinds (`Kinds`), the node table (`NodeTable`), the prelude, the
-refusal and the cost warnings. It emits through the builder's own verbs and containers, so it adds
-nothing to the IR but the `log` kind.
+written places (`Places`), the kinds (`Kinds`), the constant rule (`Constants`), the effects table
+(`CoreEffects`), making sites and rooms (`Sites`), the node table (`NodeTable`), the prelude, the
+refusal and the cost warnings. It emits through the builder's own verbs and containers, and adds
+the `stop` and `log` kinds to the IR.
 
 ## How fast it builds
 
@@ -374,151 +542,164 @@ in a sliver of the time spent loading and rewriting them, and the first build on
 spent far longer compiling the game's own unpacking as C than in any Ruby phase.
 
 So Prism is not where a build spends its time, and neither is the front end on the examples. The
-compiler stays in Ruby, as the framework is. Budget: on every example and every VBlank game, the compiler's reading (its rounds
-of the walk and its compiling walk) takes no longer than the rewrite's reading of the same game.
-The walk interprets only per-frame code, and setup, the heavy part, runs as Ruby at Ruby's speed;
-`once` keeps data work (unpacking art) out of the walk. The prototype walked the copyright screen's
-per-frame code, both rounds, in a few milliseconds. If a game misses the budget, the first fixes
-are in Ruby: cache each method's walk by its known inputs, and walk a round only from what the last
-round changed. C is on the table only with a measurement showing the compiler is the slow part
-after those.
+compiler stays in Ruby, as the framework is. Budget: on every example and every VBlank game, the
+compiler's reading (its rounds of the walk, any second run of setup, and its compiling walk) takes
+no longer than the rewrite's reading of the same game. The walk interprets only per-frame code, and
+setup, the heavy part, runs as Ruby at Ruby's speed; `once` keeps data work (unpacking art) out of
+the walk. The prototype walked the copyright screen's per-frame code, both rounds, in a few
+milliseconds. If a game misses the budget, the first fixes are in Ruby: cache each method's walk by
+its known inputs, and walk a round only from what the last round changed. C is on the table only
+with a measurement showing the compiler is the slow part after those.
 
 ## The order of the work, and each part's answer key
 
 1. **Opt in, refuse, and the node table** (the epic's second task). A minimal game builds on
-   `plain_ruby: :compiled`; the one error; the node-table test. Answer key: Ruby through
-   `test/ruby_answers.rb`, and this page.
-2. **The core** (third task): numbers, fractions, flags, states, tests, loops, jumps, methods, parts,
-   Structs, Data, `once`, making sites, choices, tagged values, the written-place fixed point.
-   `RubyAnswers` gains a way to play each case on both front ends; the `refused` cases this page
-   sorts as building become `agrees` cases on the compiler. Answer key: Ruby, then the rewrite
-   where it agrees with Ruby; a difference is named as the compiler's bug or the rewrite's.
-3. **Collections and costs** (fourth task): Arrays, Arrays of Arrays, pools, Hashes, text, the
-   prelude's collection methods, the cost warnings. Every example builds on the compiler and plays
-   the same over a fixed tape. Answer key: Ruby; every example on both front ends, screen and sound
-   compared; `rake emitted:check`, with growth reported.
+   `plain_ruby: :compiled`; the one error; the constant rule and its `allow:`; the node-table test. Answer key: Ruby
+   through `test/ruby_answers.rb`, and this page.
+2. **The core** (third task): numbers, fractions, flags, states, tests, loops, jumps, errors and
+   the `stop` kind on every lowering, methods, parts, Structs, Data, `once` and its probe, making
+   sites and rooms, choices, tagged values, `CoreEffects`, the written-place fixed point, the
+   prelude's number methods, `division:`. `RubyAnswers` gains a way to play each case on both front
+   ends; the `refused` cases the appendix gives to this task become `agrees` cases on the compiler.
+   Answer key: Ruby, then the rewrite where it agrees with Ruby; a difference is named as the
+   compiler's bug or the rewrite's.
+3. **Collections and costs** (fourth task): Arrays, Arrays of Arrays, pools, Hashes, text, rooms
+   for collections, the prelude's collection and text methods, the cost warnings. Every example
+   builds on the compiler and plays the same over a fixed tape. Answer key: Ruby; every example on
+   both front ends, screen and sound compared, with the compiler on `division: :toward_zero` where
+   the example divides a number that can be negative; `rake emitted:check`, with growth reported.
 4. **The debug log** (fifth task), after the core: the `log` kind on every lowering.
 5. **Each game** (the remaining tasks), by that game's own session, in its own repository: turn the
-   setting on, remove the rewrite's workarounds (`x = (@x ||= ...)` becomes `x = once { ... }`;
+   setting on, remove the rewrite's workarounds (`VBlank.require_game_file` becomes
+   `require_relative`; `x = (@x ||= ...)` becomes `x = once { ... }`;
    `game_variables` lines kept only for names and saves; checks that test a value's class removed),
-   and play the game's tapes on both. Answer key: the game's tests and tapes, and the original.
+   and play the game's tapes on both. "Plays the same" compares the compiler on
+   `division: :toward_zero`, since the rewrite rounds toward zero; a game that then moves to Ruby's
+   division lists the differences that follows on its own bead. Answer key: the game's tests and
+   tapes, and the original.
 
 ## Appendix: PLAIN_RUBY.md's 94 cases on the compiler
 
 Each "Don't" on PLAIN_RUBY.md (as of this branch), sorted four ways:
 
-- **Ruby**: builds and plays as Ruby says; the case goes away. (A case where Ruby itself raises
-  is here too: the build says Ruby's error.)
+- **Ruby**: builds and plays as Ruby says, with no warning; the case goes away. A case where Ruby
+  itself raises is here too, as a stop where the line runs.
 - **Warns**: builds as Ruby says, with a cost warning and a profile line.
 - **Limit**: refused, or stopped as the game plays, as a console limit, in the one error's words.
-- **Stays**: Ruby's own answer is a frozen game, which stays a teaching error; or the case is
-  about a VBlank verb or setting, not about Ruby.
+- **Stays**: Ruby's own answer is a frozen or hung game, or the case is about a VBlank verb or
+  setting, not about Ruby.
+
+Each row names the task that builds it (2 to 5: the epic's second to fifth tasks) and the pieces of
+this design it rests on, none of which exist yet: **F** the written-place fixed point, **E**
+`CoreEffects`, **S** making sites and rooms, **C** choices, **T** tagged values, **P** the
+prelude, **R** rooms and scratch copies for collections, **X** played text, **O** `once` and its
+probe, **K** the `stop` kind, **L** the `log` kind.
 
 | Count | Ruby | Warns | Limit | Stays |
 |---|---|---|---|---|
-| All 94 | 57 | 29 | 3 | 5 |
+| All 94 | 64 | 22 | 3 | 5 |
 | The 71 refused today | 44 | 22 | 2 | 3 |
 | The 15 that surprise | 12 | 0 | 1 | 2 |
-| The 8 that cost more | 1 | 7 | 0 | 0 |
+| The 8 that cost more | 8 | 0 | 0 | 0 |
 
-The guess that about three quarters go away or become warnings holds: 86 of 94 do, and 66 of the
-71 refusals. The count rests on four pieces of this design: tagged values, choices, scratch places
-sized from their source, and the prelude. A case whose piece falls through moves to Warns or Limit,
-and the task that builds the piece says so.
+The guess that about three quarters go away or become warnings holds: 86 of 94 do, and 66 of the 71
+refusals. It rests on pieces that are not built. The three riskiest are making sites with rooms,
+choices and tagged values: 16 rows rest on one of them. If every one of those 16 ended up refused,
+70 of 94 would still build, which is still about three quarters.
 
-| Case (PLAIN_RUBY.md's summary) | On the compiler | Why |
-|---|---|---|
-| `while left` on a bare number | Stays | Ruby's loop never stops; a frozen game stays a teaching error |
-| A loop on plain numbers that never ends | Stays | Setup code; Ruby's own endless loop |
-| `hp + 1` on its own line | Warns | Ruby does nothing with it; warned, not refused |
-| `lives.nonzero? \|\| 1` | Ruby | `nonzero?` gives the number or nil, a tagged answer |
-| `alive = hp` when `alive` started as `true` | Warns | A tagged value |
-| `x = if ... end` with no `else` | Warns | nil in a tagged value |
-| `case hp in Integer => n` | Ruby | A played value's kind is known, so a class pattern is decided |
-| `hp.fdiv(2)` | Ruby | Prelude |
-| `2**level` with a game number as the power | Ruby | Prelude: a loop by squaring |
-| `speed.round(1)` | Ruby | Prelude, at the fraction's precision |
-| Other Integer methods, such as `hp.gcd(4)` | Ruby | Prelude |
-| `"HP #{hp}".center(12)` | Ruby | Played text |
-| `call :"level#{level}"` | Warns | A dispatch over the routines declared with that name |
-| Change a String under a game test | Ruby | A choice of known Strings |
-| `next` out of `game_loop` under a game test | Ruby | Compiled jump |
-| `break` on a game test in `3.times` | Ruby | Compiled jump |
-| `for m in marks` on an Array the game keeps | Ruby | A loop over a list |
-| `0.step(10, by)` with a game number as the step | Ruby | A loop with a played step |
-| `(0...n).map` with a game number `n` | Warns | A new Array with no known room |
-| `steps.next` in a `loop do` the game runs | Ruby | An Enumerator: known items, played position |
-| `break 5` in a loop the game runs | Ruby | The loop's value |
-| `trail = []`, then `trail << x` | Warns | Room named in the warning |
-| `Array.new(8)` | Warns | Items of nil: tagged |
-| `Array.new(n, 0)` with a game number | Warns | Room named in the warning |
-| `rotate!`, `map`, `unshift` and the like | Warns | Prelude; `map` is a copy, `unshift` moves every item |
-| `marks.sort` or `sort_by` | Warns | A copy |
-| `a == b` on two Arrays the game keeps | Ruby | Prelude |
-| `answers[0] = hp == 1` | Warns | A list of tagged items |
-| Whole game numbers and fractions in one Array | Warns | A list of tagged items |
-| `grid[0][1] += 1` on Arrays inside an Array | Warns | A list of lists |
-| `Array.new(capacity: 4, holds: :fraction)` | Stays | A VBlank setting, unneeded; refused as an unknown keyword |
-| `[a, b].find { ... }` with game numbers | Ruby | Prelude over a known Array of played items |
-| `max_by`, `sort` or `clamp` on game numbers | Ruby | Prelude |
-| `uniq`, `tally`, `-` and the like on game numbers | Warns | Copies, an item against every item |
-| Index a `game_variables` Array through its reader | Ruby | Places keyed by object |
-| Give one Array to two parts that both change it | Ruby | One object, one place |
-| Give a game Hash a key it does not have | Warns | Room for added keys |
-| `h.delete(:b)`, `merge!`, `clear` on a game Hash | Warns | Room for added keys |
-| `h.dup`, `merge`, `select` of a game Hash | Warns | A copy |
-| Keep `v = h.values` of a game Hash | Warns | A copy |
-| `h[at]` with a key the game works out | Warns | A lookup |
-| Change a part's Array of names in game code | Ruby | A list of states |
-| An Array of `Data` objects that game code changes | Ruby | A pool whose things are replaced whole |
-| `min_by` and other methods a pool does not have | Ruby | Prelude |
-| Sort an Array of Structs inside a walk of it | Ruby | Ruby's walk by index, compiled |
-| `sparks.min(2)` | Warns | A copy |
-| `s.clamp(low, high)` with things of no Array | Ruby | Compiled `<=>` |
-| A `<=>` that adds fields | Ruby | `<=>` walked like any method |
-| `sort!` on Structs with no `<=>` | Ruby | Ruby's own error, said at build time |
-| `shift`, then `<<`, in one walk | Ruby | Ruby's walk by index, compiled |
-| `flock.dots << Dot.new(...)` from outside the class | Ruby | Places keyed by object |
-| Fill a part's Array from a reopened class | Ruby | Places keyed by object |
-| Make a part above `VBlank.game` and change its Array | Ruby | Objects are never changed by a build |
-| Set `@open` in a method and test it elsewhere | Ruby | The written-place rule finds it |
-| Read `@point` that only a `func` sets | Ruby | A choice with nil; Ruby's error where Ruby has one |
-| Make a Struct under an `if` and use it after | Ruby | A choice |
-| Sum in a lambda passed with `&` | Ruby | Lambdas are walked |
-| Read a part's Array, then change it by its reader | Ruby | Places keyed by object |
-| `@counts.first(2)` or `@counts[0..]` of named numbers | Warns | A copy |
-| Copy named numbers, as in `@counts.dup` | Warns | A copy |
-| `Counter.new` in the game loop | Ruby | A making site |
-| Keep two different things in one name with `\|\|=` | Ruby | A choice |
-| Give `@point` a new Struct after game code read it | Ruby | A choice |
-| Freeze a Struct that holds game numbers | Ruby | Objects are never changed; a write is Ruby's FrozenError |
-| Read a Data object as `it` or `_1` | Ruby | Walked like a named parameter |
-| Set `score` above `VBlank.game` and change it inside | Ruby | A setup local, played |
-| `counts[0] &&= value` on a number | Ruby | Ruby's `&&=` |
-| `flags[:open] \|\|= true` on `false` | Ruby | Ruby's `\|\|=` |
-| `eval`, `system` and the like in game code | Limit | The one error |
-| A library such as `JSON` in game code | Limit | With known inputs it now runs while building; with played ones, the one error |
-| `instance_variable_get(:@hp)` | Ruby | Reflection with a known name |
-| `if hp` to test for 0 | Ruby | Ruby's truth |
-| `x / 2` on a negative game number | Ruby | Ruby's division by default |
-| `puts hp` to see a number | Ruby | The debug log |
-| Push onto a full Array | Limit | The console's room; the game stops in plain words |
-| `draw_number` each frame on a tiled screen | Stays | The verb's meaning |
-| Read a local that you gave to a part | Ruby | One object, one place |
-| Expect one writer name to change one class | Ruby | Places keyed by object |
-| Set a lasting count inside `game_loop` | Ruby | Ruby's block locals |
-| Change a method's argument to change the caller's number | Ruby | Ruby's own meaning |
-| Expect `"HP #{hp}"` to fit the number | Ruby | Played text is Ruby's text |
-| Expect every instance variable to be the game's | Ruby | The written-place rule |
-| Put 200 in a `width: :byte` list | Stays | The setting's meaning |
-| `<<` in a walk where a called routine took a place | Ruby | Ruby's walk by index |
-| Keep a part in a part that is made every pass | Ruby | Making sites, as Ruby |
-| Expect a kept part's `initialize` to run each pass | Ruby | Ruby's own meaning |
-| Give a handed number another to change its owner | Warns | A place of its own, counted |
-| `item = trail.shift` when you can avoid it | Warns | A copy |
-| `sum` or `max` of a long list on every pass | Warns | Profile line |
-| `sort!` a list on every pass that rarely changes | Warns | Profile line |
-| Expect a counting loop to be a loop | Warns | Profile line |
-| Copy a game number into a field far from where you read it | Warns | Profile line |
-| Fill an Array in a kept part's `initialize` | Ruby | `once` runs it while building, as Ruby runs it once |
-| A big list in full words if its numbers are small | Warns | Profile line |
+| Case (PLAIN_RUBY.md's summary) | On the compiler | Task | Rests on | Why |
+|---|---|---|---|---|
+| `while left` on a bare number | Stays | 3 | | Ruby's loop never stops; a frozen game stays a teaching error (the guardrail on a loop whose test is always true) |
+| A loop on plain numbers that never ends | Stays | 3 | | Setup is real Ruby, so it hangs as Ruby does; Ctrl-C names the line. Today's teaching error is lost |
+| `hp + 1` on its own line | Warns | 3 | | Ruby does nothing with it; warned, not refused |
+| `lives.nonzero? \|\| 1` | Ruby | 3 | T | A tagged answer used at once |
+| `alive = hp` when `alive` started as `true` | Warns | 3 | T | A tagged value kept |
+| `x = if ... end` with no `else` | Warns | 3 | T | nil in a tagged value kept |
+| `case hp in Integer => n` | Ruby | 3 | | A played value's kind is known, so a class pattern is decided |
+| `hp.fdiv(2)` | Ruby | 3 | P | |
+| `2**level` with a game number as the power | Ruby | 3 | P, K | Within 32 bits; a negative power is a `Rational` in Ruby, a stop on the console |
+| `speed.round(1)` | Ruby | 3 | P | At the fraction's precision |
+| Other Integer methods, such as `hp.gcd(4)` | Ruby | 3 | P | |
+| `"HP #{hp}".center(12)` | Ruby | 4 | X | |
+| `call :"level#{level}"` | Warns | 3 | | A dispatch over the routines declared with that name |
+| Change a String under a game test | Ruby | 4 | C, X | Given another String: a choice; changed in place: played text |
+| `next` out of `game_loop` under a game test | Ruby | 3 | | |
+| `break` on a game test in `3.times` | Ruby | 3 | | |
+| `for m in marks` on an Array the game keeps | Ruby | 4 | F | |
+| `0.step(10, by)` with a game number as the step | Ruby | 3 | | The step's sign is tested as Ruby does |
+| `(0...n).map` with a game number `n` | Warns | 4 | R | Room from the setting or the default |
+| `steps.next` in a `loop do` the game runs | Ruby | 4 | | An Enumerator |
+| `break 5` in a loop the game runs | Ruby | 3 | | |
+| `trail = []`, then `trail << x` | Warns | 4 | E, R | Room from the setting or the default |
+| `Array.new(8)` | Warns | 4 | T | nil items: tagged, kept |
+| `Array.new(n, 0)` with a game number | Warns | 4 | R | |
+| `rotate!`, `map`, `unshift` and the like | Warns | 4 | E, P, R | `map` copies; `unshift` moves every item |
+| `marks.sort` or `sort_by` | Warns | 4 | R | A copy |
+| `a == b` on two Arrays the game keeps | Ruby | 4 | P | |
+| `answers[0] = hp == 1` | Warns | 4 | T | Tagged items |
+| Whole game numbers and fractions in one Array | Warns | 4 | T | Tagged items |
+| `grid[0][1] += 1` on Arrays inside an Array | Warns | 4 | R | A list of lists |
+| `Array.new(capacity: 4, holds: :fraction)` | Stays | 2 | | A VBlank keyword; refused as unknown |
+| `[a, b].find { ... }` with game numbers | Ruby | 4 | P | |
+| `max_by`, `sort` or `clamp` on game numbers | Ruby | 4 | P | On a written-out Array of two or three |
+| `uniq`, `tally`, `-` and the like on game numbers | Warns | 4 | P, R | Copies; every item against every item |
+| Index a `game_variables` Array through its reader | Ruby | 4 | F | |
+| Give one Array to two parts that both change it | Ruby | 4 | F | One object, one place |
+| Give a game Hash a key it does not have | Warns | 4 | R | Room for added keys |
+| `h.delete(:b)`, `merge!`, `clear` on a game Hash | Warns | 4 | E, R | |
+| `h.dup`, `merge`, `select` of a game Hash | Warns | 4 | R | A copy |
+| Keep `v = h.values` of a game Hash | Warns | 4 | R | A copy |
+| `h[at]` with a key the game works out | Warns | 4 | | A lookup |
+| Change a part's Array of names in game code | Ruby | 4 | F | A list of states |
+| An Array of `Data` objects that game code changes | Ruby | 4 | S | Kept by value |
+| `min_by` and other methods a pool does not have | Ruby | 4 | P | |
+| Sort an Array of Structs inside a walk of it | Ruby | 4 | | Ruby's walk by index |
+| `sparks.min(2)` | Warns | 4 | R | A copy |
+| `s.clamp(low, high)` with things of no Array | Ruby | 4 | P | |
+| A `<=>` that adds fields | Ruby | 4 | | `<=>` walked like any method |
+| `sort!` on Structs with no `<=>` | Ruby | 4 | K | Ruby's ArgumentError, a stop where it runs |
+| `shift`, then `<<`, in one walk | Ruby | 4 | | Ruby's walk by index |
+| `flock.dots << Dot.new(...)` from outside the class | Ruby | 4 | F, S | |
+| Fill a part's Array from a reopened class | Ruby | 4 | F | |
+| Make a part above `VBlank.game` and change its Array | Ruby | 4 | F | Starts read, never written |
+| Set `@open` in a method and test it elsewhere | Ruby | 3 | F | |
+| Read `@point` that only a `func` sets | Ruby | 3 | C, K | A choice with nil; Ruby's error as a stop |
+| Make a Struct under an `if` and use it after | Ruby | 3 | S, C | |
+| Sum in a lambda passed with `&` | Ruby | 4 | F | A captured local keyed by its binding |
+| Read a part's Array, then change it by its reader | Ruby | 4 | F | |
+| `@counts.first(2)` or `@counts[0..]` of named numbers | Warns | 4 | R | A copy |
+| Copy named numbers, as in `@counts.dup` | Warns | 4 | R | A copy |
+| `Counter.new` in the game loop | Ruby | 3 | S | Made again each pass, its slot given back |
+| Keep two different things in one name with `\|\|=` | Ruby | 3 | S, C | |
+| Give `@point` a new Struct after game code read it | Ruby | 3 | S, C | |
+| Freeze a Struct that holds game numbers | Ruby | 3 | S | Frozen: kept by value; the file's way of loading decides nothing |
+| Read a Data object as `it` or `_1` | Ruby | 4 | S | Kept by value |
+| Set `score` above `VBlank.game` and change it inside | Ruby | 3 | F | |
+| `counts[0] &&= value` on a number | Ruby | 4 | | |
+| `flags[:open] \|\|= true` on `false` | Ruby | 4 | | |
+| `eval`, `system` and the like in game code | Limit | 2 | | The one error |
+| A library such as `JSON` in game code | Limit | 2 | | Today's constant rule and message, `allow:` kept |
+| `instance_variable_get(:@hp)` | Ruby | 3 | | Reflection with a known name |
+| `if hp` to test for 0 | Ruby | 3 | | Ruby's truth |
+| `x / 2` on a negative game number | Ruby | 3 | | Ruby's division by default |
+| `puts hp` to see a number | Ruby | 5 | L | |
+| Push onto a full Array | Limit | 4 | R, K | The console's room; a stop in plain words |
+| `draw_number` each frame on a tiled screen | Stays | | | The verb's meaning |
+| Read a local that you gave to a part | Ruby | 4 | F | One object, one place |
+| Expect one writer name to change one class | Ruby | 3 | F | |
+| Set a lasting count inside `game_loop` | Ruby | 3 | | Ruby's block locals |
+| Change a method's argument to change the caller's number | Ruby | 3 | | |
+| Expect `"HP #{hp}"` to fit the number | Ruby | 4 | X | Played text is Ruby's text |
+| Expect every instance variable to be the game's | Ruby | 3 | F | |
+| Put 200 in a `width: :byte` list | Stays | | | The setting's meaning |
+| `<<` in a walk where a called routine took a place | Ruby | 4 | | Ruby's walk by index |
+| Keep a part in a part that is made every pass | Ruby | 3 | S | |
+| Expect a kept part's `initialize` to run each pass | Ruby | 3 | O | |
+| Give a handed number another to change its owner | Ruby | 3 | F | A played place of its own, as Ruby's |
+| `item = trail.shift` when you can avoid it | Ruby | 4 | | A profile line |
+| `sum` or `max` of a long list on every pass | Ruby | 4 | | A profile line |
+| `sort!` a list on every pass that rarely changes | Ruby | 4 | | A profile line |
+| Expect a counting loop to be a loop | Ruby | 3 | | A profile line |
+| Copy a game number into a field far from where you read it | Ruby | 3 | | A profile line |
+| Fill an Array in a kept part's `initialize` | Ruby | 3 | O | |
+| A big list in full words if its numbers are small | Ruby | 4 | | A profile line |
